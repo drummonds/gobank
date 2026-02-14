@@ -1,0 +1,52 @@
+version: '3'
+
+tasks:
+  default:
+    desc: List available tasks
+    cmds:
+      - task --list
+
+  fmt:
+    desc: Format Go source files
+    cmds:
+      - go fmt ./...
+
+  vet:
+    desc: Run Go vet
+    cmds:
+      - go vet ./...
+
+  test:
+    desc: Run tests
+    cmds:
+      - go test ./...
+
+  bench:
+    desc: Run benchmarks
+    cmds:
+      - go test -bench=. -benchmem -count=1 -timeout=600s ./...
+
+  check:
+    desc: Run fmt, vet, and test
+    cmds:
+      - task: fmt
+      - task: vet
+      - task: test
+
+  deps:tidy:
+    desc: Tidy module dependencies
+    cmds:
+      - go mod tidy
+
+  release:*:*:
+    desc: "Release a new version, eg: task release:v0.1.0:\"initial release\""
+    vars:
+      TAG: '{{index .MATCH 0}}'
+      MSG: '{{index .MATCH 1}}'
+    cmds:
+      - task: check
+      - git add .
+      - git commit -am "{{.MSG}}"
+      - git tag "{{.TAG}}"
+      - git push origin "{{.TAG}}"
+      - git push
