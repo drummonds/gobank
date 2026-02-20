@@ -38,15 +38,14 @@ tasks:
     cmds:
       - go mod tidy
 
-  release:*:*:
-    desc: "Release a new version, eg: task release:v0.1.0:\"initial release\""
-    vars:
-      TAG: '{{index .MATCH 0}}'
-      MSG: '{{index .MATCH 1}}'
+  release:
+    desc: 'Release a new version, eg: task release VERSION=v0.1.0 COMMENT="initial release"'
+    requires:
+      vars: [VERSION, COMMENT]
     cmds:
       - task: check
       - git add .
-      - git commit -am "{{.MSG}}"
-      - git tag "{{.TAG}}"
-      - git push origin "{{.TAG}}"
+      - git commit -am "{{.COMMENT}}"
+      - git tag "{{.VERSION}}"
+      - git push origin "{{.VERSION}}"
       - git push
