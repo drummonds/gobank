@@ -50,10 +50,6 @@ const LayoutModelBank = `<!DOCTYPE html>
       <p>{{ version }}</p>
     </div>
   </footer>
-  <script type="module">
-    import mermaid from 'https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.esm.min.mjs';
-    mermaid.initialize({ startOnLoad: true });
-  </script>
   <script>
     document.addEventListener('DOMContentLoaded', () => {
       const burger = document.querySelector('.navbar-burger');

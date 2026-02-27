@@ -2,7 +2,10 @@ package main
 
 import (
 	"fmt"
+	"log"
 	"strings"
+
+	mermaid "github.com/bvolpato/mermaid-go-renderer"
 )
 
 const c4SystemContext = `C4Context
@@ -40,24 +43,30 @@ const c4Container = `C4Container
     Rel(payments, ledger, "Records movements")
 `
 
-// BuildModelsHTML renders the C4 architecture diagrams as Mermaid blocks
-// for client-side rendering by mermaid.js.
+func renderMermaidSVG(input string) string {
+	svg, err := mermaid.Render(input)
+	if err != nil {
+		log.Printf("mermaid render error: %v", err)
+		return fmt.Sprintf(`<div class="notification is-warning">Diagram render error: %v</div>`, err)
+	}
+	return svg
+}
+
+// BuildModelsHTML renders the C4 architecture diagrams as SVG using mmdg.
 func BuildModelsHTML() string {
 	var s strings.Builder
 
 	s.WriteString(`<h2 class="title is-4">Architecture Models</h2>`)
 	s.WriteString(`<p class="subtitle is-6 has-text-grey">C4 architecture diagrams for the Model Bank</p>`)
 
-	// System Context diagram
 	s.WriteString(`<div class="box">`)
 	s.WriteString(`<h3 class="title is-5">System Context</h3>`)
-	s.WriteString(fmt.Sprintf(`<pre class="mermaid">%s</pre>`, c4SystemContext))
+	s.WriteString(renderMermaidSVG(c4SystemContext))
 	s.WriteString(`</div>`)
 
-	// Container diagram
 	s.WriteString(`<div class="box">`)
 	s.WriteString(`<h3 class="title is-5">Container Diagram</h3>`)
-	s.WriteString(fmt.Sprintf(`<pre class="mermaid">%s</pre>`, c4Container))
+	s.WriteString(renderMermaidSVG(c4Container))
 	s.WriteString(`</div>`)
 
 	return s.String()

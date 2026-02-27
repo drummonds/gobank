@@ -42,10 +42,6 @@ function renderPayments() {
 function renderModels() {
     if (typeof goRenderModels === 'function') {
         outputDiv.innerHTML = goRenderModels();
-        // Trigger mermaid rendering if loaded
-        if (window.mermaid) {
-            window.mermaid.run();
-        }
     }
 }
 
@@ -162,14 +158,6 @@ async function loadWASM() {
     }
 }
 
-// Load mermaid.js for models page
-function loadMermaid() {
-    const script = document.createElement('script');
-    script.type = 'module';
-    script.textContent = "import mermaid from 'https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.esm.min.mjs'; mermaid.initialize({ startOnLoad: false }); window.mermaid = mermaid;";
-    document.head.appendChild(script);
-}
-
 // Navigation event listeners
 navBrand.addEventListener('click', function(e) { e.preventDefault(); showPage('bank'); });
 navBank.addEventListener('click', function(e) { e.preventDefault(); showPage('bank'); });
@@ -207,5 +195,4 @@ document.addEventListener('DOMContentLoaded', function() {
     }
 });
 
-loadMermaid();
 loadWASM();
