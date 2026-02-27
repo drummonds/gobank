@@ -7,13 +7,30 @@
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bulma@1.0.4/css/bulma.min.css">
 </head>
 <body>
-  <nav class="navbar is-primary" role="navigation">
+  <nav class="navbar is-primary" role="navigation" aria-label="main navigation">
     <div class="navbar-brand">
-      <span class="navbar-item has-text-weight-bold">Model Bank</span>
+      <a class="navbar-item has-text-weight-bold" href="#" id="nav-brand">Model Bank</a>
+      <a role="button" class="navbar-burger" data-target="mainNavbar" aria-label="menu" aria-expanded="false">
+        <span aria-hidden="true"></span>
+        <span aria-hidden="true"></span>
+        <span aria-hidden="true"></span>
+      </a>
     </div>
-    <div class="navbar-end">
-      <div class="navbar-item">
-        <span id="status-tag" class="tag is-light">Stopped</span>
+    <div id="mainNavbar" class="navbar-menu">
+      <div class="navbar-start">
+        <a class="navbar-item is-active" href="#" id="nav-bank">Bank</a>
+        <a class="navbar-item" href="#" id="nav-payments">Payments</a>
+        <div class="navbar-item has-dropdown is-hoverable">
+          <a class="navbar-link">About</a>
+          <div class="navbar-dropdown">
+            <a class="navbar-item" href="#" id="nav-models">Models</a>
+          </div>
+        </div>
+      </div>
+      <div class="navbar-end">
+        <div class="navbar-item">
+          <span id="status-tag" class="tag is-light">Stopped</span>
+        </div>
       </div>
     </div>
   </nav>
@@ -22,12 +39,17 @@
       <div id="output">
         <progress class="progress is-primary" max="100">Loading WASM...</progress>
       </div>
-      <div class="buttons mt-4">
+      <div id="controls-bank" class="buttons mt-4" style="display:none">
         <button id="startStopBtn" class="button is-success" disabled>Run</button>
         <button id="advanceBtn" class="button is-info" disabled>Advance Day</button>
         <button id="depositBtn" class="button is-primary" disabled>Deposit £100</button>
         <button id="withdrawBtn" class="button is-warning" disabled>Withdraw £100</button>
         <button id="resetBtn" class="button is-light" disabled>Reset</button>
+      </div>
+      <div id="controls-payments" class="buttons mt-4" style="display:none">
+        <button id="sendPaymentBtn" class="button is-primary" disabled>Send Payment</button>
+        <button id="autoPaymentsBtn" class="button is-success" disabled>Auto Send</button>
+        <button id="resetPaymentsBtn" class="button is-light" disabled>Reset Payments</button>
       </div>
     </div>
   </section>

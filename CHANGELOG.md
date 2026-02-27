@@ -1,5 +1,9 @@
 # Changelog
 
+## v0.1.3 (unreleased)
+
+- fleshing out mock payments
+
 ## v0.1.0 (unreleased)
 
 - Initial scaffold: simulation engine, account behaviors, daily updates
