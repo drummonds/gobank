@@ -15,43 +15,74 @@ const sendPaymentBtn = document.getElementById('sendPaymentBtn');
 const autoPaymentsBtn = document.getElementById('autoPaymentsBtn');
 const resetPaymentsBtn = document.getElementById('resetPaymentsBtn');
 
-// Navigation
-const navBank = document.getElementById('nav-bank');
-const navPayments = document.getElementById('nav-payments');
-const navModels = document.getElementById('nav-models');
+// Navigation elements
 const navBrand = document.getElementById('nav-brand');
-const navItems = [navBank, navPayments, navModels];
+const navDashboard = document.getElementById('nav-dashboard');
+const navPnl = document.getElementById('nav-pnl');
+const navBalanceSheet = document.getElementById('nav-balance-sheet');
+const navSavings = document.getElementById('nav-savings');
+const navLending = document.getElementById('nav-lending');
+const navCustomers = document.getElementById('nav-customers');
+const navPayments = document.getElementById('nav-payments');
+const navBbsi = document.getElementById('nav-bbsi');
+const navCustomerView = document.getElementById('nav-customer-view');
+const navModels = document.getElementById('nav-models');
 
-let currentPage = 'bank';
+const allNavItems = [navDashboard, navPnl, navBalanceSheet, navSavings, navLending,
+    navCustomers, navPayments, navBbsi, navCustomerView, navModels];
+
+let currentPage = 'dashboard';
 let renderInterval = null;
+let detailId = null; // for customer/payment detail pages
 
 // --- Page rendering ---
 
-function renderBank() {
-    if (typeof goRender === 'function') {
-        outputDiv.innerHTML = goRender();
-    }
-}
-
-function renderPayments() {
-    if (typeof goRenderPayments === 'function') {
-        outputDiv.innerHTML = goRenderPayments();
-    }
-}
-
-function renderModels() {
-    if (typeof goRenderModels === 'function') {
-        outputDiv.innerHTML = goRenderModels();
-    }
-}
-
-function render() {
+function renderPage() {
     switch (currentPage) {
-        case 'bank': renderBank(); break;
-        case 'payments': renderPayments(); break;
-        case 'models': renderModels(); break;
+        case 'dashboard':
+            if (typeof goRender === 'function') outputDiv.innerHTML = goRender();
+            break;
+        case 'pnl':
+            if (typeof goRenderPnL === 'function') outputDiv.innerHTML = goRenderPnL();
+            break;
+        case 'balance-sheet':
+            if (typeof goRenderBalanceSheet === 'function') outputDiv.innerHTML = goRenderBalanceSheet();
+            break;
+        case 'savings':
+            if (typeof goRenderProducts === 'function') outputDiv.innerHTML = goRenderProducts('savings');
+            break;
+        case 'lending':
+            if (typeof goRenderProducts === 'function') outputDiv.innerHTML = goRenderProducts('lending');
+            break;
+        case 'customers':
+            if (typeof goRenderCustomers === 'function') outputDiv.innerHTML = goRenderCustomers();
+            break;
+        case 'customer-detail':
+            if (typeof goRenderCustomerDetail === 'function' && detailId)
+                outputDiv.innerHTML = goRenderCustomerDetail(detailId);
+            break;
+        case 'payments':
+            if (typeof goRenderPayments === 'function') outputDiv.innerHTML = goRenderPayments();
+            break;
+        case 'payment-detail':
+            if (typeof goRenderPaymentDetail === 'function' && detailId)
+                outputDiv.innerHTML = goRenderPaymentDetail(detailId);
+            break;
+        case 'bbsi':
+            if (typeof goRenderBBSI === 'function') outputDiv.innerHTML = goRenderBBSI();
+            break;
+        case 'customer-view':
+            if (typeof goRenderCustomerViewReport === 'function' && detailId)
+                outputDiv.innerHTML = goRenderCustomerViewReport(detailId);
+            else if (detailId === null)
+                outputDiv.innerHTML = '<div class="notification is-info is-light">Select a customer from the Customers page first.</div>';
+            break;
+        case 'models':
+            if (typeof goRenderModels === 'function') outputDiv.innerHTML = goRenderModels();
+            break;
     }
     updateStatus();
+    attachDetailLinks();
 }
 
 function updateStatus() {
@@ -62,19 +93,47 @@ function updateStatus() {
     statusTag.textContent = running ? 'Running' : 'Stopped';
     statusTag.className = running ? 'tag is-warning' : 'tag is-success';
 
-    // Bank button state
     startStopBtn.textContent = bankRunning ? 'Stop' : 'Run';
     startStopBtn.className = bankRunning ? 'button is-danger' : 'button is-success';
 
-    // Payments button state
     autoPaymentsBtn.textContent = paymentsRunning ? 'Stop Auto' : 'Auto Send';
     autoPaymentsBtn.className = paymentsRunning ? 'button is-danger' : 'button is-success';
+}
+
+// Attach click handlers to dynamically rendered detail links (View buttons)
+function attachDetailLinks() {
+    // Customer detail links
+    outputDiv.querySelectorAll('a[href^="/customers/"]').forEach(function(a) {
+        a.addEventListener('click', function(e) {
+            e.preventDefault();
+            var id = a.getAttribute('href').replace('/customers/', '');
+            detailId = id;
+            showPage('customer-detail');
+        });
+    });
+    // Payment detail links
+    outputDiv.querySelectorAll('a[href^="/payments/"]').forEach(function(a) {
+        a.addEventListener('click', function(e) {
+            e.preventDefault();
+            var id = parseInt(a.getAttribute('href').replace('/payments/', ''), 10);
+            detailId = id;
+            showPage('payment-detail');
+        });
+    });
+    // Customer view report links (if any)
+    outputDiv.querySelectorAll('a[href^="/reports/customer-view"]').forEach(function(a) {
+        a.addEventListener('click', function(e) {
+            e.preventDefault();
+            var url = new URL(a.href, window.location.origin);
+            detailId = url.searchParams.get('id');
+            showPage('customer-view');
+        });
+    });
 }
 
 // --- Page navigation ---
 
 function showPage(page) {
-    // Stop any running interval
     if (renderInterval) {
         clearInterval(renderInterval);
         renderInterval = null;
@@ -82,25 +141,37 @@ function showPage(page) {
 
     currentPage = page;
 
+    // Clear detail ID for non-detail pages
+    if (page !== 'customer-detail' && page !== 'payment-detail' && page !== 'customer-view') {
+        detailId = null;
+    }
+
     // Update active nav
-    navItems.forEach(item => item.classList.remove('is-active'));
+    allNavItems.forEach(function(item) { if (item) item.classList.remove('is-active'); });
     switch (page) {
-        case 'bank': navBank.classList.add('is-active'); break;
-        case 'payments': navPayments.classList.add('is-active'); break;
+        case 'dashboard': navDashboard.classList.add('is-active'); break;
+        case 'pnl': navPnl.classList.add('is-active'); break;
+        case 'balance-sheet': navBalanceSheet.classList.add('is-active'); break;
+        case 'savings': navSavings.classList.add('is-active'); break;
+        case 'lending': navLending.classList.add('is-active'); break;
+        case 'customers': case 'customer-detail': navCustomers.classList.add('is-active'); break;
+        case 'payments': case 'payment-detail': navPayments.classList.add('is-active'); break;
+        case 'bbsi': navBbsi.classList.add('is-active'); break;
+        case 'customer-view': navCustomerView.classList.add('is-active'); break;
         case 'models': navModels.classList.add('is-active'); break;
     }
 
     // Show/hide controls
-    controlsBank.style.display = page === 'bank' ? '' : 'none';
+    controlsBank.style.display = page === 'dashboard' ? '' : 'none';
     controlsPayments.style.display = page === 'payments' ? '' : 'none';
 
-    render();
+    renderPage();
 
-    // Restart interval if something is running
+    // Auto-refresh for running sims
     const bankRunning = typeof goIsRunning === 'function' && goIsRunning();
     const paymentsRunning = typeof goIsPaymentsRunning === 'function' && goIsPaymentsRunning();
-    if ((page === 'bank' && bankRunning) || (page === 'payments' && paymentsRunning)) {
-        renderInterval = setInterval(render, 200);
+    if ((page === 'dashboard' && bankRunning) || (page === 'payments' && paymentsRunning)) {
+        renderInterval = setInterval(renderPage, 200);
     }
 }
 
@@ -109,15 +180,12 @@ function showPage(page) {
 function toggleStartStop() {
     if (goIsRunning()) {
         goStop();
-        if (renderInterval) {
-            clearInterval(renderInterval);
-            renderInterval = null;
-        }
+        if (renderInterval) { clearInterval(renderInterval); renderInterval = null; }
     } else {
         goStart();
-        renderInterval = setInterval(render, 200);
+        renderInterval = setInterval(renderPage, 200);
     }
-    render();
+    renderPage();
 }
 
 // --- Payments actions ---
@@ -125,25 +193,20 @@ function toggleStartStop() {
 function toggleAutoPayments() {
     if (goIsPaymentsRunning()) {
         goStopPayments();
-        if (renderInterval) {
-            clearInterval(renderInterval);
-            renderInterval = null;
-        }
+        if (renderInterval) { clearInterval(renderInterval); renderInterval = null; }
     } else {
         goStartPayments();
-        renderInterval = setInterval(render, 500);
+        renderInterval = setInterval(renderPage, 500);
     }
-    render();
+    renderPage();
 }
 
 // --- Init ---
 
 window.wasmReady = function() {
-    // Enable all buttons
     [startStopBtn, advanceBtn, depositBtn, withdrawBtn, resetBtn,
-     sendPaymentBtn, autoPaymentsBtn, resetPaymentsBtn].forEach(btn => btn.disabled = false);
-
-    showPage('bank');
+     sendPaymentBtn, autoPaymentsBtn, resetPaymentsBtn].forEach(function(btn) { btn.disabled = false; });
+    showPage('dashboard');
 };
 
 async function loadWASM() {
@@ -159,29 +222,36 @@ async function loadWASM() {
 }
 
 // Navigation event listeners
-navBrand.addEventListener('click', function(e) { e.preventDefault(); showPage('bank'); });
-navBank.addEventListener('click', function(e) { e.preventDefault(); showPage('bank'); });
+navBrand.addEventListener('click', function(e) { e.preventDefault(); showPage('dashboard'); });
+navDashboard.addEventListener('click', function(e) { e.preventDefault(); showPage('dashboard'); });
+navPnl.addEventListener('click', function(e) { e.preventDefault(); showPage('pnl'); });
+navBalanceSheet.addEventListener('click', function(e) { e.preventDefault(); showPage('balance-sheet'); });
+navSavings.addEventListener('click', function(e) { e.preventDefault(); showPage('savings'); });
+navLending.addEventListener('click', function(e) { e.preventDefault(); showPage('lending'); });
+navCustomers.addEventListener('click', function(e) { e.preventDefault(); showPage('customers'); });
 navPayments.addEventListener('click', function(e) { e.preventDefault(); showPage('payments'); });
+navBbsi.addEventListener('click', function(e) { e.preventDefault(); showPage('bbsi'); });
+navCustomerView.addEventListener('click', function(e) { e.preventDefault(); showPage('customer-view'); });
 navModels.addEventListener('click', function(e) { e.preventDefault(); showPage('models'); });
 
 // Bank controls
 startStopBtn.addEventListener('click', toggleStartStop);
-advanceBtn.addEventListener('click', function() { goAdvanceDay(); render(); });
-depositBtn.addEventListener('click', function() { goDeposit(); render(); });
-withdrawBtn.addEventListener('click', function() { goWithdraw(); render(); });
+advanceBtn.addEventListener('click', function() { goAdvanceDay(); renderPage(); });
+depositBtn.addEventListener('click', function() { goDeposit(); renderPage(); });
+withdrawBtn.addEventListener('click', function() { goWithdraw(); renderPage(); });
 resetBtn.addEventListener('click', function() {
     goReset();
     if (renderInterval) { clearInterval(renderInterval); renderInterval = null; }
-    render();
+    renderPage();
 });
 
 // Payment controls
-sendPaymentBtn.addEventListener('click', function() { goSendPayment(); render(); });
+sendPaymentBtn.addEventListener('click', function() { goSendPayment(); renderPage(); });
 autoPaymentsBtn.addEventListener('click', toggleAutoPayments);
 resetPaymentsBtn.addEventListener('click', function() {
     goResetPayments();
     if (renderInterval) { clearInterval(renderInterval); renderInterval = null; }
-    render();
+    renderPage();
 });
 
 // Navbar burger (mobile)

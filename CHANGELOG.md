@@ -1,6 +1,6 @@
 # Changelog
 
-## v0.2.0 2026-02-28
+## v0.2.1 2026-02-28
 
 - A bit more complexity
 
