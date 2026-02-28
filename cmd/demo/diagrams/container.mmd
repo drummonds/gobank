@@ -1,0 +1,22 @@
+C4Container
+    title Model Bank - Container Diagram
+
+    Person(customer, "Bank Customer")
+
+    System_Boundary(bank, "Model Bank") {
+        Container(web, "Web UI", "Go WASM + Bulma", "Browser-based dashboard")
+        Container(server, "Server", "Go + lofigui", "HTTP server with SSR")
+        Container(sim, "Simulation Engine", "Go", "Account lifecycle, interest accrual")
+        Container(payments, "Payment Sim", "Go", "Payment generation and processing")
+        ContainerDb(ledger, "Ledger", "go-luca", "Double-entry accounting")
+    }
+
+    System_Ext(fps, "mock-fps", "FPS simulator")
+
+    Rel(customer, web, "Uses", "HTTPS")
+    Rel(customer, server, "Uses", "HTTPS")
+    Rel(web, sim, "Calls", "WASM")
+    Rel(server, sim, "Calls", "Go API")
+    Rel(sim, ledger, "Records transactions")
+    Rel(payments, fps, "Sends payments", "HTTP")
+    Rel(payments, ledger, "Records movements")

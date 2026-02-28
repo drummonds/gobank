@@ -3,9 +3,7 @@ package main
 import (
 	"context"
 	"fmt"
-	"math/rand"
 	"strings"
-	"sync"
 	"time"
 )
 
@@ -51,142 +49,138 @@ type Payment struct {
 	To        string
 	Amount    float64
 	Status    PaymentStatus
+	Reference string
 	CreatedAt time.Time
+	SettledAt time.Time
 }
 
-// PaymentSim manages a list of simulated payments.
-type PaymentSim struct {
-	mu       sync.Mutex
-	payments []Payment
-	nextID   int
-	running  bool
-	cancel   context.CancelFunc
-}
+const maxPayments = 20
 
-func NewPaymentSim() *PaymentSim {
-	return &PaymentSim{nextID: 1}
-}
+// SendPayment creates a random payment using actual customer names.
+func (ds *DemoState) SendPayment() {
+	ds.mu.Lock()
 
-var (
-	paymentNames = []string{
-		"Alice", "Bob", "Charlie", "Diana", "Eve",
-		"Frank", "Grace", "Henry", "Iris", "Jack",
+	names := make([]string, len(ds.customers))
+	for i, c := range ds.customers {
+		names[i] = c.Name
 	}
-)
 
-// SendPayment creates a random payment and starts its lifecycle.
-func (ps *PaymentSim) SendPayment() {
-	ps.mu.Lock()
-
-	from := paymentNames[rand.Intn(len(paymentNames))]
-	to := paymentNames[rand.Intn(len(paymentNames))]
+	from := names[ds.rng.Intn(len(names))]
+	to := names[ds.rng.Intn(len(names))]
 	for to == from {
-		to = paymentNames[rand.Intn(len(paymentNames))]
+		to = names[ds.rng.Intn(len(names))]
 	}
-	amount := float64(rand.Intn(99901)+100) / 100.0 // £1.00 to £999.99
+	amount := float64(ds.rng.Intn(99901)+100) / 100.0
+
+	ref := fmt.Sprintf("PAY-%06d", ds.nextPaymentID)
 
 	p := Payment{
-		ID:        ps.nextID,
+		ID:        ds.nextPaymentID,
 		From:      from,
 		To:        to,
 		Amount:    amount,
 		Status:    PaymentPending,
+		Reference: ref,
 		CreatedAt: time.Now(),
 	}
-	ps.nextID++
-	ps.payments = append(ps.payments, p)
-	idx := len(ps.payments) - 1
-	ps.mu.Unlock()
+	ds.nextPaymentID++
+	ds.payments = append(ds.payments, p)
+
+	// Trim to max
+	if len(ds.payments) > maxPayments {
+		ds.payments = ds.payments[len(ds.payments)-maxPayments:]
+	}
+
+	idx := len(ds.payments) - 1
+	ds.mu.Unlock()
 
 	// Async status transitions
 	go func() {
 		time.Sleep(500 * time.Millisecond)
-		ps.mu.Lock()
-		if idx < len(ps.payments) {
-			ps.payments[idx].Status = PaymentProcessing
+		ds.mu.Lock()
+		if idx < len(ds.payments) && ds.payments[idx].ID == p.ID {
+			ds.payments[idx].Status = PaymentProcessing
 		}
-		ps.mu.Unlock()
+		ds.mu.Unlock()
 
 		time.Sleep(1 * time.Second)
-		ps.mu.Lock()
-		if idx < len(ps.payments) {
-			ps.payments[idx].Status = PaymentCompleted
+		ds.mu.Lock()
+		if idx < len(ds.payments) && ds.payments[idx].ID == p.ID {
+			ds.payments[idx].Status = PaymentCompleted
+			ds.payments[idx].SettledAt = time.Now()
 		}
-		ps.mu.Unlock()
+		ds.mu.Unlock()
 	}()
 }
 
-// Start begins auto-generating payments at intervals.
-func (ps *PaymentSim) Start() {
-	ps.mu.Lock()
-	if ps.running {
-		ps.mu.Unlock()
+// StartPayments begins auto-generating payments.
+func (ds *DemoState) StartPayments() {
+	ds.mu.Lock()
+	if ds.payRunning {
+		ds.mu.Unlock()
 		return
 	}
 	ctx, cancel := context.WithCancel(context.Background())
-	ps.cancel = cancel
-	ps.running = true
-	ps.mu.Unlock()
+	ds.payCancel = cancel
+	ds.payRunning = true
+	ds.mu.Unlock()
 
 	go func() {
 		ticker := time.NewTicker(2 * time.Second)
 		defer ticker.Stop()
-		// Send one immediately
-		ps.SendPayment()
+		ds.SendPayment()
 		for {
 			select {
 			case <-ctx.Done():
 				return
 			case <-ticker.C:
-				ps.SendPayment()
+				ds.SendPayment()
 			}
 		}
 	}()
 }
 
-// Stop halts auto-generation.
-func (ps *PaymentSim) Stop() {
-	ps.mu.Lock()
-	defer ps.mu.Unlock()
-	if !ps.running {
+// StopPayments halts auto-generation.
+func (ds *DemoState) StopPayments() {
+	ds.mu.Lock()
+	defer ds.mu.Unlock()
+	if !ds.payRunning {
 		return
 	}
-	ps.running = false
-	if ps.cancel != nil {
-		ps.cancel()
-		ps.cancel = nil
+	ds.payRunning = false
+	if ds.payCancel != nil {
+		ds.payCancel()
+		ds.payCancel = nil
 	}
 }
 
-// IsRunning returns whether auto-generation is active.
-func (ps *PaymentSim) IsRunning() bool {
-	ps.mu.Lock()
-	defer ps.mu.Unlock()
-	return ps.running
+// IsPaymentsRunning returns whether auto-generation is active.
+func (ds *DemoState) IsPaymentsRunning() bool {
+	ds.mu.Lock()
+	defer ds.mu.Unlock()
+	return ds.payRunning
 }
 
-// Reset clears all payments and stops auto-generation.
-func (ps *PaymentSim) Reset() {
-	ps.Stop()
-	ps.mu.Lock()
-	defer ps.mu.Unlock()
-	ps.payments = nil
-	ps.nextID = 1
+// ResetPayments clears all payments and stops auto-generation.
+func (ds *DemoState) ResetPayments() {
+	ds.StopPayments()
+	ds.mu.Lock()
+	defer ds.mu.Unlock()
+	ds.payments = nil
+	ds.nextPaymentID = 1
 }
 
-// BuildHTML renders the payments list as a Bulma HTML table.
-func (ps *PaymentSim) BuildHTML() string {
-	ps.mu.Lock()
-	payments := make([]Payment, len(ps.payments))
-	copy(payments, ps.payments)
-	running := ps.running
-	ps.mu.Unlock()
+// BuildPaymentsHTML renders the payments list as a Bulma HTML table.
+func (ds *DemoState) BuildPaymentsHTML() string {
+	ds.mu.Lock()
+	payments := make([]Payment, len(ds.payments))
+	copy(payments, ds.payments)
+	running := ds.payRunning
+	ds.mu.Unlock()
 
 	var s strings.Builder
-
 	s.WriteString(`<h2 class="title is-4">Payments</h2>`)
 
-	// Status
 	statusTag := `<span class="tag is-light">Stopped</span>`
 	if running {
 		statusTag = `<span class="tag is-warning">Auto-sending</span>`
@@ -201,25 +195,117 @@ func (ps *PaymentSim) BuildHTML() string {
 	} else {
 		s.WriteString(`<div class="table-container"><table class="table is-fullwidth is-striped is-hoverable">
 <thead><tr>
-  <th>ID</th><th>From</th><th>To</th><th>Amount</th><th>Status</th><th>Time</th>
+  <th>ID</th><th>From</th><th>To</th><th>Amount</th><th>Reference</th><th>Status</th><th>Time</th><th></th>
 </tr></thead><tbody>`)
 
-		// Show most recent first, limit to 20
-		start := 0
-		if len(payments) > 20 {
-			start = len(payments) - 20
-		}
-		for i := len(payments) - 1; i >= start; i-- {
+		for i := len(payments) - 1; i >= 0; i-- {
 			p := payments[i]
 			s.WriteString(fmt.Sprintf(`<tr>
-  <td>%d</td><td>%s</td><td>%s</td><td>£%.2f</td>
+  <td>%d</td><td>%s</td><td>%s</td><td>£%.2f</td><td><code>%s</code></td>
   <td><span class="tag %s">%s</span></td>
   <td>%s</td>
-</tr>`, p.ID, p.From, p.To, p.Amount, p.Status.BulmaTag(), p.Status, p.CreatedAt.Format("15:04:05")))
+  <td><a href="/payments/%d" class="button is-small is-link is-light">Detail</a></td>
+</tr>`, p.ID, p.From, p.To, p.Amount, p.Reference, p.Status.BulmaTag(), p.Status, p.CreatedAt.Format("15:04:05"), p.ID))
 		}
 
 		s.WriteString(`</tbody></table></div>`)
 	}
 
+	return s.String()
+}
+
+// BuildPaymentDetailHTML renders a single payment detail with settlement timeline.
+func (ds *DemoState) BuildPaymentDetailHTML(id int) string {
+	ds.mu.Lock()
+	var found *Payment
+	for i := range ds.payments {
+		if ds.payments[i].ID == id {
+			p := ds.payments[i]
+			found = &p
+			break
+		}
+	}
+	ds.mu.Unlock()
+
+	if found == nil {
+		return `<div class="notification is-warning">Payment not found.</div>`
+	}
+
+	p := found
+	var s strings.Builder
+	s.WriteString(fmt.Sprintf(`<h2 class="title is-4">Payment %s</h2>`, p.Reference))
+
+	// Details box
+	s.WriteString(`<div class="box">`)
+	s.WriteString(`<div class="columns">`)
+	s.WriteString(fmt.Sprintf(`<div class="column"><strong>From:</strong> %s</div>`, p.From))
+	s.WriteString(fmt.Sprintf(`<div class="column"><strong>To:</strong> %s</div>`, p.To))
+	s.WriteString(fmt.Sprintf(`<div class="column"><strong>Amount:</strong> £%.2f</div>`, p.Amount))
+	s.WriteString(`</div>`)
+	s.WriteString(`<div class="columns">`)
+	s.WriteString(fmt.Sprintf(`<div class="column"><strong>Status:</strong> <span class="tag %s">%s</span></div>`, p.Status.BulmaTag(), p.Status))
+	s.WriteString(fmt.Sprintf(`<div class="column"><strong>Created:</strong> %s</div>`, p.CreatedAt.Format("15:04:05")))
+	settled := "—"
+	if !p.SettledAt.IsZero() {
+		settled = p.SettledAt.Format("15:04:05")
+	}
+	s.WriteString(fmt.Sprintf(`<div class="column"><strong>Settled:</strong> %s</div>`, settled))
+	s.WriteString(`</div></div>`)
+
+	// Settlement timeline SVG
+	s.WriteString(buildTimelineSVG(p))
+
+	return s.String()
+}
+
+func buildTimelineSVG(p *Payment) string {
+	var s strings.Builder
+
+	s.WriteString(`<div class="box mt-4"><h3 class="title is-5">Settlement Timeline</h3>`)
+	s.WriteString(`<svg viewBox="0 0 500 80" xmlns="http://www.w3.org/2000/svg" style="max-width:500px;width:100%;height:auto">`)
+	s.WriteString(`<style>text{font-family:Arial,Helvetica,sans-serif}</style>`)
+
+	// Line
+	s.WriteString(`<line x1="50" y1="30" x2="450" y2="30" stroke="#dbdbdb" stroke-width="3"/>`)
+
+	steps := []struct {
+		X     int
+		Label string
+		Time  string
+		Done  bool
+	}{
+		{50, "Pending", p.CreatedAt.Format("15:04:05"), p.Status >= PaymentPending},
+		{250, "Processing", "", p.Status >= PaymentProcessing},
+		{450, "Completed", "", p.Status >= PaymentCompleted},
+	}
+
+	if !p.SettledAt.IsZero() {
+		steps[2].Time = p.SettledAt.Format("15:04:05")
+	}
+
+	for _, st := range steps {
+		color := "#dbdbdb"
+		if st.Done {
+			color = "#48c78e"
+		}
+		// Active line segment
+		if st.Done && st.X > 50 {
+			prevX := 50
+			if st.X == 450 {
+				prevX = 250
+			}
+			s.WriteString(fmt.Sprintf(`<line x1="%d" y1="30" x2="%d" y2="30" stroke="#48c78e" stroke-width="3"/>`, prevX, st.X))
+		}
+		s.WriteString(fmt.Sprintf(`<circle cx="%d" cy="30" r="10" fill="%s"/>`, st.X, color))
+		if st.Done {
+			s.WriteString(fmt.Sprintf(`<text x="%d" y="34" text-anchor="middle" font-size="11" fill="#fff" font-weight="bold">&#10003;</text>`, st.X))
+		}
+		s.WriteString(fmt.Sprintf(`<text x="%d" y="60" text-anchor="middle" font-size="11" fill="#363636">%s</text>`, st.X, st.Label))
+		if st.Time != "" {
+			s.WriteString(fmt.Sprintf(`<text x="%d" y="74" text-anchor="middle" font-size="9" fill="#7a7a7a">%s</text>`, st.X, st.Time))
+		}
+	}
+
+	s.WriteString(`</svg></div>`)
 	return s.String()
 }

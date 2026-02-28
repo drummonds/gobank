@@ -24,8 +24,30 @@ const LayoutModelBank = `<!DOCTYPE html>
     </div>
     <div id="mainNavbar" class="navbar-menu">
       <div class="navbar-start">
-        <a class="navbar-item" href="/">Bank</a>
+        <a class="navbar-item" href="/">Dashboard</a>
+        <div class="navbar-item has-dropdown is-hoverable">
+          <a class="navbar-link">Accounting</a>
+          <div class="navbar-dropdown">
+            <a class="navbar-item" href="/accounting/pnl">P&amp;L</a>
+            <a class="navbar-item" href="/accounting/balance-sheet">Balance Sheet</a>
+          </div>
+        </div>
+        <div class="navbar-item has-dropdown is-hoverable">
+          <a class="navbar-link">Products</a>
+          <div class="navbar-dropdown">
+            <a class="navbar-item" href="/products/savings">Savings</a>
+            <a class="navbar-item" href="/products/lending">Lending</a>
+          </div>
+        </div>
+        <a class="navbar-item" href="/customers">Customers</a>
         <a class="navbar-item" href="/payments">Payments</a>
+        <div class="navbar-item has-dropdown is-hoverable">
+          <a class="navbar-link">Reports</a>
+          <div class="navbar-dropdown">
+            <a class="navbar-item" href="/reports/bbsi">BBSI</a>
+            <a class="navbar-item" href="/reports/customer-view">Customer View</a>
+          </div>
+        </div>
         <div class="navbar-item has-dropdown is-hoverable">
           <a class="navbar-link">About</a>
           <div class="navbar-dropdown">

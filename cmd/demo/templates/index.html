@@ -18,8 +18,30 @@
     </div>
     <div id="mainNavbar" class="navbar-menu">
       <div class="navbar-start">
-        <a class="navbar-item is-active" href="#" id="nav-bank">Bank</a>
+        <a class="navbar-item is-active" href="#" id="nav-dashboard">Dashboard</a>
+        <div class="navbar-item has-dropdown is-hoverable">
+          <a class="navbar-link">Accounting</a>
+          <div class="navbar-dropdown">
+            <a class="navbar-item" href="#" id="nav-pnl">P&amp;L</a>
+            <a class="navbar-item" href="#" id="nav-balance-sheet">Balance Sheet</a>
+          </div>
+        </div>
+        <div class="navbar-item has-dropdown is-hoverable">
+          <a class="navbar-link">Products</a>
+          <div class="navbar-dropdown">
+            <a class="navbar-item" href="#" id="nav-savings">Savings</a>
+            <a class="navbar-item" href="#" id="nav-lending">Lending</a>
+          </div>
+        </div>
+        <a class="navbar-item" href="#" id="nav-customers">Customers</a>
         <a class="navbar-item" href="#" id="nav-payments">Payments</a>
+        <div class="navbar-item has-dropdown is-hoverable">
+          <a class="navbar-link">Reports</a>
+          <div class="navbar-dropdown">
+            <a class="navbar-item" href="#" id="nav-bbsi">BBSI</a>
+            <a class="navbar-item" href="#" id="nav-customer-view">Customer View</a>
+          </div>
+        </div>
         <div class="navbar-item has-dropdown is-hoverable">
           <a class="navbar-link">About</a>
           <div class="navbar-dropdown">
@@ -55,7 +77,7 @@
   </section>
   <footer class="footer">
     <div class="content has-text-centered">
-      <p>Model Bank Demo v0.1</p>
+      <p>Model Bank Demo v0.2</p>
     </div>
   </footer>
   <script src="wasm_exec.js"></script>

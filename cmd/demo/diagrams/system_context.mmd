@@ -1,0 +1,9 @@
+C4Context
+    title Model Bank - System Context
+
+    Person(customer, "Bank Customer", "A customer of the model bank")
+    System(modelBank, "Model Bank", "Simulates core banking: accounts, interest, payments")
+    System_Ext(fps, "Faster Payments", "UK Faster Payments Service (mock-fps)")
+
+    Rel(customer, modelBank, "Views accounts, sends payments")
+    Rel(modelBank, fps, "Sends/receives payments")

@@ -8,82 +8,79 @@ import (
 	"github.com/drummonds/lofigui"
 )
 
-var (
-	bank     = NewBankDemo()
-	payments = NewPaymentSim()
-)
+var state = NewDemoState()
 
 // --- Bank functions ---
 
 func goRender(this js.Value, args []js.Value) any {
 	lofigui.Reset()
-	lofigui.HTML(bank.buildSVG())
+	lofigui.HTML(state.buildSVG())
 	return js.ValueOf(lofigui.Buffer())
 }
 
 func goStart(this js.Value, args []js.Value) any {
-	bank.Start()
+	state.Start()
 	return nil
 }
 
 func goStop(this js.Value, args []js.Value) any {
-	bank.Stop()
+	state.Stop()
 	return nil
 }
 
 func goAdvanceDay(this js.Value, args []js.Value) any {
-	bank.AdvanceDay()
+	state.AdvanceDay()
 	return nil
 }
 
 func goDeposit(this js.Value, args []js.Value) any {
-	bank.Deposit()
+	state.Deposit()
 	return nil
 }
 
 func goWithdraw(this js.Value, args []js.Value) any {
-	bank.Withdraw()
+	state.Withdraw()
 	return nil
 }
 
 func goReset(this js.Value, args []js.Value) any {
-	bank.Reset()
+	state.Reset()
 	return nil
 }
 
 func goIsRunning(this js.Value, args []js.Value) any {
-	return js.ValueOf(bank.IsRunning())
+	return js.ValueOf(state.IsRunning())
 }
 
 // --- Payments functions ---
 
 func goRenderPayments(this js.Value, args []js.Value) any {
 	lofigui.Reset()
-	lofigui.HTML(payments.BuildHTML())
+	lofigui.HTML(state.BuildPaymentsHTML())
 	return js.ValueOf(lofigui.Buffer())
 }
 
 func goSendPayment(this js.Value, args []js.Value) any {
-	payments.SendPayment()
+	state.SendPayment()
 	return nil
 }
 
 func goStartPayments(this js.Value, args []js.Value) any {
-	payments.Start()
+	state.StartPayments()
 	return nil
 }
 
 func goStopPayments(this js.Value, args []js.Value) any {
-	payments.Stop()
+	state.StopPayments()
 	return nil
 }
 
 func goIsPaymentsRunning(this js.Value, args []js.Value) any {
-	return js.ValueOf(payments.IsRunning())
+	return js.ValueOf(state.IsPaymentsRunning())
 }
 
 func goResetPayments(this js.Value, args []js.Value) any {
-	payments.Reset()
+	state.ResetPayments()
 	return nil
 }
 
@@ -92,6 +89,80 @@ func goResetPayments(this js.Value, args []js.Value) any {
 func goRenderModels(this js.Value, args []js.Value) any {
 	lofigui.Reset()
 	lofigui.HTML(BuildModelsHTML())
+	return js.ValueOf(lofigui.Buffer())
+}
+
+// --- Accounting functions ---
+
+func goRenderPnL(this js.Value, args []js.Value) any {
+	lofigui.Reset()
+	lofigui.HTML(state.BuildPnLHTML())
+	return js.ValueOf(lofigui.Buffer())
+}
+
+func goRenderBalanceSheet(this js.Value, args []js.Value) any {
+	lofigui.Reset()
+	lofigui.HTML(state.BuildBalanceSheetHTML())
+	return js.ValueOf(lofigui.Buffer())
+}
+
+// --- Products functions ---
+
+func goRenderProducts(this js.Value, args []js.Value) any {
+	family := FamilySavings
+	if len(args) > 0 && args[0].String() == "lending" {
+		family = FamilyLending
+	}
+	lofigui.Reset()
+	lofigui.HTML(state.BuildProductsHTML(family))
+	return js.ValueOf(lofigui.Buffer())
+}
+
+// --- Customers functions ---
+
+func goRenderCustomers(this js.Value, args []js.Value) any {
+	lofigui.Reset()
+	lofigui.HTML(state.BuildCustomersHTML())
+	return js.ValueOf(lofigui.Buffer())
+}
+
+func goRenderCustomerDetail(this js.Value, args []js.Value) any {
+	id := ""
+	if len(args) > 0 {
+		id = args[0].String()
+	}
+	lofigui.Reset()
+	lofigui.HTML(state.BuildCustomerDetailHTML(id))
+	return js.ValueOf(lofigui.Buffer())
+}
+
+// --- Payment detail ---
+
+func goRenderPaymentDetail(this js.Value, args []js.Value) any {
+	id := 0
+	if len(args) > 0 {
+		id = args[0].Int()
+	}
+	lofigui.Reset()
+	lofigui.HTML(state.BuildPaymentDetailHTML(id))
+	return js.ValueOf(lofigui.Buffer())
+}
+
+// --- Reports functions ---
+
+func goRenderBBSI(this js.Value, args []js.Value) any {
+	lofigui.Reset()
+	lofigui.HTML(state.BuildBBSIHTML())
+	return js.ValueOf(lofigui.Buffer())
+}
+
+func goRenderCustomerViewReport(this js.Value, args []js.Value) any {
+	id := ""
+	if len(args) > 0 {
+		id = args[0].String()
+	}
+	lofigui.Reset()
+	lofigui.HTML(state.BuildCustomerViewHTML(id))
 	return js.ValueOf(lofigui.Buffer())
 }
 
@@ -116,6 +187,24 @@ func main() {
 
 	// Models
 	js.Global().Set("goRenderModels", js.FuncOf(goRenderModels))
+
+	// Accounting
+	js.Global().Set("goRenderPnL", js.FuncOf(goRenderPnL))
+	js.Global().Set("goRenderBalanceSheet", js.FuncOf(goRenderBalanceSheet))
+
+	// Products
+	js.Global().Set("goRenderProducts", js.FuncOf(goRenderProducts))
+
+	// Customers
+	js.Global().Set("goRenderCustomers", js.FuncOf(goRenderCustomers))
+	js.Global().Set("goRenderCustomerDetail", js.FuncOf(goRenderCustomerDetail))
+
+	// Payment detail
+	js.Global().Set("goRenderPaymentDetail", js.FuncOf(goRenderPaymentDetail))
+
+	// Reports
+	js.Global().Set("goRenderBBSI", js.FuncOf(goRenderBBSI))
+	js.Global().Set("goRenderCustomerViewReport", js.FuncOf(goRenderCustomerViewReport))
 
 	js.Global().Call("wasmReady")
 

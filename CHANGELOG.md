@@ -1,5 +1,13 @@
 # Changelog
 
+## v0.2.0 2026-02-28
+
+- A bit more complexity
+
+## v0.1.4 2026-02-27
+
+- Multi page
+
 ## v0.1.3 (unreleased)
 
 - fleshing out mock payments

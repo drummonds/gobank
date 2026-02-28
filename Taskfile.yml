@@ -41,14 +41,26 @@ tasks:
       - go mod tidy
       - cd cmd/demo && go mod tidy
 
+  docs:build:
+    desc: Render mermaid diagrams to SVG (requires mmdg)
+    dir: cmd/demo/diagrams
+    sources:
+      - '*.mmd'
+    generates:
+      - '*.svg'
+    cmds:
+      - for f in *.mmd; do mmdg -i "$f" -o "${f%.mmd}.svg" -e svg; done
+
   demo:
     desc: Run the Model Bank demo locally (server mode)
+    deps: [docs:build]
     dir: cmd/demo
     cmds:
       - go run .
 
   build-pages:
     desc: Build WASM demo for GitHub Pages docs/ folder
+    deps: [docs:build]
     cmds:
       - mkdir -p docs/demo
       - cd cmd/demo && GOOS=js GOARCH=wasm go build -o main.wasm .

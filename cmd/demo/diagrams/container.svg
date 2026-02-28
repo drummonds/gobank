@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" width="1894.4" height="272" viewBox="0 0 1894.4 272">
+<defs>
+<marker id="arrow-end" markerWidth="10" markerHeight="7" refX="8" refY="3.5" orient="auto" markerUnits="strokeWidth"><path d="M0,0 L10,3.5 L0,7 z" fill="#3d5a80"/></marker>
+<marker id="arrow-start" markerWidth="10" markerHeight="7" refX="2" refY="3.5" orient="auto" markerUnits="strokeWidth"><path d="M10,0 L0,3.5 L10,7 z" fill="#3d5a80"/></marker>
+</defs>
+<rect x="0" y="0" width="1894.4" height="272" fill="#ffffff"/>
+<rect x="40" y="40" width="80" height="56" rx="6" ry="6" fill="#f8f9fa" stroke="#3a6ea5" stroke-width="1.8"/>
+<rect x="420" y="40" width="208" height="56" rx="14" ry="14" fill="#f8f9fa" stroke="#3a6ea5" stroke-width="1.8"/>
+<rect x="800" y="40" width="179.2" height="56" rx="6" ry="6" fill="#f8f9fa" stroke="#3a6ea5" stroke-width="1.8"/>
+<rect x="1180" y="40" width="80" height="56" rx="6" ry="6" fill="#f8f9fa" stroke="#3a6ea5" stroke-width="1.8"/>
+<rect x="1560" y="40" width="294.4" height="56" rx="14" ry="14" fill="#f8f9fa" stroke="#3a6ea5" stroke-width="1.8"/>
+<rect x="40" y="176" width="320" height="56" rx="14" ry="14" fill="#f8f9fa" stroke="#3a6ea5" stroke-width="1.8"/>
+<line x1="80" y1="96" x2="200" y2="176" stroke="#3d5a80" stroke-width="2"/>
+<text x="80" y="72.55" text-anchor="middle" fill="#1b263b" font-family="Inter, -apple-system, BlinkMacSystemFont, Segoe UI, sans-serif" font-size="13" font-weight="400">title</text>
+<text x="524" y="72.55" text-anchor="middle" fill="#1b263b" font-family="Inter, -apple-system, BlinkMacSystemFont, Segoe UI, sans-serif" font-size="13" font-weight="400">customer, &#34;Bank Customer&#34;</text>
+<text x="889.6" y="72.55" text-anchor="middle" fill="#1b263b" font-family="Inter, -apple-system, BlinkMacSystemFont, Segoe UI, sans-serif" font-size="13" font-weight="400">System_Boundary(bank,</text>
+<text x="1220" y="72.55" text-anchor="middle" fill="#1b263b" font-family="Inter, -apple-system, BlinkMacSystemFont, Segoe UI, sans-serif" font-size="13" font-weight="400">}</text>
+<text x="1707.2" y="72.55" text-anchor="middle" fill="#1b263b" font-family="Inter, -apple-system, BlinkMacSystemFont, Segoe UI, sans-serif" font-size="13" font-weight="400">payments, ledger, &#34;Records movements&#34;</text>
+<text x="200" y="208.55" text-anchor="middle" fill="#1b263b" font-family="Inter, -apple-system, BlinkMacSystemFont, Segoe UI, sans-serif" font-size="13" font-weight="400">payments, &#34;Payment Sim&#34;, &#34;Go&#34;, &#34;Payment generation and processing&#34;</text>
+</svg>

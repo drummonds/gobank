@@ -6,18 +6,17 @@ import (
 	"fmt"
 	"log"
 	"net/http"
+	"strconv"
+	"strings"
 
 	"github.com/drummonds/lofigui"
 )
 
-func (b *BankDemo) render() {
-	lofigui.HTML(b.buildSVG())
+func (ds *DemoState) renderDashboard() {
+	lofigui.HTML(ds.buildSVG())
 
-	b.mu.Lock()
-	running := b.running
-	b.mu.Unlock()
+	running := ds.IsRunning()
 
-	// Status tag
 	statusTag := `<span class="tag is-light">Stopped</span>`
 	if running {
 		statusTag = `<span class="tag is-success">Running</span>`
@@ -27,7 +26,6 @@ func (b *BankDemo) render() {
   <div class="control">%s</div>
 </div>`, statusTag))
 
-	// Controls
 	var startStopBtn string
 	if running {
 		startStopBtn = `<form action="/stop" method="post" style="display:inline"><button class="button is-danger" type="submit">Stop</button></form>`
@@ -43,10 +41,10 @@ func (b *BankDemo) render() {
 </div>`, startStopBtn))
 }
 
-func renderPaymentsPage(ps *PaymentSim) {
-	lofigui.HTML(ps.BuildHTML())
+func renderPaymentsPage(ds *DemoState) {
+	lofigui.HTML(ds.BuildPaymentsHTML())
 
-	running := ps.IsRunning()
+	running := ds.IsPaymentsRunning()
 	var startStopBtn string
 	if running {
 		startStopBtn = `<form action="/payments/stop" method="post" style="display:inline"><button class="button is-danger" type="submit">Stop Auto</button></form>`
@@ -61,11 +59,10 @@ func renderPaymentsPage(ps *PaymentSim) {
 }
 
 func main() {
-	bank := NewBankDemo()
-	payments := NewPaymentSim()
+	state := NewDemoState()
 
 	app := lofigui.NewApp()
-	app.Version = "Model Bank Demo v0.1"
+	app.Version = "Model Bank Demo v0.2"
 	app.SetRefreshTime(1)
 	app.SetDisplayURL("/")
 
@@ -78,7 +75,7 @@ func main() {
 	}
 	app.SetController(ctrl)
 
-	// --- Bank routes ---
+	// --- Dashboard ---
 
 	http.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path != "/" {
@@ -90,7 +87,7 @@ func main() {
 			return
 		}
 		lofigui.Reset()
-		bank.render()
+		state.renderDashboard()
 		app.HandleDisplay(w, r)
 	})
 
@@ -99,7 +96,7 @@ func main() {
 			http.Redirect(w, r, "/", http.StatusSeeOther)
 			return
 		}
-		bank.Start()
+		state.Start()
 		app.StartAction()
 		http.Redirect(w, r, "/", http.StatusSeeOther)
 	})
@@ -109,7 +106,7 @@ func main() {
 			http.Redirect(w, r, "/", http.StatusSeeOther)
 			return
 		}
-		bank.Stop()
+		state.Stop()
 		app.EndAction()
 		http.Redirect(w, r, "/", http.StatusSeeOther)
 	})
@@ -119,7 +116,7 @@ func main() {
 			http.Redirect(w, r, "/", http.StatusSeeOther)
 			return
 		}
-		bank.AdvanceDay()
+		state.AdvanceDay()
 		http.Redirect(w, r, "/", http.StatusSeeOther)
 	})
 
@@ -128,7 +125,7 @@ func main() {
 			http.Redirect(w, r, "/", http.StatusSeeOther)
 			return
 		}
-		bank.Deposit()
+		state.Deposit()
 		http.Redirect(w, r, "/", http.StatusSeeOther)
 	})
 
@@ -137,7 +134,7 @@ func main() {
 			http.Redirect(w, r, "/", http.StatusSeeOther)
 			return
 		}
-		bank.Withdraw()
+		state.Withdraw()
 		http.Redirect(w, r, "/", http.StatusSeeOther)
 	})
 
@@ -146,12 +143,83 @@ func main() {
 			http.Redirect(w, r, "/", http.StatusSeeOther)
 			return
 		}
-		bank.Reset()
+		state.Reset()
 		app.EndAction()
 		http.Redirect(w, r, "/", http.StatusSeeOther)
 	})
 
-	// --- Payments routes ---
+	// --- Accounting ---
+
+	http.HandleFunc("/accounting/pnl", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != "GET" {
+			http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+			return
+		}
+		lofigui.Reset()
+		lofigui.HTML(state.BuildPnLHTML())
+		app.HandleDisplay(w, r)
+	})
+
+	http.HandleFunc("/accounting/balance-sheet", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != "GET" {
+			http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+			return
+		}
+		lofigui.Reset()
+		lofigui.HTML(state.BuildBalanceSheetHTML())
+		app.HandleDisplay(w, r)
+	})
+
+	// --- Products ---
+
+	http.HandleFunc("/products/savings", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != "GET" {
+			http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+			return
+		}
+		lofigui.Reset()
+		lofigui.HTML(state.BuildProductsHTML(FamilySavings))
+		app.HandleDisplay(w, r)
+	})
+
+	http.HandleFunc("/products/lending", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != "GET" {
+			http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+			return
+		}
+		lofigui.Reset()
+		lofigui.HTML(state.BuildProductsHTML(FamilyLending))
+		app.HandleDisplay(w, r)
+	})
+
+	// --- Customers ---
+
+	http.HandleFunc("/customers", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != "GET" {
+			http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+			return
+		}
+		lofigui.Reset()
+		lofigui.HTML(state.BuildCustomersHTML())
+		app.HandleDisplay(w, r)
+	})
+
+	http.HandleFunc("/customers/", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != "GET" {
+			http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+			return
+		}
+		id := strings.TrimPrefix(r.URL.Path, "/customers/")
+		if id == "" {
+			http.Redirect(w, r, "/customers", http.StatusSeeOther)
+			return
+		}
+		lofigui.Reset()
+		lofigui.HTML(state.BuildCustomerDetailHTML(id))
+		app.HandleDisplay(w, r)
+	})
+
+	// --- Payments ---
 
 	http.HandleFunc("/payments", func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != "GET" {
@@ -159,42 +227,86 @@ func main() {
 			return
 		}
 		lofigui.Reset()
-		renderPaymentsPage(payments)
+		renderPaymentsPage(state)
 		app.HandleDisplay(w, r)
 	})
 
-	http.HandleFunc("/payments/send", func(w http.ResponseWriter, r *http.Request) {
-		if r.Method != "POST" {
+	http.HandleFunc("/payments/", func(w http.ResponseWriter, r *http.Request) {
+		path := strings.TrimPrefix(r.URL.Path, "/payments/")
+		// Handle POST routes
+		switch path {
+		case "send":
+			if r.Method != "POST" {
+				http.Redirect(w, r, "/payments", http.StatusSeeOther)
+				return
+			}
+			state.SendPayment()
+			http.Redirect(w, r, "/payments", http.StatusSeeOther)
+			return
+		case "run":
+			if r.Method != "POST" {
+				http.Redirect(w, r, "/payments", http.StatusSeeOther)
+				return
+			}
+			state.StartPayments()
+			app.StartAction()
+			app.SetDisplayURL("/payments")
+			http.Redirect(w, r, "/payments", http.StatusSeeOther)
+			return
+		case "stop":
+			if r.Method != "POST" {
+				http.Redirect(w, r, "/payments", http.StatusSeeOther)
+				return
+			}
+			state.StopPayments()
+			app.EndAction()
+			app.SetDisplayURL("/")
 			http.Redirect(w, r, "/payments", http.StatusSeeOther)
 			return
 		}
-		payments.SendPayment()
-		http.Redirect(w, r, "/payments", http.StatusSeeOther)
-	})
-
-	http.HandleFunc("/payments/run", func(w http.ResponseWriter, r *http.Request) {
-		if r.Method != "POST" {
-			http.Redirect(w, r, "/payments", http.StatusSeeOther)
+		// Payment detail
+		if r.Method != "GET" {
+			http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 			return
 		}
-		payments.Start()
-		app.StartAction()
-		app.SetDisplayURL("/payments")
-		http.Redirect(w, r, "/payments", http.StatusSeeOther)
-	})
-
-	http.HandleFunc("/payments/stop", func(w http.ResponseWriter, r *http.Request) {
-		if r.Method != "POST" {
-			http.Redirect(w, r, "/payments", http.StatusSeeOther)
+		id, err := strconv.Atoi(path)
+		if err != nil {
+			http.NotFound(w, r)
 			return
 		}
-		payments.Stop()
-		app.EndAction()
-		app.SetDisplayURL("/")
-		http.Redirect(w, r, "/payments", http.StatusSeeOther)
+		lofigui.Reset()
+		lofigui.HTML(state.BuildPaymentDetailHTML(id))
+		app.HandleDisplay(w, r)
 	})
 
-	// --- About routes ---
+	// --- Reports ---
+
+	http.HandleFunc("/reports/bbsi", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != "GET" {
+			http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+			return
+		}
+		lofigui.Reset()
+		lofigui.HTML(state.BuildBBSIHTML())
+		app.HandleDisplay(w, r)
+	})
+
+	http.HandleFunc("/reports/customer-view", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != "GET" {
+			http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+			return
+		}
+		id := r.URL.Query().Get("id")
+		if id == "" {
+			http.Redirect(w, r, "/customers", http.StatusSeeOther)
+			return
+		}
+		lofigui.Reset()
+		lofigui.HTML(state.BuildCustomerViewHTML(id))
+		app.HandleDisplay(w, r)
+	})
+
+	// --- About ---
 
 	http.HandleFunc("/about/models", func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != "GET" {
