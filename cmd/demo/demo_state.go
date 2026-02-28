@@ -9,13 +9,19 @@ import (
 	"time"
 )
 
+// RatePoint records a BoE base rate at a point in simulated time.
+type RatePoint struct {
+	Date time.Time
+	Rate float64
+}
+
 // DemoState holds all unified state for the model bank demo.
 type DemoState struct {
 	mu            sync.Mutex
 	running       bool
 	cancel        context.CancelFunc
 	products      []Product
-	customers     []Customer
+	customers     []CustomerRecord
 	payments      []Payment
 	currentDay    time.Time
 	dayCount      int
@@ -24,34 +30,47 @@ type DemoState struct {
 	payCancel     context.CancelFunc
 	opCostPerDay  float64
 	rng           *rand.Rand
+	piiStore      *PIIStore
+	settings      Settings
+	nextCustSeq   int
+	piiAuthorized bool
+	boeHistory    []RatePoint
 }
 
 func NewDemoState() *DemoState {
+	piiStore := NewPIIStore()
+	startDay := time.Date(2025, 1, 1, 0, 0, 0, 0, time.UTC)
+	settings := DefaultSettings()
+	rng := rand.New(rand.NewSource(42))
+
 	ds := &DemoState{
 		products:      AllProducts(),
-		currentDay:    time.Date(2025, 1, 1, 0, 0, 0, 0, time.UTC),
+		currentDay:    startDay,
 		nextPaymentID: 1,
-		opCostPerDay:  50.0, // £50/day operational cost
-		rng:           rand.New(rand.NewSource(42)),
+		opCostPerDay:  50.0,
+		rng:           rng,
+		piiStore:      piiStore,
+		settings:      settings,
+		nextCustSeq:   len(seedCustomers) + 1,
+		boeHistory:    []RatePoint{{Date: startDay, Rate: settings.BoEBaseRate}},
 	}
-	ds.customers = initCustomers(ds.rng, ds.products, ds.currentDay)
+	ds.customers = initCustomers(ds.rng, ds.products, ds.currentDay, piiStore)
 	return ds
 }
 
 // --- Bank simulation ---
 
 func (ds *DemoState) advanceDay() {
+	// Interest accrual
 	for ci := range ds.customers {
 		for ai := range ds.customers[ci].Accounts {
 			a := &ds.customers[ci].Accounts[ai]
 			dailyRate := a.Rate / 365.0
 			interest := a.Balance * dailyRate
 			if a.Family == FamilySavings {
-				// Bank pays interest on deposits
 				a.Balance += interest
 				a.Interest += interest
 			} else {
-				// Customer pays interest on loans
 				a.Balance += interest
 				a.Interest += interest
 			}
@@ -59,6 +78,32 @@ func (ds *DemoState) advanceDay() {
 	}
 	ds.currentDay = ds.currentDay.AddDate(0, 0, 1)
 	ds.dayCount++
+
+	// Record BoE rate history
+	ds.boeHistory = append(ds.boeHistory, RatePoint{Date: ds.currentDay, Rate: ds.settings.BoEBaseRate})
+
+	// Customer generation
+	if len(ds.customers) < ds.settings.MaxCustomers {
+		boeRate := ds.settings.BoEBaseRate
+		avgSavings := averageRate(ds.products, FamilySavings)
+		avgLending := averageRate(ds.products, FamilyLending)
+
+		savingsAttract := 0.0
+		lendingAttract := 0.0
+		if boeRate > 0 {
+			savingsAttract = (avgSavings - boeRate) / boeRate
+			lendingAttract = (boeRate - avgLending) / boeRate
+		}
+		attractiveness := clamp((savingsAttract+lendingAttract)/2, 0, 1)
+		dailyProb := 0.10 + attractiveness*0.20
+
+		if ds.rng.Float64() < dailyProb {
+			cust, name, ni := generateCustomer(ds.rng, ds.nextCustSeq, ds.products, ds.currentDay)
+			ds.nextCustSeq++
+			_ = ds.piiStore.Store(cust.ID, name, ni)
+			ds.customers = append(ds.customers, cust)
+		}
+	}
 }
 
 func (ds *DemoState) AdvanceDay() {
@@ -116,7 +161,6 @@ func (ds *DemoState) IsRunning() bool {
 func (ds *DemoState) Deposit() {
 	ds.mu.Lock()
 	defer ds.mu.Unlock()
-	// Deposit to first customer's first savings account
 	for ci := range ds.customers {
 		for ai := range ds.customers[ci].Accounts {
 			if ds.customers[ci].Accounts[ai].Family == FamilySavings {
@@ -162,7 +206,12 @@ func (ds *DemoState) Reset() {
 	ds.payments = nil
 	ds.nextPaymentID = 1
 	ds.rng = rand.New(rand.NewSource(42))
-	ds.customers = initCustomers(ds.rng, ds.products, ds.currentDay)
+	ds.piiStore.Reset()
+	ds.settings = DefaultSettings()
+	ds.nextCustSeq = len(seedCustomers) + 1
+	ds.piiAuthorized = false
+	ds.boeHistory = []RatePoint{{Date: ds.currentDay, Rate: ds.settings.BoEBaseRate}}
+	ds.customers = initCustomers(ds.rng, ds.products, ds.currentDay, ds.piiStore)
 }
 
 // --- Dashboard SVG ---
@@ -172,15 +221,14 @@ func (ds *DemoState) buildSVG() string {
 	day := ds.currentDay
 	dayCount := ds.dayCount
 
-	// Aggregate by product family
 	savingsTotal := 0.0
 	lendingTotal := 0.0
 	totalInterest := 0.0
 	type topAccount struct {
-		Customer string
-		Product  string
-		Balance  float64
-		Family   ProductFamily
+		CustomerID string
+		Product    string
+		Balance    float64
+		Family     ProductFamily
 	}
 	var tops []topAccount
 	for _, c := range ds.customers {
@@ -191,9 +239,11 @@ func (ds *DemoState) buildSVG() string {
 				lendingTotal += a.Balance
 			}
 			totalInterest += a.Interest
-			tops = append(tops, topAccount{c.Name, a.ProductName, a.Balance, a.Family})
+			tops = append(tops, topAccount{c.ID, a.ProductName, a.Balance, a.Family})
 		}
 	}
+	customerCount := len(ds.customers)
+	piiStore := ds.piiStore
 	ds.mu.Unlock()
 
 	// Sort tops by balance descending, take top 5
@@ -232,8 +282,8 @@ func (ds *DemoState) buildSVG() string {
 	s.WriteString(`<rect x="0" y="0" width="700" height="50" rx="6" fill="#00d1b2"/>`)
 	s.WriteString(`<text x="20" y="33" font-size="22" font-weight="bold" fill="#fff">Model Bank</text>`)
 	dateStr := day.Format("2 Jan 2006")
-	s.WriteString(fmt.Sprintf(`<text x="680" y="27" text-anchor="end" font-size="14" fill="#fff">Day %d — %s</text>`, dayCount, dateStr))
-	s.WriteString(fmt.Sprintf(`<text x="680" y="43" text-anchor="end" font-size="11" fill="rgba(255,255,255,0.8)">Total interest: £%.2f</text>`, totalInterest))
+	s.WriteString(fmt.Sprintf(`<text x="680" y="20" text-anchor="end" font-size="14" fill="#fff">Day %d — %s</text>`, dayCount, dateStr))
+	s.WriteString(fmt.Sprintf(`<text x="680" y="35" text-anchor="end" font-size="11" fill="rgba(255,255,255,0.8)">Customers: %d | Interest: £%.2f</text>`, customerCount, totalInterest))
 
 	// Family bars
 	families := []struct {
@@ -274,8 +324,9 @@ func (ds *DemoState) buildSVG() string {
 		if t.Family == FamilyLending {
 			color = "#3e8ed0"
 		}
+		custName := piiStore.RetrieveName(t.CustomerID)
 		s.WriteString(fmt.Sprintf(`<circle cx="28" cy="%.0f" r="4" fill="%s"/>`, y-4, color))
-		s.WriteString(fmt.Sprintf(`<text x="40" y="%.0f" font-size="12" fill="#363636">%s — %s: £%.2f</text>`, y, t.Customer, t.Product, t.Balance))
+		s.WriteString(fmt.Sprintf(`<text x="40" y="%.0f" font-size="12" fill="#363636">%s — %s: £%.2f</text>`, y, custName, t.Product, t.Balance))
 	}
 
 	s.WriteString(`</svg>`)

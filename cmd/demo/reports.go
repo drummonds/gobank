@@ -5,18 +5,31 @@ import (
 	"strings"
 )
 
-// BuildBBSIHTML renders the BBSI (Building Society/Bank Interest) annual report for HMRC.
-func (ds *DemoState) BuildBBSIHTML() string {
+// BuildBBSIHTML renders the BBSI annual report. Shows auth gate when not authorized.
+func (ds *DemoState) BuildBBSIHTML(piiAuthorized bool) string {
 	ds.mu.Lock()
-	customers := make([]Customer, len(ds.customers))
+	customers := make([]CustomerRecord, len(ds.customers))
 	copy(customers, ds.customers)
 	currentDay := ds.currentDay
+	piiStore := ds.piiStore
 	ds.mu.Unlock()
 
 	var s strings.Builder
 	s.WriteString(`<h2 class="title is-4">BBSI Report</h2>`)
 	s.WriteString(`<p class="subtitle is-6 has-text-grey">Building Society / Bank Interest — Annual return to HMRC</p>`)
 	s.WriteString(fmt.Sprintf(`<p class="mb-4">Tax year ending: %s</p>`, currentDay.Format("2 Jan 2006")))
+
+	if !piiAuthorized {
+		s.WriteString(`<div class="notification is-warning">
+  <h3 class="title is-6">PII Access Required</h3>
+  <p>This report contains personally identifiable information (names and NI numbers).</p>
+  <form action="/auth/authorize" method="post" class="mt-2">
+    <input type="hidden" name="redirect" value="/reports/bbsi">
+    <button class="button is-warning is-small">Confirm PII Access</button>
+  </form>
+</div>`)
+		return s.String()
+	}
 
 	s.WriteString(`<div class="table-container"><table class="table is-fullwidth is-striped is-hoverable">`)
 	s.WriteString(`<thead><tr>
@@ -33,9 +46,14 @@ func (ds *DemoState) BuildBBSIHTML() string {
 		}
 		if interest > 0 {
 			totalInterest += interest
+			name, ni, err := piiStore.Retrieve(c.ID)
+			if err != nil {
+				name = c.ID
+				ni = "N/A"
+			}
 			s.WriteString(fmt.Sprintf(`<tr>
   <td>%s</td><td><code>%s</code></td><td>£%.2f</td><td>£0.00</td>
-</tr>`, c.Name, c.NI, interest))
+</tr>`, name, ni, interest))
 		}
 	}
 
@@ -54,9 +72,9 @@ func (ds *DemoState) BuildBBSIHTML() string {
 }
 
 // BuildCustomerViewHTML renders a comprehensive single-customer report.
-func (ds *DemoState) BuildCustomerViewHTML(id string) string {
+func (ds *DemoState) BuildCustomerViewHTML(id string, piiAuthorized bool) string {
 	ds.mu.Lock()
-	var cust *Customer
+	var cust *CustomerRecord
 	for i := range ds.customers {
 		if ds.customers[i].ID == id {
 			c := ds.customers[i]
@@ -67,26 +85,46 @@ func (ds *DemoState) BuildCustomerViewHTML(id string) string {
 	var custPayments []Payment
 	if cust != nil {
 		for _, p := range ds.payments {
-			if p.From == cust.Name || p.To == cust.Name {
+			if p.FromID == cust.ID || p.ToID == cust.ID {
 				custPayments = append(custPayments, p)
 			}
 		}
 	}
 	currentDay := ds.currentDay
+	piiStore := ds.piiStore
 	ds.mu.Unlock()
 
 	if cust == nil {
 		return `<div class="notification is-warning">Customer not found.</div>`
 	}
 
+	name := piiStore.RetrieveName(cust.ID)
+
 	var s strings.Builder
 	s.WriteString(`<h2 class="title is-4">Customer Report</h2>`)
+
+	if !piiAuthorized {
+		s.WriteString(fmt.Sprintf(`<div class="notification is-warning">
+  <h3 class="title is-6">PII Access Required</h3>
+  <p>This report contains personally identifiable information.</p>
+  <form action="/auth/authorize" method="post" class="mt-2">
+    <input type="hidden" name="redirect" value="/reports/customer-view?id=%s">
+    <button class="button is-warning is-small">Confirm PII Access</button>
+  </form>
+</div>`, cust.ID))
+		return s.String()
+	}
+
+	_, ni, err := piiStore.Retrieve(cust.ID)
+	if err != nil {
+		ni = "N/A"
+	}
 
 	// Customer summary box
 	s.WriteString(`<div class="box">`)
 	s.WriteString(`<div class="columns">`)
-	s.WriteString(fmt.Sprintf(`<div class="column"><strong>Name:</strong> %s</div>`, cust.Name))
-	s.WriteString(fmt.Sprintf(`<div class="column"><strong>NI Number:</strong> <code>%s</code></div>`, cust.NI))
+	s.WriteString(fmt.Sprintf(`<div class="column"><strong>Name:</strong> %s</div>`, name))
+	s.WriteString(fmt.Sprintf(`<div class="column"><strong>NI Number:</strong> <code>%s</code></div>`, ni))
 	s.WriteString(fmt.Sprintf(`<div class="column"><strong>Report Date:</strong> %s</div>`, currentDay.Format("2 Jan 2006")))
 	s.WriteString(`</div></div>`)
 
@@ -132,11 +170,12 @@ func (ds *DemoState) BuildCustomerViewHTML(id string) string {
 		for i := len(custPayments) - 1; i >= 0; i-- {
 			p := custPayments[i]
 			direction := "Sent"
-			counterparty := p.To
-			if p.To == cust.Name {
+			counterpartyID := p.ToID
+			if p.ToID == cust.ID {
 				direction = "Received"
-				counterparty = p.From
+				counterpartyID = p.FromID
 			}
+			counterparty := piiStore.RetrieveName(counterpartyID)
 			dirTag := `<span class="tag is-danger is-light">Sent</span>`
 			if direction == "Received" {
 				dirTag = `<span class="tag is-success is-light">Received</span>`

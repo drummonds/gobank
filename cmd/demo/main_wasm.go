@@ -3,6 +3,7 @@
 package main
 
 import (
+	"strconv"
 	"syscall/js"
 
 	"github.com/drummonds/lofigui"
@@ -131,8 +132,11 @@ func goRenderCustomerDetail(this js.Value, args []js.Value) any {
 	if len(args) > 0 {
 		id = args[0].String()
 	}
+	state.mu.Lock()
+	piiAuth := state.piiAuthorized
+	state.mu.Unlock()
 	lofigui.Reset()
-	lofigui.HTML(state.BuildCustomerDetailHTML(id))
+	lofigui.HTML(state.BuildCustomerDetailHTML(id, piiAuth))
 	return js.ValueOf(lofigui.Buffer())
 }
 
@@ -151,8 +155,11 @@ func goRenderPaymentDetail(this js.Value, args []js.Value) any {
 // --- Reports functions ---
 
 func goRenderBBSI(this js.Value, args []js.Value) any {
+	state.mu.Lock()
+	piiAuth := state.piiAuthorized
+	state.mu.Unlock()
 	lofigui.Reset()
-	lofigui.HTML(state.BuildBBSIHTML())
+	lofigui.HTML(state.BuildBBSIHTML(piiAuth))
 	return js.ValueOf(lofigui.Buffer())
 }
 
@@ -161,9 +168,52 @@ func goRenderCustomerViewReport(this js.Value, args []js.Value) any {
 	if len(args) > 0 {
 		id = args[0].String()
 	}
+	state.mu.Lock()
+	piiAuth := state.piiAuthorized
+	state.mu.Unlock()
 	lofigui.Reset()
-	lofigui.HTML(state.BuildCustomerViewHTML(id))
+	lofigui.HTML(state.BuildCustomerViewHTML(id, piiAuth))
 	return js.ValueOf(lofigui.Buffer())
+}
+
+// --- Settings functions ---
+
+func goRenderSettings(this js.Value, args []js.Value) any {
+	lofigui.Reset()
+	lofigui.HTML(state.BuildSettingsHTML())
+	return js.ValueOf(lofigui.Buffer())
+}
+
+func goUpdateSettings(this js.Value, args []js.Value) any {
+	if len(args) >= 2 {
+		maxCust := args[0].Int()
+		boeRatePct, _ := strconv.ParseFloat(args[1].String(), 64)
+		state.UpdateSettings(maxCust, boeRatePct/100.0)
+	}
+	return nil
+}
+
+// --- PII Auth functions ---
+
+func goAuthorizePII(this js.Value, args []js.Value) any {
+	state.mu.Lock()
+	state.piiAuthorized = true
+	state.mu.Unlock()
+	return nil
+}
+
+func goRevokePII(this js.Value, args []js.Value) any {
+	state.mu.Lock()
+	state.piiAuthorized = false
+	state.mu.Unlock()
+	return nil
+}
+
+func goIsPIIAuthorized(this js.Value, args []js.Value) any {
+	state.mu.Lock()
+	auth := state.piiAuthorized
+	state.mu.Unlock()
+	return js.ValueOf(auth)
 }
 
 func main() {
@@ -205,6 +255,15 @@ func main() {
 	// Reports
 	js.Global().Set("goRenderBBSI", js.FuncOf(goRenderBBSI))
 	js.Global().Set("goRenderCustomerViewReport", js.FuncOf(goRenderCustomerViewReport))
+
+	// Settings
+	js.Global().Set("goRenderSettings", js.FuncOf(goRenderSettings))
+	js.Global().Set("goUpdateSettings", js.FuncOf(goUpdateSettings))
+
+	// PII Auth
+	js.Global().Set("goAuthorizePII", js.FuncOf(goAuthorizePII))
+	js.Global().Set("goRevokePII", js.FuncOf(goRevokePII))
+	js.Global().Set("goIsPIIAuthorized", js.FuncOf(goIsPIIAuthorized))
 
 	js.Global().Call("wasmReady")
 

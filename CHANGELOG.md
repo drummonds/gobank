@@ -1,5 +1,9 @@
 # Changelog
 
+## v0.3.0 2026-02-28
+
+- Encrypting at rest for customer data
+
 ## v0.2.1 2026-02-28
 
 - A bit more complexity

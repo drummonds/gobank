@@ -8,9 +8,27 @@ import (
 	"net/http"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/drummonds/lofigui"
 )
+
+var authStore = NewAuthStore(5 * time.Minute)
+
+// getSessionID returns a session ID from a cookie, creating one if needed.
+func getSessionID(w http.ResponseWriter, r *http.Request) string {
+	cookie, err := r.Cookie("session_id")
+	if err == nil && cookie.Value != "" {
+		return cookie.Value
+	}
+	id := fmt.Sprintf("sess-%d", time.Now().UnixNano())
+	http.SetCookie(w, &http.Cookie{
+		Name:  "session_id",
+		Value: id,
+		Path:  "/",
+	})
+	return id
+}
 
 func (ds *DemoState) renderDashboard() {
 	lofigui.HTML(ds.buildSVG())
@@ -62,7 +80,7 @@ func main() {
 	state := NewDemoState()
 
 	app := lofigui.NewApp()
-	app.Version = "Model Bank Demo v0.2"
+	app.Version = "Model Bank Demo v0.3"
 	app.SetRefreshTime(1)
 	app.SetDisplayURL("/")
 
@@ -214,8 +232,10 @@ func main() {
 			http.Redirect(w, r, "/customers", http.StatusSeeOther)
 			return
 		}
+		sessID := getSessionID(w, r)
+		piiAuth := authStore.IsAuthorized(sessID)
 		lofigui.Reset()
-		lofigui.HTML(state.BuildCustomerDetailHTML(id))
+		lofigui.HTML(state.BuildCustomerDetailHTML(id, piiAuth))
 		app.HandleDisplay(w, r)
 	})
 
@@ -279,6 +299,56 @@ func main() {
 		app.HandleDisplay(w, r)
 	})
 
+	// --- Settings ---
+
+	http.HandleFunc("/settings", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == "POST" {
+			r.ParseForm()
+			maxCust, _ := strconv.Atoi(r.FormValue("max_customers"))
+			boeRatePct, _ := strconv.ParseFloat(r.FormValue("boe_rate"), 64)
+			state.UpdateSettings(maxCust, boeRatePct/100.0)
+			http.Redirect(w, r, "/settings", http.StatusSeeOther)
+			return
+		}
+		if r.Method != "GET" {
+			http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+			return
+		}
+		lofigui.Reset()
+		lofigui.HTML(state.BuildSettingsHTML())
+		app.HandleDisplay(w, r)
+	})
+
+	// --- Auth ---
+
+	http.HandleFunc("/auth/authorize", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != "POST" {
+			http.Redirect(w, r, "/", http.StatusSeeOther)
+			return
+		}
+		sessID := getSessionID(w, r)
+		authStore.Authorize(sessID)
+		redirect := r.FormValue("redirect")
+		if redirect == "" {
+			redirect = "/"
+		}
+		http.Redirect(w, r, redirect, http.StatusSeeOther)
+	})
+
+	http.HandleFunc("/auth/revoke", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != "POST" {
+			http.Redirect(w, r, "/", http.StatusSeeOther)
+			return
+		}
+		sessID := getSessionID(w, r)
+		authStore.Revoke(sessID)
+		redirect := r.FormValue("redirect")
+		if redirect == "" {
+			redirect = "/"
+		}
+		http.Redirect(w, r, redirect, http.StatusSeeOther)
+	})
+
 	// --- Reports ---
 
 	http.HandleFunc("/reports/bbsi", func(w http.ResponseWriter, r *http.Request) {
@@ -286,8 +356,10 @@ func main() {
 			http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 			return
 		}
+		sessID := getSessionID(w, r)
+		piiAuth := authStore.IsAuthorized(sessID)
 		lofigui.Reset()
-		lofigui.HTML(state.BuildBBSIHTML())
+		lofigui.HTML(state.BuildBBSIHTML(piiAuth))
 		app.HandleDisplay(w, r)
 	})
 
@@ -301,8 +373,10 @@ func main() {
 			http.Redirect(w, r, "/customers", http.StatusSeeOther)
 			return
 		}
+		sessID := getSessionID(w, r)
+		piiAuth := authStore.IsAuthorized(sessID)
 		lofigui.Reset()
-		lofigui.HTML(state.BuildCustomerViewHTML(id))
+		lofigui.HTML(state.BuildCustomerViewHTML(id, piiAuth))
 		app.HandleDisplay(w, r)
 	})
 

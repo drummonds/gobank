@@ -45,8 +45,8 @@ func (s PaymentStatus) BulmaTag() string {
 // Payment represents a single payment transaction.
 type Payment struct {
 	ID        int
-	From      string
-	To        string
+	FromID    string
+	ToID      string
 	Amount    float64
 	Status    PaymentStatus
 	Reference string
@@ -56,19 +56,19 @@ type Payment struct {
 
 const maxPayments = 20
 
-// SendPayment creates a random payment using actual customer names.
+// SendPayment creates a random payment using customer IDs.
 func (ds *DemoState) SendPayment() {
 	ds.mu.Lock()
 
-	names := make([]string, len(ds.customers))
+	ids := make([]string, len(ds.customers))
 	for i, c := range ds.customers {
-		names[i] = c.Name
+		ids[i] = c.ID
 	}
 
-	from := names[ds.rng.Intn(len(names))]
-	to := names[ds.rng.Intn(len(names))]
-	for to == from {
-		to = names[ds.rng.Intn(len(names))]
+	fromID := ids[ds.rng.Intn(len(ids))]
+	toID := ids[ds.rng.Intn(len(ids))]
+	for toID == fromID {
+		toID = ids[ds.rng.Intn(len(ids))]
 	}
 	amount := float64(ds.rng.Intn(99901)+100) / 100.0
 
@@ -76,8 +76,8 @@ func (ds *DemoState) SendPayment() {
 
 	p := Payment{
 		ID:        ds.nextPaymentID,
-		From:      from,
-		To:        to,
+		FromID:    fromID,
+		ToID:      toID,
 		Amount:    amount,
 		Status:    PaymentPending,
 		Reference: ref,
@@ -171,11 +171,13 @@ func (ds *DemoState) ResetPayments() {
 }
 
 // BuildPaymentsHTML renders the payments list as a Bulma HTML table.
+// Names are resolved from piiStore for display.
 func (ds *DemoState) BuildPaymentsHTML() string {
 	ds.mu.Lock()
 	payments := make([]Payment, len(ds.payments))
 	copy(payments, ds.payments)
 	running := ds.payRunning
+	piiStore := ds.piiStore
 	ds.mu.Unlock()
 
 	var s strings.Builder
@@ -200,12 +202,14 @@ func (ds *DemoState) BuildPaymentsHTML() string {
 
 		for i := len(payments) - 1; i >= 0; i-- {
 			p := payments[i]
+			fromName := piiStore.RetrieveName(p.FromID)
+			toName := piiStore.RetrieveName(p.ToID)
 			s.WriteString(fmt.Sprintf(`<tr>
   <td>%d</td><td>%s</td><td>%s</td><td>£%.2f</td><td><code>%s</code></td>
   <td><span class="tag %s">%s</span></td>
   <td>%s</td>
   <td><a href="/payments/%d" class="button is-small is-link is-light">Detail</a></td>
-</tr>`, p.ID, p.From, p.To, p.Amount, p.Reference, p.Status.BulmaTag(), p.Status, p.CreatedAt.Format("15:04:05"), p.ID))
+</tr>`, p.ID, fromName, toName, p.Amount, p.Reference, p.Status.BulmaTag(), p.Status, p.CreatedAt.Format("15:04:05"), p.ID))
 		}
 
 		s.WriteString(`</tbody></table></div>`)
@@ -225,6 +229,7 @@ func (ds *DemoState) BuildPaymentDetailHTML(id int) string {
 			break
 		}
 	}
+	piiStore := ds.piiStore
 	ds.mu.Unlock()
 
 	if found == nil {
@@ -232,14 +237,17 @@ func (ds *DemoState) BuildPaymentDetailHTML(id int) string {
 	}
 
 	p := found
+	fromName := piiStore.RetrieveName(p.FromID)
+	toName := piiStore.RetrieveName(p.ToID)
+
 	var s strings.Builder
 	s.WriteString(fmt.Sprintf(`<h2 class="title is-4">Payment %s</h2>`, p.Reference))
 
 	// Details box
 	s.WriteString(`<div class="box">`)
 	s.WriteString(`<div class="columns">`)
-	s.WriteString(fmt.Sprintf(`<div class="column"><strong>From:</strong> %s</div>`, p.From))
-	s.WriteString(fmt.Sprintf(`<div class="column"><strong>To:</strong> %s</div>`, p.To))
+	s.WriteString(fmt.Sprintf(`<div class="column"><strong>From:</strong> %s</div>`, fromName))
+	s.WriteString(fmt.Sprintf(`<div class="column"><strong>To:</strong> %s</div>`, toName))
 	s.WriteString(fmt.Sprintf(`<div class="column"><strong>Amount:</strong> £%.2f</div>`, p.Amount))
 	s.WriteString(`</div>`)
 	s.WriteString(`<div class="columns">`)
@@ -288,7 +296,6 @@ func buildTimelineSVG(p *Payment) string {
 		if st.Done {
 			color = "#48c78e"
 		}
-		// Active line segment
 		if st.Done && st.X > 50 {
 			prevX := 50
 			if st.X == 450 {
