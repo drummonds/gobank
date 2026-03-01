@@ -1,6 +1,9 @@
 # Changelog## [0.3.2] - 2026-03-01
 
- - Updating BOE display and version
+ - Updating BOE display and version## [0.3.4] - 2026-03-01
+
+ - Update WASM
+
 ## [0.3.3] - 2026-03-01
 
  - Changed build version number for demo
