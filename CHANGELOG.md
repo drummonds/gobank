@@ -3,6 +3,9 @@
  - Updating BOE display and version## [0.3.4] - 2026-03-01
 
  - Update WASM
+## [0.3.5] - 2026-03-01
+
+ - Changing money format
 
 ## [0.3.3] - 2026-03-01
 
