@@ -81,17 +81,17 @@ tasks:
       - rm -f cmd/demo/main.wasm cmd/demo/wasm_exec.js
       - rm -f docs/demo/main.wasm docs/demo/wasm_exec.js
 
-  release:
-    desc: 'Release a new version, eg: task release VERSION=v0.1.0 COMMENT="initial release"'
-    requires:
-      vars: [VERSION, COMMENT]
-    preconditions:
-      - sh: '[[ "{{.VERSION}}" == v* ]]'
-        msg: "VERSION must start with 'v' (e.g. v0.2.0)"
-    cmds:
-      - task: check
-      - git add .
-      - git commit -am "{{.COMMENT}}"
-      - git tag "{{.VERSION}}"
-      - git push origin "{{.VERSION}}"
-      - git push
+  # release:
+  #   desc: 'Release a new version, eg: task release VERSION=v0.1.0 COMMENT="initial release"'
+  #   requires:
+  #     vars: [VERSION, COMMENT]
+  #   preconditions:
+  #     - sh: '[[ "{{.VERSION}}" == v* ]]'
+  #       msg: "VERSION must start with 'v' (e.g. v0.2.0)"
+  #   cmds:
+  #     - task: check
+  #     - git add .
+  #     - git commit -am "{{.COMMENT}}"
+  #     - git tag "{{.VERSION}}"
+  #     - git push origin "{{.VERSION}}"
+  #     - git push

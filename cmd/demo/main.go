@@ -382,6 +382,20 @@ func main() {
 
 	// --- About ---
 
+	http.HandleFunc("/about", func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/about" {
+			http.NotFound(w, r)
+			return
+		}
+		if r.Method != "GET" {
+			http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+			return
+		}
+		lofigui.Reset()
+		lofigui.HTML(state.BuildAboutHTML())
+		app.HandleDisplay(w, r)
+	})
+
 	http.HandleFunc("/about/models", func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != "GET" {
 			http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
