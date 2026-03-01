@@ -28,12 +28,18 @@ tasks:
     cmds:
       - go test -bench=. -benchmem -count=1 -timeout=600s ./...
 
+  build:wasm:
+    desc: Verify WASM build compiles
+    cmds:
+      - cd cmd/demo && GOOS=js GOARCH=wasm go build -o /dev/null .
+
   check:
-    desc: Run fmt, vet, and test
+    desc: Run fmt, vet, test, and verify WASM build
     cmds:
       - task: fmt
       - task: vet
       - task: test
+      - task: build:wasm
 
   deps:tidy:
     desc: Tidy module dependencies
