@@ -5,8 +5,6 @@ const statusTag = document.getElementById('status-tag');
 const controlsBank = document.getElementById('controls-bank');
 const startStopBtn = document.getElementById('startStopBtn');
 const advanceBtn = document.getElementById('advanceBtn');
-const depositBtn = document.getElementById('depositBtn');
-const withdrawBtn = document.getElementById('withdrawBtn');
 const resetBtn = document.getElementById('resetBtn');
 
 // Payment controls
@@ -24,12 +22,14 @@ const navSavings = document.getElementById('nav-savings');
 const navLending = document.getElementById('nav-lending');
 const navCustomers = document.getElementById('nav-customers');
 const navPayments = document.getElementById('nav-payments');
+const navSettings = document.getElementById('nav-settings');
 const navBbsi = document.getElementById('nav-bbsi');
 const navCustomerView = document.getElementById('nav-customer-view');
+const navAbout = document.getElementById('nav-about');
 const navModels = document.getElementById('nav-models');
 
 const allNavItems = [navDashboard, navPnl, navBalanceSheet, navSavings, navLending,
-    navCustomers, navPayments, navBbsi, navCustomerView, navModels];
+    navCustomers, navPayments, navSettings, navBbsi, navCustomerView, navAbout, navModels];
 
 let currentPage = 'dashboard';
 let renderInterval = null;
@@ -68,6 +68,9 @@ function renderPage() {
             if (typeof goRenderPaymentDetail === 'function' && detailId)
                 outputDiv.innerHTML = goRenderPaymentDetail(detailId);
             break;
+        case 'settings':
+            if (typeof goRenderSettings === 'function') outputDiv.innerHTML = goRenderSettings();
+            break;
         case 'bbsi':
             if (typeof goRenderBBSI === 'function') outputDiv.innerHTML = goRenderBBSI();
             break;
@@ -77,12 +80,16 @@ function renderPage() {
             else if (detailId === null)
                 outputDiv.innerHTML = '<div class="notification is-info is-light">Select a customer from the Customers page first.</div>';
             break;
+        case 'about':
+            if (typeof goRenderAbout === 'function') outputDiv.innerHTML = goRenderAbout();
+            break;
         case 'models':
             if (typeof goRenderModels === 'function') outputDiv.innerHTML = goRenderModels();
             break;
     }
     updateStatus();
     attachDetailLinks();
+    attachSettingsForm();
 }
 
 function updateStatus() {
@@ -129,6 +136,34 @@ function attachDetailLinks() {
             showPage('customer-view');
         });
     });
+    // PII auth links
+    outputDiv.querySelectorAll('form[action="/auth/authorize"]').forEach(function(form) {
+        form.addEventListener('submit', function(e) {
+            e.preventDefault();
+            if (typeof goAuthorizePII === 'function') goAuthorizePII();
+            renderPage();
+        });
+    });
+    outputDiv.querySelectorAll('form[action="/auth/revoke"]').forEach(function(form) {
+        form.addEventListener('submit', function(e) {
+            e.preventDefault();
+            if (typeof goRevokePII === 'function') goRevokePII();
+            renderPage();
+        });
+    });
+}
+
+// Attach handler to settings form rendered by Go
+function attachSettingsForm() {
+    var form = outputDiv.querySelector('form[action="/settings"]');
+    if (form) {
+        form.addEventListener('submit', function(e) {
+            e.preventDefault();
+            var maxCust = parseInt(form.querySelector('[name="max_customers"]').value, 10);
+            if (typeof goUpdateSettings === 'function') goUpdateSettings(maxCust);
+            renderPage();
+        });
+    }
 }
 
 // --- Page navigation ---
@@ -156,8 +191,10 @@ function showPage(page) {
         case 'lending': navLending.classList.add('is-active'); break;
         case 'customers': case 'customer-detail': navCustomers.classList.add('is-active'); break;
         case 'payments': case 'payment-detail': navPayments.classList.add('is-active'); break;
+        case 'settings': navSettings.classList.add('is-active'); break;
         case 'bbsi': navBbsi.classList.add('is-active'); break;
         case 'customer-view': navCustomerView.classList.add('is-active'); break;
+        case 'about': navAbout.classList.add('is-active'); break;
         case 'models': navModels.classList.add('is-active'); break;
     }
 
@@ -204,7 +241,7 @@ function toggleAutoPayments() {
 // --- Init ---
 
 window.wasmReady = function() {
-    [startStopBtn, advanceBtn, depositBtn, withdrawBtn, resetBtn,
+    [startStopBtn, advanceBtn, resetBtn,
      sendPaymentBtn, autoPaymentsBtn, resetPaymentsBtn].forEach(function(btn) { btn.disabled = false; });
     showPage('dashboard');
 };
@@ -230,15 +267,15 @@ navSavings.addEventListener('click', function(e) { e.preventDefault(); showPage(
 navLending.addEventListener('click', function(e) { e.preventDefault(); showPage('lending'); });
 navCustomers.addEventListener('click', function(e) { e.preventDefault(); showPage('customers'); });
 navPayments.addEventListener('click', function(e) { e.preventDefault(); showPage('payments'); });
+navSettings.addEventListener('click', function(e) { e.preventDefault(); showPage('settings'); });
 navBbsi.addEventListener('click', function(e) { e.preventDefault(); showPage('bbsi'); });
 navCustomerView.addEventListener('click', function(e) { e.preventDefault(); showPage('customer-view'); });
+navAbout.addEventListener('click', function(e) { e.preventDefault(); showPage('about'); });
 navModels.addEventListener('click', function(e) { e.preventDefault(); showPage('models'); });
 
 // Bank controls
 startStopBtn.addEventListener('click', toggleStartStop);
 advanceBtn.addEventListener('click', function() { goAdvanceDay(); renderPage(); });
-depositBtn.addEventListener('click', function() { goDeposit(); renderPage(); });
-withdrawBtn.addEventListener('click', function() { goWithdraw(); renderPage(); });
 resetBtn.addEventListener('click', function() {
     goReset();
     if (renderInterval) { clearInterval(renderInterval); renderInterval = null; }

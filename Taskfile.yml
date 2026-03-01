@@ -28,18 +28,13 @@ tasks:
     cmds:
       - go test -bench=. -benchmem -count=1 -timeout=600s ./...
 
-  build:wasm:
-    desc: Verify WASM build compiles
-    cmds:
-      - cd cmd/demo && GOOS=js GOARCH=wasm go build -o /dev/null .
-
   check:
-    desc: Run fmt, vet, test, and verify WASM build
+    desc: Run fmt, vet, test, and rebuild pages
     cmds:
       - task: fmt
       - task: vet
       - task: test
-      - task: build:wasm
+      - task: build:docs
 
   deps:tidy:
     desc: Tidy module dependencies
@@ -72,7 +67,7 @@ tasks:
     cmds:
       - go run -ldflags "-X main.version={{.GIT_TAG}}" .
 
-  build-pages:
+  build:docs:
     desc: Build WASM demo for GitHub Pages docs/ folder
     deps: [docs:build]
     vars:
@@ -97,18 +92,3 @@ tasks:
     cmds:
       - rm -f cmd/demo/main.wasm cmd/demo/wasm_exec.js
       - rm -f docs/demo/main.wasm docs/demo/wasm_exec.js
-
-  # release:
-  #   desc: 'Release a new version, eg: task release VERSION=v0.1.0 COMMENT="initial release"'
-  #   requires:
-  #     vars: [VERSION, COMMENT]
-  #   preconditions:
-  #     - sh: '[[ "{{.VERSION}}" == v* ]]'
-  #       msg: "VERSION must start with 'v' (e.g. v0.2.0)"
-  #   cmds:
-  #     - task: check
-  #     - git add .
-  #     - git commit -am "{{.COMMENT}}"
-  #     - git tag "{{.VERSION}}"
-  #     - git push origin "{{.VERSION}}"
-  #     - git push
