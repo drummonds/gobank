@@ -1,4 +1,7 @@
-# Changelog
+# Changelog## [0.3.2] - 2026-03-01
+
+ - Updating BOE display and version
+
 ## [0.3.1] - 2026-03-01
 
  - Adding about box
