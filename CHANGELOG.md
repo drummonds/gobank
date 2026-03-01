@@ -1,4 +1,7 @@
 # Changelog
+## [0.3.1] - 2026-03-01
+
+ - Adding about box
 
 ## v0.3.0 2026-02-28
 
