@@ -146,16 +146,28 @@ func buildBoERateGraph(history []RatePoint) string {
 		s.WriteString(fmt.Sprintf(`<text x="%d" y="%.0f" text-anchor="end" font-size="10" fill="#7a7a7a">%.2f%%</text>`, padL-5, y+4, rate*100))
 	}
 
+	// Date range annotation
+	startDate := history[0].Date
+	endDate := history[len(history)-1].Date
+	dateRange := fmt.Sprintf("%s — %s", startDate.Format("2 Jan 2006"), endDate.Format("2 Jan 2006"))
+	s.WriteString(fmt.Sprintf(`<text x="%d" y="%d" text-anchor="end" font-size="10" fill="#7a7a7a">%s</text>`, padL+chartW, padT-5, dateRange))
+
 	// X-axis date labels
 	if len(history) > 1 {
 		numLabels := 5
 		if len(history) < numLabels {
 			numLabels = len(history)
 		}
+		// Use "Jan 06" format (month + 2-digit year) for compactness
+		dateFmt := "Jan 06"
+		// If span is less than a year, include day
+		if endDate.Sub(startDate).Hours() < 365*24 {
+			dateFmt = "2 Jan 06"
+		}
 		for i := 0; i < numLabels; i++ {
 			idx := i * (len(history) - 1) / (numLabels - 1)
 			x := float64(padL) + float64(chartW)*float64(idx)/float64(len(history)-1)
-			s.WriteString(fmt.Sprintf(`<text x="%.0f" y="%d" text-anchor="middle" font-size="9" fill="#7a7a7a">%s</text>`, x, svgH-5, history[idx].Date.Format("2 Jan")))
+			s.WriteString(fmt.Sprintf(`<text x="%.0f" y="%d" text-anchor="middle" font-size="9" fill="#7a7a7a">%s</text>`, x, svgH-5, history[idx].Date.Format(dateFmt)))
 		}
 	}
 

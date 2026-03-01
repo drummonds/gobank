@@ -3,7 +3,6 @@
 package main
 
 import (
-	"strconv"
 	"syscall/js"
 
 	"github.com/drummonds/lofigui"
@@ -31,16 +30,6 @@ func goStop(this js.Value, args []js.Value) any {
 
 func goAdvanceDay(this js.Value, args []js.Value) any {
 	state.AdvanceDay()
-	return nil
-}
-
-func goDeposit(this js.Value, args []js.Value) any {
-	state.Deposit()
-	return nil
-}
-
-func goWithdraw(this js.Value, args []js.Value) any {
-	state.Withdraw()
 	return nil
 }
 
@@ -193,10 +182,9 @@ func goRenderSettings(this js.Value, args []js.Value) any {
 }
 
 func goUpdateSettings(this js.Value, args []js.Value) any {
-	if len(args) >= 2 {
+	if len(args) >= 1 {
 		maxCust := args[0].Int()
-		boeRatePct, _ := strconv.ParseFloat(args[1].String(), 64)
-		state.UpdateSettings(maxCust, boeRatePct/100.0)
+		state.UpdateSettings(maxCust)
 	}
 	return nil
 }
@@ -230,8 +218,6 @@ func main() {
 	js.Global().Set("goStart", js.FuncOf(goStart))
 	js.Global().Set("goStop", js.FuncOf(goStop))
 	js.Global().Set("goAdvanceDay", js.FuncOf(goAdvanceDay))
-	js.Global().Set("goDeposit", js.FuncOf(goDeposit))
-	js.Global().Set("goWithdraw", js.FuncOf(goWithdraw))
 	js.Global().Set("goReset", js.FuncOf(goReset))
 	js.Global().Set("goIsRunning", js.FuncOf(goIsRunning))
 

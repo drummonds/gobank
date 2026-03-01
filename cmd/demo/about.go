@@ -30,6 +30,7 @@ func (ds *DemoState) BuildAboutHTML() string {
 	s.WriteString(`<div class="box">`)
 	s.WriteString(`<h3 class="title is-5">Environment</h3>`)
 	s.WriteString(`<table class="table is-fullwidth">`)
+	s.WriteString(fmt.Sprintf(`<tr><th>Version</th><td>%s</td></tr>`, version))
 	s.WriteString(fmt.Sprintf(`<tr><th>Runtime</th><td>%s</td></tr>`, runtimeEnv))
 	s.WriteString(fmt.Sprintf(`<tr><th>Go version</th><td>%s</td></tr>`, runtime.Version()))
 	s.WriteString(fmt.Sprintf(`<tr><th>GOARCH</th><td>%s</td></tr>`, runtime.GOARCH))

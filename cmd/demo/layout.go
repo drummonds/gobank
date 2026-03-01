@@ -10,7 +10,7 @@ const LayoutModelBank = `<!DOCTYPE html>
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Model Bank</title>
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bulma@1.0.4/css/bulma.min.css">
-  {{ refresh | safe }}
+  <script src="https://unpkg.com/htmx.org@2.0.4"></script>
 </head>
 <body>
   <nav class="navbar is-primary" role="navigation" aria-label="main navigation">
@@ -66,7 +66,11 @@ const LayoutModelBank = `<!DOCTYPE html>
   </nav>
   <section class="section">
     <div class="container">
-      {{ results | safe }}
+      <div id="results"
+        {% if polling == "Running" %}
+        hx-get="{{ request.URL.Path }}" hx-trigger="every 1s" hx-swap="innerHTML"
+        {% endif %}
+      >{{ results | safe }}</div>
     </div>
   </section>
   <footer class="footer">

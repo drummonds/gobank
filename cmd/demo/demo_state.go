@@ -39,8 +39,9 @@ type DemoState struct {
 
 func NewDemoState() *DemoState {
 	piiStore := NewPIIStore()
-	startDay := time.Date(2025, 1, 1, 0, 0, 0, 0, time.UTC)
+	startDay := time.Date(2020, 1, 1, 0, 0, 0, 0, time.UTC)
 	settings := DefaultSettings()
+	settings.BoEBaseRate = lookupBoERate(startDay)
 	rng := rand.New(rand.NewSource(42))
 
 	ds := &DemoState{
@@ -79,7 +80,8 @@ func (ds *DemoState) advanceDay() {
 	ds.currentDay = ds.currentDay.AddDate(0, 0, 1)
 	ds.dayCount++
 
-	// Record BoE rate history
+	// Look up BoE rate for current day and record history
+	ds.settings.BoEBaseRate = lookupBoERate(ds.currentDay)
 	ds.boeHistory = append(ds.boeHistory, RatePoint{Date: ds.currentDay, Rate: ds.settings.BoEBaseRate})
 
 	// Customer generation
@@ -158,32 +160,6 @@ func (ds *DemoState) IsRunning() bool {
 	return ds.running
 }
 
-func (ds *DemoState) Deposit() {
-	ds.mu.Lock()
-	defer ds.mu.Unlock()
-	for ci := range ds.customers {
-		for ai := range ds.customers[ci].Accounts {
-			if ds.customers[ci].Accounts[ai].Family == FamilySavings {
-				ds.customers[ci].Accounts[ai].Balance += 100
-				return
-			}
-		}
-	}
-}
-
-func (ds *DemoState) Withdraw() {
-	ds.mu.Lock()
-	defer ds.mu.Unlock()
-	for ci := range ds.customers {
-		for ai := range ds.customers[ci].Accounts {
-			if ds.customers[ci].Accounts[ai].Family == FamilySavings && ds.customers[ci].Accounts[ai].Balance >= 100 {
-				ds.customers[ci].Accounts[ai].Balance -= 100
-				return
-			}
-		}
-	}
-}
-
 func (ds *DemoState) Reset() {
 	ds.mu.Lock()
 	defer ds.mu.Unlock()
@@ -201,13 +177,14 @@ func (ds *DemoState) Reset() {
 			ds.payCancel = nil
 		}
 	}
-	ds.currentDay = time.Date(2025, 1, 1, 0, 0, 0, 0, time.UTC)
+	ds.currentDay = time.Date(2020, 1, 1, 0, 0, 0, 0, time.UTC)
 	ds.dayCount = 0
 	ds.payments = nil
 	ds.nextPaymentID = 1
 	ds.rng = rand.New(rand.NewSource(42))
 	ds.piiStore.Reset()
 	ds.settings = DefaultSettings()
+	ds.settings.BoEBaseRate = lookupBoERate(ds.currentDay)
 	ds.nextCustSeq = len(seedCustomers) + 1
 	ds.piiAuthorized = false
 	ds.boeHistory = []RatePoint{{Date: ds.currentDay, Rate: ds.settings.BoEBaseRate}}

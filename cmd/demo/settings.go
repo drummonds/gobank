@@ -23,11 +23,12 @@ func (ds *DemoState) BuildSettingsHTML() string {
 	ds.mu.Lock()
 	settings := ds.settings
 	customerCount := len(ds.customers)
+	currentDay := ds.currentDay
 	ds.mu.Unlock()
 
 	var s strings.Builder
 	s.WriteString(`<h2 class="title is-4">Settings</h2>`)
-	s.WriteString(fmt.Sprintf(`<p class="subtitle is-6 has-text-grey">Current customers: %d</p>`, customerCount))
+	s.WriteString(fmt.Sprintf(`<p class="subtitle is-6 has-text-grey">Current customers: %d | Sim date: %s</p>`, customerCount, currentDay.Format("2 Jan 2006")))
 
 	s.WriteString(`<form action="/settings" method="post">`)
 	s.WriteString(`<div class="box">`)
@@ -41,13 +42,13 @@ func (ds *DemoState) BuildSettingsHTML() string {
 	s.WriteString(`<p class="help">Maximum number of customers in the simulation (3-500)</p>`)
 	s.WriteString(`</div>`)
 
-	// BoE Base Rate
+	// BoE Base Rate (read-only)
 	s.WriteString(`<div class="field">`)
-	s.WriteString(`<label class="label">BoE Base Rate (%%)</label>`)
+	s.WriteString(`<label class="label">BoE Base Rate</label>`)
 	s.WriteString(`<div class="control">`)
-	s.WriteString(fmt.Sprintf(`<input class="input" type="number" name="boe_rate" value="%.2f" min="0" max="25" step="0.25">`, settings.BoEBaseRate*100))
+	s.WriteString(fmt.Sprintf(`<span class="tag is-medium is-info">%.2f%%</span>`, settings.BoEBaseRate*100))
 	s.WriteString(`</div>`)
-	s.WriteString(`<p class="help">Bank of England base rate as a percentage</p>`)
+	s.WriteString(`<p class="help">Driven by historical Bank of England data</p>`)
 	s.WriteString(`</div>`)
 
 	s.WriteString(`<div class="field">`)
@@ -60,13 +61,10 @@ func (ds *DemoState) BuildSettingsHTML() string {
 }
 
 // UpdateSettings updates the simulation settings.
-func (ds *DemoState) UpdateSettings(maxCust int, boeRate float64) {
+func (ds *DemoState) UpdateSettings(maxCust int) {
 	ds.mu.Lock()
 	defer ds.mu.Unlock()
 	if maxCust >= 3 && maxCust <= 500 {
 		ds.settings.MaxCustomers = maxCust
-	}
-	if boeRate >= 0 && boeRate <= 0.25 {
-		ds.settings.BoEBaseRate = boeRate
 	}
 }

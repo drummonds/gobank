@@ -8,12 +8,37 @@ import (
 	"net/http"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/drummonds/lofigui"
+	"github.com/flosch/pongo2/v6"
 )
 
 var authStore = NewAuthStore(5 * time.Minute)
+
+var renderMu sync.Mutex
+
+// renderAndCapture runs fn (which calls lofigui output functions) under a lock,
+// captures the buffer content, and returns it.
+func renderAndCapture(fn func()) string {
+	renderMu.Lock()
+	defer renderMu.Unlock()
+	lofigui.Reset()
+	fn()
+	return lofigui.Buffer()
+}
+
+// serveHTMX checks for HTMX request and serves HTML fragment if so.
+// Returns true if served as fragment (caller should return).
+func serveHTMX(w http.ResponseWriter, r *http.Request, content string) bool {
+	if r.Header.Get("HX-Request") == "true" {
+		w.Header().Set("Content-Type", "text/html; charset=utf-8")
+		fmt.Fprint(w, content)
+		return true
+	}
+	return false
+}
 
 // getSessionID returns a session ID from a cookie, creating one if needed.
 func getSessionID(w http.ResponseWriter, r *http.Request) string {
@@ -30,7 +55,7 @@ func getSessionID(w http.ResponseWriter, r *http.Request) string {
 	return id
 }
 
-func (ds *DemoState) renderDashboard() {
+func renderDashboard(ds *DemoState) {
 	lofigui.HTML(ds.buildSVG())
 
 	running := ds.IsRunning()
@@ -53,8 +78,6 @@ func (ds *DemoState) renderDashboard() {
 
 	lofigui.HTML(fmt.Sprintf(`<div class="buttons">%s
   <form action="/advance" method="post" style="display:inline"><button class="button is-info" type="submit">Advance Day</button></form>
-  <form action="/deposit" method="post" style="display:inline"><button class="button is-primary" type="submit">Deposit £100</button></form>
-  <form action="/withdraw" method="post" style="display:inline"><button class="button is-warning" type="submit">Withdraw £100</button></form>
   <form action="/reset" method="post" style="display:inline"><button class="button is-light" type="submit">Reset</button></form>
 </div>`, startStopBtn))
 }
@@ -76,12 +99,18 @@ func renderPaymentsPage(ds *DemoState) {
 </div>`, startStopBtn))
 }
 
+func simStatus(ds *DemoState) string {
+	if ds.IsRunning() || ds.IsPaymentsRunning() {
+		return "Running"
+	}
+	return "Stopped"
+}
+
 func main() {
 	state := NewDemoState()
 
 	app := lofigui.NewApp()
-	app.Version = "Model Bank Demo v0.3"
-	app.SetRefreshTime(1)
+	app.Version = "Model Bank " + version
 	app.SetDisplayURL("/")
 
 	ctrl, err := lofigui.NewController(lofigui.ControllerConfig{
@@ -92,6 +121,17 @@ func main() {
 		log.Fatalf("Failed to create controller: %v", err)
 	}
 	app.SetController(ctrl)
+
+	// fullPage renders template with app state context (no Refresh header).
+	fullPage := func(w http.ResponseWriter, r *http.Request, content string) {
+		ctrl.RenderTemplate(w, pongo2.Context{
+			"request":         r,
+			"version":         app.Version,
+			"controller_name": ctrl.Name,
+			"results":         content,
+			"polling":         simStatus(state),
+		})
+	}
 
 	// --- Dashboard ---
 
@@ -104,9 +144,11 @@ func main() {
 			http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 			return
 		}
-		lofigui.Reset()
-		state.renderDashboard()
-		app.HandleDisplay(w, r)
+		content := renderAndCapture(func() { renderDashboard(state) })
+		if serveHTMX(w, r, content) {
+			return
+		}
+		fullPage(w, r, content)
 	})
 
 	http.HandleFunc("/start", func(w http.ResponseWriter, r *http.Request) {
@@ -115,7 +157,6 @@ func main() {
 			return
 		}
 		state.Start()
-		app.StartAction()
 		http.Redirect(w, r, "/", http.StatusSeeOther)
 	})
 
@@ -125,7 +166,6 @@ func main() {
 			return
 		}
 		state.Stop()
-		app.EndAction()
 		http.Redirect(w, r, "/", http.StatusSeeOther)
 	})
 
@@ -138,31 +178,12 @@ func main() {
 		http.Redirect(w, r, "/", http.StatusSeeOther)
 	})
 
-	http.HandleFunc("/deposit", func(w http.ResponseWriter, r *http.Request) {
-		if r.Method != "POST" {
-			http.Redirect(w, r, "/", http.StatusSeeOther)
-			return
-		}
-		state.Deposit()
-		http.Redirect(w, r, "/", http.StatusSeeOther)
-	})
-
-	http.HandleFunc("/withdraw", func(w http.ResponseWriter, r *http.Request) {
-		if r.Method != "POST" {
-			http.Redirect(w, r, "/", http.StatusSeeOther)
-			return
-		}
-		state.Withdraw()
-		http.Redirect(w, r, "/", http.StatusSeeOther)
-	})
-
 	http.HandleFunc("/reset", func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != "POST" {
 			http.Redirect(w, r, "/", http.StatusSeeOther)
 			return
 		}
 		state.Reset()
-		app.EndAction()
 		http.Redirect(w, r, "/", http.StatusSeeOther)
 	})
 
@@ -173,9 +194,11 @@ func main() {
 			http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 			return
 		}
-		lofigui.Reset()
-		lofigui.HTML(state.BuildPnLHTML())
-		app.HandleDisplay(w, r)
+		content := renderAndCapture(func() { lofigui.HTML(state.BuildPnLHTML()) })
+		if serveHTMX(w, r, content) {
+			return
+		}
+		fullPage(w, r, content)
 	})
 
 	http.HandleFunc("/accounting/balance-sheet", func(w http.ResponseWriter, r *http.Request) {
@@ -183,9 +206,11 @@ func main() {
 			http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 			return
 		}
-		lofigui.Reset()
-		lofigui.HTML(state.BuildBalanceSheetHTML())
-		app.HandleDisplay(w, r)
+		content := renderAndCapture(func() { lofigui.HTML(state.BuildBalanceSheetHTML()) })
+		if serveHTMX(w, r, content) {
+			return
+		}
+		fullPage(w, r, content)
 	})
 
 	// --- Products ---
@@ -195,9 +220,11 @@ func main() {
 			http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 			return
 		}
-		lofigui.Reset()
-		lofigui.HTML(state.BuildProductsHTML(FamilySavings))
-		app.HandleDisplay(w, r)
+		content := renderAndCapture(func() { lofigui.HTML(state.BuildProductsHTML(FamilySavings)) })
+		if serveHTMX(w, r, content) {
+			return
+		}
+		fullPage(w, r, content)
 	})
 
 	http.HandleFunc("/products/lending", func(w http.ResponseWriter, r *http.Request) {
@@ -205,9 +232,11 @@ func main() {
 			http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 			return
 		}
-		lofigui.Reset()
-		lofigui.HTML(state.BuildProductsHTML(FamilyLending))
-		app.HandleDisplay(w, r)
+		content := renderAndCapture(func() { lofigui.HTML(state.BuildProductsHTML(FamilyLending)) })
+		if serveHTMX(w, r, content) {
+			return
+		}
+		fullPage(w, r, content)
 	})
 
 	// --- Customers ---
@@ -217,9 +246,11 @@ func main() {
 			http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 			return
 		}
-		lofigui.Reset()
-		lofigui.HTML(state.BuildCustomersHTML())
-		app.HandleDisplay(w, r)
+		content := renderAndCapture(func() { lofigui.HTML(state.BuildCustomersHTML()) })
+		if serveHTMX(w, r, content) {
+			return
+		}
+		fullPage(w, r, content)
 	})
 
 	http.HandleFunc("/customers/", func(w http.ResponseWriter, r *http.Request) {
@@ -234,9 +265,11 @@ func main() {
 		}
 		sessID := getSessionID(w, r)
 		piiAuth := authStore.IsAuthorized(sessID)
-		lofigui.Reset()
-		lofigui.HTML(state.BuildCustomerDetailHTML(id, piiAuth))
-		app.HandleDisplay(w, r)
+		content := renderAndCapture(func() { lofigui.HTML(state.BuildCustomerDetailHTML(id, piiAuth)) })
+		if serveHTMX(w, r, content) {
+			return
+		}
+		fullPage(w, r, content)
 	})
 
 	// --- Payments ---
@@ -246,9 +279,11 @@ func main() {
 			http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 			return
 		}
-		lofigui.Reset()
-		renderPaymentsPage(state)
-		app.HandleDisplay(w, r)
+		content := renderAndCapture(func() { renderPaymentsPage(state) })
+		if serveHTMX(w, r, content) {
+			return
+		}
+		fullPage(w, r, content)
 	})
 
 	http.HandleFunc("/payments/", func(w http.ResponseWriter, r *http.Request) {
@@ -269,8 +304,6 @@ func main() {
 				return
 			}
 			state.StartPayments()
-			app.StartAction()
-			app.SetDisplayURL("/payments")
 			http.Redirect(w, r, "/payments", http.StatusSeeOther)
 			return
 		case "stop":
@@ -279,8 +312,6 @@ func main() {
 				return
 			}
 			state.StopPayments()
-			app.EndAction()
-			app.SetDisplayURL("/")
 			http.Redirect(w, r, "/payments", http.StatusSeeOther)
 			return
 		}
@@ -294,9 +325,11 @@ func main() {
 			http.NotFound(w, r)
 			return
 		}
-		lofigui.Reset()
-		lofigui.HTML(state.BuildPaymentDetailHTML(id))
-		app.HandleDisplay(w, r)
+		content := renderAndCapture(func() { lofigui.HTML(state.BuildPaymentDetailHTML(id)) })
+		if serveHTMX(w, r, content) {
+			return
+		}
+		fullPage(w, r, content)
 	})
 
 	// --- Settings ---
@@ -305,8 +338,7 @@ func main() {
 		if r.Method == "POST" {
 			r.ParseForm()
 			maxCust, _ := strconv.Atoi(r.FormValue("max_customers"))
-			boeRatePct, _ := strconv.ParseFloat(r.FormValue("boe_rate"), 64)
-			state.UpdateSettings(maxCust, boeRatePct/100.0)
+			state.UpdateSettings(maxCust)
 			http.Redirect(w, r, "/settings", http.StatusSeeOther)
 			return
 		}
@@ -314,9 +346,11 @@ func main() {
 			http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 			return
 		}
-		lofigui.Reset()
-		lofigui.HTML(state.BuildSettingsHTML())
-		app.HandleDisplay(w, r)
+		content := renderAndCapture(func() { lofigui.HTML(state.BuildSettingsHTML()) })
+		if serveHTMX(w, r, content) {
+			return
+		}
+		fullPage(w, r, content)
 	})
 
 	// --- Auth ---
@@ -358,9 +392,11 @@ func main() {
 		}
 		sessID := getSessionID(w, r)
 		piiAuth := authStore.IsAuthorized(sessID)
-		lofigui.Reset()
-		lofigui.HTML(state.BuildBBSIHTML(piiAuth))
-		app.HandleDisplay(w, r)
+		content := renderAndCapture(func() { lofigui.HTML(state.BuildBBSIHTML(piiAuth)) })
+		if serveHTMX(w, r, content) {
+			return
+		}
+		fullPage(w, r, content)
 	})
 
 	http.HandleFunc("/reports/customer-view", func(w http.ResponseWriter, r *http.Request) {
@@ -375,9 +411,11 @@ func main() {
 		}
 		sessID := getSessionID(w, r)
 		piiAuth := authStore.IsAuthorized(sessID)
-		lofigui.Reset()
-		lofigui.HTML(state.BuildCustomerViewHTML(id, piiAuth))
-		app.HandleDisplay(w, r)
+		content := renderAndCapture(func() { lofigui.HTML(state.BuildCustomerViewHTML(id, piiAuth)) })
+		if serveHTMX(w, r, content) {
+			return
+		}
+		fullPage(w, r, content)
 	})
 
 	// --- About ---
@@ -391,9 +429,11 @@ func main() {
 			http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 			return
 		}
-		lofigui.Reset()
-		lofigui.HTML(state.BuildAboutHTML())
-		app.HandleDisplay(w, r)
+		content := renderAndCapture(func() { lofigui.HTML(state.BuildAboutHTML()) })
+		if serveHTMX(w, r, content) {
+			return
+		}
+		fullPage(w, r, content)
 	})
 
 	http.HandleFunc("/about/models", func(w http.ResponseWriter, r *http.Request) {
@@ -401,9 +441,11 @@ func main() {
 			http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 			return
 		}
-		lofigui.Reset()
-		lofigui.HTML(BuildModelsHTML())
-		app.HandleDisplay(w, r)
+		content := renderAndCapture(func() { lofigui.HTML(BuildModelsHTML()) })
+		if serveHTMX(w, r, content) {
+			return
+		}
+		fullPage(w, r, content)
 	})
 
 	http.HandleFunc("/favicon.ico", lofigui.ServeFavicon)

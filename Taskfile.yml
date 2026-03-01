@@ -51,19 +51,30 @@ tasks:
     cmds:
       - for f in *.mmd; do mmdg -i "$f" -o "${f%.mmd}.svg" -e svg; done
 
+  boe:fetch:
+    desc: Fetch BoE base rate history and write CSV
+    cmds:
+      - cd cmd/boefetch && go run . -o ../demo/boe_rates.csv
+
   demo:
     desc: Run the Model Bank demo locally (server mode)
     deps: [docs:build]
     dir: cmd/demo
+    vars:
+      GIT_TAG:
+        sh: git describe --tags --always 2>/dev/null || echo dev
     cmds:
-      - go run .
+      - go run -ldflags "-X main.version={{.GIT_TAG}}" .
 
   build-pages:
     desc: Build WASM demo for GitHub Pages docs/ folder
     deps: [docs:build]
+    vars:
+      GIT_TAG:
+        sh: git describe --tags --always 2>/dev/null || echo dev
     cmds:
       - mkdir -p docs/demo
-      - cd cmd/demo && GOOS=js GOARCH=wasm go build -o main.wasm .
+      - cd cmd/demo && GOOS=js GOARCH=wasm go build -ldflags "-X main.version={{.GIT_TAG}}" -o main.wasm .
       - cp "$(find $(go env GOROOT) -name wasm_exec.js -print -quit)" docs/demo/
       - cp cmd/demo/main.wasm docs/demo/
       - cp cmd/demo/templates/index.html docs/demo/
