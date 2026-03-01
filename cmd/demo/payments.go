@@ -205,11 +205,11 @@ func (ds *DemoState) BuildPaymentsHTML() string {
 			fromName := piiStore.RetrieveName(p.FromID)
 			toName := piiStore.RetrieveName(p.ToID)
 			s.WriteString(fmt.Sprintf(`<tr>
-  <td>%d</td><td>%s</td><td>%s</td><td>£%.2f</td><td><code>%s</code></td>
+  <td>%d</td><td>%s</td><td>%s</td><td>%s</td><td><code>%s</code></td>
   <td><span class="tag %s">%s</span></td>
   <td>%s</td>
   <td><a href="/payments/%d" class="button is-small is-link is-light">Detail</a></td>
-</tr>`, p.ID, fromName, toName, p.Amount, p.Reference, p.Status.BulmaTag(), p.Status, p.CreatedAt.Format("15:04:05"), p.ID))
+</tr>`, p.ID, fromName, toName, fmtMoney(p.Amount), p.Reference, p.Status.BulmaTag(), p.Status, p.CreatedAt.Format("15:04:05"), p.ID))
 		}
 
 		s.WriteString(`</tbody></table></div>`)
@@ -248,7 +248,7 @@ func (ds *DemoState) BuildPaymentDetailHTML(id int) string {
 	s.WriteString(`<div class="columns">`)
 	s.WriteString(fmt.Sprintf(`<div class="column"><strong>From:</strong> %s</div>`, fromName))
 	s.WriteString(fmt.Sprintf(`<div class="column"><strong>To:</strong> %s</div>`, toName))
-	s.WriteString(fmt.Sprintf(`<div class="column"><strong>Amount:</strong> £%.2f</div>`, p.Amount))
+	s.WriteString(fmt.Sprintf(`<div class="column"><strong>Amount:</strong> %s</div>`, fmtMoney(p.Amount)))
 	s.WriteString(`</div>`)
 	s.WriteString(`<div class="columns">`)
 	s.WriteString(fmt.Sprintf(`<div class="column"><strong>Status:</strong> <span class="tag %s">%s</span></div>`, p.Status.BulmaTag(), p.Status))

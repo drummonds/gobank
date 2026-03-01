@@ -33,6 +33,14 @@ func goAdvanceDay(this js.Value, args []js.Value) any {
 	return nil
 }
 
+func goAddCustomers(this js.Value, args []js.Value) any {
+	n := 100
+	if len(args) >= 1 {
+		n = args[0].Int()
+	}
+	return js.ValueOf(state.AddCustomers(n))
+}
+
 func goReset(this js.Value, args []js.Value) any {
 	state.Reset()
 	return nil
@@ -218,6 +226,7 @@ func main() {
 	js.Global().Set("goStart", js.FuncOf(goStart))
 	js.Global().Set("goStop", js.FuncOf(goStop))
 	js.Global().Set("goAdvanceDay", js.FuncOf(goAdvanceDay))
+	js.Global().Set("goAddCustomers", js.FuncOf(goAddCustomers))
 	js.Global().Set("goReset", js.FuncOf(goReset))
 	js.Global().Set("goIsRunning", js.FuncOf(goIsRunning))
 

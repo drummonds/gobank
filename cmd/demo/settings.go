@@ -37,9 +37,9 @@ func (ds *DemoState) BuildSettingsHTML() string {
 	s.WriteString(`<div class="field">`)
 	s.WriteString(`<label class="label">Max Customers</label>`)
 	s.WriteString(`<div class="control">`)
-	s.WriteString(fmt.Sprintf(`<input class="input" type="number" name="max_customers" value="%d" min="3" max="500">`, settings.MaxCustomers))
+	s.WriteString(fmt.Sprintf(`<input class="input" type="number" name="max_customers" value="%d" min="3" max="1000000">`, settings.MaxCustomers))
 	s.WriteString(`</div>`)
-	s.WriteString(`<p class="help">Maximum number of customers in the simulation (3-500)</p>`)
+	s.WriteString(`<p class="help">Maximum number of customers in the simulation (3-1,000,000)</p>`)
 	s.WriteString(`</div>`)
 
 	// BoE Base Rate (read-only)
@@ -64,7 +64,7 @@ func (ds *DemoState) BuildSettingsHTML() string {
 func (ds *DemoState) UpdateSettings(maxCust int) {
 	ds.mu.Lock()
 	defer ds.mu.Unlock()
-	if maxCust >= 3 && maxCust <= 500 {
+	if maxCust >= 3 && maxCust <= 1_000_000 {
 		ds.settings.MaxCustomers = maxCust
 	}
 }

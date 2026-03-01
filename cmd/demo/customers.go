@@ -104,9 +104,9 @@ func (ds *DemoState) BuildCustomersHTML() string {
 			}
 		}
 		s.WriteString(fmt.Sprintf(`<tr>
-  <td>%s</td><td>%d</td><td>£%.2f</td><td>£%.2f</td>
+  <td>%s</td><td>%d</td><td>%s</td><td>%s</td>
   <td><a href="/customers/%s" class="button is-small is-link is-light">View</a></td>
-</tr>`, name, len(c.Accounts), savings, lending, c.ID))
+</tr>`, name, len(c.Accounts), fmtMoney(savings), fmtMoney(lending), c.ID))
 	}
 
 	s.WriteString(`</tbody></table></div>`)
@@ -174,8 +174,8 @@ func (ds *DemoState) BuildCustomerDetailHTML(id string, piiAuthorized bool) stri
 			familyTag = `<span class="tag is-info is-light">Lending</span>`
 		}
 		s.WriteString(fmt.Sprintf(`<tr>
-  <td>%s</td><td>%s</td><td>%.1f%%</td><td>£%.2f</td><td>£%.2f</td><td>%s</td>
-</tr>`, a.ProductName, familyTag, a.Rate*100, a.Balance, a.Interest, a.OpenDate.Format("2 Jan 2006")))
+  <td>%s</td><td>%s</td><td>%.1f%%</td><td>%s</td><td>%s</td><td>%s</td>
+</tr>`, a.ProductName, familyTag, a.Rate*100, fmtMoney(a.Balance), fmtMoney(a.Interest), a.OpenDate.Format("2 Jan 2006")))
 	}
 	s.WriteString(`</tbody></table></div>`)
 
@@ -193,9 +193,9 @@ func (ds *DemoState) BuildCustomerDetailHTML(id string, piiAuthorized bool) stri
 			fromName := piiStore.RetrieveName(p.FromID)
 			toName := piiStore.RetrieveName(p.ToID)
 			s.WriteString(fmt.Sprintf(`<tr>
-  <td>%d</td><td>%s</td><td>%s</td><td>£%.2f</td>
+  <td>%d</td><td>%s</td><td>%s</td><td>%s</td>
   <td><span class="tag %s">%s</span></td><td>%s</td>
-</tr>`, p.ID, fromName, toName, p.Amount, p.Status.BulmaTag(), p.Status, p.Reference))
+</tr>`, p.ID, fromName, toName, fmtMoney(p.Amount), p.Status.BulmaTag(), p.Status, p.Reference))
 		}
 		s.WriteString(`</tbody></table></div>`)
 	}

@@ -71,7 +71,7 @@ func (ds *DemoState) BuildProductsHTML(family ProductFamily) string {
 		s.WriteString(fmt.Sprintf(`<div class="column"><strong>Rate:</strong> %.1f%%</div>`, p.Rate*100))
 		s.WriteString(fmt.Sprintf(`<div class="column"><strong>Terms:</strong> %s</div>`, p.Terms))
 		s.WriteString(fmt.Sprintf(`<div class="column"><strong>Accounts:</strong> %d</div>`, count))
-		s.WriteString(fmt.Sprintf(`<div class="column"><strong>Total:</strong> £%.2f</div>`, totalBal))
+		s.WriteString(fmt.Sprintf(`<div class="column"><strong>Total:</strong> %s</div>`, fmtMoney(totalBal)))
 		s.WriteString(`</div></div>`)
 	}
 

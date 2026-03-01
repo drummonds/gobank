@@ -78,6 +78,10 @@ func renderDashboard(ds *DemoState) {
 
 	lofigui.HTML(fmt.Sprintf(`<div class="buttons">%s
   <form action="/advance" method="post" style="display:inline"><button class="button is-info" type="submit">Advance Day</button></form>
+  <form action="/add-customers" method="post" style="display:inline">
+    <div class="field has-addons"><div class="control"><input class="input is-small" type="number" name="n" value="100" min="1" max="1000000" style="width:7em"></div>
+    <div class="control"><button class="button is-small is-primary" type="submit">Add Customers</button></div></div>
+  </form>
   <form action="/reset" method="post" style="display:inline"><button class="button is-light" type="submit">Reset</button></form>
 </div>`, startStopBtn))
 }
@@ -184,6 +188,19 @@ func main() {
 			return
 		}
 		state.Reset()
+		http.Redirect(w, r, "/", http.StatusSeeOther)
+	})
+
+	http.HandleFunc("/add-customers", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != "POST" {
+			http.Redirect(w, r, "/", http.StatusSeeOther)
+			return
+		}
+		r.ParseForm()
+		n, _ := strconv.Atoi(r.FormValue("n"))
+		if n > 0 {
+			state.AddCustomers(n)
+		}
 		http.Redirect(w, r, "/", http.StatusSeeOther)
 	})
 

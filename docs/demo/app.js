@@ -5,6 +5,8 @@ const statusTag = document.getElementById('status-tag');
 const controlsBank = document.getElementById('controls-bank');
 const startStopBtn = document.getElementById('startStopBtn');
 const advanceBtn = document.getElementById('advanceBtn');
+const addCustBtn = document.getElementById('addCustBtn');
+const addCustN = document.getElementById('addCustN');
 const resetBtn = document.getElementById('resetBtn');
 
 // Payment controls
@@ -241,7 +243,7 @@ function toggleAutoPayments() {
 // --- Init ---
 
 window.wasmReady = function() {
-    [startStopBtn, advanceBtn, resetBtn,
+    [startStopBtn, advanceBtn, addCustBtn, addCustN, resetBtn,
      sendPaymentBtn, autoPaymentsBtn, resetPaymentsBtn].forEach(function(btn) { btn.disabled = false; });
     showPage('dashboard');
 };
@@ -276,6 +278,7 @@ navModels.addEventListener('click', function(e) { e.preventDefault(); showPage('
 // Bank controls
 startStopBtn.addEventListener('click', toggleStartStop);
 advanceBtn.addEventListener('click', function() { goAdvanceDay(); renderPage(); });
+addCustBtn.addEventListener('click', function() { goAddCustomers(parseInt(addCustN.value, 10) || 100); renderPage(); });
 resetBtn.addEventListener('click', function() {
     goReset();
     if (renderInterval) { clearInterval(renderInterval); renderInterval = null; }

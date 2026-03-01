@@ -52,15 +52,15 @@ func (ds *DemoState) BuildBBSIHTML(piiAuthorized bool) string {
 				ni = "N/A"
 			}
 			s.WriteString(fmt.Sprintf(`<tr>
-  <td>%s</td><td><code>%s</code></td><td>£%.2f</td><td>£0.00</td>
-</tr>`, name, ni, interest))
+  <td>%s</td><td><code>%s</code></td><td>%s</td><td>%s</td>
+</tr>`, name, ni, fmtMoney(interest), fmtMoney(0)))
 		}
 	}
 
 	s.WriteString(`</tbody>`)
 	s.WriteString(fmt.Sprintf(`<tfoot><tr class="has-text-weight-bold">
-  <td colspan="2">Total</td><td>£%.2f</td><td>£0.00</td>
-</tr></tfoot>`, totalInterest))
+  <td colspan="2">Total</td><td>%s</td><td>%s</td>
+</tr></tfoot>`, fmtMoney(totalInterest), fmtMoney(0)))
 	s.WriteString(`</table></div>`)
 
 	s.WriteString(`<div class="notification is-info is-light mt-4">
@@ -143,9 +143,9 @@ func (ds *DemoState) BuildCustomerViewHTML(id string, piiAuthorized bool) string
 	}
 
 	s.WriteString(`<div class="columns mb-4">`)
-	s.WriteString(fmt.Sprintf(`<div class="column"><div class="notification is-success is-light has-text-centered"><p class="heading">Savings</p><p class="title is-5">£%.2f</p></div></div>`, totalSavings))
-	s.WriteString(fmt.Sprintf(`<div class="column"><div class="notification is-info is-light has-text-centered"><p class="heading">Lending</p><p class="title is-5">£%.2f</p></div></div>`, totalLending))
-	s.WriteString(fmt.Sprintf(`<div class="column"><div class="notification is-warning is-light has-text-centered"><p class="heading">Interest</p><p class="title is-5">£%.2f</p></div></div>`, totalInterest))
+	s.WriteString(fmt.Sprintf(`<div class="column"><div class="notification is-success is-light has-text-centered"><p class="heading">Savings</p><p class="title is-5">%s</p></div></div>`, fmtMoney(totalSavings)))
+	s.WriteString(fmt.Sprintf(`<div class="column"><div class="notification is-info is-light has-text-centered"><p class="heading">Lending</p><p class="title is-5">%s</p></div></div>`, fmtMoney(totalLending)))
+	s.WriteString(fmt.Sprintf(`<div class="column"><div class="notification is-warning is-light has-text-centered"><p class="heading">Interest</p><p class="title is-5">%s</p></div></div>`, fmtMoney(totalInterest)))
 	s.WriteString(`</div>`)
 
 	// Account table
@@ -157,8 +157,8 @@ func (ds *DemoState) BuildCustomerViewHTML(id string, piiAuthorized bool) string
 			familyTag = `<span class="tag is-info is-light">Lending</span>`
 		}
 		s.WriteString(fmt.Sprintf(`<tr>
-  <td>%s</td><td>%s</td><td>%.1f%%</td><td>£%.2f</td><td>£%.2f</td><td>%s</td>
-</tr>`, a.ProductName, familyTag, a.Rate*100, a.Balance, a.Interest, a.OpenDate.Format("2 Jan 2006")))
+  <td>%s</td><td>%s</td><td>%.1f%%</td><td>%s</td><td>%s</td><td>%s</td>
+</tr>`, a.ProductName, familyTag, a.Rate*100, fmtMoney(a.Balance), fmtMoney(a.Interest), a.OpenDate.Format("2 Jan 2006")))
 	}
 	s.WriteString(`</tbody></table></div>`)
 
@@ -181,9 +181,9 @@ func (ds *DemoState) BuildCustomerViewHTML(id string, piiAuthorized bool) string
 				dirTag = `<span class="tag is-success is-light">Received</span>`
 			}
 			s.WriteString(fmt.Sprintf(`<tr>
-  <td>%d</td><td>%s</td><td>%s</td><td>£%.2f</td>
+  <td>%d</td><td>%s</td><td>%s</td><td>%s</td>
   <td><span class="tag %s">%s</span></td><td>%s</td><td>%s</td>
-</tr>`, p.ID, dirTag, counterparty, p.Amount, p.Status.BulmaTag(), p.Status, p.Reference, p.CreatedAt.Format("15:04:05")))
+</tr>`, p.ID, dirTag, counterparty, fmtMoney(p.Amount), p.Status.BulmaTag(), p.Status, p.Reference, p.CreatedAt.Format("15:04:05")))
 		}
 		s.WriteString(`</tbody></table></div>`)
 	}

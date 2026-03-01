@@ -160,6 +160,21 @@ func (ds *DemoState) IsRunning() bool {
 	return ds.running
 }
 
+// AddCustomers generates n new customers immediately, respecting MaxCustomers.
+func (ds *DemoState) AddCustomers(n int) int {
+	ds.mu.Lock()
+	defer ds.mu.Unlock()
+	added := 0
+	for i := 0; i < n && len(ds.customers) < ds.settings.MaxCustomers; i++ {
+		cust, name, ni := generateCustomer(ds.rng, ds.nextCustSeq, ds.products, ds.currentDay)
+		ds.nextCustSeq++
+		_ = ds.piiStore.Store(cust.ID, name, ni)
+		ds.customers = append(ds.customers, cust)
+		added++
+	}
+	return added
+}
+
 func (ds *DemoState) Reset() {
 	ds.mu.Lock()
 	defer ds.mu.Unlock()
@@ -260,7 +275,7 @@ func (ds *DemoState) buildSVG() string {
 	s.WriteString(`<text x="20" y="33" font-size="22" font-weight="bold" fill="#fff">Model Bank</text>`)
 	dateStr := day.Format("2 Jan 2006")
 	s.WriteString(fmt.Sprintf(`<text x="680" y="20" text-anchor="end" font-size="14" fill="#fff">Day %d — %s</text>`, dayCount, dateStr))
-	s.WriteString(fmt.Sprintf(`<text x="680" y="35" text-anchor="end" font-size="11" fill="rgba(255,255,255,0.8)">Customers: %d | Interest: £%.2f</text>`, customerCount, totalInterest))
+	s.WriteString(fmt.Sprintf(`<text x="680" y="35" text-anchor="end" font-size="11" fill="rgba(255,255,255,0.8)">Customers: %d | Interest: %s</text>`, customerCount, fmtMoney(totalInterest)))
 
 	// Family bars
 	families := []struct {
@@ -286,7 +301,7 @@ func (ds *DemoState) buildSVG() string {
 			barW = barMaxW
 		}
 		s.WriteString(fmt.Sprintf(`<rect x="%d" y="%.0f" width="%.1f" height="%d" rx="4" fill="%s" opacity="0.85"/>`, barX, y, barW, barH, f.Color))
-		s.WriteString(fmt.Sprintf(`<text x="%.0f" y="%.0f" font-size="14" fill="#363636" font-weight="bold">£%.2f</text>`, float64(barX)+barMaxW+10, y+20, f.Balance))
+		s.WriteString(fmt.Sprintf(`<text x="%.0f" y="%.0f" font-size="14" fill="#363636" font-weight="bold">%s</text>`, float64(barX)+barMaxW+10, y+20, fmtMoney(f.Balance)))
 	}
 
 	// Divider
@@ -303,7 +318,7 @@ func (ds *DemoState) buildSVG() string {
 		}
 		custName := piiStore.RetrieveName(t.CustomerID)
 		s.WriteString(fmt.Sprintf(`<circle cx="28" cy="%.0f" r="4" fill="%s"/>`, y-4, color))
-		s.WriteString(fmt.Sprintf(`<text x="40" y="%.0f" font-size="12" fill="#363636">%s — %s: £%.2f</text>`, y, custName, t.Product, t.Balance))
+		s.WriteString(fmt.Sprintf(`<text x="40" y="%.0f" font-size="12" fill="#363636">%s — %s: %s</text>`, y, custName, t.Product, fmtMoney(t.Balance)))
 	}
 
 	s.WriteString(`</svg>`)
