@@ -6,7 +6,10 @@
 
  - Adding benchmarks## [0.3.8] - 2026-03-02
 
- - Release prep
+ - Release prep## [0.3.10] - 2026-03-02
+
+ - Starting to get form
+
 ## [0.3.9] - 2026-03-02
 
  - Adding HTMX to  be more dynamic
