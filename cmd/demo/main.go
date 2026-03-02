@@ -55,35 +55,146 @@ func getSessionID(w http.ResponseWriter, r *http.Request) string {
 	return id
 }
 
-func renderDashboard(ds *DemoState) {
-	lofigui.HTML(ds.buildSVG())
+// --- Dashboard section renderers ---
 
-	running := ds.IsRunning()
-
-	statusTag := `<span class="tag is-light">Stopped</span>`
-	if running {
-		statusTag = `<span class="tag is-success">Running</span>`
+func renderDashSummary(d DashData, polling bool) string {
+	var s strings.Builder
+	s.WriteString(`<div id="dash-summary"`)
+	if polling {
+		s.WriteString(` hx-get="/dashboard/update" hx-trigger="every 1s" hx-swap="outerHTML"`)
 	}
+	s.WriteString(`>`)
 
-	lofigui.HTML(fmt.Sprintf(`<div class="field is-grouped is-grouped-multiline mb-4">
-  <div class="control">%s</div>
-</div>`, statusTag))
+	dateStr := d.Day.Format("2 Jan 2006")
+	nimStr := fmt.Sprintf("%.0f bps", d.NIMBps)
+
+	s.WriteString(`<nav class="level mb-4">`)
+	s.WriteString(fmt.Sprintf(`<div class="level-item has-text-centered"><div><p class="heading">Day</p><p class="title is-5">%d &mdash; %s</p></div></div>`, d.DayCount, dateStr))
+	s.WriteString(fmt.Sprintf(`<div class="level-item has-text-centered"><div><p class="heading">Customers</p><p class="title is-5">%d</p></div></div>`, d.CustomerCount))
+	s.WriteString(fmt.Sprintf(`<div class="level-item has-text-centered"><div><p class="heading">NIM</p><p class="title is-5">%s</p></div></div>`, nimStr))
+	if d.AddingCust {
+		s.WriteString(fmt.Sprintf(`<div class="level-item has-text-centered"><div><p class="heading">Adding</p><p class="title is-6">%d / %d</p></div></div>`, d.AddingProgress, d.AddingTarget))
+	}
+	s.WriteString(`</nav>`)
+	s.WriteString(`</div>`)
+	return s.String()
+}
+
+func renderDashBalances(d DashData, oob bool) string {
+	var s strings.Builder
+	s.WriteString(`<div id="dash-balances"`)
+	if oob {
+		s.WriteString(` hx-swap-oob="outerHTML"`)
+	}
+	s.WriteString(`>`)
+	s.WriteString(`<div class="columns">`)
+	s.WriteString(fmt.Sprintf(`<div class="column"><div class="box dash-box has-background-success-light"><p class="heading">Savings (deposits)</p><p class="title is-5">%s</p></div></div>`, fmtMoney(d.Savings)))
+	s.WriteString(fmt.Sprintf(`<div class="column"><div class="box dash-box has-background-info-light"><p class="heading">Lending (loans)</p><p class="title is-5">%s</p></div></div>`, fmtMoney(d.Lending)))
+	reserveClass := "has-background-warning-light"
+	if d.Cash < d.RequiredReserves {
+		reserveClass = "has-background-danger-light"
+	}
+	s.WriteString(fmt.Sprintf(`<div class="column"><div class="box dash-box %s"><p class="heading">BoE Cash Reserve</p><p class="title is-5">%s</p><p class="subtitle is-7 mb-0">Required: %s (%.0f%%) | BoE: %.2f%%</p></div></div>`,
+		reserveClass, fmtMoney(d.Cash), fmtMoney(d.RequiredReserves), d.CapitalReserveRatio*100, d.BoeRate*100))
+	s.WriteString(`</div></div>`)
+	return s.String()
+}
+
+func renderDashControls(d DashData, oob bool) string {
+	var s strings.Builder
+	s.WriteString(`<div id="dash-controls"`)
+	if oob {
+		s.WriteString(` hx-swap-oob="outerHTML"`)
+	}
+	s.WriteString(`>`)
 
 	var startStopBtn string
-	if running {
+	if d.Running {
 		startStopBtn = `<form action="/stop" method="post" style="display:inline"><button class="button is-danger" type="submit">Stop</button></form>`
 	} else {
 		startStopBtn = `<form action="/start" method="post" style="display:inline"><button class="button is-success" type="submit">Run</button></form>`
 	}
 
-	lofigui.HTML(fmt.Sprintf(`<div class="buttons">%s
+	s.WriteString(fmt.Sprintf(`<div class="buttons">%s
   <form action="/advance" method="post" style="display:inline"><button class="button is-info" type="submit">Advance Day</button></form>
+  <form action="/reset" method="post" style="display:inline"><button class="button is-light" type="submit">Reset</button></form>
+</div>`, startStopBtn))
+	s.WriteString(`</div>`)
+	return s.String()
+}
+
+// renderDashAddCustomers is static (never OOB-swapped) so the input field isn't reset during polling.
+func renderDashAddCustomers() string {
+	return `<div id="dash-add-customers" class="mb-4">
   <form action="/add-customers" method="post" style="display:inline">
     <div class="field has-addons"><div class="control"><input class="input is-small" type="number" name="n" value="100" min="1" max="1000000" style="width:7em"></div>
     <div class="control"><button class="button is-small is-primary" type="submit">Add Customers</button></div></div>
   </form>
-  <form action="/reset" method="post" style="display:inline"><button class="button is-light" type="submit">Reset</button></form>
-</div>`, startStopBtn))
+</div>`
+}
+
+func renderDashNIMChart(d DashData, oob bool) string {
+	var s strings.Builder
+	s.WriteString(`<div id="dash-nim-chart"`)
+	if oob {
+		s.WriteString(` hx-swap-oob="outerHTML"`)
+	}
+	s.WriteString(`>`)
+	s.WriteString(`<h3 class="title is-6 has-text-grey mt-4 mb-2">NIM History (bps)</h3>`)
+	s.WriteString(buildNIMChart(d.NIMHistory))
+	s.WriteString(`</div>`)
+	return s.String()
+}
+
+func renderDashBalanceChart(d DashData, oob bool) string {
+	var s strings.Builder
+	s.WriteString(`<div id="dash-balance-chart"`)
+	if oob {
+		s.WriteString(` hx-swap-oob="outerHTML"`)
+	}
+	s.WriteString(`>`)
+	s.WriteString(`<h3 class="title is-6 has-text-grey mt-4 mb-2">Balance History</h3>`)
+	s.WriteString(buildBalanceChartSVG(d.BalanceHistory))
+	s.WriteString(`</div>`)
+	return s.String()
+}
+
+func renderDashCustomerChart(d DashData, oob bool) string {
+	var s strings.Builder
+	s.WriteString(`<div id="dash-customer-chart"`)
+	if oob {
+		s.WriteString(` hx-swap-oob="outerHTML"`)
+	}
+	s.WriteString(`>`)
+	s.WriteString(`<h3 class="title is-6 has-text-grey mt-4 mb-2">Customer Count</h3>`)
+	s.WriteString(buildCustomerChartSVG(d.CustomerHistory))
+	s.WriteString(`</div>`)
+	return s.String()
+}
+
+func renderDashboardFull(d DashData, polling bool) string {
+	var s strings.Builder
+	s.WriteString(renderDashSummary(d, polling))
+	s.WriteString(renderDashBalances(d, false))
+	s.WriteString(renderDashControls(d, false))
+	s.WriteString(renderDashAddCustomers())
+	s.WriteString(renderDashNIMChart(d, false))
+	s.WriteString(renderDashBalanceChart(d, false))
+	s.WriteString(renderDashCustomerChart(d, false))
+	return s.String()
+}
+
+func renderDashboardUpdate(d DashData) string {
+	var s strings.Builder
+	// Primary target: summary (with polling attribute)
+	s.WriteString(renderDashSummary(d, true))
+	// OOB swaps for all other sections
+	s.WriteString(renderDashBalances(d, true))
+	s.WriteString(renderDashControls(d, true))
+	s.WriteString(renderDashNIMChart(d, true))
+	s.WriteString(renderDashBalanceChart(d, true))
+	s.WriteString(renderDashCustomerChart(d, true))
+	return s.String()
 }
 
 func renderPaymentsPage(ds *DemoState, piiAuth bool, page int) {
@@ -148,11 +259,29 @@ func main() {
 			http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 			return
 		}
-		content := renderAndCapture(func() { renderDashboard(state) })
+		d := state.DashboardData()
+		content := renderDashboardFull(d, d.Running)
 		if serveHTMX(w, r, content) {
 			return
 		}
-		fullPage(w, r, content)
+		// Dashboard self-manages polling via sections, so set "Stopped" to prevent #results polling
+		ctrl.RenderTemplate(w, pongo2.Context{
+			"request":         r,
+			"version":         app.Version,
+			"controller_name": ctrl.Name,
+			"results":         content,
+			"polling":         "Stopped",
+		})
+	})
+
+	http.HandleFunc("/dashboard/update", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != "GET" {
+			http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+			return
+		}
+		d := state.DashboardData()
+		w.Header().Set("Content-Type", "text/html; charset=utf-8")
+		fmt.Fprint(w, renderDashboardUpdate(d))
 	})
 
 	http.HandleFunc("/start", func(w http.ResponseWriter, r *http.Request) {

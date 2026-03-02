@@ -7,14 +7,16 @@ import (
 
 // Settings holds configurable parameters for the simulation.
 type Settings struct {
-	MaxCustomers int
-	BoEBaseRate  float64 // annual rate as decimal, e.g. 0.0525 = 5.25%
+	MaxCustomers        int
+	BoEBaseRate         float64 // annual rate as decimal, e.g. 0.0525 = 5.25%
+	CapitalReserveRatio float64 // fraction of deposits that must be held as reserves, e.g. 0.15 = 15%
 }
 
 func DefaultSettings() Settings {
 	return Settings{
-		MaxCustomers: 1_000_000,
-		BoEBaseRate:  0.0525,
+		MaxCustomers:        1_000_000,
+		BoEBaseRate:         0.0525,
+		CapitalReserveRatio: 0.15,
 	}
 }
 
@@ -49,6 +51,15 @@ func (ds *DemoState) BuildSettingsHTML() string {
 	s.WriteString(fmt.Sprintf(`<span class="tag is-medium is-info">%.2f%%</span>`, settings.BoEBaseRate*100))
 	s.WriteString(`</div>`)
 	s.WriteString(`<p class="help">Driven by historical Bank of England data</p>`)
+	s.WriteString(`</div>`)
+
+	// Capital Reserve Ratio (read-only)
+	s.WriteString(`<div class="field">`)
+	s.WriteString(`<label class="label">Capital Reserve Ratio</label>`)
+	s.WriteString(`<div class="control">`)
+	s.WriteString(fmt.Sprintf(`<span class="tag is-medium is-warning">%.0f%%</span>`, settings.CapitalReserveRatio*100))
+	s.WriteString(`</div>`)
+	s.WriteString(`<p class="help">Minimum fraction of deposits held as BoE reserves</p>`)
 	s.WriteString(`</div>`)
 
 	s.WriteString(`<div class="field">`)

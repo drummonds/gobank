@@ -22,10 +22,11 @@ func (ds *DemoState) BuildPnLHTML() string {
 			}
 		}
 	}
+	boeInterestIncome := ds.boeInterestAccum
 	ds.mu.Unlock()
 
 	opCosts := opCostPerDay * float64(dayCount)
-	netInterest := loanInterestIncome - depositInterestExpense
+	netInterest := loanInterestIncome + boeInterestIncome - depositInterestExpense
 	profit := netInterest - opCosts
 
 	var s strings.Builder
@@ -36,6 +37,7 @@ func (ds *DemoState) BuildPnLHTML() string {
 	s.WriteString(`<table class="table is-fullwidth">`)
 	s.WriteString(`<tbody>`)
 	s.WriteString(fmt.Sprintf(`<tr><td><strong>Loan Interest Income</strong></td><td class="has-text-right has-text-success-dark">%s</td></tr>`, fmtMoney(loanInterestIncome)))
+	s.WriteString(fmt.Sprintf(`<tr><td><strong>BoE Interest Income</strong></td><td class="has-text-right has-text-success-dark">%s</td></tr>`, fmtMoney(boeInterestIncome)))
 	s.WriteString(fmt.Sprintf(`<tr><td><strong>Deposit Interest Expense</strong></td><td class="has-text-right has-text-danger">(%s)</td></tr>`, fmtMoney(depositInterestExpense)))
 	s.WriteString(fmt.Sprintf(`<tr><td class="has-text-weight-semibold">Net Interest Margin</td><td class="has-text-right has-text-weight-semibold">%s</td></tr>`, fmtMoney(netInterest)))
 	s.WriteString(`<tr><td colspan="2"><hr class="my-1"></td></tr>`)
@@ -73,10 +75,11 @@ func (ds *DemoState) BuildBalanceSheetHTML() string {
 			}
 		}
 	}
+	boeInterest := ds.boeInterestAccum
 	ds.mu.Unlock()
 
 	opCosts := opCostPerDay * float64(dayCount)
-	retainedEarnings := (loanInterest - depositInterest) - opCosts
+	retainedEarnings := (loanInterest + boeInterest - depositInterest) - opCosts
 	cash := totalDeposits - totalLoans + retainedEarnings
 	totalAssets := totalLoans + cash
 	totalLiabilities := totalDeposits

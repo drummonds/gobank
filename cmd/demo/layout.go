@@ -73,6 +73,7 @@ const LayoutModelBank = `<!DOCTYPE html>
       >{{ results | safe }}</div>
     </div>
   </section>
+  <style>.dash-box{min-height:4.5rem}</style>
   <footer class="footer">
     <div class="content has-text-centered">
       <p>{{ version }}</p>
