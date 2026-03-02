@@ -5,6 +5,7 @@ package main
 import (
 	"fmt"
 	"log"
+	"net"
 	"net/http"
 	"strconv"
 	"strings"
@@ -608,7 +609,16 @@ func main() {
 
 	http.HandleFunc("/favicon.ico", lofigui.ServeFavicon)
 
-	addr := ":1347"
-	log.Printf("Starting Model Bank Demo on http://localhost%s", addr)
-	log.Fatal(http.ListenAndServe(addr, nil))
+	// Try ports starting from 1347, auto-increment if in use
+	for port := 1347; port < 1357; port++ {
+		addr := fmt.Sprintf(":%d", port)
+		ln, err := net.Listen("tcp", addr)
+		if err != nil {
+			log.Printf("Port %d in use, trying next...", port)
+			continue
+		}
+		log.Printf("Starting Model Bank Demo on http://localhost%s", addr)
+		log.Fatal(http.Serve(ln, nil))
+	}
+	log.Fatal("Could not find an available port in range 1347-1356")
 }

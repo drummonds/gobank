@@ -9,6 +9,8 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/go-analyze/charts"
 )
 
 // RatePoint records a BoE base rate at a point in simulated time.
@@ -859,85 +861,50 @@ func buildBalanceChartSVG(history []BalancePoint) string {
 	return s.String()
 }
 
-// buildCustomerChartSVG renders a standalone SVG customer count chart (for HTML dashboard sections).
+// buildCustomerChartSVG renders a standalone SVG customer count chart using go-analyze/charts.
 func buildCustomerChartSVG(history []CustomerPoint) string {
 	if len(history) == 0 {
 		return ""
 	}
-	const (
-		padL   = 80
-		padR   = 20
-		width  = 660
-		chartW = width - padL - padR
-		chartH = 140
-		padT   = 10
-	)
 
-	minVal := float64(history[0].Count)
-	maxVal := float64(history[0].Count)
-	for _, cp := range history {
-		v := float64(cp.Count)
-		if v < minVal {
-			minVal = v
-		}
-		if v > maxVal {
-			maxVal = v
-		}
-	}
-	valRange := maxVal - minVal
-	if valRange < 1 {
-		valRange = 2
-		minVal -= 1
-		maxVal += 1
-	} else {
-		minVal -= valRange * 0.1
-		maxVal += valRange * 0.1
-		valRange = maxVal - minVal
-	}
-	if minVal < 0 {
-		minVal = 0
-		valRange = maxVal - minVal
+	// Build data and labels
+	values := make([]float64, len(history))
+	labels := make([]string, len(history))
+	for i, cp := range history {
+		values[i] = float64(cp.Count)
+		labels[i] = cp.Date.Format("Jan 06")
 	}
 
-	var s strings.Builder
-	totalH := padT + chartH + 10
-	s.WriteString(fmt.Sprintf(`<svg viewBox="0 0 %d %d" xmlns="http://www.w3.org/2000/svg" style="width:100%%;height:auto">`, width, totalH))
-	s.WriteString(`<style>text{font-family:Arial,Helvetica,sans-serif}</style>`)
-
-	// Background
-	s.WriteString(fmt.Sprintf(`<rect x="%d" y="%d" width="%d" height="%d" fill="#fafafa" stroke="#dbdbdb" stroke-width="1"/>`, padL, padT, chartW, chartH))
-
-	// Y-axis labels
-	for i := 0; i <= 4; i++ {
-		val := minVal + valRange*float64(i)/4.0
-		y := float64(padT+chartH) - float64(chartH)*float64(i)/4.0
-		s.WriteString(fmt.Sprintf(`<line x1="%d" y1="%.0f" x2="%d" y2="%.0f" stroke="#ededed" stroke-width="1"/>`, padL, y, padL+chartW, y))
-		s.WriteString(fmt.Sprintf(`<text x="%d" y="%.0f" text-anchor="end" font-size="9" fill="#7a7a7a">%d</text>`, padL-5, y+3, int(val)))
-	}
-
-	// Line
-	if len(history) == 1 {
-		x := float64(padL) + float64(chartW)/2
-		y := float64(padT+chartH) / 2
-		s.WriteString(fmt.Sprintf(`<circle cx="%.0f" cy="%.0f" r="3" fill="#00947e"/>`, x, y))
-	} else {
-		var pts strings.Builder
-		for i, cp := range history {
-			v := float64(cp.Count)
-			x := float64(padL) + float64(chartW)*float64(i)/float64(len(history)-1)
-			y := float64(padT+chartH) - float64(chartH)*(v-minVal)/valRange
-			y = math.Max(float64(padT), math.Min(float64(padT+chartH), y))
-			if i == 0 {
-				pts.WriteString(fmt.Sprintf("%.1f,%.1f", x, y))
-			} else {
-				pts.WriteString(fmt.Sprintf(" %.1f,%.1f", x, y))
+	// Thin labels to max ~6
+	if len(labels) > 6 {
+		step := len(labels) / 6
+		for i := range labels {
+			if i%step != 0 && i != len(labels)-1 {
+				labels[i] = ""
 			}
 		}
-		s.WriteString(fmt.Sprintf(`<polyline points="%s" fill="none" stroke="#00947e" stroke-width="2"/>`, pts.String()))
 	}
 
-	s.WriteString(`</svg>`)
-	return s.String()
+	p, err := charts.LineRender(
+		[][]float64{values},
+		charts.SVGOutputOptionFunc(),
+		charts.DimensionsOptionFunc(660, 180),
+		charts.XAxisLabelsOptionFunc(labels),
+		charts.LegendOptionFunc(charts.LegendOption{Show: charts.Ptr(false)}),
+		charts.PaddingOptionFunc(charts.Box{Left: 60, Right: 10, Top: 10, Bottom: 10, IsSet: true}),
+		func(opt *charts.ChartOption) {
+			opt.Symbol = charts.SymbolNone
+			opt.LineStrokeWidth = 2
+		},
+	)
+	if err != nil {
+		return fmt.Sprintf(`<p class="has-text-danger">Chart error: %v</p>`, err)
+	}
+	svgBytes, err := p.Bytes()
+	if err != nil {
+		return fmt.Sprintf(`<p class="has-text-danger">Chart render error: %v</p>`, err)
+	}
+	return string(svgBytes)
 }
 
 // buildCustomerChart renders a single-line chart of customer count as an SVG <g>.
