@@ -24,7 +24,17 @@ tasks:
       - go test ./...
 
   bench:
-    desc: Run benchmarks
+    desc: Run benchmarks (in-memory SQLite)
+    cmds:
+      - go test -bench='^BenchmarkSimulation/' -benchmem -count=1 -timeout=600s ./...
+
+  bench:file:
+    desc: Run benchmarks with file-backed SQLite
+    cmds:
+      - go test -bench=BenchmarkSimulationFile -benchmem -count=1 -timeout=600s ./...
+
+  bench:all:
+    desc: Run all benchmarks (in-memory + file-backed)
     cmds:
       - go test -bench=. -benchmem -count=1 -timeout=600s ./...
 
