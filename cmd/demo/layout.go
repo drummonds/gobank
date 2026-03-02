@@ -41,12 +41,26 @@ const LayoutModelBank = `<!DOCTYPE html>
         </div>
         <a class="navbar-item" href="/customers">Customers</a>
         <a class="navbar-item" href="/payments">Payments</a>
-        <a class="navbar-item" href="/settings">Settings</a>
+        <div class="navbar-item has-dropdown is-hoverable">
+          <a class="navbar-link">Treasury</a>
+          <div class="navbar-dropdown">
+            <a class="navbar-item" href="/treasury/cash">Cash Position</a>
+            <a class="navbar-item" href="/treasury/capital">Capital Requirements</a>
+            <a class="navbar-item" href="/treasury/gilts">Gilt Purchases</a>
+          </div>
+        </div>
         <div class="navbar-item has-dropdown is-hoverable">
           <a class="navbar-link">Reports</a>
           <div class="navbar-dropdown">
             <a class="navbar-item" href="/reports/bbsi">BBSI</a>
             <a class="navbar-item" href="/reports/customer-view">Customer View</a>
+          </div>
+        </div>
+        <div class="navbar-item has-dropdown is-hoverable">
+          <a class="navbar-link">Internal</a>
+          <div class="navbar-dropdown">
+            <a class="navbar-item" href="/settings">Settings</a>
+            <a class="navbar-item" href="/internal/tables">DB Tables</a>
           </div>
         </div>
         <div class="navbar-item has-dropdown is-hoverable">

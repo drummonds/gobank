@@ -577,6 +577,94 @@ func main() {
 		fullPage(w, r, content)
 	})
 
+	// --- Treasury ---
+
+	http.HandleFunc("/treasury/cash", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != "GET" {
+			http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+			return
+		}
+		content := state.BuildCashPositionHTML()
+		if serveHTMX(w, r, content) {
+			return
+		}
+		fullPage(w, r, content)
+	})
+
+	http.HandleFunc("/treasury/capital", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != "GET" {
+			http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+			return
+		}
+		content := state.BuildCapitalHTML()
+		if serveHTMX(w, r, content) {
+			return
+		}
+		fullPage(w, r, content)
+	})
+
+	http.HandleFunc("/treasury/gilts", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != "GET" {
+			http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+			return
+		}
+		content := state.BuildGiltsHTML()
+		if serveHTMX(w, r, content) {
+			return
+		}
+		fullPage(w, r, content)
+	})
+
+	http.HandleFunc("/treasury/gilts/buy", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != "POST" {
+			http.Redirect(w, r, "/treasury/gilts", http.StatusSeeOther)
+			return
+		}
+		r.ParseForm()
+		tenor := r.FormValue("tenor")
+		faceValue := 0.0
+		fmt.Sscanf(r.FormValue("face_value"), "%f", &faceValue)
+		if tenor != "" && faceValue >= 1000 {
+			state.BuyGilt(tenor, faceValue)
+		}
+		http.Redirect(w, r, "/treasury/gilts", http.StatusSeeOther)
+	})
+
+	// --- Internal ---
+
+	http.HandleFunc("/internal/tables", func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/internal/tables" {
+			http.NotFound(w, r)
+			return
+		}
+		if r.Method != "GET" {
+			http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+			return
+		}
+		content := state.BuildTablesHTML()
+		if serveHTMX(w, r, content) {
+			return
+		}
+		fullPage(w, r, content)
+	})
+
+	http.HandleFunc("/internal/tables/", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != "GET" {
+			http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+			return
+		}
+		name := strings.TrimPrefix(r.URL.Path, "/internal/tables/")
+		if name == "" {
+			http.Redirect(w, r, "/internal/tables", http.StatusSeeOther)
+			return
+		}
+		content := state.BuildTableDetailHTML(name)
+		if serveHTMX(w, r, content) {
+			return
+		}
+		fullPage(w, r, content)
+	})
+
 	// --- About ---
 
 	http.HandleFunc("/about", func(w http.ResponseWriter, r *http.Request) {

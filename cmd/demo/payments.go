@@ -7,6 +7,41 @@ import (
 	"time"
 )
 
+// PaymentType distinguishes how money enters/exits the system.
+type PaymentType int
+
+const (
+	PayTransfer         PaymentType = iota // customer-to-customer
+	PayDeposit                             // external money in (to savings)
+	PayLoanDisbursement                    // bank lends to customer (creates loan)
+)
+
+func (t PaymentType) String() string {
+	switch t {
+	case PayTransfer:
+		return "Transfer"
+	case PayDeposit:
+		return "Deposit"
+	case PayLoanDisbursement:
+		return "Loan"
+	default:
+		return "Unknown"
+	}
+}
+
+func (t PaymentType) BulmaTag() string {
+	switch t {
+	case PayTransfer:
+		return "is-link is-light"
+	case PayDeposit:
+		return "is-success is-light"
+	case PayLoanDisbursement:
+		return "is-info is-light"
+	default:
+		return "is-light"
+	}
+}
+
 // PaymentStatus represents the lifecycle of a payment.
 type PaymentStatus int
 
@@ -45,6 +80,7 @@ func (s PaymentStatus) BulmaTag() string {
 // Payment represents a single payment transaction.
 type Payment struct {
 	ID        int
+	Type      PaymentType
 	FromID    string
 	ToID      string
 	Amount    float64
@@ -110,6 +146,7 @@ func (ds *DemoState) SendPayment() {
 
 	p := Payment{
 		ID:        ds.nextPaymentID,
+		Type:      PayTransfer,
 		FromID:    fromID,
 		ToID:      toID,
 		Amount:    amount,
@@ -140,6 +177,50 @@ func (ds *DemoState) SendPayment() {
 		}
 		ds.mu.Unlock()
 	}()
+}
+
+// makePayment creates and records a payment, settling it immediately.
+// Must be called with ds.mu held. Directly modifies the target account balance.
+func (ds *DemoState) makePayment(ptype PaymentType, fromID, toID string, amount float64) {
+	ref := fmt.Sprintf("PAY-%06d", ds.nextPaymentID)
+	p := Payment{
+		ID:        ds.nextPaymentID,
+		Type:      ptype,
+		FromID:    fromID,
+		ToID:      toID,
+		Amount:    amount,
+		Status:    PaymentCompleted,
+		Reference: ref,
+		CreatedAt: time.Now(),
+		SettledAt: time.Now(),
+	}
+	ds.nextPaymentID++
+	ds.payments = append(ds.payments, p)
+}
+
+// fundCustomer creates deposit and loan disbursement payments for a newly
+// created customer's accounts. Must be called with ds.mu held.
+func (ds *DemoState) fundCustomer(custIdx int) {
+	cust := &ds.customers[custIdx]
+	for i := range cust.Accounts {
+		a := &cust.Accounts[i]
+		if a.Family == FamilySavings {
+			amount := float64(500 + ds.rng.Intn(9500))
+			a.Balance = amount
+			ds.makePayment(PayDeposit, "EXTERNAL", cust.ID, amount)
+		} else {
+			headroom := ds.lendingHeadroom()
+			if headroom <= 0 {
+				continue
+			}
+			amount := float64(1000 + ds.rng.Intn(49000))
+			if amount > headroom {
+				amount = headroom
+			}
+			a.Balance = amount
+			ds.makePayment(PayLoanDisbursement, "BANK", cust.ID, amount)
+		}
+	}
 }
 
 // StartPayments begins auto-generating payments.
@@ -252,22 +333,26 @@ func (ds *DemoState) BuildPaymentsHTML(piiAuth bool, page int) string {
 	} else {
 		s.WriteString(`<div class="table-container"><table class="table is-fullwidth is-striped is-hoverable">
 <thead><tr>
-  <th>ID</th><th>From</th><th>To</th><th>Amount</th><th>Reference</th><th>Status</th><th>Time</th><th></th>
+  <th>ID</th><th>Type</th><th>From</th><th>To</th><th>Amount</th><th>Reference</th><th>Status</th><th>Time</th><th></th>
 </tr></thead><tbody>`)
 
 		for _, p := range pagePayments {
 			from := p.FromID
 			to := p.ToID
 			if piiAuth {
-				from = fmt.Sprintf("%s (%s)", p.FromID, piiStore.RetrieveName(p.FromID))
-				to = fmt.Sprintf("%s (%s)", p.ToID, piiStore.RetrieveName(p.ToID))
+				if name := piiStore.RetrieveName(p.FromID); name != "" {
+					from = fmt.Sprintf("%s (%s)", p.FromID, name)
+				}
+				if name := piiStore.RetrieveName(p.ToID); name != "" {
+					to = fmt.Sprintf("%s (%s)", p.ToID, name)
+				}
 			}
 			s.WriteString(fmt.Sprintf(`<tr>
-  <td>%d</td><td>%s</td><td>%s</td><td>%s</td><td><code>%s</code></td>
+  <td>%d</td><td><span class="tag %s">%s</span></td><td>%s</td><td>%s</td><td>%s</td><td><code>%s</code></td>
   <td><span class="tag %s">%s</span></td>
   <td>%s</td>
   <td><a href="/payments/%d" class="button is-small is-link is-light">Detail</a></td>
-</tr>`, p.ID, from, to, fmtMoney(p.Amount), p.Reference, p.Status.BulmaTag(), p.Status, p.CreatedAt.Format("15:04:05"), p.ID))
+</tr>`, p.ID, p.Type.BulmaTag(), p.Type, from, to, fmtMoney(p.Amount), p.Reference, p.Status.BulmaTag(), p.Status, p.CreatedAt.Format("15:04:05"), p.ID))
 		}
 
 		s.WriteString(`</tbody></table></div>`)
@@ -316,8 +401,12 @@ func (ds *DemoState) BuildPaymentDetailHTML(id int, piiAuth bool) string {
 	from := p.FromID
 	to := p.ToID
 	if piiAuth {
-		from = fmt.Sprintf("%s (%s)", p.FromID, piiStore.RetrieveName(p.FromID))
-		to = fmt.Sprintf("%s (%s)", p.ToID, piiStore.RetrieveName(p.ToID))
+		if name := piiStore.RetrieveName(p.FromID); name != "" {
+			from = fmt.Sprintf("%s (%s)", p.FromID, name)
+		}
+		if name := piiStore.RetrieveName(p.ToID); name != "" {
+			to = fmt.Sprintf("%s (%s)", p.ToID, name)
+		}
 	}
 
 	var s strings.Builder
@@ -326,6 +415,7 @@ func (ds *DemoState) BuildPaymentDetailHTML(id int, piiAuth bool) string {
 	// Details box
 	s.WriteString(`<div class="box">`)
 	s.WriteString(`<div class="columns">`)
+	s.WriteString(fmt.Sprintf(`<div class="column"><strong>Type:</strong> <span class="tag %s">%s</span></div>`, p.Type.BulmaTag(), p.Type))
 	s.WriteString(fmt.Sprintf(`<div class="column"><strong>From:</strong> %s</div>`, from))
 	s.WriteString(fmt.Sprintf(`<div class="column"><strong>To:</strong> %s</div>`, to))
 	s.WriteString(fmt.Sprintf(`<div class="column"><strong>Amount:</strong> %s</div>`, fmtMoney(p.Amount)))

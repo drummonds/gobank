@@ -3,17 +3,30 @@ module github.com/drummonds/gobank/cmd/demo
 go 1.25.3
 
 require (
+	github.com/drummonds/go-postgres v0.0.0-00010101000000-000000000000
 	github.com/drummonds/lofigui v0.17.5
 	github.com/flosch/pongo2/v6 v6.0.0
+	github.com/go-analyze/charts v0.5.25
 )
 
 require (
 	github.com/dustin/go-humanize v1.0.1 // indirect
 	github.com/go-analyze/bulk v0.1.3 // indirect
-	github.com/go-analyze/charts v0.5.25 // indirect
 	github.com/golang/freetype v0.0.0-20170609003504-e2365dfdc4a0 // indirect
+	github.com/google/uuid v1.6.0 // indirect
+	github.com/mattn/go-isatty v0.0.20 // indirect
+	github.com/ncruces/go-strftime v1.0.0 // indirect
+	github.com/remyoudompheng/bigfft v0.0.0-20230129092748-24d4a6f8daec // indirect
 	github.com/russross/blackfriday/v2 v2.1.0 // indirect
+	golang.org/x/exp v0.0.0-20251023183803-a4bb9ffd2546 // indirect
 	golang.org/x/image v0.24.0 // indirect
+	golang.org/x/sys v0.37.0 // indirect
+	modernc.org/libc v1.67.6 // indirect
+	modernc.org/mathutil v1.7.1 // indirect
+	modernc.org/memory v1.11.0 // indirect
+	modernc.org/sqlite v1.44.3 // indirect
 )
 
 replace github.com/drummonds/lofigui => ../../../../minor/lofigui
+
+replace github.com/drummonds/go-postgres => ../../../../nibble/go-postgres

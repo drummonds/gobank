@@ -2,7 +2,6 @@ package main
 
 import (
 	"fmt"
-	"math/rand"
 	"strings"
 	"time"
 )
@@ -22,59 +21,6 @@ type CustomerAccount struct {
 	Rate        float64
 	Interest    float64 // accrued interest
 	OpenDate    time.Time
-}
-
-// Seed customer names (reduced from 10 to 3).
-var seedCustomers = []struct {
-	Name string
-	NI   string
-}{
-	{"Alice", "AB123456C"},
-	{"Bob", "CD234567C"},
-	{"Charlie", "EF345678C"},
-}
-
-func initCustomers(rng *rand.Rand, products []Product, startDate time.Time, piiStore *PIIStore) []CustomerRecord {
-	customers := make([]CustomerRecord, len(seedCustomers))
-
-	for i, seed := range seedCustomers {
-		id := strings.ToLower(seed.Name)
-
-		// Store PII encrypted
-		_ = piiStore.Store(id, seed.Name, seed.NI)
-
-		// Each customer gets 1-3 accounts
-		numAccounts := 1 + rng.Intn(3)
-		perm := rng.Perm(len(products))
-		if numAccounts > len(products) {
-			numAccounts = len(products)
-		}
-
-		accounts := make([]CustomerAccount, numAccounts)
-		for j := 0; j < numAccounts; j++ {
-			p := products[perm[j]]
-			balance := 0.0
-			if p.Family == FamilySavings {
-				balance = float64(500 + rng.Intn(9500))
-			} else {
-				balance = float64(1000 + rng.Intn(49000))
-			}
-			accounts[j] = CustomerAccount{
-				ProductID:   p.ID,
-				ProductName: p.Name,
-				Family:      p.Family,
-				Balance:     balance,
-				Rate:        p.Rate,
-				OpenDate:    startDate.AddDate(0, 0, -rng.Intn(365)),
-			}
-		}
-
-		customers[i] = CustomerRecord{
-			ID:       id,
-			Accounts: accounts,
-		}
-	}
-	return customers
 }
 
 const customersPerPage = 50

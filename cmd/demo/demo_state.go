@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"database/sql"
 	"fmt"
 	"math"
 	"math/rand"
@@ -66,6 +67,7 @@ type DemoState struct {
 	addingCustTarget   int
 	nimHistory         []NIMPoint
 	boeInterestAccum   float64
+	db                 *sql.DB
 }
 
 func NewDemoState() *DemoState {
@@ -83,10 +85,10 @@ func NewDemoState() *DemoState {
 		rng:           rng,
 		piiStore:      piiStore,
 		settings:      settings,
-		nextCustSeq:   len(seedCustomers) + 1,
+		nextCustSeq:   1,
 		boeHistory:    []RatePoint{{Date: startDay, Rate: settings.BoEBaseRate}},
 	}
-	ds.customers = initCustomers(ds.rng, ds.products, ds.currentDay, piiStore)
+	ds.initDB()
 	ds.recordHistory()
 	return ds
 }
@@ -145,34 +147,6 @@ func (ds *DemoState) lendingHeadroom() float64 {
 	return maxLoans - loans
 }
 
-// constrainLending strips or reduces lending accounts on a new customer
-// to stay within the capital reserve requirement. Must be called with ds.mu held.
-func (ds *DemoState) constrainLending(cust *CustomerRecord) {
-	headroom := ds.lendingHeadroom()
-	if headroom <= 0 {
-		// No room for any lending — remove all lending accounts
-		kept := cust.Accounts[:0]
-		for _, a := range cust.Accounts {
-			if a.Family == FamilySavings {
-				kept = append(kept, a)
-			}
-		}
-		cust.Accounts = kept
-		return
-	}
-	for i := range cust.Accounts {
-		if cust.Accounts[i].Family == FamilyLending {
-			if cust.Accounts[i].Balance > headroom {
-				cust.Accounts[i].Balance = headroom
-			}
-			headroom -= cust.Accounts[i].Balance
-			if headroom <= 0 {
-				headroom = 0
-			}
-		}
-	}
-}
-
 func (ds *DemoState) advanceDay() {
 	// Interest accrual
 	var totalDeposits, totalLoans float64
@@ -223,12 +197,10 @@ func (ds *DemoState) advanceDay() {
 
 		if ds.rng.Float64() < dailyProb {
 			cust, name, ni := generateCustomer(ds.rng, ds.nextCustSeq, ds.products, ds.currentDay)
-			ds.constrainLending(&cust)
 			ds.nextCustSeq++
 			_ = ds.piiStore.Store(cust.ID, name, ni)
-			if len(cust.Accounts) > 0 {
-				ds.customers = append(ds.customers, cust)
-			}
+			ds.customers = append(ds.customers, cust)
+			ds.fundCustomer(len(ds.customers) - 1)
 		}
 	}
 
@@ -326,12 +298,10 @@ func (ds *DemoState) AddCustomersBatch(n int) {
 				return
 			}
 			cust, name, ni := generateCustomer(ds.rng, ds.nextCustSeq, ds.products, ds.currentDay)
-			ds.constrainLending(&cust)
 			ds.nextCustSeq++
 			_ = ds.piiStore.Store(cust.ID, name, ni)
-			if len(cust.Accounts) > 0 {
-				ds.customers = append(ds.customers, cust)
-			}
+			ds.customers = append(ds.customers, cust)
+			ds.fundCustomer(len(ds.customers) - 1)
 			ds.addingCustProgress = i + 1
 			ds.mu.Unlock()
 			runtime.Gosched()
@@ -386,14 +356,15 @@ func (ds *DemoState) Reset() {
 	ds.piiStore.Reset()
 	ds.settings = DefaultSettings()
 	ds.settings.BoEBaseRate = lookupBoERate(ds.currentDay)
-	ds.nextCustSeq = len(seedCustomers) + 1
+	ds.nextCustSeq = 1
+	ds.customers = nil
 	ds.piiAuthorized = false
 	ds.boeHistory = []RatePoint{{Date: ds.currentDay, Rate: ds.settings.BoEBaseRate}}
 	ds.balanceHistory = nil
 	ds.customerHistory = nil
 	ds.nimHistory = nil
 	ds.boeInterestAccum = 0
-	ds.customers = initCustomers(ds.rng, ds.products, ds.currentDay, ds.piiStore)
+	ds.initDB()
 	ds.recordHistory()
 }
 

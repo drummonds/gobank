@@ -42,19 +42,13 @@ func generateCustomer(rng *rand.Rand, seq int, products []Product, openDate time
 	accounts := make([]CustomerAccount, numAccounts)
 	for j := 0; j < numAccounts; j++ {
 		p := products[perm[j]]
-		balance := 0.0
-		if p.Family == FamilySavings {
-			balance = float64(500 + rng.Intn(9500))
-		} else {
-			balance = float64(1000 + rng.Intn(49000))
-		}
 		accounts[j] = CustomerAccount{
 			ProductID:   p.ID,
 			ProductName: p.Name,
 			Family:      p.Family,
-			Balance:     balance,
+			Balance:     0,
 			Rate:        p.Rate,
-			OpenDate:    openDate.AddDate(0, 0, -rng.Intn(30)),
+			OpenDate:    openDate,
 		}
 	}
 

@@ -11,12 +11,14 @@ tasks:
     cmds:
       - go fmt ./...
       - cd cmd/demo && go fmt ./...
+      - cd cmd/chartcompare && go fmt ./...
 
   vet:
     desc: Run Go vet
     cmds:
       - go vet ./...
       - cd cmd/demo && go vet ./...
+      - cd cmd/chartcompare && go vet ./...
 
   test:
     desc: Run tests
@@ -51,6 +53,7 @@ tasks:
     cmds:
       - go mod tidy
       - cd cmd/demo && go mod tidy
+      - cd cmd/chartcompare && go mod tidy
 
   docs:build:
     desc: Render mermaid diagrams to SVG (requires mmdg)
@@ -91,6 +94,12 @@ tasks:
       - cp cmd/demo/templates/index.html docs/demo/
       - cp cmd/demo/templates/app.js docs/demo/
       - rm cmd/demo/main.wasm
+
+  chartcompare:
+    desc: Generate chart renderer comparison page
+    dir: cmd/chartcompare
+    cmds:
+      - go run .
 
   serve:
     desc: Serve docs/ locally for testing WASM build
