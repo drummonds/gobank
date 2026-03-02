@@ -32,7 +32,7 @@ func renderAndCapture(fn func()) string {
 // serveHTMX checks for HTMX request and serves HTML fragment if so.
 // Returns true if served as fragment (caller should return).
 func serveHTMX(w http.ResponseWriter, r *http.Request, content string) bool {
-	if r.Header.Get("HX-Request") == "true" {
+	if r.Header.Get("HX-Request") == "true" && r.Header.Get("HX-Boosted") != "true" {
 		w.Header().Set("Content-Type", "text/html; charset=utf-8")
 		fmt.Fprint(w, content)
 		return true
@@ -86,8 +86,8 @@ func renderDashboard(ds *DemoState) {
 </div>`, startStopBtn))
 }
 
-func renderPaymentsPage(ds *DemoState) {
-	lofigui.HTML(ds.BuildPaymentsHTML())
+func renderPaymentsPage(ds *DemoState, piiAuth bool, page int) {
+	lofigui.HTML(ds.BuildPaymentsHTML(piiAuth, page))
 
 	running := ds.IsPaymentsRunning()
 	var startStopBtn string
@@ -104,7 +104,7 @@ func renderPaymentsPage(ds *DemoState) {
 }
 
 func simStatus(ds *DemoState) string {
-	if ds.IsRunning() || ds.IsPaymentsRunning() {
+	if ds.IsRunning() || ds.IsPaymentsRunning() || ds.IsAddingCustomers() {
 		return "Running"
 	}
 	return "Stopped"
@@ -199,7 +199,7 @@ func main() {
 		r.ParseForm()
 		n, _ := strconv.Atoi(r.FormValue("n"))
 		if n > 0 {
-			state.AddCustomers(n)
+			state.AddCustomersBatch(n)
 		}
 		http.Redirect(w, r, "/", http.StatusSeeOther)
 	})
@@ -263,7 +263,11 @@ func main() {
 			http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 			return
 		}
-		content := renderAndCapture(func() { lofigui.HTML(state.BuildCustomersHTML()) })
+		page, _ := strconv.Atoi(r.URL.Query().Get("page"))
+		if page < 1 {
+			page = 1
+		}
+		content := renderAndCapture(func() { lofigui.HTML(state.BuildCustomersHTML(page)) })
 		if serveHTMX(w, r, content) {
 			return
 		}
@@ -296,7 +300,13 @@ func main() {
 			http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 			return
 		}
-		content := renderAndCapture(func() { renderPaymentsPage(state) })
+		sessID := getSessionID(w, r)
+		piiAuth := authStore.IsAuthorized(sessID)
+		page, _ := strconv.Atoi(r.URL.Query().Get("page"))
+		if page < 1 {
+			page = 1
+		}
+		content := renderAndCapture(func() { renderPaymentsPage(state, piiAuth, page) })
 		if serveHTMX(w, r, content) {
 			return
 		}
@@ -342,7 +352,9 @@ func main() {
 			http.NotFound(w, r)
 			return
 		}
-		content := renderAndCapture(func() { lofigui.HTML(state.BuildPaymentDetailHTML(id)) })
+		sessID := getSessionID(w, r)
+		piiAuth := authStore.IsAuthorized(sessID)
+		content := renderAndCapture(func() { lofigui.HTML(state.BuildPaymentDetailHTML(id, piiAuth)) })
 		if serveHTMX(w, r, content) {
 			return
 		}

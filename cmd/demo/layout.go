@@ -12,7 +12,7 @@ const LayoutModelBank = `<!DOCTYPE html>
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bulma@1.0.4/css/bulma.min.css">
   <script src="https://unpkg.com/htmx.org@2.0.4"></script>
 </head>
-<body>
+<body hx-boost="true">
   <nav class="navbar is-primary" role="navigation" aria-label="main navigation">
     <div class="navbar-brand">
       <a class="navbar-item has-text-weight-bold" href="/">Model Bank</a>

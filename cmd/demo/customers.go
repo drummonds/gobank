@@ -77,22 +77,59 @@ func initCustomers(rng *rand.Rand, products []Product, startDate time.Time, piiS
 	return customers
 }
 
-// BuildCustomersHTML renders the customer list table.
+const customersPerPage = 50
+
+// BuildCustomersHTML renders the customer list table with pagination.
 // Names are looked up from piiStore; NI is not shown on the list page.
-func (ds *DemoState) BuildCustomersHTML() string {
+func (ds *DemoState) BuildCustomersHTML(page int) string {
 	ds.mu.Lock()
 	customers := make([]CustomerRecord, len(ds.customers))
 	copy(customers, ds.customers)
 	piiStore := ds.piiStore
 	ds.mu.Unlock()
 
+	// Compute aggregate totals
+	var aggSavings, aggLending float64
+	for _, c := range customers {
+		for _, a := range c.Accounts {
+			if a.Family == FamilySavings {
+				aggSavings += a.Balance
+			} else {
+				aggLending += a.Balance
+			}
+		}
+	}
+
+	total := len(customers)
+	if page < 1 {
+		page = 1
+	}
+	totalPages := (total + customersPerPage - 1) / customersPerPage
+	if totalPages < 1 {
+		totalPages = 1
+	}
+	if page > totalPages {
+		page = totalPages
+	}
+
+	start := (page - 1) * customersPerPage
+	end := start + customersPerPage
+	if end > total {
+		end = total
+	}
+	pageCustomers := customers[start:end]
+
 	var s strings.Builder
 	s.WriteString(`<h2 class="title is-4">Customers</h2>`)
-	s.WriteString(fmt.Sprintf(`<p class="subtitle is-6 has-text-grey">%d customers</p>`, len(customers)))
+	s.WriteString(fmt.Sprintf(`<div class="field is-grouped is-grouped-multiline mb-4">
+  <div class="control"><span class="tag is-info is-light">%d customers</span></div>
+  <div class="control"><span class="tag is-success is-light">Savings: %s</span></div>
+  <div class="control"><span class="tag is-link is-light">Lending: %s</span></div>
+</div>`, total, fmtMoney(aggSavings), fmtMoney(aggLending)))
 	s.WriteString(`<div class="table-container"><table class="table is-fullwidth is-striped is-hoverable">`)
 	s.WriteString(`<thead><tr><th>Name</th><th>Accounts</th><th>Total Savings</th><th>Total Lending</th><th></th></tr></thead><tbody>`)
 
-	for _, c := range customers {
+	for _, c := range pageCustomers {
 		name := piiStore.RetrieveName(c.ID)
 		savings := 0.0
 		lending := 0.0
@@ -110,6 +147,24 @@ func (ds *DemoState) BuildCustomersHTML() string {
 	}
 
 	s.WriteString(`</tbody></table></div>`)
+
+	// Pagination
+	if totalPages > 1 {
+		s.WriteString(`<nav class="pagination is-small mt-4" role="navigation">`)
+		if page > 1 {
+			s.WriteString(fmt.Sprintf(`<a class="pagination-previous" href="/customers?page=%d">Previous</a>`, page-1))
+		} else {
+			s.WriteString(`<a class="pagination-previous" disabled>Previous</a>`)
+		}
+		if page < totalPages {
+			s.WriteString(fmt.Sprintf(`<a class="pagination-next" href="/customers?page=%d">Next</a>`, page+1))
+		} else {
+			s.WriteString(`<a class="pagination-next" disabled>Next</a>`)
+		}
+		s.WriteString(fmt.Sprintf(`<span class="pagination-list">Page %d of %d</span>`, page, totalPages))
+		s.WriteString(`</nav>`)
+	}
+
 	return s.String()
 }
 

@@ -97,7 +97,8 @@ function renderPage() {
 function updateStatus() {
     const bankRunning = typeof goIsRunning === 'function' && goIsRunning();
     const paymentsRunning = typeof goIsPaymentsRunning === 'function' && goIsPaymentsRunning();
-    const running = bankRunning || paymentsRunning;
+    const addingCustomers = typeof goIsAddingCustomers === 'function' && goIsAddingCustomers();
+    const running = bankRunning || paymentsRunning || addingCustomers;
 
     statusTag.textContent = running ? 'Running' : 'Stopped';
     statusTag.className = running ? 'tag is-warning' : 'tag is-success';
@@ -209,7 +210,8 @@ function showPage(page) {
     // Auto-refresh for running sims
     const bankRunning = typeof goIsRunning === 'function' && goIsRunning();
     const paymentsRunning = typeof goIsPaymentsRunning === 'function' && goIsPaymentsRunning();
-    if ((page === 'dashboard' && bankRunning) || (page === 'payments' && paymentsRunning)) {
+    const addingCustomers = typeof goIsAddingCustomers === 'function' && goIsAddingCustomers();
+    if ((page === 'dashboard' && (bankRunning || addingCustomers)) || (page === 'payments' && paymentsRunning)) {
         renderInterval = setInterval(renderPage, 200);
     }
 }
@@ -278,7 +280,13 @@ navModels.addEventListener('click', function(e) { e.preventDefault(); showPage('
 // Bank controls
 startStopBtn.addEventListener('click', toggleStartStop);
 advanceBtn.addEventListener('click', function() { goAdvanceDay(); renderPage(); });
-addCustBtn.addEventListener('click', function() { goAddCustomers(parseInt(addCustN.value, 10) || 100); renderPage(); });
+addCustBtn.addEventListener('click', function() {
+    goAddCustomers(parseInt(addCustN.value, 10) || 100);
+    renderPage();
+    if (!renderInterval) {
+        renderInterval = setInterval(renderPage, 200);
+    }
+});
 resetBtn.addEventListener('click', function() {
     goReset();
     if (renderInterval) { clearInterval(renderInterval); renderInterval = null; }

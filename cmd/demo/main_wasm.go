@@ -38,7 +38,12 @@ func goAddCustomers(this js.Value, args []js.Value) any {
 	if len(args) >= 1 {
 		n = args[0].Int()
 	}
-	return js.ValueOf(state.AddCustomers(n))
+	state.AddCustomersBatch(n)
+	return nil
+}
+
+func goIsAddingCustomers(this js.Value, args []js.Value) any {
+	return js.ValueOf(state.IsAddingCustomers())
 }
 
 func goReset(this js.Value, args []js.Value) any {
@@ -53,8 +58,15 @@ func goIsRunning(this js.Value, args []js.Value) any {
 // --- Payments functions ---
 
 func goRenderPayments(this js.Value, args []js.Value) any {
+	page := 1
+	if len(args) >= 1 {
+		page = args[0].Int()
+	}
+	state.mu.Lock()
+	piiAuth := state.piiAuthorized
+	state.mu.Unlock()
 	lofigui.Reset()
-	lofigui.HTML(state.BuildPaymentsHTML())
+	lofigui.HTML(state.BuildPaymentsHTML(piiAuth, page))
 	return js.ValueOf(lofigui.Buffer())
 }
 
@@ -127,8 +139,12 @@ func goRenderProducts(this js.Value, args []js.Value) any {
 // --- Customers functions ---
 
 func goRenderCustomers(this js.Value, args []js.Value) any {
+	page := 1
+	if len(args) >= 1 {
+		page = args[0].Int()
+	}
 	lofigui.Reset()
-	lofigui.HTML(state.BuildCustomersHTML())
+	lofigui.HTML(state.BuildCustomersHTML(page))
 	return js.ValueOf(lofigui.Buffer())
 }
 
@@ -152,8 +168,11 @@ func goRenderPaymentDetail(this js.Value, args []js.Value) any {
 	if len(args) > 0 {
 		id = args[0].Int()
 	}
+	state.mu.Lock()
+	piiAuth := state.piiAuthorized
+	state.mu.Unlock()
 	lofigui.Reset()
-	lofigui.HTML(state.BuildPaymentDetailHTML(id))
+	lofigui.HTML(state.BuildPaymentDetailHTML(id, piiAuth))
 	return js.ValueOf(lofigui.Buffer())
 }
 
@@ -229,6 +248,7 @@ func main() {
 	js.Global().Set("goAddCustomers", js.FuncOf(goAddCustomers))
 	js.Global().Set("goReset", js.FuncOf(goReset))
 	js.Global().Set("goIsRunning", js.FuncOf(goIsRunning))
+	js.Global().Set("goIsAddingCustomers", js.FuncOf(goIsAddingCustomers))
 
 	// Payments
 	js.Global().Set("goRenderPayments", js.FuncOf(goRenderPayments))

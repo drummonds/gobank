@@ -54,24 +54,58 @@ type Payment struct {
 	SettledAt time.Time
 }
 
-const maxPayments = 20
-
-// SendPayment creates a random payment using customer IDs.
+// SendPayment creates a random payment between customers, debiting sender's
+// savings account and crediting recipient's savings account.
 func (ds *DemoState) SendPayment() {
 	ds.mu.Lock()
 
-	ids := make([]string, len(ds.customers))
-	for i, c := range ds.customers {
-		ids[i] = c.ID
+	if len(ds.customers) < 2 {
+		ds.mu.Unlock()
+		return
 	}
 
-	fromID := ids[ds.rng.Intn(len(ids))]
-	toID := ids[ds.rng.Intn(len(ids))]
-	for toID == fromID {
-		toID = ids[ds.rng.Intn(len(ids))]
+	fromIdx := ds.rng.Intn(len(ds.customers))
+	toIdx := ds.rng.Intn(len(ds.customers))
+	for toIdx == fromIdx {
+		toIdx = ds.rng.Intn(len(ds.customers))
 	}
+
+	// Find first savings account on each
+	fromAccIdx := -1
+	for i, a := range ds.customers[fromIdx].Accounts {
+		if a.Family == FamilySavings {
+			fromAccIdx = i
+			break
+		}
+	}
+	toAccIdx := -1
+	for i, a := range ds.customers[toIdx].Accounts {
+		if a.Family == FamilySavings {
+			toAccIdx = i
+			break
+		}
+	}
+	if fromAccIdx < 0 || toAccIdx < 0 {
+		ds.mu.Unlock()
+		return
+	}
+
+	senderBal := ds.customers[fromIdx].Accounts[fromAccIdx].Balance
 	amount := float64(ds.rng.Intn(99901)+100) / 100.0
+	if amount > senderBal {
+		amount = senderBal
+	}
+	if amount < 1.0 {
+		ds.mu.Unlock()
+		return
+	}
 
+	// Debit sender, credit recipient
+	ds.customers[fromIdx].Accounts[fromAccIdx].Balance -= amount
+	ds.customers[toIdx].Accounts[toAccIdx].Balance += amount
+
+	fromID := ds.customers[fromIdx].ID
+	toID := ds.customers[toIdx].ID
 	ref := fmt.Sprintf("PAY-%06d", ds.nextPaymentID)
 
 	p := Payment{
@@ -85,11 +119,6 @@ func (ds *DemoState) SendPayment() {
 	}
 	ds.nextPaymentID++
 	ds.payments = append(ds.payments, p)
-
-	// Trim to max
-	if len(ds.payments) > maxPayments {
-		ds.payments = ds.payments[len(ds.payments)-maxPayments:]
-	}
 
 	idx := len(ds.payments) - 1
 	ds.mu.Unlock()
@@ -170,15 +199,41 @@ func (ds *DemoState) ResetPayments() {
 	ds.nextPaymentID = 1
 }
 
+const paymentsPerPage = 20
+
 // BuildPaymentsHTML renders the payments list as a Bulma HTML table.
-// Names are resolved from piiStore for display.
-func (ds *DemoState) BuildPaymentsHTML() string {
+// Shows customer IDs; names shown only when piiAuth is true.
+func (ds *DemoState) BuildPaymentsHTML(piiAuth bool, page int) string {
 	ds.mu.Lock()
 	payments := make([]Payment, len(ds.payments))
 	copy(payments, ds.payments)
 	running := ds.payRunning
 	piiStore := ds.piiStore
 	ds.mu.Unlock()
+
+	total := len(payments)
+	if page < 1 {
+		page = 1
+	}
+	totalPages := (total + paymentsPerPage - 1) / paymentsPerPage
+	if totalPages < 1 {
+		totalPages = 1
+	}
+	if page > totalPages {
+		page = totalPages
+	}
+
+	// Reverse order (newest first)
+	for i, j := 0, len(payments)-1; i < j; i, j = i+1, j-1 {
+		payments[i], payments[j] = payments[j], payments[i]
+	}
+
+	start := (page - 1) * paymentsPerPage
+	end := start + paymentsPerPage
+	if end > total {
+		end = total
+	}
+	pagePayments := payments[start:end]
 
 	var s strings.Builder
 	s.WriteString(`<h2 class="title is-4">Payments</h2>`)
@@ -190,9 +245,9 @@ func (ds *DemoState) BuildPaymentsHTML() string {
 	s.WriteString(fmt.Sprintf(`<div class="field is-grouped is-grouped-multiline mb-4">
   <div class="control">%s</div>
   <div class="control"><span class="tag is-info is-light">%d payments</span></div>
-</div>`, statusTag, len(payments)))
+</div>`, statusTag, total))
 
-	if len(payments) == 0 {
+	if total == 0 {
 		s.WriteString(`<p class="has-text-grey">No payments yet. Send one or start auto-generation.</p>`)
 	} else {
 		s.WriteString(`<div class="table-container"><table class="table is-fullwidth is-striped is-hoverable">
@@ -200,26 +255,47 @@ func (ds *DemoState) BuildPaymentsHTML() string {
   <th>ID</th><th>From</th><th>To</th><th>Amount</th><th>Reference</th><th>Status</th><th>Time</th><th></th>
 </tr></thead><tbody>`)
 
-		for i := len(payments) - 1; i >= 0; i-- {
-			p := payments[i]
-			fromName := piiStore.RetrieveName(p.FromID)
-			toName := piiStore.RetrieveName(p.ToID)
+		for _, p := range pagePayments {
+			from := p.FromID
+			to := p.ToID
+			if piiAuth {
+				from = fmt.Sprintf("%s (%s)", p.FromID, piiStore.RetrieveName(p.FromID))
+				to = fmt.Sprintf("%s (%s)", p.ToID, piiStore.RetrieveName(p.ToID))
+			}
 			s.WriteString(fmt.Sprintf(`<tr>
   <td>%d</td><td>%s</td><td>%s</td><td>%s</td><td><code>%s</code></td>
   <td><span class="tag %s">%s</span></td>
   <td>%s</td>
   <td><a href="/payments/%d" class="button is-small is-link is-light">Detail</a></td>
-</tr>`, p.ID, fromName, toName, fmtMoney(p.Amount), p.Reference, p.Status.BulmaTag(), p.Status, p.CreatedAt.Format("15:04:05"), p.ID))
+</tr>`, p.ID, from, to, fmtMoney(p.Amount), p.Reference, p.Status.BulmaTag(), p.Status, p.CreatedAt.Format("15:04:05"), p.ID))
 		}
 
 		s.WriteString(`</tbody></table></div>`)
+
+		// Pagination
+		if totalPages > 1 {
+			s.WriteString(`<nav class="pagination is-small mt-4" role="navigation">`)
+			if page > 1 {
+				s.WriteString(fmt.Sprintf(`<a class="pagination-previous" href="/payments?page=%d">Previous</a>`, page-1))
+			} else {
+				s.WriteString(`<a class="pagination-previous" disabled>Previous</a>`)
+			}
+			if page < totalPages {
+				s.WriteString(fmt.Sprintf(`<a class="pagination-next" href="/payments?page=%d">Next</a>`, page+1))
+			} else {
+				s.WriteString(`<a class="pagination-next" disabled>Next</a>`)
+			}
+			s.WriteString(fmt.Sprintf(`<span class="pagination-list">Page %d of %d</span>`, page, totalPages))
+			s.WriteString(`</nav>`)
+		}
 	}
 
 	return s.String()
 }
 
 // BuildPaymentDetailHTML renders a single payment detail with settlement timeline.
-func (ds *DemoState) BuildPaymentDetailHTML(id int) string {
+// Shows customer IDs; names shown only when piiAuth is true.
+func (ds *DemoState) BuildPaymentDetailHTML(id int, piiAuth bool) string {
 	ds.mu.Lock()
 	var found *Payment
 	for i := range ds.payments {
@@ -237,8 +313,12 @@ func (ds *DemoState) BuildPaymentDetailHTML(id int) string {
 	}
 
 	p := found
-	fromName := piiStore.RetrieveName(p.FromID)
-	toName := piiStore.RetrieveName(p.ToID)
+	from := p.FromID
+	to := p.ToID
+	if piiAuth {
+		from = fmt.Sprintf("%s (%s)", p.FromID, piiStore.RetrieveName(p.FromID))
+		to = fmt.Sprintf("%s (%s)", p.ToID, piiStore.RetrieveName(p.ToID))
+	}
 
 	var s strings.Builder
 	s.WriteString(fmt.Sprintf(`<h2 class="title is-4">Payment %s</h2>`, p.Reference))
@@ -246,8 +326,8 @@ func (ds *DemoState) BuildPaymentDetailHTML(id int) string {
 	// Details box
 	s.WriteString(`<div class="box">`)
 	s.WriteString(`<div class="columns">`)
-	s.WriteString(fmt.Sprintf(`<div class="column"><strong>From:</strong> %s</div>`, fromName))
-	s.WriteString(fmt.Sprintf(`<div class="column"><strong>To:</strong> %s</div>`, toName))
+	s.WriteString(fmt.Sprintf(`<div class="column"><strong>From:</strong> %s</div>`, from))
+	s.WriteString(fmt.Sprintf(`<div class="column"><strong>To:</strong> %s</div>`, to))
 	s.WriteString(fmt.Sprintf(`<div class="column"><strong>Amount:</strong> %s</div>`, fmtMoney(p.Amount)))
 	s.WriteString(`</div>`)
 	s.WriteString(`<div class="columns">`)

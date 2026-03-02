@@ -3,7 +3,9 @@ package main
 import (
 	"context"
 	"fmt"
+	"math"
 	"math/rand"
+	"runtime"
 	"strings"
 	"sync"
 	"time"
@@ -15,26 +17,45 @@ type RatePoint struct {
 	Rate float64
 }
 
+// BalancePoint records aggregate savings/lending balances at a point in simulated time.
+type BalancePoint struct {
+	Date    time.Time
+	Savings float64
+	Lending float64
+}
+
+// CustomerPoint records the customer count at a point in simulated time.
+type CustomerPoint struct {
+	Date  time.Time
+	Count int
+}
+
 // DemoState holds all unified state for the model bank demo.
 type DemoState struct {
-	mu            sync.Mutex
-	running       bool
-	cancel        context.CancelFunc
-	products      []Product
-	customers     []CustomerRecord
-	payments      []Payment
-	currentDay    time.Time
-	dayCount      int
-	nextPaymentID int
-	payRunning    bool
-	payCancel     context.CancelFunc
-	opCostPerDay  float64
-	rng           *rand.Rand
-	piiStore      *PIIStore
-	settings      Settings
-	nextCustSeq   int
-	piiAuthorized bool
-	boeHistory    []RatePoint
+	mu                 sync.Mutex
+	running            bool
+	cancel             context.CancelFunc
+	products           []Product
+	customers          []CustomerRecord
+	payments           []Payment
+	currentDay         time.Time
+	dayCount           int
+	nextPaymentID      int
+	payRunning         bool
+	payCancel          context.CancelFunc
+	opCostPerDay       float64
+	rng                *rand.Rand
+	piiStore           *PIIStore
+	settings           Settings
+	nextCustSeq        int
+	piiAuthorized      bool
+	boeHistory         []RatePoint
+	balanceHistory     []BalancePoint
+	customerHistory    []CustomerPoint
+	addingCustRunning  bool
+	addingCustCancel   context.CancelFunc
+	addingCustProgress int
+	addingCustTarget   int
 }
 
 func NewDemoState() *DemoState {
@@ -56,7 +77,25 @@ func NewDemoState() *DemoState {
 		boeHistory:    []RatePoint{{Date: startDay, Rate: settings.BoEBaseRate}},
 	}
 	ds.customers = initCustomers(ds.rng, ds.products, ds.currentDay, piiStore)
+	ds.recordHistory()
 	return ds
+}
+
+// recordHistory appends current balance/customer totals to history slices.
+// Must be called with ds.mu held.
+func (ds *DemoState) recordHistory() {
+	var savings, lending float64
+	for _, c := range ds.customers {
+		for _, a := range c.Accounts {
+			if a.Family == FamilySavings {
+				savings += a.Balance
+			} else {
+				lending += a.Balance
+			}
+		}
+	}
+	ds.balanceHistory = append(ds.balanceHistory, BalancePoint{Date: ds.currentDay, Savings: savings, Lending: lending})
+	ds.customerHistory = append(ds.customerHistory, CustomerPoint{Date: ds.currentDay, Count: len(ds.customers)})
 }
 
 // --- Bank simulation ---
@@ -106,6 +145,8 @@ func (ds *DemoState) advanceDay() {
 			ds.customers = append(ds.customers, cust)
 		}
 	}
+
+	ds.recordHistory()
 }
 
 func (ds *DemoState) AdvanceDay() {
@@ -160,19 +201,66 @@ func (ds *DemoState) IsRunning() bool {
 	return ds.running
 }
 
-// AddCustomers generates n new customers immediately, respecting MaxCustomers.
-func (ds *DemoState) AddCustomers(n int) int {
+// AddCustomersBatch starts a background goroutine that generates n customers,
+// yielding the lock per customer so other operations can proceed.
+func (ds *DemoState) AddCustomersBatch(n int) {
+	ds.mu.Lock()
+	if ds.addingCustRunning {
+		ds.mu.Unlock()
+		return
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	ds.addingCustRunning = true
+	ds.addingCustCancel = cancel
+	ds.addingCustProgress = 0
+	ds.addingCustTarget = n
+	ds.mu.Unlock()
+
+	go func() {
+		for i := 0; i < n; i++ {
+			select {
+			case <-ctx.Done():
+				ds.mu.Lock()
+				ds.addingCustRunning = false
+				ds.addingCustCancel = nil
+				ds.addingCustProgress = 0
+				ds.addingCustTarget = 0
+				ds.mu.Unlock()
+				return
+			default:
+			}
+			ds.mu.Lock()
+			if len(ds.customers) >= ds.settings.MaxCustomers {
+				ds.addingCustRunning = false
+				ds.addingCustCancel = nil
+				ds.addingCustProgress = 0
+				ds.addingCustTarget = 0
+				ds.mu.Unlock()
+				cancel()
+				return
+			}
+			cust, name, ni := generateCustomer(ds.rng, ds.nextCustSeq, ds.products, ds.currentDay)
+			ds.nextCustSeq++
+			_ = ds.piiStore.Store(cust.ID, name, ni)
+			ds.customers = append(ds.customers, cust)
+			ds.addingCustProgress = i + 1
+			ds.mu.Unlock()
+			runtime.Gosched()
+		}
+		ds.mu.Lock()
+		ds.addingCustRunning = false
+		ds.addingCustCancel = nil
+		ds.addingCustProgress = 0
+		ds.addingCustTarget = 0
+		ds.mu.Unlock()
+	}()
+}
+
+// IsAddingCustomers returns true if a batch add is in progress.
+func (ds *DemoState) IsAddingCustomers() bool {
 	ds.mu.Lock()
 	defer ds.mu.Unlock()
-	added := 0
-	for i := 0; i < n && len(ds.customers) < ds.settings.MaxCustomers; i++ {
-		cust, name, ni := generateCustomer(ds.rng, ds.nextCustSeq, ds.products, ds.currentDay)
-		ds.nextCustSeq++
-		_ = ds.piiStore.Store(cust.ID, name, ni)
-		ds.customers = append(ds.customers, cust)
-		added++
-	}
-	return added
+	return ds.addingCustRunning
 }
 
 func (ds *DemoState) Reset() {
@@ -192,6 +280,15 @@ func (ds *DemoState) Reset() {
 			ds.payCancel = nil
 		}
 	}
+	if ds.addingCustRunning {
+		ds.addingCustRunning = false
+		if ds.addingCustCancel != nil {
+			ds.addingCustCancel()
+			ds.addingCustCancel = nil
+		}
+		ds.addingCustProgress = 0
+		ds.addingCustTarget = 0
+	}
 	ds.currentDay = time.Date(2020, 1, 1, 0, 0, 0, 0, time.UTC)
 	ds.dayCount = 0
 	ds.payments = nil
@@ -203,7 +300,10 @@ func (ds *DemoState) Reset() {
 	ds.nextCustSeq = len(seedCustomers) + 1
 	ds.piiAuthorized = false
 	ds.boeHistory = []RatePoint{{Date: ds.currentDay, Rate: ds.settings.BoEBaseRate}}
+	ds.balanceHistory = nil
+	ds.customerHistory = nil
 	ds.customers = initCustomers(ds.rng, ds.products, ds.currentDay, ds.piiStore)
+	ds.recordHistory()
 }
 
 // --- Dashboard SVG ---
@@ -216,13 +316,6 @@ func (ds *DemoState) buildSVG() string {
 	savingsTotal := 0.0
 	lendingTotal := 0.0
 	totalInterest := 0.0
-	type topAccount struct {
-		CustomerID string
-		Product    string
-		Balance    float64
-		Family     ProductFamily
-	}
-	var tops []topAccount
 	for _, c := range ds.customers {
 		for _, a := range c.Accounts {
 			if a.Family == FamilySavings {
@@ -231,29 +324,22 @@ func (ds *DemoState) buildSVG() string {
 				lendingTotal += a.Balance
 			}
 			totalInterest += a.Interest
-			tops = append(tops, topAccount{c.ID, a.ProductName, a.Balance, a.Family})
 		}
 	}
 	customerCount := len(ds.customers)
-	piiStore := ds.piiStore
+	addingProgress := ds.addingCustProgress
+	addingTarget := ds.addingCustTarget
+	addingRunning := ds.addingCustRunning
+	balHist := make([]BalancePoint, len(ds.balanceHistory))
+	copy(balHist, ds.balanceHistory)
+	custHist := make([]CustomerPoint, len(ds.customerHistory))
+	copy(custHist, ds.customerHistory)
 	ds.mu.Unlock()
-
-	// Sort tops by balance descending, take top 5
-	for i := 0; i < len(tops); i++ {
-		for j := i + 1; j < len(tops); j++ {
-			if tops[j].Balance > tops[i].Balance {
-				tops[i], tops[j] = tops[j], tops[i]
-			}
-		}
-	}
-	if len(tops) > 5 {
-		tops = tops[:5]
-	}
 
 	var s strings.Builder
 	const (
 		width   = 700
-		height  = 380
+		height  = 700
 		barMaxW = 350.0
 		barH    = 30
 		barX    = 170
@@ -275,7 +361,11 @@ func (ds *DemoState) buildSVG() string {
 	s.WriteString(`<text x="20" y="33" font-size="22" font-weight="bold" fill="#fff">Model Bank</text>`)
 	dateStr := day.Format("2 Jan 2006")
 	s.WriteString(fmt.Sprintf(`<text x="680" y="20" text-anchor="end" font-size="14" fill="#fff">Day %d — %s</text>`, dayCount, dateStr))
-	s.WriteString(fmt.Sprintf(`<text x="680" y="35" text-anchor="end" font-size="11" fill="rgba(255,255,255,0.8)">Customers: %d | Interest: %s</text>`, customerCount, fmtMoney(totalInterest)))
+	if addingRunning {
+		s.WriteString(fmt.Sprintf(`<text x="680" y="35" text-anchor="end" font-size="11" fill="rgba(255,255,255,0.8)">Adding customers: %d / %d</text>`, addingProgress, addingTarget))
+	} else {
+		s.WriteString(fmt.Sprintf(`<text x="680" y="35" text-anchor="end" font-size="11" fill="rgba(255,255,255,0.8)">Customers: %d | Interest: %s</text>`, customerCount, fmtMoney(totalInterest)))
+	}
 
 	// Family bars
 	families := []struct {
@@ -308,19 +398,189 @@ func (ds *DemoState) buildSVG() string {
 	divY := yStart + 2*rowH
 	s.WriteString(fmt.Sprintf(`<line x1="20" y1="%.0f" x2="680" y2="%.0f" stroke="#dbdbdb" stroke-width="1"/>`, divY, divY))
 
-	// Top accounts
-	s.WriteString(fmt.Sprintf(`<text x="20" y="%.0f" font-size="13" font-weight="bold" fill="#7a7a7a">Top Accounts</text>`, divY+22))
-	for i, t := range tops {
-		y := divY + 40 + float64(i)*22
-		color := "#48c78e"
-		if t.Family == FamilyLending {
-			color = "#3e8ed0"
-		}
-		custName := piiStore.RetrieveName(t.CustomerID)
-		s.WriteString(fmt.Sprintf(`<circle cx="28" cy="%.0f" r="4" fill="%s"/>`, y-4, color))
-		s.WriteString(fmt.Sprintf(`<text x="40" y="%.0f" font-size="12" fill="#363636">%s — %s: %s</text>`, y, custName, t.Product, fmtMoney(t.Balance)))
-	}
+	// --- Balance history chart ---
+	chartTop := divY + 15
+	s.WriteString(fmt.Sprintf(`<text x="20" y="%.0f" font-size="13" font-weight="bold" fill="#7a7a7a">Balance History</text>`, chartTop+12))
+	s.WriteString(buildBalanceChart(balHist, chartTop+20))
+
+	// --- Customer count chart ---
+	custChartTop := chartTop + 20 + 200 + 15
+	s.WriteString(fmt.Sprintf(`<text x="20" y="%.0f" font-size="13" font-weight="bold" fill="#7a7a7a">Customer Count</text>`, custChartTop+12))
+	s.WriteString(buildCustomerChart(custHist, custChartTop+20))
 
 	s.WriteString(`</svg>`)
+	return s.String()
+}
+
+// buildBalanceChart renders a dual-line chart (savings=green, lending=blue) as an SVG <g>.
+func buildBalanceChart(history []BalancePoint, yOffset float64) string {
+	if len(history) == 0 {
+		return ""
+	}
+	const (
+		padL   = 80
+		padR   = 20
+		chartW = 700 - padL - padR
+		chartH = 160
+		padT   = 10
+	)
+
+	// Find Y range
+	minVal := history[0].Savings
+	maxVal := history[0].Savings
+	for _, bp := range history {
+		for _, v := range []float64{bp.Savings, bp.Lending} {
+			if v < minVal {
+				minVal = v
+			}
+			if v > maxVal {
+				maxVal = v
+			}
+		}
+	}
+	valRange := maxVal - minVal
+	if valRange < 100 {
+		valRange = 200
+		minVal -= 100
+		maxVal += 100
+	} else {
+		minVal -= valRange * 0.1
+		maxVal += valRange * 0.1
+		valRange = maxVal - minVal
+	}
+	if minVal < 0 {
+		minVal = 0
+		valRange = maxVal - minVal
+	}
+
+	var s strings.Builder
+
+	// Background
+	s.WriteString(fmt.Sprintf(`<rect x="%d" y="%.0f" width="%d" height="%d" fill="#fafafa" stroke="#dbdbdb" stroke-width="1"/>`, padL, yOffset+float64(padT), chartW, chartH))
+
+	// Y-axis labels
+	for i := 0; i <= 4; i++ {
+		val := minVal + valRange*float64(i)/4.0
+		y := yOffset + float64(padT+chartH) - float64(chartH)*float64(i)/4.0
+		s.WriteString(fmt.Sprintf(`<line x1="%d" y1="%.0f" x2="%d" y2="%.0f" stroke="#ededed" stroke-width="1"/>`, padL, y, padL+chartW, y))
+		s.WriteString(fmt.Sprintf(`<text x="%d" y="%.0f" text-anchor="end" font-size="9" fill="#7a7a7a">%s</text>`, padL-5, y+3, fmtMoney(val)))
+	}
+
+	// Lines
+	type lineSpec struct {
+		color string
+		vals  func(BalancePoint) float64
+	}
+	lines := []lineSpec{
+		{"#48c78e", func(bp BalancePoint) float64 { return bp.Savings }},
+		{"#3e8ed0", func(bp BalancePoint) float64 { return bp.Lending }},
+	}
+
+	for _, line := range lines {
+		if len(history) == 1 {
+			v := line.vals(history[0])
+			x := float64(padL) + float64(chartW)/2
+			y := yOffset + float64(padT+chartH) - float64(chartH)*(v-minVal)/valRange
+			s.WriteString(fmt.Sprintf(`<circle cx="%.0f" cy="%.0f" r="3" fill="%s"/>`, x, y, line.color))
+			continue
+		}
+		var pts strings.Builder
+		for i, bp := range history {
+			v := line.vals(bp)
+			x := float64(padL) + float64(chartW)*float64(i)/float64(len(history)-1)
+			y := yOffset + float64(padT+chartH) - float64(chartH)*(v-minVal)/valRange
+			y = math.Max(yOffset+float64(padT), math.Min(yOffset+float64(padT+chartH), y))
+			if i == 0 {
+				pts.WriteString(fmt.Sprintf("%.1f,%.1f", x, y))
+			} else {
+				pts.WriteString(fmt.Sprintf(" %.1f,%.1f", x, y))
+			}
+		}
+		s.WriteString(fmt.Sprintf(`<polyline points="%s" fill="none" stroke="%s" stroke-width="2"/>`, pts.String(), line.color))
+	}
+
+	// Legend
+	legendY := yOffset + float64(padT+chartH) + 18
+	s.WriteString(fmt.Sprintf(`<circle cx="%d" cy="%.0f" r="4" fill="#48c78e"/>`, padL, legendY-3))
+	s.WriteString(fmt.Sprintf(`<text x="%d" y="%.0f" font-size="10" fill="#363636">Savings</text>`, padL+8, legendY))
+	s.WriteString(fmt.Sprintf(`<circle cx="%d" cy="%.0f" r="4" fill="#3e8ed0"/>`, padL+70, legendY-3))
+	s.WriteString(fmt.Sprintf(`<text x="%d" y="%.0f" font-size="10" fill="#363636">Lending</text>`, padL+78, legendY))
+
+	return s.String()
+}
+
+// buildCustomerChart renders a single-line chart of customer count as an SVG <g>.
+func buildCustomerChart(history []CustomerPoint, yOffset float64) string {
+	if len(history) == 0 {
+		return ""
+	}
+	const (
+		padL   = 80
+		padR   = 20
+		chartW = 700 - padL - padR
+		chartH = 140
+		padT   = 10
+	)
+
+	minVal := float64(history[0].Count)
+	maxVal := float64(history[0].Count)
+	for _, cp := range history {
+		v := float64(cp.Count)
+		if v < minVal {
+			minVal = v
+		}
+		if v > maxVal {
+			maxVal = v
+		}
+	}
+	valRange := maxVal - minVal
+	if valRange < 1 {
+		valRange = 2
+		minVal -= 1
+		maxVal += 1
+	} else {
+		minVal -= valRange * 0.1
+		maxVal += valRange * 0.1
+		valRange = maxVal - minVal
+	}
+	if minVal < 0 {
+		minVal = 0
+		valRange = maxVal - minVal
+	}
+
+	var s strings.Builder
+
+	// Background
+	s.WriteString(fmt.Sprintf(`<rect x="%d" y="%.0f" width="%d" height="%d" fill="#fafafa" stroke="#dbdbdb" stroke-width="1"/>`, padL, yOffset+float64(padT), chartW, chartH))
+
+	// Y-axis labels
+	for i := 0; i <= 4; i++ {
+		val := minVal + valRange*float64(i)/4.0
+		y := yOffset + float64(padT+chartH) - float64(chartH)*float64(i)/4.0
+		s.WriteString(fmt.Sprintf(`<line x1="%d" y1="%.0f" x2="%d" y2="%.0f" stroke="#ededed" stroke-width="1"/>`, padL, y, padL+chartW, y))
+		s.WriteString(fmt.Sprintf(`<text x="%d" y="%.0f" text-anchor="end" font-size="9" fill="#7a7a7a">%d</text>`, padL-5, y+3, int(val)))
+	}
+
+	// Line
+	if len(history) == 1 {
+		x := float64(padL) + float64(chartW)/2
+		y := yOffset + float64(padT+chartH)/2
+		s.WriteString(fmt.Sprintf(`<circle cx="%.0f" cy="%.0f" r="3" fill="#00947e"/>`, x, y))
+	} else {
+		var pts strings.Builder
+		for i, cp := range history {
+			v := float64(cp.Count)
+			x := float64(padL) + float64(chartW)*float64(i)/float64(len(history)-1)
+			y := yOffset + float64(padT+chartH) - float64(chartH)*(v-minVal)/valRange
+			y = math.Max(yOffset+float64(padT), math.Min(yOffset+float64(padT+chartH), y))
+			if i == 0 {
+				pts.WriteString(fmt.Sprintf("%.1f,%.1f", x, y))
+			} else {
+				pts.WriteString(fmt.Sprintf(" %.1f,%.1f", x, y))
+			}
+		}
+		s.WriteString(fmt.Sprintf(`<polyline points="%s" fill="none" stroke="#00947e" stroke-width="2"/>`, pts.String()))
+	}
+
 	return s.String()
 }

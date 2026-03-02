@@ -13,7 +13,7 @@ type Settings struct {
 
 func DefaultSettings() Settings {
 	return Settings{
-		MaxCustomers: 50,
+		MaxCustomers: 1_000_000,
 		BoEBaseRate:  0.0525,
 	}
 }
