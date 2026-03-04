@@ -47,6 +47,7 @@ tasks:
       - task: vet
       - task: test
       - task: build:docs
+      - task: docs:build
 
   deps:tidy:
     desc: Tidy module dependencies
