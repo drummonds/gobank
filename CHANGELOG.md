@@ -11,6 +11,9 @@
  - Starting to get form## [0.3.12] - 2026-03-04
 
  - Updating gotreesitter and docs
+## [0.3.13] - 2026-03-04
+
+ - Updating check to include docs build
 
 ## [0.3.11] - 2026-03-04
 
