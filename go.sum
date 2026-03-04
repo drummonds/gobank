@@ -1,5 +1,7 @@
 github.com/drummonds/go-postgres v0.2.1 h1:uCdFdUHrwBg2LibiqmKln97ViPPlJ8xGZK1xRbn7eYo=
 github.com/drummonds/go-postgres v0.2.1/go.mod h1:67ormu1UZZ/cLjwzpuQQiLqmHcT4cShq8bXpd5xRW6o=
+github.com/drummonds/gotreesitter v0.6.1 h1:HVzz9G3B87+SFnscmBqacm8lhSHSqax0S/z0FOJXFog=
+github.com/drummonds/gotreesitter v0.6.1/go.mod h1:M++B9cQI0dFwaD6J17UQFNO23BrP9lH2HD4NhY7NofU=
 github.com/dustin/go-humanize v1.0.1 h1:GzkhY7T5VNhEkwH0PVJgjz+fX1rhBrR7pRT3mDkpeCY=
 github.com/dustin/go-humanize v1.0.1/go.mod h1:Mu1zIs6XwVuF/gI1OepvI0qD18qycQx+mFykh5fBlto=
 github.com/google/pprof v0.0.0-20250317173921-a4b03ec1a45e h1:ijClszYn+mADRFY17kjQEVQ1XRhq2/JR1M3sGqeJoxs=
