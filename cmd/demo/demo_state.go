@@ -68,6 +68,8 @@ type DemoState struct {
 	nimHistory         []NIMPoint
 	boeInterestAccum   float64
 	db                 *sql.DB
+	txLog              []TxEntry
+	nextTxID           int
 }
 
 func NewDemoState() *DemoState {
@@ -159,8 +161,14 @@ func (ds *DemoState) advanceDay() {
 			a.Interest += interest
 			if a.Family == FamilySavings {
 				totalDeposits += a.Balance
+				if interest != 0 {
+					ds.emitTx(ds.currentDay, ds.customers[ci].ID, ai, a.ProductName, TxInterestCredit, interest, a.Balance, "INT")
+				}
 			} else {
 				totalLoans += a.Balance
+				if interest != 0 {
+					ds.emitTx(ds.currentDay, ds.customers[ci].ID, ai, a.ProductName, TxInterestDebit, interest, a.Balance, "INT")
+				}
 			}
 		}
 	}
@@ -364,6 +372,8 @@ func (ds *DemoState) Reset() {
 	ds.customerHistory = nil
 	ds.nimHistory = nil
 	ds.boeInterestAccum = 0
+	ds.txLog = nil
+	ds.nextTxID = 0
 	ds.initDB()
 	ds.recordHistory()
 }

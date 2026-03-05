@@ -238,6 +238,19 @@ func main() {
 	}
 	app.SetController(ctrl)
 
+	// Bank app controller (phone frame layout)
+	appCtrl, err := lofigui.NewController(lofigui.ControllerConfig{
+		TemplateString: LayoutBankApp,
+		Name:           "Bank App",
+	})
+	if err != nil {
+		log.Fatalf("Failed to create bank app controller: %v", err)
+	}
+
+	// Register bank app routes
+	registerBankAppAPI(state)
+	registerBankAppRoutes(state, appCtrl)
+
 	// fullPage renders template with app state context (no Refresh header).
 	fullPage := func(w http.ResponseWriter, r *http.Request, content string) {
 		ctrl.RenderTemplate(w, pongo2.Context{

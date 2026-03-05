@@ -144,6 +144,11 @@ func (ds *DemoState) SendPayment() {
 	toID := ds.customers[toIdx].ID
 	ref := fmt.Sprintf("PAY-%06d", ds.nextPaymentID)
 
+	ds.emitTx(ds.currentDay, fromID, fromAccIdx, ds.customers[fromIdx].Accounts[fromAccIdx].ProductName,
+		TxTransferOut, amount, ds.customers[fromIdx].Accounts[fromAccIdx].Balance, ref)
+	ds.emitTx(ds.currentDay, toID, toAccIdx, ds.customers[toIdx].Accounts[toAccIdx].ProductName,
+		TxTransferIn, amount, ds.customers[toIdx].Accounts[toAccIdx].Balance, ref)
+
 	p := Payment{
 		ID:        ds.nextPaymentID,
 		Type:      PayTransfer,
@@ -208,6 +213,7 @@ func (ds *DemoState) fundCustomer(custIdx int) {
 			amount := float64(500 + ds.rng.Intn(9500))
 			a.Balance = amount
 			ds.makePayment(PayDeposit, "EXTERNAL", cust.ID, amount)
+			ds.emitTx(ds.currentDay, cust.ID, i, a.ProductName, TxDepositIn, amount, a.Balance, fmt.Sprintf("PAY-%06d", ds.nextPaymentID-1))
 		} else {
 			headroom := ds.lendingHeadroom()
 			if headroom <= 0 {
@@ -219,6 +225,7 @@ func (ds *DemoState) fundCustomer(custIdx int) {
 			}
 			a.Balance = amount
 			ds.makePayment(PayLoanDisbursement, "BANK", cust.ID, amount)
+			ds.emitTx(ds.currentDay, cust.ID, i, a.ProductName, TxLoanDisbursement, amount, a.Balance, fmt.Sprintf("PAY-%06d", ds.nextPaymentID-1))
 		}
 	}
 }

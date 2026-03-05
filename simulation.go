@@ -28,7 +28,7 @@ type DailyUpdateHandler func(update DailyUpdate)
 
 // Simulation is the core engine that advances time and processes account behaviors.
 type Simulation struct {
-	Ledger             *luca.Ledger
+	Ledger             luca.Ledger
 	Clock              Clock
 	Params             *ParameterStore
 	behaviors          map[string]AccountBehavior
@@ -40,7 +40,7 @@ type Simulation struct {
 }
 
 // NewSimulation creates a new simulation engine.
-func NewSimulation(ledger *luca.Ledger, clock Clock) (*Simulation, error) {
+func NewSimulation(ledger luca.Ledger, clock Clock) (*Simulation, error) {
 	if err := ledger.EnsureInterestAccounts(); err != nil {
 		return nil, fmt.Errorf("ensure interest accounts: %w", err)
 	}

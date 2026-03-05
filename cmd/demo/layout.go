@@ -72,6 +72,7 @@ const LayoutModelBank = `<!DOCTYPE html>
         </div>
       </div>
       <div class="navbar-end">
+        <a class="navbar-item" href="/app/" target="_blank">Bank App</a>
         <div class="navbar-item">
           <span class="tag {% if polling == "Running" %}is-warning{% else %}is-success{% endif %}">{{ polling }}</span>
         </div>
