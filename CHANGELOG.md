@@ -12,7 +12,10 @@
 
  - Updating gotreesitter and docs## [0.3.14] - 2026-03-04
 
- - Adding github pages
+ - Adding github pages## [0.3.16] - 2026-03-06
+
+ - Adding project info page
+
 ## [0.3.15] - 2026-03-05
 
  - Improving treasury display
