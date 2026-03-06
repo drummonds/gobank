@@ -98,7 +98,13 @@ func goResetPayments(this js.Value, args []js.Value) any {
 
 func goRenderAbout(this js.Value, args []js.Value) any {
 	lofigui.Reset()
-	lofigui.HTML(state.BuildAboutHTML())
+	lofigui.HTML(BuildProjectAboutHTML())
+	return js.ValueOf(lofigui.Buffer())
+}
+
+func goRenderRuntime(this js.Value, args []js.Value) any {
+	lofigui.Reset()
+	lofigui.HTML(state.BuildRuntimeHTML())
 	return js.ValueOf(lofigui.Buffer())
 }
 
@@ -260,6 +266,7 @@ func main() {
 
 	// About
 	js.Global().Set("goRenderAbout", js.FuncOf(goRenderAbout))
+	js.Global().Set("goRenderRuntime", js.FuncOf(goRenderRuntime))
 
 	// Models
 	js.Global().Set("goRenderModels", js.FuncOf(goRenderModels))

@@ -689,7 +689,19 @@ func main() {
 			http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 			return
 		}
-		content := renderAndCapture(func() { lofigui.HTML(state.BuildAboutHTML()) })
+		content := renderAndCapture(func() { lofigui.HTML(BuildProjectAboutHTML()) })
+		if serveHTMX(w, r, content) {
+			return
+		}
+		fullPage(w, r, content)
+	})
+
+	http.HandleFunc("/about/runtime", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != "GET" {
+			http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+			return
+		}
+		content := renderAndCapture(func() { lofigui.HTML(state.BuildRuntimeHTML()) })
 		if serveHTMX(w, r, content) {
 			return
 		}

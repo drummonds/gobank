@@ -46,6 +46,7 @@ tasks:
       - task: fmt
       - task: vet
       - task: test
+      - task: docs:gen
       - task: build:docs
       - task: docs:build
 
@@ -55,6 +56,16 @@ tasks:
       - go mod tidy
       - cd cmd/demo && go mod tidy
       - cd cmd/chartcompare && go mod tidy
+
+  docs:gen:
+    desc: Generate docs/index.html from project_data.json
+    sources:
+      - cmd/demo/project_data.json
+      - cmd/gendocs/main.go
+    generates:
+      - docs/index.html
+    cmds:
+      - go run ./cmd/gendocs
 
   docs:build:
     desc: Render mermaid diagrams to SVG (requires mmdg)

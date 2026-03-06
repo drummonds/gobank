@@ -1,0 +1,32 @@
+{
+  "name": "GoBank",
+  "tagline": "Model Bank Simulation",
+  "repo": "https://github.com/drummonds/gobank",
+  "goluca_repo": "https://github.com/drummonds/go-luca",
+  "description": "A model bank built in Go that simulates retail banking operations at scale. Part game \u2014 how profitable can you run a bank? \u2014 and part engineering testbed for go-luca.",
+  "what": "GoBank simulates a UK retail bank: savings, lending, payments, treasury, and full double-entry accounting. It runs in the browser via WASM or as a local HTTP server. You set interest rates, raise capital, and compete for customers against a market modelled on the BoE base rate.",
+  "current_aims": [
+    {"title": "Customer behaviour model", "desc": "Customers search, compare, switch, and stick based on rate competitiveness, bank reputation, and capitalisation health. Random acquisition spikes when rates are very attractive. Competitive landscape: other banks offer BoE base rate minus a spread; customers compare and switch on relative attractiveness.", "done": false},
+    {"title": "Capital management", "desc": "Capital raise function. Minimum \u00a35M to operate as a bank. UK 4.5% tier 1 capital ratio constrains lending beyond organic retained profits.", "done": false},
+    {"title": "Interest rates", "desc": "Pre-calculated at rate-change time points. Negative rate support (Japan-style). Parameter hierarchies for rate setting (go-luca).", "done": false},
+    {"title": "SCV (Single Customer View)", "desc": "FSCS regulatory report: all depositor details and aggregate balances within 24 hours of failure. Proving this at scale (100K+ customers) using CTE-based SQL. To be extracted from go-luca into a standalone sub-project incorporated into GoBank.", "done": false},
+    {"title": "Logging & reconciliation", "desc": "Payment cycles, internal and external user actions with audit trail.", "done": false},
+    {"title": "Deployment", "desc": "WASM (GitHub Pages) and local server.", "done": true},
+    {"title": "RBAC", "desc": "Admin role currently; infrastructure in place for future roles.", "done": true},
+    {"title": "Accounting", "desc": "go-luca integration with accounting hierarchies and parameter hierarchies.", "done": true}
+  ],
+  "future_scope": [
+    {"title": "Multiple user roles", "desc": "Beyond the current admin role."},
+    {"title": "Annual accounts", "desc": "Retained profits feeding tier 1 capital."},
+    {"title": "Tax statements", "desc": "Model corporation tax on profits."},
+    {"title": "Blue-green deployment", "desc": "DB migrations then code migrations, compile-time verified, reversible at scale. Same pre-calculation approach as interest rates \u2014 migration is a time point."},
+    {"title": "Log archival", "desc": "Removing old data from active state."},
+    {"title": "Accounting data archival", "desc": "go-luca: only current pool in DB for scale; timelines live ~7 years then archived."},
+    {"title": "Customer reputation spikes", "desc": "Richer modelling of acquisition surges."}
+  ],
+  "non_goals": [
+    {"title": "Kubernetes / CloudSQL", "desc": "No planned deployment to Kubernetes with CloudSQL."},
+    {"title": "External identity providers", "desc": "No planned connection of RBAC to GCP IAM or similar."},
+    {"title": "Restoring archived data", "desc": "Data archived beyond 7 years is not planned to be restorable."}
+  ]
+}

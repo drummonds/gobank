@@ -28,10 +28,11 @@ const navSettings = document.getElementById('nav-settings');
 const navBbsi = document.getElementById('nav-bbsi');
 const navCustomerView = document.getElementById('nav-customer-view');
 const navAbout = document.getElementById('nav-about');
+const navRuntime = document.getElementById('nav-runtime');
 const navModels = document.getElementById('nav-models');
 
 const allNavItems = [navDashboard, navPnl, navBalanceSheet, navSavings, navLending,
-    navCustomers, navPayments, navSettings, navBbsi, navCustomerView, navAbout, navModels];
+    navCustomers, navPayments, navSettings, navBbsi, navCustomerView, navAbout, navRuntime, navModels];
 
 let currentPage = 'dashboard';
 let renderInterval = null;
@@ -84,6 +85,9 @@ function renderPage() {
             break;
         case 'about':
             if (typeof goRenderAbout === 'function') outputDiv.innerHTML = goRenderAbout();
+            break;
+        case 'runtime':
+            if (typeof goRenderRuntime === 'function') outputDiv.innerHTML = goRenderRuntime();
             break;
         case 'models':
             if (typeof goRenderModels === 'function') outputDiv.innerHTML = goRenderModels();
@@ -198,6 +202,7 @@ function showPage(page) {
         case 'bbsi': navBbsi.classList.add('is-active'); break;
         case 'customer-view': navCustomerView.classList.add('is-active'); break;
         case 'about': navAbout.classList.add('is-active'); break;
+        case 'runtime': navRuntime.classList.add('is-active'); break;
         case 'models': navModels.classList.add('is-active'); break;
     }
 
@@ -275,6 +280,7 @@ navSettings.addEventListener('click', function(e) { e.preventDefault(); showPage
 navBbsi.addEventListener('click', function(e) { e.preventDefault(); showPage('bbsi'); });
 navCustomerView.addEventListener('click', function(e) { e.preventDefault(); showPage('customer-view'); });
 navAbout.addEventListener('click', function(e) { e.preventDefault(); showPage('about'); });
+navRuntime.addEventListener('click', function(e) { e.preventDefault(); showPage('runtime'); });
 navModels.addEventListener('click', function(e) { e.preventDefault(); showPage('models'); });
 
 // Bank controls

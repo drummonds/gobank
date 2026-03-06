@@ -6,8 +6,8 @@ import (
 	"strings"
 )
 
-// BuildAboutHTML renders runtime stats about the banking model.
-func (ds *DemoState) BuildAboutHTML() string {
+// BuildRuntimeHTML renders runtime stats about the banking model.
+func (ds *DemoState) BuildRuntimeHTML() string {
 	var m runtime.MemStats
 	runtime.ReadMemStats(&m)
 
@@ -23,7 +23,7 @@ func (ds *DemoState) BuildAboutHTML() string {
 
 	var s strings.Builder
 
-	s.WriteString(`<h2 class="title is-4">About</h2>`)
+	s.WriteString(`<h2 class="title is-4">Runtime</h2>`)
 	s.WriteString(`<p class="subtitle is-6 has-text-grey">Runtime stats for the Model Bank simulation</p>`)
 
 	// Environment
