@@ -24,6 +24,9 @@ const navSavings = document.getElementById('nav-savings');
 const navLending = document.getElementById('nav-lending');
 const navCustomers = document.getElementById('nav-customers');
 const navPayments = document.getElementById('nav-payments');
+const navTreasuryCash = document.getElementById('nav-treasury-cash');
+const navTreasuryCapital = document.getElementById('nav-treasury-capital');
+const navTreasuryGilts = document.getElementById('nav-treasury-gilts');
 const navSettings = document.getElementById('nav-settings');
 const navBbsi = document.getElementById('nav-bbsi');
 const navCustomerView = document.getElementById('nav-customer-view');
@@ -32,7 +35,8 @@ const navRuntime = document.getElementById('nav-runtime');
 const navModels = document.getElementById('nav-models');
 
 const allNavItems = [navDashboard, navPnl, navBalanceSheet, navSavings, navLending,
-    navCustomers, navPayments, navSettings, navBbsi, navCustomerView, navAbout, navRuntime, navModels];
+    navCustomers, navPayments, navTreasuryCash, navTreasuryCapital, navTreasuryGilts,
+    navSettings, navBbsi, navCustomerView, navAbout, navRuntime, navModels];
 
 let currentPage = 'dashboard';
 let renderInterval = null;
@@ -71,6 +75,15 @@ function renderPage() {
             if (typeof goRenderPaymentDetail === 'function' && detailId)
                 outputDiv.innerHTML = goRenderPaymentDetail(detailId);
             break;
+        case 'treasury-cash':
+            if (typeof goRenderTreasuryCash === 'function') outputDiv.innerHTML = goRenderTreasuryCash();
+            break;
+        case 'treasury-capital':
+            if (typeof goRenderTreasuryCapital === 'function') outputDiv.innerHTML = goRenderTreasuryCapital();
+            break;
+        case 'treasury-gilts':
+            if (typeof goRenderTreasuryGilts === 'function') outputDiv.innerHTML = goRenderTreasuryGilts();
+            break;
         case 'settings':
             if (typeof goRenderSettings === 'function') outputDiv.innerHTML = goRenderSettings();
             break;
@@ -90,7 +103,10 @@ function renderPage() {
             if (typeof goRenderRuntime === 'function') outputDiv.innerHTML = goRenderRuntime();
             break;
         case 'models':
-            if (typeof goRenderModels === 'function') outputDiv.innerHTML = goRenderModels();
+            if (typeof goRenderModels === 'function') {
+                outputDiv.innerHTML = goRenderModels();
+                if (typeof mermaidRun === 'function') mermaidRun();
+            }
             break;
     }
     updateStatus();
@@ -198,6 +214,9 @@ function showPage(page) {
         case 'lending': navLending.classList.add('is-active'); break;
         case 'customers': case 'customer-detail': navCustomers.classList.add('is-active'); break;
         case 'payments': case 'payment-detail': navPayments.classList.add('is-active'); break;
+        case 'treasury-cash': navTreasuryCash.classList.add('is-active'); break;
+        case 'treasury-capital': navTreasuryCapital.classList.add('is-active'); break;
+        case 'treasury-gilts': navTreasuryGilts.classList.add('is-active'); break;
         case 'settings': navSettings.classList.add('is-active'); break;
         case 'bbsi': navBbsi.classList.add('is-active'); break;
         case 'customer-view': navCustomerView.classList.add('is-active'); break;
@@ -276,6 +295,9 @@ navSavings.addEventListener('click', function(e) { e.preventDefault(); showPage(
 navLending.addEventListener('click', function(e) { e.preventDefault(); showPage('lending'); });
 navCustomers.addEventListener('click', function(e) { e.preventDefault(); showPage('customers'); });
 navPayments.addEventListener('click', function(e) { e.preventDefault(); showPage('payments'); });
+navTreasuryCash.addEventListener('click', function(e) { e.preventDefault(); showPage('treasury-cash'); });
+navTreasuryCapital.addEventListener('click', function(e) { e.preventDefault(); showPage('treasury-capital'); });
+navTreasuryGilts.addEventListener('click', function(e) { e.preventDefault(); showPage('treasury-gilts'); });
 navSettings.addEventListener('click', function(e) { e.preventDefault(); showPage('settings'); });
 navBbsi.addEventListener('click', function(e) { e.preventDefault(); showPage('bbsi'); });
 navCustomerView.addEventListener('click', function(e) { e.preventDefault(); showPage('customer-view'); });
