@@ -14,7 +14,10 @@
 
  - Adding github pages## [0.3.16] - 2026-03-06
 
- - Adding project info page
+ - Adding project info page## [0.3.18] - 2026-03-07
+
+ - Adding version
+
 ## [0.3.17] - 2026-03-07
 
  - Concept of blue green dB releases and unfying metatdate documentation
