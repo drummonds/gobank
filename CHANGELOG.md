@@ -17,6 +17,9 @@
  - Adding project info page## [0.3.18] - 2026-03-07
 
  - Adding version
+## [0.3.19] - 2026-03-07
+
+ - Adding software hierarchy to docs
 
 ## [0.3.17] - 2026-03-07
 
