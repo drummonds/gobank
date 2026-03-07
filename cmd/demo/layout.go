@@ -11,6 +11,7 @@ const LayoutModelBank = `<!DOCTYPE html>
   <title>Model Bank</title>
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bulma@1.0.4/css/bulma.min.css">
   <script src="https://unpkg.com/htmx.org@2.0.4"></script>
+  <script type="module">import mermaid from 'https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.esm.min.mjs';mermaid.initialize({startOnLoad:true});</script>
 </head>
 <body hx-boost="true">
   <nav class="navbar is-primary" role="navigation" aria-label="main navigation">

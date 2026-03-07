@@ -5,13 +5,13 @@ import (
 	"strings"
 )
 
-//go:embed diagrams/system_context.svg
-var systemContextSVG string
+//go:embed diagrams/system_context.mmd
+var systemContextMMD string
 
-//go:embed diagrams/container.svg
-var containerSVG string
+//go:embed diagrams/container.mmd
+var containerMMD string
 
-// BuildModelsHTML renders the pre-built C4 architecture diagrams.
+// BuildModelsHTML renders C4 architecture diagrams using Mermaid.
 func BuildModelsHTML() string {
 	var s strings.Builder
 
@@ -20,12 +20,16 @@ func BuildModelsHTML() string {
 
 	s.WriteString(`<div class="box">`)
 	s.WriteString(`<h3 class="title is-5">System Context</h3>`)
-	s.WriteString(systemContextSVG)
+	s.WriteString(`<pre class="mermaid">`)
+	s.WriteString(systemContextMMD)
+	s.WriteString(`</pre>`)
 	s.WriteString(`</div>`)
 
 	s.WriteString(`<div class="box">`)
 	s.WriteString(`<h3 class="title is-5">Container Diagram</h3>`)
-	s.WriteString(containerSVG)
+	s.WriteString(`<pre class="mermaid">`)
+	s.WriteString(containerMMD)
+	s.WriteString(`</pre>`)
 	s.WriteString(`</div>`)
 
 	return s.String()

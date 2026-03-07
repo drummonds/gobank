@@ -108,6 +108,26 @@ func goRenderRuntime(this js.Value, args []js.Value) any {
 	return js.ValueOf(lofigui.Buffer())
 }
 
+// --- Treasury functions ---
+
+func goRenderTreasuryCash(this js.Value, args []js.Value) any {
+	lofigui.Reset()
+	lofigui.HTML(state.BuildCashPositionHTML())
+	return js.ValueOf(lofigui.Buffer())
+}
+
+func goRenderTreasuryCapital(this js.Value, args []js.Value) any {
+	lofigui.Reset()
+	lofigui.HTML(state.BuildCapitalHTML())
+	return js.ValueOf(lofigui.Buffer())
+}
+
+func goRenderTreasuryGilts(this js.Value, args []js.Value) any {
+	lofigui.Reset()
+	lofigui.HTML(state.BuildGiltsHTML())
+	return js.ValueOf(lofigui.Buffer())
+}
+
 // --- Models functions ---
 
 func goRenderModels(this js.Value, args []js.Value) any {
@@ -267,6 +287,11 @@ func main() {
 	// About
 	js.Global().Set("goRenderAbout", js.FuncOf(goRenderAbout))
 	js.Global().Set("goRenderRuntime", js.FuncOf(goRenderRuntime))
+
+	// Treasury
+	js.Global().Set("goRenderTreasuryCash", js.FuncOf(goRenderTreasuryCash))
+	js.Global().Set("goRenderTreasuryCapital", js.FuncOf(goRenderTreasuryCapital))
+	js.Global().Set("goRenderTreasuryGilts", js.FuncOf(goRenderTreasuryGilts))
 
 	// Models
 	js.Global().Set("goRenderModels", js.FuncOf(goRenderModels))

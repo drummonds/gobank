@@ -35,6 +35,14 @@
         </div>
         <a class="navbar-item" href="#" id="nav-customers">Customers</a>
         <a class="navbar-item" href="#" id="nav-payments">Payments</a>
+        <div class="navbar-item has-dropdown is-hoverable">
+          <a class="navbar-link">Treasury</a>
+          <div class="navbar-dropdown">
+            <a class="navbar-item" href="#" id="nav-treasury-cash">Cash Position</a>
+            <a class="navbar-item" href="#" id="nav-treasury-capital">Capital Requirements</a>
+            <a class="navbar-item" href="#" id="nav-treasury-gilts">Gilt Purchases</a>
+          </div>
+        </div>
         <a class="navbar-item" href="#" id="nav-settings">Settings</a>
         <div class="navbar-item has-dropdown is-hoverable">
           <a class="navbar-link">Reports</a>
@@ -85,6 +93,7 @@
       <p>Model Bank WASM</p>
     </div>
   </footer>
+  <script type="module">import mermaid from 'https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.esm.min.mjs';mermaid.initialize({startOnLoad:false});window.mermaidRun=()=>mermaid.run();</script>
   <script src="wasm_exec.js"></script>
   <script src="app.js"></script>
 </body>
