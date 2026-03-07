@@ -1,0 +1,137 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Blue-Green Schemas in PostgreSQL &mdash; GoBank Research</title>
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bulma@1.0.4/css/bulma.min.css">
+</head>
+<body>
+  <nav class="navbar is-primary">
+    <div class="navbar-brand">
+      <a class="navbar-item has-text-weight-bold" href="../">GoBank</a>
+    </div>
+  </nav>
+  <section class="section">
+    <div class="container">
+      <div class="columns">
+        <div class="column is-3">
+          <aside class="menu is-sticky" style="position:sticky;top:1.5rem">
+            <p class="menu-label">Project</p>
+            <ul class="menu-list">
+              <li><a href="../">Overview</a></li>
+            </ul>
+            <p class="menu-label">Demos</p>
+            <ul class="menu-list">
+              <li><a href="../demo/">Model Bank (WASM)</a></li>
+            </ul>
+            <p class="menu-label">Research Notes</p>
+            <ul class="menu-list">
+              <li><a href="chart-comparison.html">Chart Renderer Comparison</a></li>
+              <li><a href="blue-green-schemas.html" class="is-active">Blue-Green Schemas</a></li>
+            </ul>
+          </aside>
+        </div>
+        <div class="column is-9">
+          <h1 class="title">Blue-Green Schemas in PostgreSQL</h1>
+          <p class="subtitle has-text-grey">A pattern for zero-downtime data swaps using two parallel schemas within a single database.</p>
+
+          <div class="box">
+            <h3 class="title is-5">Concept</h3>
+        <p>Two schemas (<code>blue</code>, <code>green</code>) coexist in one database. Traffic routes to one via <code>search_path</code>. The inactive schema is rebuilt while the active one serves queries. At time T, the switch is made.</p>
+        <p class="mt-2"><strong>Key constraint:</strong> app code must never schema-qualify table names &mdash; all routing is via <code>search_path</code>.</p>
+      </div>
+
+      <div class="box">
+        <h3 class="title is-5">Setup</h3>
+        <pre><code>CREATE SCHEMA blue;
+CREATE SCHEMA green;
+GRANT USAGE ON SCHEMA blue, green TO app_role;</code></pre>
+      </div>
+
+      <div class="box">
+        <h3 class="title is-5">Switching</h3>
+
+        <h4 class="title is-6 mt-4">Ad-hoc</h4>
+        <pre><code>ALTER DATABASE mydb SET search_path TO green, public;</code></pre>
+
+        <h4 class="title is-6 mt-4">Scheduled (pg_cron)</h4>
+        <pre><code>SELECT cron.schedule('flip-schema', '0 0 1 4 *',
+  $ALTER DATABASE mydb SET search_path TO green, public$);</code></pre>
+
+        <h4 class="title is-6 mt-4">Application-controlled (recommended)</h4>
+        <p>App evaluates a switch time on each connection checkout:</p>
+        <pre><code>func schemaForNow(switchAt time.Time) string {
+    if time.Now().After(switchAt) {
+        return "green"
+    }
+    return "blue"
+}
+
+// On connection checkout:
+conn.Exec("SET search_path TO " + schemaForNow(switchAt) + ", public")</code></pre>
+        <p class="mt-2">Switch time can be read from config/DB so it&rsquo;s adjustable without redeployment.</p>
+      </div>
+
+      <div class="box">
+        <h3 class="title is-5">Production Pattern</h3>
+        <p>Combine both layers:</p>
+        <ol>
+          <li><strong>pg_cron</strong> flips the database-level default at T</li>
+          <li><strong>App</strong> re-evaluates <code>search_path</code> on each connection checkout</li>
+          <li><strong>Pool drain</strong> at T flushes stale connections</li>
+        </ol>
+        <p class="mt-2">This gives automatic cutover, no stale connections, and instant rollback.</p>
+      </div>
+
+      <div class="box">
+        <h3 class="title is-5">Rollback</h3>
+        <pre><code>ALTER DATABASE mydb SET search_path TO blue, public;</code></pre>
+        <p class="mt-2">Sub-second. Old schema is untouched until explicitly dropped.</p>
+      </div>
+
+      <div class="box">
+        <h3 class="title is-5">Retire &amp; Rebuild Cycle</h3>
+        <pre><code>[active: blue] &rarr; build green &rarr; flip to green &rarr; drain pool
+                                               &rarr; blue now idle
+                                               &rarr; rebuild blue for next cycle</code></pre>
+        <p class="mt-2">Drop when no longer needed as rollback target:</p>
+        <pre><code>DROP SCHEMA blue CASCADE;</code></pre>
+      </div>
+
+      <div class="box">
+        <h3 class="title is-5">Caveats</h3>
+        <table class="table is-fullwidth is-striped">
+          <thead>
+            <tr><th>Concern</th><th>Notes</th></tr>
+          </thead>
+          <tbody>
+            <tr><td>Sequences</td><td>Schema-local sequences reset on rebuild; use shared sequences in <code>public</code> if continuity matters</td></tr>
+            <tr><td>Foreign keys</td><td>Cross-schema FKs work but complicate <code>DROP SCHEMA</code>; avoid</td></tr>
+            <tr><td>Connection pooling</td><td>PgBouncer caches <code>search_path</code>; must flush pool or use startup query</td></tr>
+            <tr><td>In-flight transactions</td><td>Transactions open at T straddle the switch; design for idempotency around cutover</td></tr>
+            <tr><td>Schema-qualified queries</td><td>Any hardcoded <code>blue.tablename</code> in app or migrations will break the abstraction</td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <div class="box">
+        <h3 class="title is-5">Best Suited For</h3>
+        <ul>
+          <li>ETL / bulk data refresh (load into inactive schema, flip)</li>
+          <li>Read-heavy datasets with periodic full rebuilds</li>
+          <li>Time-triggered data releases</li>
+        </ul>
+        <p class="mt-3">Less suited for high-write OLTP where coordinating in-flight writes across the cutover adds complexity.</p>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+  <footer class="footer">
+    <div class="content has-text-centered">
+      <p><a href="../">GoBank</a> &mdash; <a href="https://github.com/drummonds/gobank">github.com/drummonds/gobank</a></p>
+    </div>
+  </footer>
+</body>
+</html>

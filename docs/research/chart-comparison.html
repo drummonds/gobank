@@ -15,8 +15,27 @@
   </nav>
   <section class="section">
     <div class="container is-fluid">
+      <div class="columns">
+        <div class="column is-2">
+          <aside class="menu is-sticky" style="position:sticky;top:1.5rem">
+            <p class="menu-label">Project</p>
+            <ul class="menu-list">
+              <li><a href="../">Overview</a></li>
+            </ul>
+            <p class="menu-label">Demos</p>
+            <ul class="menu-list">
+              <li><a href="../demo/">Model Bank (WASM)</a></li>
+            </ul>
+            <p class="menu-label">Research Notes</p>
+            <ul class="menu-list">
+              <li><a href="chart-comparison.html" class="is-active">Chart Renderer Comparison</a></li>
+              <li><a href="blue-green-schemas.html">Blue-Green Schemas</a></li>
+            </ul>
+          </aside>
+        </div>
+        <div class="column is-10">
       <h1 class="title">Chart Renderer Comparison</h1>
-      <p class="subtitle">4 datasets rendered by 3 engines — hand-rolled SVG, go-analyze/charts, and margaid</p>
+      <p class="subtitle">4 datasets rendered by 3 engines &mdash; hand-rolled SVG, go-analyze/charts, and margaid</p>
 
     <h2 class="title is-4 mt-6">Customer Count</h2>
     <div class="columns">
@@ -436,6 +455,8 @@ L 650 53" style="stroke-width:2;stroke:rgb(84,112,198);fill:none"/></svg>
         </div>
       </div>
     </div>
+        </div>
+      </div>
     </div>
   </section>
   <footer class="footer">
