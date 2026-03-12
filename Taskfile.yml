@@ -57,14 +57,27 @@ tasks:
       - cd cmd/chartcompare && go mod tidy
 
   docs:gen:
-    desc: Generate docs/index.html from project_data.json
+    desc: Generate dist/index.html from project_data.json
     sources:
       - cmd/demo/project_data.json
       - cmd/gendocs/main.go
     generates:
-      - docs/index.html
+      - dist/index.html
     cmds:
       - go run ./cmd/gendocs
+
+  docs:md:
+    desc: Convert README and CHANGELOG to HTML
+    cmds:
+      - mkdir -p dist
+      - task-plus md2html --file README.md --dst dist
+      - task-plus md2html --file CHANGELOG.md --dst dist
+
+  docs:research:
+    desc: Copy research HTML to dist
+    cmds:
+      - mkdir -p dist/research
+      - cp research/*.html dist/research/
 
   boe:fetch:
     desc: Fetch BoE base rate history and write CSV
@@ -81,18 +94,21 @@ tasks:
       - go run -ldflags "-X main.version={{.GIT_TAG}}" .
 
   build:docs:
-    desc: Build WASM demo for GitHub Pages docs/ folder
+    desc: Build WASM demo and all pages into dist/
     vars:
       GIT_TAG:
         sh: '[ -n "{{.VERSION}}" ] && echo "{{.VERSION}}" || git describe --tags --always 2>/dev/null || echo dev'
     cmds:
-      - mkdir -p docs/demo
+      - mkdir -p dist/demo
       - cd cmd/demo && GOOS=js GOARCH=wasm go build -ldflags "-X main.version={{.GIT_TAG}}" -o main.wasm .
-      - cp "$(find $(go env GOROOT) -name wasm_exec.js -print -quit)" docs/demo/
-      - cp cmd/demo/main.wasm docs/demo/
-      - sed 's/Model Bank WASM/Model Bank {{.GIT_TAG}}/' cmd/demo/templates/index.html > docs/demo/index.html
-      - cp cmd/demo/templates/app.js docs/demo/
+      - cp "$(find $(go env GOROOT) -name wasm_exec.js -print -quit)" dist/demo/
+      - cp cmd/demo/main.wasm dist/demo/
+      - sed 's/Model Bank WASM/Model Bank {{.GIT_TAG}}/' cmd/demo/templates/index.html > dist/demo/index.html
+      - cp cmd/demo/templates/app.js dist/demo/
       - rm cmd/demo/main.wasm
+      - task: docs:gen
+      - task: docs:md
+      - task: docs:research
 
   chartcompare:
     desc: Generate chart renderer comparison page
@@ -101,12 +117,12 @@ tasks:
       - go run .
 
   serve:
-    desc: Serve docs/ locally for testing WASM build
+    desc: Serve dist/ locally for testing WASM build
     cmds:
-      - go run ./cmd/serve -dir docs -port 8000
+      - go run ./cmd/serve -dir dist -port 8000
 
   clean:
     desc: Remove build artifacts
     cmds:
       - rm -f cmd/demo/main.wasm cmd/demo/wasm_exec.js
-      - rm -f docs/demo/main.wasm docs/demo/wasm_exec.js
+      - rm -rf dist

@@ -11,7 +11,7 @@ import (
 )
 
 func main() {
-	dir := flag.String("dir", "docs", "directory to serve")
+	dir := flag.String("dir", "dist", "directory to serve")
 	port := flag.Int("port", 8000, "port to listen on")
 	flag.Parse()
 

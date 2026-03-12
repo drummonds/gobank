@@ -9,7 +9,7 @@ import (
 
 func main() {
 	// Find repo root (walk up from executable location)
-	outDir := filepath.Join("..", "..", "docs", "research")
+	outDir := filepath.Join("..", "..", "dist", "research")
 	if err := os.MkdirAll(outDir, 0o755); err != nil {
 		fmt.Fprintf(os.Stderr, "mkdir: %v\n", err)
 		os.Exit(1)
