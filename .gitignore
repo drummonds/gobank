@@ -1,3 +1,5 @@
 .claude/settings.json
 .vscode
 docs/
+.task/
+
