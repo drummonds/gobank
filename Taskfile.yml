@@ -46,8 +46,7 @@ tasks:
       - task: fmt
       - task: vet
       - task: test
-      - task: docs:gen
-      - task: build:docs
+      - task: docs:build
 
   deps:tidy:
     desc: Tidy module dependencies
@@ -66,6 +65,38 @@ tasks:
     cmds:
       - go run ./cmd/gendocs
 
+  docs:md:
+    desc: Convert markdown and d2 diagrams to HTML/SVG
+    cmds:
+      - mkdir -p docs
+      - task-plus md2html --file README.md --dst docs
+      - task-plus md2html --file CHANGELOG.md --dst docs
+      - task-plus md2html --file ROADMAP.md --dst docs
+      - d2 roadmap.d2 docs/roadmap.svg
+
+  docs:research:
+    desc: Copy research HTML to docs
+    cmds:
+      - mkdir -p docs/research
+      - cp research/*.html docs/research/
+
+  docs:build:
+    desc: Build WASM demo and all pages into docs/
+    vars:
+      GIT_TAG:
+        sh: '[ -n "{{.VERSION}}" ] && echo "{{.VERSION}}" || git describe --tags --always 2>/dev/null || echo dev'
+    cmds:
+      - mkdir -p docs/demo
+      - cd cmd/demo && GOOS=js GOARCH=wasm go build -ldflags "-X main.version={{.GIT_TAG}}" -o main.wasm .
+      - cp "$(find $(go env GOROOT) -name wasm_exec.js -print -quit)" docs/demo/
+      - cp cmd/demo/main.wasm docs/demo/
+      - sed 's/Model Bank WASM/Model Bank {{.GIT_TAG}}/' cmd/demo/templates/index.html > docs/demo/index.html
+      - cp cmd/demo/templates/app.js docs/demo/
+      - rm cmd/demo/main.wasm
+      - task: docs:gen
+      - task: docs:md
+      - task: docs:research
+
   boe:fetch:
     desc: Fetch BoE base rate history and write CSV
     cmds:
@@ -80,33 +111,14 @@ tasks:
     cmds:
       - go run -ldflags "-X main.version={{.GIT_TAG}}" .
 
-  build:docs:
-    desc: Build WASM demo for GitHub Pages docs/ folder
-    vars:
-      GIT_TAG:
-        sh: '[ -n "{{.VERSION}}" ] && echo "{{.VERSION}}" || git describe --tags --always 2>/dev/null || echo dev'
-    cmds:
-      - mkdir -p docs/demo
-      - cd cmd/demo && GOOS=js GOARCH=wasm go build -ldflags "-X main.version={{.GIT_TAG}}" -o main.wasm .
-      - cp "$(find $(go env GOROOT) -name wasm_exec.js -print -quit)" docs/demo/
-      - cp cmd/demo/main.wasm docs/demo/
-      - sed 's/Model Bank WASM/Model Bank {{.GIT_TAG}}/' cmd/demo/templates/index.html > docs/demo/index.html
-      - cp cmd/demo/templates/app.js docs/demo/
-      - rm cmd/demo/main.wasm
-
   chartcompare:
     desc: Generate chart renderer comparison page
     dir: cmd/chartcompare
     cmds:
       - go run .
 
-  serve:
-    desc: Serve docs/ locally for testing WASM build
-    cmds:
-      - go run ./cmd/serve -dir docs -port 8000
-
   clean:
     desc: Remove build artifacts
     cmds:
       - rm -f cmd/demo/main.wasm cmd/demo/wasm_exec.js
-      - rm -f docs/demo/main.wasm docs/demo/wasm_exec.js
+      - rm -rf docs

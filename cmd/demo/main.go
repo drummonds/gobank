@@ -427,9 +427,10 @@ func main() {
 			http.Redirect(w, r, "/customers", http.StatusSeeOther)
 			return
 		}
+		txPage, _ := strconv.Atoi(r.URL.Query().Get("txpage"))
 		sessID := getSessionID(w, r)
 		piiAuth := authStore.IsAuthorized(sessID)
-		content := renderAndCapture(func() { lofigui.HTML(state.BuildCustomerDetailHTML(id, piiAuth)) })
+		content := renderAndCapture(func() { lofigui.HTML(state.BuildCustomerDetailHTML(id, piiAuth, txPage)) })
 		if serveHTMX(w, r, content) {
 			return
 		}

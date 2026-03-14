@@ -41,6 +41,7 @@ const allNavItems = [navDashboard, navPnl, navBalanceSheet, navSavings, navLendi
 let currentPage = 'dashboard';
 let renderInterval = null;
 let detailId = null; // for customer/payment detail pages
+let detailTxPage = 1; // transaction page for customer detail
 
 // --- Page rendering ---
 
@@ -66,7 +67,7 @@ function renderPage() {
             break;
         case 'customer-detail':
             if (typeof goRenderCustomerDetail === 'function' && detailId)
-                outputDiv.innerHTML = goRenderCustomerDetail(detailId);
+                outputDiv.innerHTML = goRenderCustomerDetail(detailId, detailTxPage);
             break;
         case 'payments':
             if (typeof goRenderPayments === 'function') outputDiv.innerHTML = goRenderPayments();
@@ -132,12 +133,16 @@ function updateStatus() {
 
 // Attach click handlers to dynamically rendered detail links (View buttons)
 function attachDetailLinks() {
-    // Customer detail links
+    // Customer detail links (including txpage pagination)
     outputDiv.querySelectorAll('a[href^="/customers/"]').forEach(function(a) {
         a.addEventListener('click', function(e) {
             e.preventDefault();
-            var id = a.getAttribute('href').replace('/customers/', '');
+            var href = a.getAttribute('href');
+            var path = href.split('?')[0];
+            var id = path.replace('/customers/', '');
+            var params = new URLSearchParams(href.split('?')[1] || '');
             detailId = id;
+            detailTxPage = parseInt(params.get('txpage')) || 1;
             showPage('customer-detail');
         });
     });
@@ -202,6 +207,7 @@ function showPage(page) {
     // Clear detail ID for non-detail pages
     if (page !== 'customer-detail' && page !== 'payment-detail' && page !== 'customer-view') {
         detailId = null;
+        detailTxPage = 1;
     }
 
     // Update active nav

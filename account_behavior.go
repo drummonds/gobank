@@ -1,6 +1,10 @@
 package gobank
 
-import "time"
+import (
+	"time"
+
+	luca "github.com/drummonds/go-luca"
+)
 
 // AccountStatus represents the lifecycle state of a managed account.
 type AccountStatus int
@@ -45,8 +49,8 @@ type AccountBehavior interface {
 
 // MovementHook is an optional interface for behaviors that need pre/post movement processing.
 type MovementHook interface {
-	PreMovement(ctx EventContext, fromID, toID int64, amount int64) error
-	PostMovement(ctx EventContext, fromID, toID int64, amount int64) error
+	PreMovement(ctx EventContext, fromID, toID int64, amount luca.Amount) error
+	PostMovement(ctx EventContext, fromID, toID int64, amount luca.Amount) error
 }
 
 // ParameterHook is an optional interface for behaviors that react to parameter changes.
