@@ -11,9 +11,9 @@ import (
 type AccountUpdate struct {
 	Account        *ManagedAccount
 	Date           time.Time
-	OpeningBalance int64
-	ClosingBalance int64
-	InterestAmount int64
+	OpeningBalance luca.Amount
+	ClosingBalance luca.Amount
+	InterestAmount luca.Amount
 	Exponent       int
 }
 
@@ -111,7 +111,7 @@ func (s *Simulation) GetManagedAccount(accountID int64) (*ManagedAccount, bool) 
 }
 
 // RecordMovement records a movement with optional pre/post hooks on involved accounts.
-func (s *Simulation) RecordMovement(fromID, toID, amount int64, valueTime time.Time, description string) (*luca.Movement, error) {
+func (s *Simulation) RecordMovement(fromID, toID int64, amount luca.Amount, valueTime time.Time, description string) (*luca.Movement, error) {
 	// Fire pre-movement hooks
 	for _, id := range []int64{fromID, toID} {
 		if ma, ok := s.accounts[id]; ok {

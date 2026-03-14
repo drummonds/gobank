@@ -6,11 +6,20 @@ import (
 	"time"
 )
 
-// CustomerRecord holds non-sensitive account data. PII (name, NI) is stored
-// separately in the encrypted PIIStore.
+// KYCStatus tracks Know Your Customer verification state.
+type KYCStatus struct {
+	Verified      bool
+	LastCheckDate time.Time
+	RiskRating    string // "Low", "Standard", "Medium"
+}
+
+// CustomerRecord holds non-sensitive account data. PII (name, NI, DOB, etc.)
+// is stored separately in the encrypted PIIStore.
 type CustomerRecord struct {
-	ID       string
-	Accounts []CustomerAccount
+	ID        string
+	Accounts  []CustomerAccount
+	JoinDate  time.Time
+	KYCStatus KYCStatus
 }
 
 type CustomerAccount struct {
@@ -21,6 +30,8 @@ type CustomerAccount struct {
 	Rate        float64
 	Interest    float64 // accrued interest
 	OpenDate    time.Time
+	SortCode    string
+	AccountNum  string
 }
 
 const customersPerPage = 50
@@ -114,9 +125,11 @@ func (ds *DemoState) BuildCustomersHTML(page int) string {
 	return s.String()
 }
 
-// BuildCustomerDetailHTML renders a single customer's detail page.
-// Shows auth gate if piiAuthorized is false; NI only shown when authorized.
-func (ds *DemoState) BuildCustomerDetailHTML(id string, piiAuthorized bool) string {
+const txPerDetailPage = 20
+
+// BuildCustomerDetailHTML renders a single customer's detail page with card-based layout.
+// Shows auth gate if piiAuthorized is false; full PII only shown when authorized.
+func (ds *DemoState) BuildCustomerDetailHTML(id string, piiAuthorized bool, txPage int) string {
 	ds.mu.Lock()
 	var cust *CustomerRecord
 	for i := range ds.customers {
@@ -124,14 +137,6 @@ func (ds *DemoState) BuildCustomerDetailHTML(id string, piiAuthorized bool) stri
 			c := ds.customers[i]
 			cust = &c
 			break
-		}
-	}
-	var custPayments []Payment
-	if cust != nil {
-		for _, p := range ds.payments {
-			if p.FromID == cust.ID || p.ToID == cust.ID {
-				custPayments = append(custPayments, p)
-			}
 		}
 	}
 	piiStore := ds.piiStore
@@ -143,21 +148,63 @@ func (ds *DemoState) BuildCustomerDetailHTML(id string, piiAuthorized bool) stri
 
 	name := piiStore.RetrieveName(cust.ID)
 
-	var s strings.Builder
-	s.WriteString(fmt.Sprintf(`<h2 class="title is-4">%s</h2>`, name))
-
-	if piiAuthorized {
-		_, ni, err := piiStore.Retrieve(cust.ID)
-		niDisplay := "unavailable"
-		if err == nil {
-			niDisplay = ni
+	// Compute aggregate values
+	var totalSavings, totalLending float64
+	for _, a := range cust.Accounts {
+		if a.Family == FamilySavings {
+			totalSavings += a.Balance
+		} else {
+			totalLending += a.Balance
 		}
-		s.WriteString(fmt.Sprintf(`<p class="subtitle is-6 has-text-grey">ID: %s &middot; NI: <code>%s</code></p>`, cust.ID, niDisplay))
+	}
+	relationshipValue := totalSavings + totalLending
+
+	// Tenure
+	tenure := ""
+	years := int(time.Since(cust.JoinDate).Hours() / 24 / 365)
+	if years > 0 {
+		tenure = fmt.Sprintf("%d years", years)
 	} else {
-		s.WriteString(fmt.Sprintf(`<p class="subtitle is-6 has-text-grey">ID: %s</p>`, cust.ID))
+		days := int(time.Since(cust.JoinDate).Hours() / 24)
+		tenure = fmt.Sprintf("%d days", days)
+	}
+
+	var s strings.Builder
+
+	s.WriteString(fmt.Sprintf(`<h2 class="title is-4">%s</h2>`, name))
+	s.WriteString(fmt.Sprintf(`<p class="subtitle is-6 has-text-grey">ID: %s</p>`, cust.ID))
+
+	// A. Summary panel (no PII)
+	s.WriteString(`<div class="box">
+<h3 class="title is-5">Summary</h3>
+<div class="columns">`)
+	s.WriteString(fmt.Sprintf(`<div class="column"><strong>Customer since:</strong> %s (%s)</div>`, cust.JoinDate.Format("2 Jan 2006"), tenure))
+	s.WriteString(fmt.Sprintf(`<div class="column"><strong>Products:</strong> %d</div>`, len(cust.Accounts)))
+	s.WriteString(fmt.Sprintf(`<div class="column"><strong>Relationship value:</strong> %s</div>`, fmtMoney(relationshipValue)))
+	s.WriteString(fmt.Sprintf(`<div class="column"><span class="tag is-success">Active</span></div>`))
+	s.WriteString(`</div></div>`)
+
+	// B. PII section (behind auth gate)
+	if piiAuthorized {
+		piiData, err := piiStore.Retrieve(cust.ID)
+		if err != nil {
+			piiData = PIIData{NI: "unavailable", DOB: "unavailable", Address: "unavailable", Email: "unavailable", Phone: "unavailable"}
+		}
+		s.WriteString(`<div class="box">
+<h3 class="title is-5">Personal Information</h3>
+<div class="columns">
+<div class="column">`)
+		s.WriteString(fmt.Sprintf(`<p><strong>Date of Birth:</strong> %s</p>`, piiData.DOB))
+		s.WriteString(fmt.Sprintf(`<p><strong>NI Number:</strong> <code>%s</code></p>`, piiData.NI))
+		s.WriteString(fmt.Sprintf(`<p><strong>Address:</strong> %s</p>`, piiData.Address))
+		s.WriteString(`</div><div class="column">`)
+		s.WriteString(fmt.Sprintf(`<p><strong>Email:</strong> %s</p>`, piiData.Email))
+		s.WriteString(fmt.Sprintf(`<p><strong>Phone:</strong> %s</p>`, piiData.Phone))
+		s.WriteString(`</div></div></div>`)
+	} else {
 		s.WriteString(fmt.Sprintf(`<div class="notification is-warning">
   <h3 class="title is-6">PII Access Required</h3>
-  <p>National Insurance number is protected. Authorize to view.</p>
+  <p>Personal information is protected. Authorize to view.</p>
   <form action="/auth/authorize" method="post" class="mt-2">
     <input type="hidden" name="redirect" value="/customers/%s">
     <button class="button is-warning is-small">Confirm PII Access</button>
@@ -165,40 +212,82 @@ func (ds *DemoState) BuildCustomerDetailHTML(id string, piiAuthorized bool) stri
 </div>`, cust.ID))
 	}
 
-	// Accounts table
+	// C. KYC panel
+	kycTag := `<span class="tag is-success">Verified</span>`
+	if !cust.KYCStatus.Verified {
+		kycTag = `<span class="tag is-danger">Unverified</span>`
+	}
+	riskTag := `<span class="tag is-success is-light">Low</span>`
+	switch cust.KYCStatus.RiskRating {
+	case "Standard":
+		riskTag = `<span class="tag is-info is-light">Standard</span>`
+	case "Medium":
+		riskTag = `<span class="tag is-warning is-light">Medium</span>`
+	}
+	s.WriteString(`<div class="box">
+<h3 class="title is-5">KYC Status</h3>
+<div class="columns">`)
+	s.WriteString(fmt.Sprintf(`<div class="column"><strong>Status:</strong> %s</div>`, kycTag))
+	s.WriteString(fmt.Sprintf(`<div class="column"><strong>Last Check:</strong> %s</div>`, cust.KYCStatus.LastCheckDate.Format("2 Jan 2006")))
+	s.WriteString(fmt.Sprintf(`<div class="column"><strong>Risk Rating:</strong> %s</div>`, riskTag))
+	s.WriteString(`</div></div>`)
+
+	// D. Accounts table with sort code + account number
 	s.WriteString(`<h3 class="title is-5 mt-5">Accounts</h3>`)
 	s.WriteString(`<div class="table-container"><table class="table is-fullwidth is-striped">`)
-	s.WriteString(`<thead><tr><th>Product</th><th>Type</th><th>Rate</th><th>Balance</th><th>Interest</th><th>Opened</th></tr></thead><tbody>`)
+	s.WriteString(`<thead><tr><th>Product</th><th>Type</th><th>Sort Code</th><th>Account No.</th><th>Rate</th><th>Balance</th><th>Interest</th><th>Opened</th></tr></thead><tbody>`)
 	for _, a := range cust.Accounts {
 		familyTag := `<span class="tag is-success is-light">Savings</span>`
 		if a.Family == FamilyLending {
 			familyTag = `<span class="tag is-info is-light">Lending</span>`
 		}
 		s.WriteString(fmt.Sprintf(`<tr>
-  <td>%s</td><td>%s</td><td>%.1f%%</td><td>%s</td><td>%s</td><td>%s</td>
-</tr>`, a.ProductName, familyTag, a.Rate*100, fmtMoney(a.Balance), fmtMoney(a.Interest), a.OpenDate.Format("2 Jan 2006")))
+  <td>%s</td><td>%s</td><td><code>%s</code></td><td><code>%s</code></td><td>%.1f%%</td><td>%s</td><td>%s</td><td>%s</td>
+</tr>`, a.ProductName, familyTag, a.SortCode, a.AccountNum, a.Rate*100, fmtMoney(a.Balance), fmtMoney(a.Interest), a.OpenDate.Format("2 Jan 2006")))
 	}
 	s.WriteString(`</tbody></table></div>`)
 
-	// Recent payments
-	if len(custPayments) > 0 {
-		s.WriteString(`<h3 class="title is-5 mt-5">Recent Payments</h3>`)
-		s.WriteString(`<div class="table-container"><table class="table is-fullwidth is-striped">`)
-		s.WriteString(`<thead><tr><th>ID</th><th>From</th><th>To</th><th>Amount</th><th>Status</th><th>Reference</th></tr></thead><tbody>`)
-		start := 0
-		if len(custPayments) > 10 {
-			start = len(custPayments) - 10
-		}
-		for i := len(custPayments) - 1; i >= start; i-- {
-			p := custPayments[i]
-			fromName := piiStore.RetrieveName(p.FromID)
-			toName := piiStore.RetrieveName(p.ToID)
+	// E. Transaction history (paginated from txlog)
+	if txPage < 1 {
+		txPage = 1
+	}
+	txEntries, txTotal := ds.CustomerTransactions(cust.ID, txPage, txPerDetailPage)
+	txTotalPages := (txTotal + txPerDetailPage - 1) / txPerDetailPage
+	if txTotalPages < 1 {
+		txTotalPages = 1
+	}
+
+	s.WriteString(`<h3 class="title is-5 mt-5">Transaction History</h3>`)
+	if txTotal == 0 {
+		s.WriteString(`<p class="has-text-grey">No transactions yet.</p>`)
+	} else {
+		s.WriteString(fmt.Sprintf(`<p class="mb-2 has-text-grey is-size-7">%d transactions</p>`, txTotal))
+		s.WriteString(`<div class="table-container"><table class="table is-fullwidth is-striped is-hoverable">`)
+		s.WriteString(`<thead><tr><th>Date</th><th>Product</th><th>Type</th><th>Amount</th><th>Balance</th><th>Reference</th></tr></thead><tbody>`)
+		for _, tx := range txEntries {
+			typeTag := tx.Type.String()
 			s.WriteString(fmt.Sprintf(`<tr>
-  <td>%d</td><td>%s</td><td>%s</td><td>%s</td>
-  <td><span class="tag %s">%s</span></td><td>%s</td>
-</tr>`, p.ID, fromName, toName, fmtMoney(p.Amount), p.Status.BulmaTag(), p.Status, p.Reference))
+  <td>%s</td><td>%s</td><td>%s</td><td>%s</td><td>%s</td><td>%s</td>
+</tr>`, tx.Date.Format("2 Jan 2006"), tx.ProductName, typeTag, fmtMoney(tx.Amount), fmtMoney(tx.Balance), tx.Reference))
 		}
 		s.WriteString(`</tbody></table></div>`)
+
+		// Pagination
+		if txTotalPages > 1 {
+			s.WriteString(`<nav class="pagination is-small mt-4" role="navigation">`)
+			if txPage > 1 {
+				s.WriteString(fmt.Sprintf(`<a class="pagination-previous" href="/customers/%s?txpage=%d">Previous</a>`, cust.ID, txPage-1))
+			} else {
+				s.WriteString(`<a class="pagination-previous" disabled>Previous</a>`)
+			}
+			if txPage < txTotalPages {
+				s.WriteString(fmt.Sprintf(`<a class="pagination-next" href="/customers/%s?txpage=%d">Next</a>`, cust.ID, txPage+1))
+			} else {
+				s.WriteString(`<a class="pagination-next" disabled>Next</a>`)
+			}
+			s.WriteString(fmt.Sprintf(`<span class="pagination-list">Page %d of %d</span>`, txPage, txTotalPages))
+			s.WriteString(`</nav>`)
+		}
 	}
 
 	return s.String()

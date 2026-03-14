@@ -176,14 +176,18 @@ func goRenderCustomers(this js.Value, args []js.Value) any {
 
 func goRenderCustomerDetail(this js.Value, args []js.Value) any {
 	id := ""
+	txPage := 1
 	if len(args) > 0 {
 		id = args[0].String()
+	}
+	if len(args) > 1 {
+		txPage = args[1].Int()
 	}
 	state.mu.Lock()
 	piiAuth := state.piiAuthorized
 	state.mu.Unlock()
 	lofigui.Reset()
-	lofigui.HTML(state.BuildCustomerDetailHTML(id, piiAuth))
+	lofigui.HTML(state.BuildCustomerDetailHTML(id, piiAuth, txPage))
 	return js.ValueOf(lofigui.Buffer())
 }
 

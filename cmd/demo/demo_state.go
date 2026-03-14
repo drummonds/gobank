@@ -204,9 +204,9 @@ func (ds *DemoState) advanceDay() {
 		dailyProb := 0.10 + attractiveness*0.20
 
 		if ds.rng.Float64() < dailyProb {
-			cust, name, ni := generateCustomer(ds.rng, ds.nextCustSeq, ds.products, ds.currentDay)
+			cust, pii := generateCustomer(ds.rng, ds.nextCustSeq, ds.products, ds.currentDay)
 			ds.nextCustSeq++
-			_ = ds.piiStore.Store(cust.ID, name, ni)
+			_ = ds.piiStore.Store(cust.ID, pii)
 			ds.customers = append(ds.customers, cust)
 			ds.fundCustomer(len(ds.customers) - 1)
 		}
@@ -305,9 +305,9 @@ func (ds *DemoState) AddCustomersBatch(n int) {
 				cancel()
 				return
 			}
-			cust, name, ni := generateCustomer(ds.rng, ds.nextCustSeq, ds.products, ds.currentDay)
+			cust, pii := generateCustomer(ds.rng, ds.nextCustSeq, ds.products, ds.currentDay)
 			ds.nextCustSeq++
-			_ = ds.piiStore.Store(cust.ID, name, ni)
+			_ = ds.piiStore.Store(cust.ID, pii)
 			ds.customers = append(ds.customers, cust)
 			ds.fundCustomer(len(ds.customers) - 1)
 			ds.addingCustProgress = i + 1

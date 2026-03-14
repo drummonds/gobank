@@ -46,7 +46,9 @@ func (ds *DemoState) BuildBBSIHTML(piiAuthorized bool) string {
 		}
 		if interest > 0 {
 			totalInterest += interest
-			name, ni, err := piiStore.Retrieve(c.ID)
+			piiData, err := piiStore.Retrieve(c.ID)
+			name := piiData.Name
+			ni := piiData.NI
 			if err != nil {
 				name = c.ID
 				ni = "N/A"
@@ -115,7 +117,8 @@ func (ds *DemoState) BuildCustomerViewHTML(id string, piiAuthorized bool) string
 		return s.String()
 	}
 
-	_, ni, err := piiStore.Retrieve(cust.ID)
+	piiData, err := piiStore.Retrieve(cust.ID)
+	ni := piiData.NI
 	if err != nil {
 		ni = "N/A"
 	}
