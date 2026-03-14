@@ -1,0 +1,142 @@
+direction: right
+
+title: GoBank Roadmap {
+  shape: text
+  style.font-size: 28
+  style.bold: true
+}
+
+legend: {
+  grid-columns: 2
+  done: Done {
+    style.fill: "#c8e6c9"
+    style.stroke: "#4caf50"
+  }
+  todo: To Do {
+    style.fill: "#fff3e0"
+    style.stroke: "#ff9800"
+  }
+}
+
+phases: {
+  grid-columns: 3
+  grid-gap: 16
+
+  phase1: Phase 1 — WASM Model Bank {
+    grid-columns: 1
+    style.fill: "#e3f2fd"
+    style.stroke: "#2196f3"
+    style.font-size: 18
+    style.bold: true
+
+    wasm: WASM build & deploy {
+      style.fill: "#c8e6c9"
+      style.stroke: "#4caf50"
+    }
+    lofigui: lofigui web UI {
+      style.fill: "#c8e6c9"
+      style.stroke: "#4caf50"
+    }
+    goluca: go-luca accounting integration {
+      style.fill: "#c8e6c9"
+      style.stroke: "#4caf50"
+    }
+    rbac: RBAC (admin role) {
+      style.fill: "#c8e6c9"
+      style.stroke: "#4caf50"
+    }
+    savings: Working savings accounts {
+      style.fill: "#fff3e0"
+      style.stroke: "#ff9800"
+    }
+    import: Import state via luca files {
+      style.fill: "#fff3e0"
+      style.stroke: "#ff9800"
+    }
+    export: Export state via luca files {
+      style.fill: "#fff3e0"
+      style.stroke: "#ff9800"
+    }
+    export_single: Export single savings account {
+      style.fill: "#fff3e0"
+      style.stroke: "#ff9800"
+    }
+    pnl: Accurate P&L (EOD + periods) {
+      style.fill: "#fff3e0"
+      style.stroke: "#ff9800"
+    }
+    bs: Balance sheet (EOD + periods) {
+      style.fill: "#fff3e0"
+      style.stroke: "#ff9800"
+    }
+    customers: Customer model (confidence, max agg balance) {
+      style.fill: "#fff3e0"
+      style.stroke: "#ff9800"
+    }
+    customer_wall: Named customers behind customer wall {
+      style.fill: "#fff3e0"
+      style.stroke: "#ff9800"
+    }
+    mock_fps: mock-fps integration (compiled in) {
+      style.fill: "#fff3e0"
+      style.stroke: "#ff9800"
+    }
+    standin: FPS stand-in mode simulation {
+      style.fill: "#fff3e0"
+      style.stroke: "#ff9800"
+    }
+  }
+
+  phase2: Phase 2 — Kubernetes + AlloyDB {
+    grid-columns: 1
+    style.fill: "#f3e5f5"
+    style.stroke: "#9c27b0"
+    style.font-size: 18
+    style.bold: true
+
+    k8s: Deploy to Kubernetes cluster {
+      style.fill: "#fff3e0"
+      style.stroke: "#ff9800"
+    }
+    alloydb: AlloyDB (Postgres) backend {
+      style.fill: "#fff3e0"
+      style.stroke: "#ff9800"
+    }
+    multi_svc: Unbundle mock-fps as separate service {
+      style.fill: "#fff3e0"
+      style.stroke: "#ff9800"
+    }
+    http_api: Full HTTP API (all GUI actions) {
+      style.fill: "#fff3e0"
+      style.stroke: "#ff9800"
+    }
+    scv: SCV regulatory report at scale {
+      style.fill: "#fff3e0"
+      style.stroke: "#ff9800"
+    }
+  }
+
+  phase3: Phase 3 — CockroachDB + Scale {
+    grid-columns: 1
+    style.fill: "#fce4ec"
+    style.stroke: "#e91e63"
+    style.font-size: 18
+    style.bold: true
+
+    crdb: CockroachDB backend {
+      style.fill: "#fff3e0"
+      style.stroke: "#ff9800"
+    }
+    multi_region: Multi-region deployment {
+      style.fill: "#fff3e0"
+      style.stroke: "#ff9800"
+    }
+    blue_green: Blue-green schema migrations {
+      style.fill: "#fff3e0"
+      style.stroke: "#ff9800"
+    }
+  }
+}
+
+phases.phase1 -> phases.phase2: Same code, different deployment
+phases.phase2 -> phases.phase3: Scale out

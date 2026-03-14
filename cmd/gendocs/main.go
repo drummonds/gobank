@@ -64,6 +64,7 @@ const tmpl = `<!DOCTYPE html>
             </ul>
             <p class="menu-label">Docs</p>
             <ul class="menu-list">
+              <li><a href="ROADMAP.html">Roadmap</a></li>
               <li><a href="README.html">README</a></li>
               <li><a href="CHANGELOG.html">CHANGELOG</a></li>
             </ul>
@@ -119,7 +120,7 @@ const tmpl = `<!DOCTYPE html>
 
 func main() {
 	dataPath := "cmd/demo/project_data.json"
-	outPath := "dist/index.html"
+	outPath := "docs/index.html"
 
 	data, err := os.ReadFile(dataPath)
 	if err != nil {
@@ -136,8 +137,8 @@ func main() {
 		log.Fatalf("parsing template: %v", err)
 	}
 
-	if err := os.MkdirAll("dist", 0o755); err != nil {
-		log.Fatalf("creating dist dir: %v", err)
+	if err := os.MkdirAll("docs", 0o755); err != nil {
+		log.Fatalf("creating docs dir: %v", err)
 	}
 
 	f, err := os.Create(outPath)
