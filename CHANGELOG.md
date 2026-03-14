@@ -16,7 +16,10 @@
 
  - Adding project info page## [0.3.18] - 2026-03-07
 
- - Adding version
+ - Adding version## [0.3.20] - 2026-03-14
+
+ - Updating to goluca
+
 ## [0.3.19] - 2026-03-07
 
  - Adding software hierarchy to docs
