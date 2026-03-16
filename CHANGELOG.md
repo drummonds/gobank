@@ -22,7 +22,10 @@
 
  - tweak check## [0.3.24] - 2026-03-16
 
- - db explorer
+ - db explorer## [0.3.26] - 2026-03-16
+
+ - unifying DB
+
 ## [0.3.25] - 2026-03-16
 
  - fixing menu and db explorer  in WASM
