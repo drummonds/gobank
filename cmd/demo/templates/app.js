@@ -8,6 +8,8 @@ const advanceBtn = document.getElementById('advanceBtn');
 const addCustBtn = document.getElementById('addCustBtn');
 const addCustN = document.getElementById('addCustN');
 const resetBtn = document.getElementById('resetBtn');
+const exportBtn = document.getElementById('exportBtn');
+const importFile = document.getElementById('importFile');
 
 // Payment controls
 const controlsPayments = document.getElementById('controls-payments');
@@ -274,7 +276,7 @@ function toggleAutoPayments() {
 // --- Init ---
 
 window.wasmReady = function() {
-    [startStopBtn, advanceBtn, addCustBtn, addCustN, resetBtn,
+    [startStopBtn, advanceBtn, addCustBtn, addCustN, resetBtn, exportBtn,
      sendPaymentBtn, autoPaymentsBtn, resetPaymentsBtn].forEach(function(btn) { btn.disabled = false; });
     showPage('dashboard');
 };
@@ -324,6 +326,28 @@ resetBtn.addEventListener('click', function() {
     goReset();
     if (renderInterval) { clearInterval(renderInterval); renderInterval = null; }
     renderPage();
+});
+exportBtn.addEventListener('click', function() {
+    var data = goExport();
+    if (data.startsWith('error:')) { alert(data); return; }
+    var blob = new Blob([data], { type: 'application/octet-stream' });
+    var a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = 'gobank.goluca';
+    a.click();
+    URL.revokeObjectURL(a.href);
+});
+importFile.addEventListener('change', function() {
+    var file = importFile.files[0];
+    if (!file) return;
+    var reader = new FileReader();
+    reader.onload = function() {
+        var result = goImport(reader.result);
+        if (result && result.startsWith('error:')) { alert(result); }
+        else { renderPage(); }
+    };
+    reader.readAsText(file);
+    importFile.value = '';
 });
 
 // Payment controls

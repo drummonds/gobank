@@ -11,7 +11,7 @@ import (
 
 var state = NewDemoState()
 
-// --- Export ---
+// --- Export/Import ---
 
 func goExport(this js.Value, args []js.Value) any {
 	var buf bytes.Buffer
@@ -22,6 +22,20 @@ func goExport(this js.Value, args []js.Value) any {
 		return js.ValueOf("error: " + err.Error())
 	}
 	return js.ValueOf(buf.String())
+}
+
+func goImport(this js.Value, args []js.Value) any {
+	if len(args) < 1 {
+		return js.ValueOf("error: no data")
+	}
+	data := args[0].String()
+	state.mu.Lock()
+	err := state.sim.ImportGoluca(bytes.NewReader([]byte(data)))
+	state.mu.Unlock()
+	if err != nil {
+		return js.ValueOf("error: " + err.Error())
+	}
+	return js.ValueOf("")
 }
 
 // --- Bank functions ---
@@ -284,8 +298,9 @@ func goIsPIIAuthorized(this js.Value, args []js.Value) any {
 }
 
 func main() {
-	// Export
+	// Export/Import
 	js.Global().Set("goExport", js.FuncOf(goExport))
+	js.Global().Set("goImport", js.FuncOf(goImport))
 
 	// Bank
 	js.Global().Set("goRender", js.FuncOf(goRender))
