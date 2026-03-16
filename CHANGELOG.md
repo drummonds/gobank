@@ -18,7 +18,10 @@
 
  - Adding version## [0.3.20] - 2026-03-14
 
- - Updating to goluca
+ - Updating to goluca## [0.3.22] - 2026-03-16
+
+ - tweak check
+
 ## [0.3.21] - 2026-03-14
 
  - Removing .task from vc
