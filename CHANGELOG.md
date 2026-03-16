@@ -25,6 +25,9 @@
  - db explorer## [0.3.26] - 2026-03-16
 
  - unifying DB
+## [0.3.27] - 2026-03-16
+
+ - Adding roles and movement codes
 
 ## [0.3.25] - 2026-03-16
 
