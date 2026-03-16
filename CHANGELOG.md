@@ -20,7 +20,10 @@
 
  - Updating to goluca## [0.3.22] - 2026-03-16
 
- - tweak check
+ - tweak check## [0.3.24] - 2026-03-16
+
+ - db explorer
+
 ## [0.3.23] - 2026-03-16
 
  - fix import export buttons
