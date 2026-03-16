@@ -23,6 +23,9 @@
  - tweak check## [0.3.24] - 2026-03-16
 
  - db explorer
+## [0.3.25] - 2026-03-16
+
+ - fixing menu and db explorer  in WASM
 
 ## [0.3.23] - 2026-03-16
 
