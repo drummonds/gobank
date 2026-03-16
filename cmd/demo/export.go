@@ -6,6 +6,8 @@ import (
 	"bytes"
 	"io"
 	"net/http"
+
+	luca "github.com/drummonds/go-luca"
 )
 
 func (ds *DemoState) handleExport(w http.ResponseWriter, r *http.Request) {
@@ -45,7 +47,10 @@ func (ds *DemoState) handleImport(w http.ResponseWriter, r *http.Request) {
 	}
 
 	ds.mu.Lock()
-	err = ds.sim.ImportGoluca(bytes.NewReader(data))
+	err = ds.sim.Ledger.Import(bytes.NewReader(data), &luca.ImportOptions{
+		AutoCreateAccounts: true,
+		DefaultCurrency:    "GBP",
+	})
 	ds.mu.Unlock()
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)

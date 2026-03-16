@@ -3,6 +3,8 @@ package main
 import (
 	"fmt"
 	"strings"
+
+	gbp "codeberg.org/hum3/gobank-products"
 )
 
 // BuildBBSIHTML renders the BBSI annual report. Shows auth gate when not authorized.
@@ -40,7 +42,7 @@ func (ds *DemoState) BuildBBSIHTML(piiAuthorized bool) string {
 	for _, c := range customers {
 		interest := 0.0
 		for _, a := range c.Accounts {
-			if a.Family == FamilySavings {
+			if a.Family == gbp.FamilySavings {
 				interest += a.Interest
 			}
 		}
@@ -137,7 +139,7 @@ func (ds *DemoState) BuildCustomerViewHTML(id string, piiAuthorized bool) string
 	totalLending := 0.0
 	totalInterest := 0.0
 	for _, a := range cust.Accounts {
-		if a.Family == FamilySavings {
+		if a.Family == gbp.FamilySavings {
 			totalSavings += a.Balance
 		} else {
 			totalLending += a.Balance
@@ -156,7 +158,7 @@ func (ds *DemoState) BuildCustomerViewHTML(id string, piiAuthorized bool) string
 	s.WriteString(`<thead><tr><th>Product</th><th>Type</th><th>Rate</th><th>Balance</th><th>Interest Accrued</th><th>Opened</th></tr></thead><tbody>`)
 	for _, a := range cust.Accounts {
 		familyTag := `<span class="tag is-success is-light">Savings</span>`
-		if a.Family == FamilyLending {
+		if a.Family == gbp.FamilyLending {
 			familyTag = `<span class="tag is-info is-light">Lending</span>`
 		}
 		s.WriteString(fmt.Sprintf(`<tr>

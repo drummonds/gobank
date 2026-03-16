@@ -12,6 +12,7 @@ import (
 	"sync"
 	"time"
 
+	gbp "codeberg.org/hum3/gobank-products"
 	"github.com/drummonds/lofigui"
 	"github.com/flosch/pongo2/v6"
 )
@@ -467,7 +468,7 @@ func main() {
 			http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 			return
 		}
-		content := renderAndCapture(func() { lofigui.HTML(state.BuildProductsHTML(FamilySavings)) })
+		content := renderAndCapture(func() { lofigui.HTML(state.BuildProductsHTML(gbp.FamilySavings)) })
 		if serveHTMX(w, r, content) {
 			return
 		}
@@ -479,7 +480,7 @@ func main() {
 			http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 			return
 		}
-		content := renderAndCapture(func() { lofigui.HTML(state.BuildProductsHTML(FamilyLending)) })
+		content := renderAndCapture(func() { lofigui.HTML(state.BuildProductsHTML(gbp.FamilyLending)) })
 		if serveHTMX(w, r, content) {
 			return
 		}

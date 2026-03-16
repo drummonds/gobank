@@ -7,6 +7,7 @@ import (
 	"strings"
 	"time"
 
+	gbp "codeberg.org/hum3/gobank-products"
 	luca "github.com/drummonds/go-luca"
 )
 
@@ -116,14 +117,14 @@ func (ds *DemoState) SendPayment() {
 	// Find first savings account on each
 	fromAccIdx := -1
 	for i, a := range ds.customers[fromIdx].Accounts {
-		if a.Family == FamilySavings {
+		if a.Family == gbp.FamilySavings {
 			fromAccIdx = i
 			break
 		}
 	}
 	toAccIdx := -1
 	for i, a := range ds.customers[toIdx].Accounts {
-		if a.Family == FamilySavings {
+		if a.Family == gbp.FamilySavings {
 			toAccIdx = i
 			break
 		}
@@ -223,7 +224,7 @@ func (ds *DemoState) fundCustomer(custIdx int) {
 	cust := &ds.customers[custIdx]
 	for i := range cust.Accounts {
 		a := &cust.Accounts[i]
-		if a.Family == FamilySavings {
+		if a.Family == gbp.FamilySavings {
 			amount := float64(500 + ds.rng.Intn(9500))
 			a.Balance = amount
 			ds.makePayment(PayDeposit, "EXTERNAL", cust.ID, amount)

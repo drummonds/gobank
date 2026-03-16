@@ -3,9 +3,9 @@ module github.com/drummonds/gobank/cmd/demo
 go 1.25.3
 
 require (
+	codeberg.org/hum3/gobank-products v0.0.0
 	github.com/drummonds/go-luca v0.2.19
 	github.com/drummonds/go-postgres v0.4.0
-	github.com/drummonds/gobank v0.0.0-00010101000000-000000000000
 	github.com/drummonds/lofigui v0.17.5
 	github.com/flosch/pongo2/v6 v6.0.0
 	github.com/go-analyze/charts v0.5.25
@@ -26,8 +26,8 @@ require (
 	golang.org/x/sys v0.41.0 // indirect
 )
 
-replace github.com/drummonds/gobank => ../..
-
 replace github.com/drummonds/go-luca => ../../../go-luca
 
 replace github.com/drummonds/lofigui => ../../../../minor/lofigui
+
+replace codeberg.org/hum3/gobank-products => ../../../gobank-products

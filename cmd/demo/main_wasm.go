@@ -6,6 +6,8 @@ import (
 	"bytes"
 	"syscall/js"
 
+	gbp "codeberg.org/hum3/gobank-products"
+	luca "github.com/drummonds/go-luca"
 	"github.com/drummonds/lofigui"
 )
 
@@ -30,7 +32,10 @@ func goImport(this js.Value, args []js.Value) any {
 	}
 	data := args[0].String()
 	state.mu.Lock()
-	err := state.sim.ImportGoluca(bytes.NewReader([]byte(data)))
+	err := state.sim.Ledger.Import(bytes.NewReader([]byte(data)), &luca.ImportOptions{
+		AutoCreateAccounts: true,
+		DefaultCurrency:    "GBP",
+	})
 	state.mu.Unlock()
 	if err != nil {
 		return js.ValueOf("error: " + err.Error())
@@ -181,9 +186,9 @@ func goRenderBalanceSheet(this js.Value, args []js.Value) any {
 // --- Products functions ---
 
 func goRenderProducts(this js.Value, args []js.Value) any {
-	family := FamilySavings
+	family := gbp.FamilySavings
 	if len(args) > 0 && args[0].String() == "lending" {
-		family = FamilyLending
+		family = gbp.FamilyLending
 	}
 	lofigui.Reset()
 	lofigui.HTML(state.BuildProductsHTML(family))

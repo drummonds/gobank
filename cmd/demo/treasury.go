@@ -5,6 +5,8 @@ import (
 	"math"
 	"strings"
 	"time"
+
+	gbp "codeberg.org/hum3/gobank-products"
 )
 
 // TreasurySnapshot holds data for treasury pages, grabbed under one lock.
@@ -30,7 +32,7 @@ func (ds *DemoState) TreasuryData() TreasurySnapshot {
 	var savings, lending float64
 	for _, c := range ds.customers {
 		for _, a := range c.Accounts {
-			if a.Family == FamilySavings {
+			if a.Family == gbp.FamilySavings {
 				savings += a.Balance
 			} else {
 				lending += a.Balance

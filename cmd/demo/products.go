@@ -4,38 +4,32 @@ import (
 	"fmt"
 	"math"
 	"strings"
+
+	gbp "codeberg.org/hum3/gobank-products"
 )
 
-type ProductFamily string
-
-const (
-	FamilySavings ProductFamily = "Savings"
-	FamilyLending ProductFamily = "Lending"
-)
-
+// Product wraps a gbp.Product with demo-specific UI fields.
 type Product struct {
-	ID          string
-	Name        string
-	Family      ProductFamily
-	Rate        float64 // annual rate as decimal
+	*gbp.Product
+	Rate        float64 // annual rate as decimal (cached from Defaults)
 	Terms       string
 	Description string
 }
 
 func AllProducts() []Product {
 	return []Product{
-		{ID: "easy-access", Name: "Easy Access", Family: FamilySavings, Rate: 0.015, Terms: "No notice", Description: "Instant access savings with competitive rate"},
-		{ID: "fixed-term", Name: "Fixed Term", Family: FamilySavings, Rate: 0.040, Terms: "2 year fixed", Description: "Higher rate for locking funds for 2 years"},
-		{ID: "isa", Name: "ISA", Family: FamilySavings, Rate: 0.035, Terms: "Annual allowance", Description: "Tax-free savings up to annual ISA allowance"},
-		{ID: "personal-loan", Name: "Personal Loan", Family: FamilyLending, Rate: 0.069, Terms: "1-5 years", Description: "Unsecured personal loan for any purpose"},
-		{ID: "mortgage", Name: "Mortgage", Family: FamilyLending, Rate: 0.045, Terms: "25 year", Description: "Residential mortgage with fixed rate period"},
-		{ID: "overdraft", Name: "Overdraft", Family: FamilyLending, Rate: 0.159, Terms: "Revolving", Description: "Arranged overdraft facility on current account"},
+		{Product: gbp.EasyAccess(), Rate: 0.015, Terms: "No notice", Description: "Instant access savings with competitive rate"},
+		{Product: gbp.FixedTerm(), Rate: 0.040, Terms: "2 year fixed", Description: "Higher rate for locking funds for 2 years"},
+		{Product: gbp.ISA(), Rate: 0.035, Terms: "Annual allowance", Description: "Tax-free savings up to annual ISA allowance"},
+		{Product: gbp.PersonalLoan(), Rate: 0.069, Terms: "1-5 years", Description: "Unsecured personal loan for any purpose"},
+		{Product: gbp.Mortgage(), Rate: 0.045, Terms: "25 year", Description: "Residential mortgage with fixed rate period"},
+		{Product: gbp.Overdraft(), Rate: 0.159, Terms: "Revolving", Description: "Arranged overdraft facility on current account"},
 	}
 }
 
 // BuildProductsHTML renders product cards for a given family, with account counts from state.
 // For savings family, appends BoE base rate history graph.
-func (ds *DemoState) BuildProductsHTML(family ProductFamily) string {
+func (ds *DemoState) BuildProductsHTML(family gbp.ProductFamily) string {
 	ds.mu.Lock()
 	products := ds.products
 	customers := make([]CustomerRecord, len(ds.customers))
@@ -76,7 +70,7 @@ func (ds *DemoState) BuildProductsHTML(family ProductFamily) string {
 	}
 
 	// Append BoE rate graph for savings family
-	if family == FamilySavings {
+	if family == gbp.FamilySavings {
 		s.WriteString(fmt.Sprintf(`<div class="box mt-4">
   <h3 class="title is-5">BoE Base Rate History</h3>
   <p class="subtitle is-6 has-text-grey">Current: %.2f%%</p>`, boeRate*100))
