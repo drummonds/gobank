@@ -61,6 +61,7 @@ const LayoutModelBank = `<!DOCTYPE html>
           <div class="navbar-dropdown">
             <a class="navbar-item" href="/settings">Settings</a>
             <a class="navbar-item" href="/internal/tables">DB Tables</a>
+            <a class="navbar-item" href="/internal/explorer">DB Explorer</a>
           </div>
         </div>
         <div class="navbar-item has-dropdown is-hoverable">
