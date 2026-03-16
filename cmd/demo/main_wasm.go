@@ -258,6 +258,52 @@ func goRenderCustomerViewReport(this js.Value, args []js.Value) any {
 	return js.ValueOf(lofigui.Buffer())
 }
 
+// --- Internal/DB functions ---
+
+func goRenderTables(this js.Value, args []js.Value) any {
+	lofigui.Reset()
+	lofigui.HTML(state.BuildTablesHTML())
+	return js.ValueOf(lofigui.Buffer())
+}
+
+func goRenderTableDetail(this js.Value, args []js.Value) any {
+	name := ""
+	if len(args) > 0 {
+		name = args[0].String()
+	}
+	lofigui.Reset()
+	lofigui.HTML(state.BuildTableDetailHTML(name))
+	return js.ValueOf(lofigui.Buffer())
+}
+
+func goRenderExplorer(this js.Value, args []js.Value) any {
+	lofigui.Reset()
+	lofigui.HTML(state.BuildExplorerHTML())
+	return js.ValueOf(lofigui.Buffer())
+}
+
+func goRenderExplorerTable(this js.Value, args []js.Value) any {
+	name := ""
+	page := 1
+	sort := ""
+	dir := "asc"
+	if len(args) > 0 {
+		name = args[0].String()
+	}
+	if len(args) > 1 {
+		page = args[1].Int()
+	}
+	if len(args) > 2 {
+		sort = args[2].String()
+	}
+	if len(args) > 3 {
+		dir = args[3].String()
+	}
+	lofigui.Reset()
+	lofigui.HTML(state.BuildExplorerTableHTML(name, page, sort, dir))
+	return js.ValueOf(lofigui.Buffer())
+}
+
 // --- Settings functions ---
 
 func goRenderSettings(this js.Value, args []js.Value) any {
@@ -349,6 +395,12 @@ func main() {
 	// Reports
 	js.Global().Set("goRenderBBSI", js.FuncOf(goRenderBBSI))
 	js.Global().Set("goRenderCustomerViewReport", js.FuncOf(goRenderCustomerViewReport))
+
+	// Internal/DB
+	js.Global().Set("goRenderTables", js.FuncOf(goRenderTables))
+	js.Global().Set("goRenderTableDetail", js.FuncOf(goRenderTableDetail))
+	js.Global().Set("goRenderExplorer", js.FuncOf(goRenderExplorer))
+	js.Global().Set("goRenderExplorerTable", js.FuncOf(goRenderExplorerTable))
 
 	// Settings
 	js.Global().Set("goRenderSettings", js.FuncOf(goRenderSettings))
