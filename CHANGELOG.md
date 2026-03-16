@@ -27,6 +27,9 @@
  - unifying DB## [0.3.28] - 2026-03-16
 
  - tidying
+## [0.3.29] - 2026-03-16
+
+ - moving simulation and products to gobank-products
 
 ## [0.3.27] - 2026-03-16
 
