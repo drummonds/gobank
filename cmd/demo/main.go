@@ -119,6 +119,10 @@ func renderDashControls(d DashData, oob bool) string {
 	s.WriteString(fmt.Sprintf(`<div class="buttons">%s
   <form action="/advance" method="post" style="display:inline"><button class="button is-info" type="submit">Advance Day</button></form>
   <form action="/reset" method="post" style="display:inline"><button class="button is-light" type="submit">Reset</button></form>
+  <a href="/export.goluca" class="button is-link is-light" download>Export .goluca</a>
+  <form action="/import" method="post" enctype="multipart/form-data" style="display:inline">
+    <label class="button is-info is-light">Import .goluca<input type="file" name="file" accept=".goluca" onchange="this.form.submit()" style="display:none"></label>
+  </form>
 </div>`, startStopBtn))
 	s.WriteString(`</div>`)
 	return s.String()
@@ -346,6 +350,11 @@ func main() {
 		}
 		http.Redirect(w, r, "/", http.StatusSeeOther)
 	})
+
+	// --- Export/Import ---
+
+	http.HandleFunc("/export.goluca", state.handleExport)
+	http.HandleFunc("/import", state.handleImport)
 
 	// --- Accounting ---
 

@@ -3,12 +3,26 @@
 package main
 
 import (
+	"bytes"
 	"syscall/js"
 
 	"github.com/drummonds/lofigui"
 )
 
 var state = NewDemoState()
+
+// --- Export ---
+
+func goExport(this js.Value, args []js.Value) any {
+	var buf bytes.Buffer
+	state.mu.Lock()
+	err := state.sim.ExportGoluca(&buf)
+	state.mu.Unlock()
+	if err != nil {
+		return js.ValueOf("error: " + err.Error())
+	}
+	return js.ValueOf(buf.String())
+}
 
 // --- Bank functions ---
 
@@ -270,6 +284,9 @@ func goIsPIIAuthorized(this js.Value, args []js.Value) any {
 }
 
 func main() {
+	// Export
+	js.Global().Set("goExport", js.FuncOf(goExport))
+
 	// Bank
 	js.Global().Set("goRender", js.FuncOf(goRender))
 	js.Global().Set("goStart", js.FuncOf(goStart))

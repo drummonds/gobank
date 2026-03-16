@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
+	"log"
 	"math"
 	"math/rand"
 	"runtime"
@@ -11,6 +12,8 @@ import (
 	"sync"
 	"time"
 
+	luca "github.com/drummonds/go-luca"
+	gobank "github.com/drummonds/gobank"
 	"github.com/go-analyze/charts"
 )
 
@@ -70,6 +73,9 @@ type DemoState struct {
 	db                 *sql.DB
 	txLog              []TxEntry
 	nextTxID           int
+	sim                *gobank.Simulation
+	simClock           *gobank.SimClock
+	equityAccountID    string
 }
 
 func NewDemoState() *DemoState {
@@ -91,8 +97,58 @@ func NewDemoState() *DemoState {
 		boeHistory:    []RatePoint{{Date: startDay, Rate: settings.BoEBaseRate}},
 	}
 	ds.initDB()
+	ds.initLedger()
 	ds.recordHistory()
 	return ds
+}
+
+// initLedger creates an in-memory go-luca ledger and gobank simulation.
+func (ds *DemoState) initLedger() {
+	ledger, err := luca.NewLedger(":memory:")
+	if err != nil {
+		log.Printf("initLedger: open ledger: %v", err)
+		return
+	}
+	ds.simClock = gobank.NewSimClock(ds.currentDay)
+	sim, err := gobank.NewSimulation(ledger, ds.simClock)
+	if err != nil {
+		log.Printf("initLedger: %v", err)
+		return
+	}
+	sim.RegisterAccountBehavior(gobank.SavingsAccountBehavior{})
+	sim.RegisterAccountBehavior(gobank.LendingAccountBehavior{})
+	equityAcct, err := ledger.CreateAccount("Equity:Capital", "GBP", -2, 0)
+	if err != nil {
+		log.Printf("initLedger: create equity: %v", err)
+		return
+	}
+	ds.sim = sim
+	ds.equityAccountID = equityAcct.ID
+}
+
+// addCustomerToLedger registers a customer and their accounts in the go-luca ledger.
+// Must be called with ds.mu held.
+func (ds *DemoState) addCustomerToLedger(cust *CustomerRecord, name string) {
+	if ds.sim == nil {
+		return
+	}
+	ds.sim.AddCustomer(&gobank.Customer{ID: cust.ID, Name: name})
+	for i := range cust.Accounts {
+		a := &cust.Accounts[i]
+		behaviorName := "savings"
+		pathPrefix := "Liability:Savings"
+		if a.Family == FamilyLending {
+			behaviorName = "lending"
+			pathPrefix = "Asset:Loans"
+		}
+		fullPath := fmt.Sprintf("%s:%s:%s", pathPrefix, cust.ID, a.ProductID)
+		ma, err := ds.sim.OpenAccount(cust.ID, behaviorName, fullPath, "GBP", -2, a.Rate)
+		if err != nil {
+			log.Printf("ledger: open account %s: %v", fullPath, err)
+			continue
+		}
+		a.LedgerAccountID = ma.Account.ID
+	}
 }
 
 // recordHistory appends current balance/customer/NIM totals to history slices.
@@ -183,6 +239,9 @@ func (ds *DemoState) advanceDay() {
 
 	ds.currentDay = ds.currentDay.AddDate(0, 0, 1)
 	ds.dayCount++
+	if ds.simClock != nil {
+		ds.simClock.SetDate(ds.currentDay)
+	}
 
 	// Look up BoE rate for current day and record history
 	ds.settings.BoEBaseRate = lookupBoERate(ds.currentDay)
@@ -208,6 +267,7 @@ func (ds *DemoState) advanceDay() {
 			ds.nextCustSeq++
 			_ = ds.piiStore.Store(cust.ID, pii)
 			ds.customers = append(ds.customers, cust)
+			ds.addCustomerToLedger(&ds.customers[len(ds.customers)-1], pii.Name)
 			ds.fundCustomer(len(ds.customers) - 1)
 		}
 	}
@@ -309,6 +369,7 @@ func (ds *DemoState) AddCustomersBatch(n int) {
 			ds.nextCustSeq++
 			_ = ds.piiStore.Store(cust.ID, pii)
 			ds.customers = append(ds.customers, cust)
+			ds.addCustomerToLedger(&ds.customers[len(ds.customers)-1], pii.Name)
 			ds.fundCustomer(len(ds.customers) - 1)
 			ds.addingCustProgress = i + 1
 			ds.mu.Unlock()
@@ -375,6 +436,7 @@ func (ds *DemoState) Reset() {
 	ds.txLog = nil
 	ds.nextTxID = 0
 	ds.initDB()
+	ds.initLedger()
 	ds.recordHistory()
 }
 

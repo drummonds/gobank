@@ -2,6 +2,7 @@ package gobank
 
 import (
 	"fmt"
+	"io"
 	"time"
 
 	luca "github.com/drummonds/go-luca"
@@ -32,7 +33,7 @@ type Simulation struct {
 	Clock              Clock
 	Params             *ParameterStore
 	behaviors          map[string]AccountBehavior
-	accounts           map[int64]*ManagedAccount
+	accounts           map[string]*ManagedAccount
 	customers          map[string]*Customer
 	startDate          time.Time
 	lastProcessedDate  time.Time
@@ -49,7 +50,7 @@ func NewSimulation(ledger luca.Ledger, clock Clock) (*Simulation, error) {
 		Clock:     clock,
 		Params:    NewParameterStore(),
 		behaviors: make(map[string]AccountBehavior),
-		accounts:  make(map[int64]*ManagedAccount),
+		accounts:  make(map[string]*ManagedAccount),
 		customers: make(map[string]*Customer),
 		startDate: startOfDay(clock.Now()),
 	}, nil
@@ -105,15 +106,15 @@ func (s *Simulation) OpenAccount(customerID, behaviorName, fullPath, currency st
 }
 
 // GetManagedAccount returns a managed account by its ledger account ID.
-func (s *Simulation) GetManagedAccount(accountID int64) (*ManagedAccount, bool) {
+func (s *Simulation) GetManagedAccount(accountID string) (*ManagedAccount, bool) {
 	ma, ok := s.accounts[accountID]
 	return ma, ok
 }
 
 // RecordMovement records a movement with optional pre/post hooks on involved accounts.
-func (s *Simulation) RecordMovement(fromID, toID int64, amount luca.Amount, valueTime time.Time, description string) (*luca.Movement, error) {
+func (s *Simulation) RecordMovement(fromID, toID string, amount luca.Amount, valueTime time.Time, description string) (*luca.Movement, error) {
 	// Fire pre-movement hooks
-	for _, id := range []int64{fromID, toID} {
+	for _, id := range []string{fromID, toID} {
 		if ma, ok := s.accounts[id]; ok {
 			if ab, ok := s.behaviors[ma.BehaviorName]; ok {
 				if hook, ok := ab.(MovementHook); ok {
@@ -132,7 +133,7 @@ func (s *Simulation) RecordMovement(fromID, toID int64, amount luca.Amount, valu
 	}
 
 	// Fire post-movement hooks
-	for _, id := range []int64{fromID, toID} {
+	for _, id := range []string{fromID, toID} {
 		if ma, ok := s.accounts[id]; ok {
 			if ab, ok := s.behaviors[ma.BehaviorName]; ok {
 				if hook, ok := ab.(MovementHook); ok {
@@ -149,7 +150,7 @@ func (s *Simulation) RecordMovement(fromID, toID int64, amount luca.Amount, valu
 }
 
 // SetParameter sets a parameter with optional pre/post hooks.
-func (s *Simulation) SetParameter(accountID int64, key, value string, effectiveAt time.Time) error {
+func (s *Simulation) SetParameter(accountID string, key, value string, effectiveAt time.Time) error {
 	if ma, ok := s.accounts[accountID]; ok {
 		if ab, ok := s.behaviors[ma.BehaviorName]; ok {
 			if hook, ok := ab.(ParameterHook); ok {
@@ -226,18 +227,21 @@ func (s *Simulation) processEndOfDay(date time.Time) (DailyUpdate, error) {
 		// Balance before end-of-day processing (includes day's movements, not yet interest)
 		preBalance, err := s.Ledger.BalanceAt(ma.Account.ID, eod)
 		if err != nil {
-			return update, fmt.Errorf("pre-balance for account %d: %w", ma.Account.ID, err)
+			return update, fmt.Errorf("pre-balance for account %s: %w", ma.Account.ID, err)
 		}
 
 		ctx := EventContext{Sim: s, Account: ma, AsOfDate: date}
 		if err := ab.EndOfDay(ctx); err != nil {
-			return update, fmt.Errorf("end of day for account %d: %w", ma.Account.ID, err)
+			return update, fmt.Errorf("end of day for account %s: %w", ma.Account.ID, err)
 		}
 
-		// Balance after end-of-day processing (includes interest)
-		postBalance, err := s.Ledger.BalanceAt(ma.Account.ID, eod)
+		// Balance after end-of-day processing (includes interest).
+		// Use Balance() not BalanceAt(eod) because the interest movement
+		// is recorded at 23:59:59 on the same day, which BalanceAt(eod)
+		// also includes in the pre-balance query.
+		postBalance, err := s.Ledger.Balance(ma.Account.ID)
 		if err != nil {
-			return update, fmt.Errorf("post-balance for account %d: %w", ma.Account.ID, err)
+			return update, fmt.Errorf("post-balance for account %s: %w", ma.Account.ID, err)
 		}
 
 		acctUpdate := AccountUpdate{
@@ -255,10 +259,10 @@ func (s *Simulation) processEndOfDay(date time.Time) (DailyUpdate, error) {
 }
 
 // CloseAccount transitions an account through pending closure (if supported) to closed.
-func (s *Simulation) CloseAccount(accountID int64) error {
+func (s *Simulation) CloseAccount(accountID string) error {
 	ma, ok := s.accounts[accountID]
 	if !ok {
-		return fmt.Errorf("unknown account: %d", accountID)
+		return fmt.Errorf("unknown account: %s", accountID)
 	}
 	ab, ok := s.behaviors[ma.BehaviorName]
 	if !ok {
@@ -287,4 +291,17 @@ func endOfDay(t time.Time) time.Time {
 
 func nextDay(t time.Time) time.Time {
 	return startOfDay(t).AddDate(0, 0, 1)
+}
+
+// ExportGoluca writes the ledger state as a .goluca file to the given writer.
+func (s *Simulation) ExportGoluca(w io.Writer) error {
+	return s.Ledger.Export(w)
+}
+
+// ImportGoluca reads a .goluca file and imports it into the ledger.
+func (s *Simulation) ImportGoluca(r io.Reader) error {
+	return s.Ledger.Import(r, &luca.ImportOptions{
+		AutoCreateAccounts: true,
+		DefaultCurrency:    "GBP",
+	})
 }

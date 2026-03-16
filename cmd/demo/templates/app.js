@@ -106,7 +106,6 @@ function renderPage() {
         case 'models':
             if (typeof goRenderModels === 'function') {
                 outputDiv.innerHTML = goRenderModels();
-                if (typeof mermaidRun === 'function') mermaidRun();
             }
             break;
     }

@@ -23,15 +23,16 @@ type CustomerRecord struct {
 }
 
 type CustomerAccount struct {
-	ProductID   string
-	ProductName string
-	Family      ProductFamily
-	Balance     float64
-	Rate        float64
-	Interest    float64 // accrued interest
-	OpenDate    time.Time
-	SortCode    string
-	AccountNum  string
+	ProductID       string
+	ProductName     string
+	Family          ProductFamily
+	Balance         float64
+	Rate            float64
+	Interest        float64 // accrued interest
+	OpenDate        time.Time
+	SortCode        string
+	AccountNum      string
+	LedgerAccountID string // go-luca account ID for dual-write
 }
 
 const customersPerPage = 50

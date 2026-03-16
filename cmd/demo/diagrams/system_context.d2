@@ -1,0 +1,46 @@
+direction: right
+
+title: Model Bank — System Context {
+  shape: text
+  style.font-size: 24
+  style.bold: true
+}
+
+customers: Bank Customers {
+  shape: person
+  style.fill: "#dbeafe"
+  style.stroke: "#2563eb"
+}
+
+internal: Internal Users {
+  shape: person
+  style.fill: "#fef3c7"
+  style.stroke: "#d97706"
+}
+
+bank: Model Bank {
+  style.fill: "#dcfce7"
+  style.stroke: "#16a34a"
+  style.font-size: 18
+  desc: |md
+    Simulates core retail banking:
+    accounts, payments, reporting, treasury
+  |
+}
+
+fps: Faster Payments Service {
+  style.fill: "#f3f4f6"
+  style.stroke: "#6b7280"
+  style.font-color: "#6b7280"
+  desc: "UK FPS (mock-fps)"
+}
+
+customers -> bank: Views accounts, sends payments {
+  style.stroke: "#2563eb"
+}
+internal -> bank: Reporting, procedures, treasury {
+  style.stroke: "#d97706"
+}
+bank -> fps: Sends / receives payments {
+  style.stroke: "#6b7280"
+}

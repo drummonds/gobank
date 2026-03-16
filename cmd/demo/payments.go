@@ -3,9 +3,16 @@ package main
 import (
 	"context"
 	"fmt"
+	"math"
 	"strings"
 	"time"
+
+	luca "github.com/drummonds/go-luca"
 )
+
+func poundsToPence(pounds float64) luca.Amount {
+	return luca.Amount(math.Round(pounds * 100))
+}
 
 // PaymentType distinguishes how money enters/exits the system.
 type PaymentType int
@@ -140,6 +147,13 @@ func (ds *DemoState) SendPayment() {
 	ds.customers[fromIdx].Accounts[fromAccIdx].Balance -= amount
 	ds.customers[toIdx].Accounts[toAccIdx].Balance += amount
 
+	// Dual-write to ledger
+	fromLedgerID := ds.customers[fromIdx].Accounts[fromAccIdx].LedgerAccountID
+	toLedgerID := ds.customers[toIdx].Accounts[toAccIdx].LedgerAccountID
+	if ds.sim != nil && fromLedgerID != "" && toLedgerID != "" {
+		ds.sim.RecordMovement(fromLedgerID, toLedgerID, poundsToPence(amount), ds.currentDay, fmt.Sprintf("PAY-%06d", ds.nextPaymentID))
+	}
+
 	fromID := ds.customers[fromIdx].ID
 	toID := ds.customers[toIdx].ID
 	ref := fmt.Sprintf("PAY-%06d", ds.nextPaymentID)
@@ -214,6 +228,9 @@ func (ds *DemoState) fundCustomer(custIdx int) {
 			a.Balance = amount
 			ds.makePayment(PayDeposit, "EXTERNAL", cust.ID, amount)
 			ds.emitTx(ds.currentDay, cust.ID, i, a.ProductName, TxDepositIn, amount, a.Balance, fmt.Sprintf("PAY-%06d", ds.nextPaymentID-1))
+			if ds.sim != nil && a.LedgerAccountID != "" {
+				ds.sim.RecordMovement(ds.equityAccountID, a.LedgerAccountID, poundsToPence(amount), ds.currentDay, "Initial deposit")
+			}
 		} else {
 			headroom := ds.lendingHeadroom()
 			if headroom <= 0 {
@@ -226,6 +243,9 @@ func (ds *DemoState) fundCustomer(custIdx int) {
 			a.Balance = amount
 			ds.makePayment(PayLoanDisbursement, "BANK", cust.ID, amount)
 			ds.emitTx(ds.currentDay, cust.ID, i, a.ProductName, TxLoanDisbursement, amount, a.Balance, fmt.Sprintf("PAY-%06d", ds.nextPaymentID-1))
+			if ds.sim != nil && a.LedgerAccountID != "" {
+				ds.sim.RecordMovement(ds.equityAccountID, a.LedgerAccountID, poundsToPence(amount), ds.currentDay, "Loan disbursement")
+			}
 		}
 	}
 }

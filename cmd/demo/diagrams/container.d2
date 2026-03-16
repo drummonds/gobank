@@ -1,0 +1,181 @@
+direction: right
+
+title: Model Bank — Container Diagram {
+  shape: text
+  style.font-size: 24
+  style.bold: true
+}
+
+# --- External actors ---
+
+customers: Bank Customers {
+  shape: person
+  style.fill: "#dbeafe"
+  style.stroke: "#2563eb"
+}
+
+internal: Internal Users {
+  shape: person
+  style.fill: "#fef3c7"
+  style.stroke: "#d97706"
+}
+
+# --- Bank system boundary ---
+
+bank: Model Bank {
+  style.fill: "#f0fdf4"
+  style.stroke: "#16a34a"
+  style.font-size: 20
+  style.bold: true
+
+  # Customer-facing layer
+  app: Customer App {
+    style.fill: "#dbeafe"
+    style.stroke: "#2563eb"
+    desc: "Web UI (WASM / lofigui)"
+  }
+
+  bff: BFF {
+    style.fill: "#e0e7ff"
+    style.stroke: "#4f46e5"
+    desc: "Backend for Frontend — API gateway"
+  }
+
+  # Core accounting
+  goluca: GoLuca — Books of Account {
+    style.fill: "#dcfce7"
+    style.stroke: "#16a34a"
+    desc: "Double-entry ledger (go-luca)"
+  }
+
+  db: DB / Archives {
+    shape: cylinder
+    style.fill: "#f3f4f6"
+    style.stroke: "#6b7280"
+    desc: "Persistent storage"
+  }
+
+  # Payments
+  payments: Payments Interface {
+    style.fill: "#fef3c7"
+    style.stroke: "#d97706"
+    desc: "Payment processing"
+  }
+
+  recon: Reconciliation {
+    style.fill: "#fce7f3"
+    style.stroke: "#db2777"
+    desc: "GoLuca ↔ Payments reconciliation"
+  }
+
+  # Reporting & Treasury
+  reporting: Reporting {
+    style.fill: "#f5f3ff"
+    style.stroke: "#7c3aed"
+
+    adhoc: Ad Hoc Reports {
+      style.fill: "#ede9fe"
+      style.stroke: "#7c3aed"
+    }
+    accounting: Accounting Reports {
+      style.fill: "#ede9fe"
+      style.stroke: "#7c3aed"
+      desc: "Monthly P&L, balance sheet"
+    }
+  }
+
+  treasury: Treasury {
+    style.fill: "#fff7ed"
+    style.stroke: "#ea580c"
+    desc: "Model treasury function & reconciliation"
+  }
+
+  # Internal operations
+  internal_ui: Internal User Interface {
+    style.fill: "#fef3c7"
+    style.stroke: "#d97706"
+    desc: "Staff-facing tools"
+  }
+
+  procedures: Procedures {
+    style.fill: "#fef9c3"
+    style.stroke: "#ca8a04"
+
+    account_ops: Account Open / Close {
+      style.fill: "#fef9c3"
+      style.stroke: "#ca8a04"
+    }
+    investigations: Investigations {
+      style.fill: "#fef9c3"
+      style.stroke: "#ca8a04"
+      desc: "Problem resolution"
+    }
+  }
+
+  # --- Relationships within the bank ---
+
+  app -> bff: API calls {
+    style.stroke: "#4f46e5"
+  }
+  bff -> goluca: Transactions {
+    style.stroke: "#16a34a"
+  }
+  goluca -> db: Persist {
+    style.stroke: "#6b7280"
+  }
+
+  bff -> payments: Payment requests {
+    style.stroke: "#d97706"
+  }
+
+  recon -> goluca: Account balances {
+    style.stroke: "#db2777"
+  }
+  recon -> payments: Payment records {
+    style.stroke: "#db2777"
+  }
+
+  internal_ui -> bff: API calls {
+    style.stroke: "#d97706"
+  }
+  internal_ui -> procedures {
+    style.stroke: "#ca8a04"
+  }
+  internal_ui -> reporting {
+    style.stroke: "#7c3aed"
+  }
+
+  reporting -> goluca: Queries {
+    style.stroke: "#7c3aed"
+  }
+  treasury -> recon: Treasury reconciliation {
+    style.stroke: "#ea580c"
+  }
+  treasury -> goluca: Treasury positions {
+    style.stroke: "#ea580c"
+  }
+
+  procedures -> bff: Account operations {
+    style.stroke: "#ca8a04"
+  }
+}
+
+# --- External system ---
+
+fps: Faster Payments (mock-fps) {
+  style.fill: "#f3f4f6"
+  style.stroke: "#6b7280"
+  style.font-color: "#6b7280"
+}
+
+# --- External relationships ---
+
+customers -> bank.app: Uses {
+  style.stroke: "#2563eb"
+}
+internal -> bank.internal_ui: Uses {
+  style.stroke: "#d97706"
+}
+bank.payments -> fps: Sends / receives payments {
+  style.stroke: "#6b7280"
+}

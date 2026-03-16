@@ -9,14 +9,14 @@ import (
 
 // Parameter represents a time-varying value for an account.
 type Parameter struct {
-	AccountID   int64
+	AccountID   string
 	Key         string
 	Value       string
 	EffectiveAt time.Time
 }
 
 type paramKey struct {
-	AccountID int64
+	AccountID string
 	Key       string
 }
 
@@ -33,7 +33,7 @@ func NewParameterStore() *ParameterStore {
 }
 
 // Set records a parameter value effective from the given time.
-func (ps *ParameterStore) Set(accountID int64, key, value string, effectiveAt time.Time) {
+func (ps *ParameterStore) Set(accountID string, key, value string, effectiveAt time.Time) {
 	ps.mu.Lock()
 	defer ps.mu.Unlock()
 	pk := paramKey{AccountID: accountID, Key: key}
@@ -47,7 +47,7 @@ func (ps *ParameterStore) Set(accountID int64, key, value string, effectiveAt ti
 
 // Get retrieves the parameter value in effect at the given time.
 // Returns the value and true if found, or empty string and false if not.
-func (ps *ParameterStore) Get(accountID int64, key string, asOf time.Time) (string, bool) {
+func (ps *ParameterStore) Get(accountID string, key string, asOf time.Time) (string, bool) {
 	ps.mu.RLock()
 	defer ps.mu.RUnlock()
 	pk := paramKey{AccountID: accountID, Key: key}
@@ -67,10 +67,10 @@ func (ps *ParameterStore) Get(accountID int64, key string, asOf time.Time) (stri
 }
 
 // GetFloat64 retrieves a parameter as float64.
-func (ps *ParameterStore) GetFloat64(accountID int64, key string, asOf time.Time) (float64, error) {
+func (ps *ParameterStore) GetFloat64(accountID string, key string, asOf time.Time) (float64, error) {
 	val, ok := ps.Get(accountID, key, asOf)
 	if !ok {
-		return 0, fmt.Errorf("parameter %q not found for account %d at %s", key, accountID, asOf)
+		return 0, fmt.Errorf("parameter %q not found for account %s at %s", key, accountID, asOf)
 	}
 	return strconv.ParseFloat(val, 64)
 }

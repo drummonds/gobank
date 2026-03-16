@@ -80,12 +80,19 @@ tasks:
       - mkdir -p docs/research
       - cp research/*.html docs/research/
 
+  diagrams:
+    desc: Render d2 architecture diagrams to SVG
+    cmds:
+      - d2 cmd/demo/diagrams/system_context.d2 cmd/demo/diagrams/system_context.svg
+      - d2 cmd/demo/diagrams/container.d2 cmd/demo/diagrams/container.svg
+
   docs:build:
     desc: Build WASM demo and all pages into docs/
     vars:
       GIT_TAG:
         sh: '[ -n "{{.VERSION}}" ] && echo "{{.VERSION}}" || git describe --tags --always 2>/dev/null || echo dev'
     cmds:
+      - task: diagrams
       - mkdir -p docs/demo
       - cd cmd/demo && GOOS=js GOARCH=wasm go build -ldflags "-X main.version={{.GIT_TAG}}" -o main.wasm .
       - cp "$(find $(go env GOROOT) -name wasm_exec.js -print -quit)" docs/demo/

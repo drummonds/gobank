@@ -49,8 +49,8 @@ type AccountBehavior interface {
 
 // MovementHook is an optional interface for behaviors that need pre/post movement processing.
 type MovementHook interface {
-	PreMovement(ctx EventContext, fromID, toID int64, amount luca.Amount) error
-	PostMovement(ctx EventContext, fromID, toID int64, amount luca.Amount) error
+	PreMovement(ctx EventContext, fromID, toID string, amount luca.Amount) error
+	PostMovement(ctx EventContext, fromID, toID string, amount luca.Amount) error
 }
 
 // ParameterHook is an optional interface for behaviors that react to parameter changes.

@@ -27,8 +27,8 @@ func TestOpenAccount(t *testing.T) {
 	if ma.Status != StatusActive {
 		t.Errorf("expected Active, got %s", ma.Status)
 	}
-	if ma.Account.ID == 0 {
-		t.Error("account ID should be non-zero")
+	if ma.Account.ID == "" {
+		t.Error("account ID should be non-empty")
 	}
 	if ma.CustomerID != "C001" {
 		t.Errorf("expected customer C001, got %s", ma.CustomerID)
@@ -128,7 +128,7 @@ func TestInterestAccrual(t *testing.T) {
 	}
 
 	// Balance should be £1000.10 = 100010
-	bal, err := sim.Ledger.BalanceAt(savings.Account.ID, endOfDay(time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)))
+	bal, err := sim.Ledger.Balance(savings.Account.ID)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -169,7 +169,7 @@ func TestMultiDayInterest(t *testing.T) {
 	}
 
 	// After 10 days at 3.65%: ~10 pence/day with slight compounding
-	bal, err := sim.Ledger.BalanceAt(savings.Account.ID, endOfDay(time.Date(2026, 1, 10, 0, 0, 0, 0, time.UTC)))
+	bal, err := sim.Ledger.Balance(savings.Account.ID)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -260,6 +260,23 @@ func TestFutureDatedPosting(t *testing.T) {
 	}
 	if bal != 50000 {
 		t.Errorf("expected 50000 balance on Jan 5, got %d", bal)
+	}
+}
+
+func TestLendingAccountBehavior(t *testing.T) {
+	sim, _ := newTestSimulation(t)
+	sim.RegisterAccountBehavior(LendingAccountBehavior{})
+	sim.AddCustomer(&Customer{ID: "C001", Name: "Alice"})
+
+	loan, err := sim.OpenAccount("C001", "lending", "Asset:Loans:0001", "GBP", -2, 0.0690)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if loan.Status != StatusActive {
+		t.Errorf("expected Active, got %s", loan.Status)
+	}
+	if loan.BehaviorName != "lending" {
+		t.Errorf("expected lending, got %s", loan.BehaviorName)
 	}
 }
 
