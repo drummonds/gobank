@@ -3,6 +3,8 @@ package main
 import (
 	"fmt"
 	"strings"
+
+	gbp "codeberg.org/hum3/gobank-products"
 )
 
 // BuildPnLHTML renders a Profit & Loss statement derived from current state.
@@ -15,7 +17,7 @@ func (ds *DemoState) BuildPnLHTML() string {
 	depositInterestExpense := 0.0
 	for _, c := range ds.customers {
 		for _, a := range c.Accounts {
-			if a.Family == FamilyLending {
+			if a.Family == gbp.FamilyLending {
 				loanInterestIncome += a.Interest
 			} else {
 				depositInterestExpense += a.Interest
@@ -67,7 +69,7 @@ func (ds *DemoState) BuildBalanceSheetHTML() string {
 	depositInterest := 0.0
 	for _, c := range ds.customers {
 		for _, a := range c.Accounts {
-			if a.Family == FamilyLending {
+			if a.Family == gbp.FamilyLending {
 				totalLoans += a.Balance
 				loanInterest += a.Interest
 			} else {

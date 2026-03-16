@@ -5,6 +5,8 @@ import (
 	"math/rand"
 	"strings"
 	"time"
+
+	gbp "codeberg.org/hum3/gobank-products"
 )
 
 var firstNames = []string{
@@ -125,7 +127,7 @@ func generateCustomer(rng *rand.Rand, seq int, products []Product, openDate time
 }
 
 // averageRate calculates the average rate for products of a given family.
-func averageRate(products []Product, family ProductFamily) float64 {
+func averageRate(products []Product, family gbp.ProductFamily) float64 {
 	sum := 0.0
 	count := 0
 	for _, p := range products {

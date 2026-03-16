@@ -4,6 +4,8 @@ import (
 	"fmt"
 	"strings"
 	"time"
+
+	gbp "codeberg.org/hum3/gobank-products"
 )
 
 // KYCStatus tracks Know Your Customer verification state.
@@ -25,7 +27,7 @@ type CustomerRecord struct {
 type CustomerAccount struct {
 	ProductID       string
 	ProductName     string
-	Family          ProductFamily
+	Family          gbp.ProductFamily
 	Balance         float64
 	Rate            float64
 	Interest        float64 // accrued interest
@@ -50,7 +52,7 @@ func (ds *DemoState) BuildCustomersHTML(page int) string {
 	var aggSavings, aggLending float64
 	for _, c := range customers {
 		for _, a := range c.Accounts {
-			if a.Family == FamilySavings {
+			if a.Family == gbp.FamilySavings {
 				aggSavings += a.Balance
 			} else {
 				aggLending += a.Balance
@@ -92,7 +94,7 @@ func (ds *DemoState) BuildCustomersHTML(page int) string {
 		savings := 0.0
 		lending := 0.0
 		for _, a := range c.Accounts {
-			if a.Family == FamilySavings {
+			if a.Family == gbp.FamilySavings {
 				savings += a.Balance
 			} else {
 				lending += a.Balance
@@ -152,7 +154,7 @@ func (ds *DemoState) BuildCustomerDetailHTML(id string, piiAuthorized bool, txPa
 	// Compute aggregate values
 	var totalSavings, totalLending float64
 	for _, a := range cust.Accounts {
-		if a.Family == FamilySavings {
+		if a.Family == gbp.FamilySavings {
 			totalSavings += a.Balance
 		} else {
 			totalLending += a.Balance
@@ -239,7 +241,7 @@ func (ds *DemoState) BuildCustomerDetailHTML(id string, piiAuthorized bool, txPa
 	s.WriteString(`<thead><tr><th>Product</th><th>Type</th><th>Sort Code</th><th>Account No.</th><th>Rate</th><th>Balance</th><th>Interest</th><th>Opened</th></tr></thead><tbody>`)
 	for _, a := range cust.Accounts {
 		familyTag := `<span class="tag is-success is-light">Savings</span>`
-		if a.Family == FamilyLending {
+		if a.Family == gbp.FamilyLending {
 			familyTag = `<span class="tag is-info is-light">Lending</span>`
 		}
 		s.WriteString(fmt.Sprintf(`<tr>

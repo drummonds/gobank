@@ -7,6 +7,8 @@ import (
 	"net/http"
 	"strconv"
 	"strings"
+
+	gbp "codeberg.org/hum3/gobank-products"
 )
 
 // --- API response types ---
@@ -100,7 +102,7 @@ func (ds *DemoState) bankAppAccounts(custID string) *apiAccountsResponse {
 			Balance:     a.Balance,
 			Interest:    a.Interest,
 		})
-		if a.Family == FamilySavings {
+		if a.Family == gbp.FamilySavings {
 			resp.TotalSavings += a.Balance
 		} else {
 			resp.TotalLending += a.Balance

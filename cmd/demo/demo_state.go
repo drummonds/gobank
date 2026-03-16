@@ -12,8 +12,8 @@ import (
 	"sync"
 	"time"
 
+	gbp "codeberg.org/hum3/gobank-products"
 	luca "github.com/drummonds/go-luca"
-	gobank "github.com/drummonds/gobank"
 	"github.com/go-analyze/charts"
 )
 
@@ -73,8 +73,8 @@ type DemoState struct {
 	db                 *sql.DB
 	txLog              []TxEntry
 	nextTxID           int
-	sim                *gobank.Simulation
-	simClock           *gobank.SimClock
+	sim                *gbp.Simulation
+	simClock           *gbp.SimClock
 	equityAccountID    string
 }
 
@@ -102,21 +102,22 @@ func NewDemoState() *DemoState {
 	return ds
 }
 
-// initLedger creates a go-luca ledger sharing ds.db and gobank simulation.
+// initLedger creates a go-luca ledger sharing ds.db and gbp simulation.
 func (ds *DemoState) initLedger() {
 	ledger, err := luca.NewSQLLedger(ds.db)
 	if err != nil {
 		log.Printf("initLedger: open ledger: %v", err)
 		return
 	}
-	ds.simClock = gobank.NewSimClock(ds.currentDay)
-	sim, err := gobank.NewSimulation(ledger, ds.simClock)
+	ds.simClock = gbp.NewSimClock(ds.currentDay)
+	sim, err := gbp.NewSimulation(ledger, ds.simClock)
 	if err != nil {
 		log.Printf("initLedger: %v", err)
 		return
 	}
-	sim.RegisterAccountBehavior(gobank.SavingsAccountBehavior{})
-	sim.RegisterAccountBehavior(gobank.LendingAccountBehavior{})
+	for _, p := range ds.products {
+		sim.RegisterProduct(p.Product)
+	}
 	equityAcct, err := ledger.CreateAccount("Equity:Capital", "GBP", -2, 0)
 	if err != nil {
 		log.Printf("initLedger: create equity: %v", err)
@@ -126,23 +127,23 @@ func (ds *DemoState) initLedger() {
 	ds.equityAccountID = equityAcct.ID
 }
 
-// addCustomerToLedger registers a customer and their accounts in the go-luca ledger.
+// addCustomerToLedger registers a customer's accounts in the go-luca ledger.
 // Must be called with ds.mu held.
-func (ds *DemoState) addCustomerToLedger(cust *CustomerRecord, name string) {
+func (ds *DemoState) addCustomerToLedger(cust *CustomerRecord) {
 	if ds.sim == nil {
 		return
 	}
-	ds.sim.AddCustomer(&gobank.Customer{ID: cust.ID, Name: name})
 	for i := range cust.Accounts {
 		a := &cust.Accounts[i]
-		behaviorName := "savings"
 		pathPrefix := "Liability:Savings"
-		if a.Family == FamilyLending {
-			behaviorName = "lending"
+		if a.Family == gbp.FamilyLending {
 			pathPrefix = "Asset:Loans"
 		}
 		fullPath := fmt.Sprintf("%s:%s:%s", pathPrefix, cust.ID, a.ProductID)
-		ma, err := ds.sim.OpenAccount(cust.ID, behaviorName, fullPath, "GBP", -2, a.Rate)
+		params := map[string]string{
+			"annual_rate": fmt.Sprintf("%f", a.Rate),
+		}
+		ma, err := ds.sim.OpenAccount(a.ProductID, fullPath, "GBP", -2, params)
 		if err != nil {
 			log.Printf("ledger: open account %s: %v", fullPath, err)
 			continue
@@ -158,7 +159,7 @@ func (ds *DemoState) recordHistory() {
 	var totalLoanInt, totalDepInt float64
 	for _, c := range ds.customers {
 		for _, a := range c.Accounts {
-			if a.Family == FamilySavings {
+			if a.Family == gbp.FamilySavings {
 				savings += a.Balance
 				totalDepInt += a.Balance * a.Rate / 365.0
 			} else {
@@ -193,7 +194,7 @@ func (ds *DemoState) lendingHeadroom() float64 {
 	var deposits, loans float64
 	for _, c := range ds.customers {
 		for _, a := range c.Accounts {
-			if a.Family == FamilySavings {
+			if a.Family == gbp.FamilySavings {
 				deposits += a.Balance
 			} else {
 				loans += a.Balance
@@ -215,7 +216,7 @@ func (ds *DemoState) advanceDay() {
 			interest := a.Balance * dailyRate
 			a.Balance += interest
 			a.Interest += interest
-			if a.Family == FamilySavings {
+			if a.Family == gbp.FamilySavings {
 				totalDeposits += a.Balance
 				if interest != 0 {
 					ds.emitTx(ds.currentDay, ds.customers[ci].ID, ai, a.ProductName, TxInterestCredit, interest, a.Balance, "INT")
@@ -250,8 +251,8 @@ func (ds *DemoState) advanceDay() {
 	// Customer generation
 	if len(ds.customers) < ds.settings.MaxCustomers {
 		boeRate := ds.settings.BoEBaseRate
-		avgSavings := averageRate(ds.products, FamilySavings)
-		avgLending := averageRate(ds.products, FamilyLending)
+		avgSavings := averageRate(ds.products, gbp.FamilySavings)
+		avgLending := averageRate(ds.products, gbp.FamilyLending)
 
 		savingsAttract := 0.0
 		lendingAttract := 0.0
@@ -267,7 +268,7 @@ func (ds *DemoState) advanceDay() {
 			ds.nextCustSeq++
 			_ = ds.piiStore.Store(cust.ID, pii)
 			ds.customers = append(ds.customers, cust)
-			ds.addCustomerToLedger(&ds.customers[len(ds.customers)-1], pii.Name)
+			ds.addCustomerToLedger(&ds.customers[len(ds.customers)-1])
 			ds.fundCustomer(len(ds.customers) - 1)
 		}
 	}
@@ -369,7 +370,7 @@ func (ds *DemoState) AddCustomersBatch(n int) {
 			ds.nextCustSeq++
 			_ = ds.piiStore.Store(cust.ID, pii)
 			ds.customers = append(ds.customers, cust)
-			ds.addCustomerToLedger(&ds.customers[len(ds.customers)-1], pii.Name)
+			ds.addCustomerToLedger(&ds.customers[len(ds.customers)-1])
 			ds.fundCustomer(len(ds.customers) - 1)
 			ds.addingCustProgress = i + 1
 			ds.mu.Unlock()
@@ -470,7 +471,7 @@ func (ds *DemoState) DashboardData() DashData {
 	var savings, lending float64
 	for _, c := range ds.customers {
 		for _, a := range c.Accounts {
-			if a.Family == FamilySavings {
+			if a.Family == gbp.FamilySavings {
 				savings += a.Balance
 			} else {
 				lending += a.Balance
@@ -524,7 +525,7 @@ func (ds *DemoState) buildSVG() string {
 	totalInterest := 0.0
 	for _, c := range ds.customers {
 		for _, a := range c.Accounts {
-			if a.Family == FamilySavings {
+			if a.Family == gbp.FamilySavings {
 				savingsTotal += a.Balance
 			} else {
 				lendingTotal += a.Balance
