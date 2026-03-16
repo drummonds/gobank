@@ -1,0 +1,107 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Model Bank</title>
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bulma@1.0.4/css/bulma.min.css">
+</head>
+<body>
+  <nav class="navbar is-primary" role="navigation" aria-label="main navigation">
+    <div class="navbar-brand">
+      <a class="navbar-item has-text-weight-bold" href="#" id="nav-brand">Model Bank</a>
+      <a role="button" class="navbar-burger" data-target="mainNavbar" aria-label="menu" aria-expanded="false">
+        <span aria-hidden="true"></span>
+        <span aria-hidden="true"></span>
+        <span aria-hidden="true"></span>
+      </a>
+    </div>
+    <div id="mainNavbar" class="navbar-menu">
+      <div class="navbar-start">
+        <a class="navbar-item is-active" href="#" id="nav-dashboard">Dashboard</a>
+        <div class="navbar-item has-dropdown is-hoverable">
+          <a class="navbar-link">Accounting</a>
+          <div class="navbar-dropdown">
+            <a class="navbar-item" href="#" id="nav-pnl">P&amp;L</a>
+            <a class="navbar-item" href="#" id="nav-balance-sheet">Balance Sheet</a>
+          </div>
+        </div>
+        <div class="navbar-item has-dropdown is-hoverable">
+          <a class="navbar-link">Products</a>
+          <div class="navbar-dropdown">
+            <a class="navbar-item" href="#" id="nav-savings">Savings</a>
+            <a class="navbar-item" href="#" id="nav-lending">Lending</a>
+          </div>
+        </div>
+        <a class="navbar-item" href="#" id="nav-customers">Customers</a>
+        <a class="navbar-item" href="#" id="nav-payments">Payments</a>
+        <div class="navbar-item has-dropdown is-hoverable">
+          <a class="navbar-link">Treasury</a>
+          <div class="navbar-dropdown">
+            <a class="navbar-item" href="#" id="nav-treasury-cash">Cash Position</a>
+            <a class="navbar-item" href="#" id="nav-treasury-capital">Capital Requirements</a>
+            <a class="navbar-item" href="#" id="nav-treasury-gilts">Gilt Purchases</a>
+          </div>
+        </div>
+        <div class="navbar-item has-dropdown is-hoverable">
+          <a class="navbar-link">Reports</a>
+          <div class="navbar-dropdown">
+            <a class="navbar-item" href="#" id="nav-bbsi">BBSI</a>
+            <a class="navbar-item" href="#" id="nav-customer-view">Customer View</a>
+          </div>
+        </div>
+        <div class="navbar-item has-dropdown is-hoverable">
+          <a class="navbar-link">Internal</a>
+          <div class="navbar-dropdown">
+            <a class="navbar-item" href="#" id="nav-settings">Settings</a>
+            <a class="navbar-item" href="#" id="nav-explorer">DB Explorer</a>
+          </div>
+        </div>
+        <div class="navbar-item has-dropdown is-hoverable">
+          <a class="navbar-link">About</a>
+          <div class="navbar-dropdown">
+            <a class="navbar-item" href="#" id="nav-about">Project</a>
+            <a class="navbar-item" href="#" id="nav-runtime">Runtime</a>
+            <a class="navbar-item" href="#" id="nav-models">Models</a>
+          </div>
+        </div>
+      </div>
+      <div class="navbar-end">
+        <div class="navbar-item">
+          <span id="status-tag" class="tag is-light">Stopped</span>
+        </div>
+      </div>
+    </div>
+  </nav>
+  <section class="section">
+    <div class="container">
+      <div id="output">
+        <progress class="progress is-primary" max="100">Loading WASM...</progress>
+      </div>
+      <div id="controls-bank" class="buttons mt-4" style="display:none">
+        <button id="startStopBtn" class="button is-success" disabled>Run</button>
+        <button id="advanceBtn" class="button is-info" disabled>Advance Day</button>
+        <span class="field has-addons" style="margin-bottom:0">
+          <span class="control"><input id="addCustN" class="input is-small" type="number" value="100" min="1" max="1000000" style="width:7em" disabled></span>
+          <span class="control"><button id="addCustBtn" class="button is-small is-primary" disabled>Add Customers</button></span>
+        </span>
+        <button id="resetBtn" class="button is-light" disabled>Reset</button>
+        <button id="exportBtn" class="button is-link is-light" disabled>Export .goluca</button>
+        <label id="importLabel" class="button is-info is-light" style="cursor:pointer">Import .goluca<input id="importFile" type="file" accept=".goluca" style="display:none"></label>
+      </div>
+      <div id="controls-payments" class="buttons mt-4" style="display:none">
+        <button id="sendPaymentBtn" class="button is-primary" disabled>Send Payment</button>
+        <button id="autoPaymentsBtn" class="button is-success" disabled>Auto Send</button>
+        <button id="resetPaymentsBtn" class="button is-light" disabled>Reset Payments</button>
+      </div>
+    </div>
+  </section>
+  <footer class="footer">
+    <div class="content has-text-centered">
+      <p>Model Bank v0.3.27</p>
+    </div>
+  </footer>
+  <script src="wasm_exec.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>

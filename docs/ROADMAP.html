@@ -1,0 +1,101 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>GoBank Roadmap - gobank</title>
+    <link rel="icon" type="image/svg+xml" href="favicon.svg">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bulma@0.9.4/css/bulma.min.css">
+    <style>
+        pre {
+            background-color: #2b2b2b;
+            color: #f8f8f2;
+            padding: 1.25em 1.5em;
+            overflow-x: auto;
+        }
+        pre code {
+            color: inherit;
+            background: none;
+            padding: 0;
+            font-size: 0.875em;
+        }
+        code {
+            background-color: #f5f5f5;
+            color: #e83e8c;
+            padding: 0.125em 0.375em;
+            border-radius: 3px;
+        }
+        pre.mermaid {
+            background-color: #ffffff;
+            color: #333;
+            text-align: center;
+        }
+    </style>
+</head>
+<body>
+    <nav class="navbar is-primary">
+        <div class="navbar-brand">
+            <a class="navbar-item has-text-weight-bold" href="index.html">gobank</a>
+        </div>
+    </nav>
+    <section class="section">
+        <div class="container">
+            <nav class="breadcrumb" aria-label="breadcrumbs">
+                <ul>
+                    <li class="is-active"><a href="#" aria-current="page">Internal Docs</a></li>
+                    <li class="is-active"><a href="#" aria-current="page">GoBank Roadmap</a></li>
+                </ul>
+            </nav>
+
+            <div class="content">
+                <h1 id="gobank-roadmap">GoBank Roadmap</h1>
+<p>GoBank aims to be a realistic banking software core, validated by a simulation model.
+The same code runs in the browser (WASM) and in production (Kubernetes).</p>
+<p><img src="roadmap.svg" alt="Roadmap"></p>
+<h2 id="phase-1--wasm-model-bank">Phase 1 — WASM Model Bank</h2>
+<p>The browser-based model proves the banking core works end-to-end.</p>
+<h3 id="done">Done</h3>
+<ul>
+<li>WASM build and deploy (statichost)</li>
+<li>lofigui web UI</li>
+<li>go-luca double-entry accounting integration</li>
+<li>RBAC infrastructure (admin role)</li>
+</ul>
+<h3 id="to-do">To Do</h3>
+<ul>
+<li><strong>Working savings accounts</strong> — full lifecycle: open, deposit, withdraw, accrue interest, close</li>
+<li><strong>Import/export via luca files</strong> — load and save simulation state as plain-text accounting files</li>
+<li><strong>Export single savings account</strong> — extract one account's history as a luca file</li>
+<li><strong>Accurate P&amp;L</strong> — end-of-day and for arbitrary periods (monthly, quarterly, annual)</li>
+<li><strong>Balance sheet</strong> — end-of-day and for arbitrary periods</li>
+<li><strong>Customer model</strong> — confidence score, maximum aggregate balance, realistic switching behaviour</li>
+<li><strong>Named customers behind customer wall</strong> — PII-like data gated behind access control</li>
+<li><strong>mock-fps integration</strong> — compiled-in Faster Payments simulator for payment processing</li>
+<li><strong>FPS stand-in mode</strong> — simulate FPS outages, payment queuing, and recovery</li>
+</ul>
+<h2 id="phase-2--kubernetes--alloydb">Phase 2 — Kubernetes + AlloyDB</h2>
+<p>Same banking core, deployed as services in a Kubernetes cluster with a real database.</p>
+<ul>
+<li>Deploy to Kubernetes cluster</li>
+<li>AlloyDB (Postgres-compatible) backend</li>
+<li>Unbundle mock-fps as a separate service (HTTP API)</li>
+<li>Full HTTP API for all GUI actions (automation/scenario testing)</li>
+<li>SCV regulatory report at scale (100K+ customers)</li>
+</ul>
+<h2 id="phase-3--cockroachdb--scale">Phase 3 — CockroachDB + Scale</h2>
+<p>Prove the core works across regions with distributed SQL.</p>
+<ul>
+<li>CockroachDB backend</li>
+<li>Multi-region deployment</li>
+<li>Blue-green schema migrations (zero-downtime data swaps)</li>
+</ul>
+<h2 id="what-success-looks-like">What Success Looks Like</h2>
+<p><strong>Phase 1 complete</strong> means: you can open the WASM demo, run a simulation, see accurate financials (P&amp;L, balance sheet), export any account as a luca file, trigger an FPS outage, and watch the bank handle it. All actions available via API for automated testing.</p>
+<p><strong>Phase 2 complete</strong> means: the same code runs in Kubernetes with AlloyDB, mock-fps is a separate service, and SCV reports generate correctly at scale.</p>
+<p><strong>Phase 3 complete</strong> means: the bank runs across regions on CockroachDB with zero-downtime migrations.</p>
+
+            </div>
+        </div>
+    </section>
+</body>
+</html>

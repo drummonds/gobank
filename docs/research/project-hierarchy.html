@@ -1,0 +1,235 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Project Hierarchy &mdash; GoBank Research</title>
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bulma@1.0.4/css/bulma.min.css">
+  <script type="module">
+    import mermaid from 'https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.esm.min.mjs';
+    mermaid.initialize({ startOnLoad: true, theme: 'base', themeVariables: {
+      primaryColor: '#e8f5e9', primaryBorderColor: '#4caf50',
+      secondaryColor: '#e3f2fd', secondaryBorderColor: '#2196f3',
+      tertiaryColor: '#fff3e0', tertiaryBorderColor: '#ff9800'
+    }});
+  </script>
+</head>
+<body>
+  <nav class="navbar is-primary">
+    <div class="navbar-brand">
+      <a class="navbar-item has-text-weight-bold" href="../">GoBank</a>
+    </div>
+  </nav>
+  <section class="section">
+    <div class="container">
+      <div class="columns">
+        <div class="column is-3">
+          <aside class="menu is-sticky" style="position:sticky;top:1.5rem">
+            <p class="menu-label">Project</p>
+            <ul class="menu-list">
+              <li><a href="../">Overview</a></li>
+            </ul>
+            <p class="menu-label">Demos</p>
+            <ul class="menu-list">
+              <li><a href="../demo/">Model Bank (WASM)</a></li>
+            </ul>
+            <p class="menu-label">Research Notes</p>
+            <ul class="menu-list">
+              <li><a href="chart-comparison.html">Chart Renderer Comparison</a></li>
+              <li><a href="blue-green-schemas.html">Blue-Green Schemas</a></li>
+              <li><a href="project-hierarchy.html" class="is-active">Project Hierarchy</a></li>
+            </ul>
+          </aside>
+        </div>
+        <div class="column is-9">
+          <h1 class="title">Project Hierarchy</h1>
+          <p class="subtitle has-text-grey">Dependency map of drummonds Go projects from GoBank down to the base libraries.</p>
+
+          <div class="box">
+            <h3 class="title is-5">Dependency Graph</h3>
+            <pre class="mermaid">
+graph TD
+    GB["gobank<br/><small>Model bank simulation</small>"]
+    GL["go-luca<br/><small>Double-entry accounting</small>"]
+    GLP["go-luca-pnl<br/><small>P&amp;L reports</small>"]
+    GP["go-postgres<br/><small>DB abstraction (pglike)</small>"]
+    GTS["gotreesitter<br/><small>Pure-Go tree-sitter</small>"]
+    PTA["plain-text-accounting-formats<br/><small>PTA format definitions</small>"]
+    TSA["tree-sitter2abnf<br/><small>Grammar to ABNF converter</small>"]
+    TSG["tree-sitter-goluca<br/><small>Tree-sitter grammar for go-luca</small>"]
+    LFG["lofigui<br/><small>HTML/CSS UI framework</small>"]
+    TP["task-plus<br/><small>Release workflow</small>"]
+
+    GB -->|v0.2.9| GL
+    GB --> GP
+    GB -->|v0.17.5| LFG
+    GL -->|v0.3.1| GP
+    GL -->|v0.6.1| GTS
+    GLP --> GL
+    PTA -->|v0.5.4| GTS
+    TSA -.->|generates| TSG
+    TSG -.->|grammar used by| GTS
+    TP --> LFG
+    TP -.->|manages releases for| GB
+    TP -.->|manages releases for| GL
+
+    classDef app fill:#e3f2fd,stroke:#2196f3
+    classDef lib fill:#e8f5e9,stroke:#4caf50
+    classDef base fill:#fff3e0,stroke:#ff9800
+    classDef tool fill:#fce4ec,stroke:#e91e63
+
+    class GB app
+    class GL,GLP,PTA lib
+    class GP,GTS,LFG base
+    class TSA,TSG,TP tool
+            </pre>
+            <p class="mt-3">
+              <span style="display:inline-block;width:1em;height:1em;background:#e3f2fd;border:2px solid #2196f3;vertical-align:middle"></span> Application &nbsp;
+              <span style="display:inline-block;width:1em;height:1em;background:#e8f5e9;border:2px solid #4caf50;vertical-align:middle"></span> Libraries &nbsp;
+              <span style="display:inline-block;width:1em;height:1em;background:#fff3e0;border:2px solid #ff9800;vertical-align:middle"></span> Base (no internal deps) &nbsp;
+              <span style="display:inline-block;width:1em;height:1em;background:#fce4ec;border:2px solid #e91e63;vertical-align:middle"></span> Tooling (JS / code-gen)
+            </p>
+          </div>
+
+          <div class="box">
+            <h3 class="title is-5">Project Directory</h3>
+            <table class="table is-fullwidth is-striped is-hoverable">
+              <thead>
+                <tr>
+                  <th>Project</th>
+                  <th>Description</th>
+                  <th>Repo</th>
+                  <th>GitHub Pages</th>
+                  <th>Language</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <td><strong>gobank</strong></td>
+                  <td>Model bank simulation</td>
+                  <td><a href="https://github.com/drummonds/gobank">github</a></td>
+                  <td><a href="https://drummonds.github.io/gobank/">pages</a></td>
+                  <td>Go</td>
+                </tr>
+                <tr>
+                  <td><strong>go-luca</strong></td>
+                  <td>Double-entry accounting engine</td>
+                  <td><a href="https://github.com/drummonds/go-luca">github</a></td>
+                  <td>&mdash;</td>
+                  <td>Go</td>
+                </tr>
+                <tr>
+                  <td><strong>go-luca-pnl</strong></td>
+                  <td>P&amp;L report generation</td>
+                  <td><a href="https://github.com/drummonds/go-luca-pnl">github</a></td>
+                  <td>&mdash;</td>
+                  <td>Go</td>
+                </tr>
+                <tr>
+                  <td><strong>go-postgres</strong></td>
+                  <td>DB abstraction layer (pglike wrapper)</td>
+                  <td><a href="https://github.com/drummonds/go-postgres">github</a></td>
+                  <td>&mdash;</td>
+                  <td>Go</td>
+                </tr>
+                <tr>
+                  <td><strong>gotreesitter</strong></td>
+                  <td>Pure-Go tree-sitter runtime</td>
+                  <td><a href="https://github.com/drummonds/gotreesitter">github</a></td>
+                  <td>&mdash;</td>
+                  <td>Go</td>
+                </tr>
+                <tr>
+                  <td><strong>plain-text-accounting-formats</strong></td>
+                  <td>PTA format definitions using tree-sitter</td>
+                  <td><a href="https://github.com/drummonds/plain-text-accounting-formats">github</a></td>
+                  <td>&mdash;</td>
+                  <td>Go</td>
+                </tr>
+                <tr>
+                  <td><strong>tree-sitter2abnf</strong></td>
+                  <td>Converts tree-sitter grammars to ABNF</td>
+                  <td><a href="https://github.com/drummonds/tree-sitter2abnf">github</a></td>
+                  <td>&mdash;</td>
+                  <td>Go</td>
+                </tr>
+                <tr>
+                  <td><strong>tree-sitter-goluca</strong></td>
+                  <td>Tree-sitter grammar for go-luca syntax</td>
+                  <td><a href="https://github.com/drummonds/tree-sitter-goluca">github</a></td>
+                  <td>&mdash;</td>
+                  <td>JS (node)</td>
+                </tr>
+                <tr>
+                  <td><strong>lofigui</strong></td>
+                  <td>HTML/CSS UI framework (no JS)</td>
+                  <td><a href="https://github.com/drummonds/lofigui">github</a></td>
+                  <td><a href="https://drummonds.github.io/lofigui/">pages</a></td>
+                  <td>Go</td>
+                </tr>
+                <tr>
+                  <td><strong>task-plus</strong></td>
+                  <td>Release workflow tooling</td>
+                  <td><a href="https://github.com/drummonds/task-plus">github</a></td>
+                  <td><a href="https://h3-task-plus.statichost.page/">statichost</a></td>
+                  <td>Go</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+
+          <div class="box">
+            <h3 class="title is-5">Related Articles on bytestone.uk</h3>
+            <table class="table is-fullwidth is-striped">
+              <thead>
+                <tr><th>Article</th><th>Date</th><th>Projects Referenced</th></tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <td><a href="https://www.bytestone.uk/posts/2026-02-07-claude-singularity-postgres-and-gokrazy/">Claude, Singularity Postgres and Gokrazy</a></td>
+                  <td>2026-02-07</td>
+                  <td>go-postgres</td>
+                </tr>
+                <tr>
+                  <td><a href="https://www.bytestone.uk/posts/abnf-and-plain-text-accounting/">ABNF and Plain Text Accounting</a></td>
+                  <td>2026-02-26</td>
+                  <td>go-luca, tree-sitter grammars</td>
+                </tr>
+                <tr>
+                  <td><a href="https://www.bytestone.uk/afp/movements/">Cash Movements</a></td>
+                  <td>&mdash;</td>
+                  <td>go-luca (core concept)</td>
+                </tr>
+                <tr>
+                  <td><a href="https://www.bytestone.uk/afp/historical-accounting/pacioli/">Luca Pacioli</a></td>
+                  <td>&mdash;</td>
+                  <td>go-luca (naming origin)</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+
+          <div class="box">
+            <h3 class="title is-5">Notes</h3>
+            <ul>
+              <li><strong>gobank</strong> uses a local <code>replace</code> directive for go-luca during development.</li>
+              <li><strong>go-postgres</strong> wraps <code>modernc.org/sqlite</code> to provide a pglike interface &mdash; pure Go, no CGo.</li>
+              <li><strong>gotreesitter</strong> is a pure-Go tree-sitter runtime used by go-luca and plain-text-accounting-formats for parsing PTA syntax.</li>
+              <li><strong>tree-sitter-goluca</strong> is the grammar definition (JS/node); <strong>tree-sitter2abnf</strong> converts it to ABNF for documentation.</li>
+              <li><strong>lofigui</strong> is the HTML/CSS UI framework used by gobank (demo submodule) and task-plus.</li>
+              <li><strong>task-plus</strong> manages the release workflow for projects that include a <code>task-plus.yml</code>.</li>
+              <li>Dashed lines in the graph indicate non-Go tooling relationships (code generation, grammar definitions, release management).</li>
+            </ul>
+          </div>
+
+        </div>
+      </div>
+    </div>
+  </section>
+  <footer class="footer">
+    <div class="content has-text-centered">
+      <p><a href="../">GoBank</a> &mdash; <a href="https://github.com/drummonds/gobank">github.com/drummonds/gobank</a></p>
+    </div>
+  </footer>
+</body>
+</html>
