@@ -3,6 +3,8 @@ package gobank
 import (
 	"testing"
 	"time"
+
+	luca "github.com/drummonds/go-luca"
 )
 
 func TestNewSimulation(t *testing.T) {
@@ -72,7 +74,7 @@ func TestRecordMovement(t *testing.T) {
 	}
 
 	jan1 := time.Date(2026, 1, 1, 12, 0, 0, 0, time.UTC)
-	_, err = sim.RecordMovement(equity.ID, savings.Account.ID, 100000, jan1, "Initial deposit")
+	_, err = sim.RecordMovement(equity.ID, savings.Account.ID, 100000, luca.CodeBookTransfer, jan1, "Initial deposit")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -103,7 +105,7 @@ func TestInterestAccrual(t *testing.T) {
 
 	// Deposit £1000 on Jan 1
 	jan1 := time.Date(2026, 1, 1, 12, 0, 0, 0, time.UTC)
-	_, err = sim.RecordMovement(equity.ID, savings.Account.ID, 100000, jan1, "Initial deposit")
+	_, err = sim.RecordMovement(equity.ID, savings.Account.ID, 100000, luca.CodeBookTransfer, jan1, "Initial deposit")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -153,7 +155,7 @@ func TestMultiDayInterest(t *testing.T) {
 	}
 
 	jan1 := time.Date(2026, 1, 1, 12, 0, 0, 0, time.UTC)
-	_, err = sim.RecordMovement(equity.ID, savings.Account.ID, 100000, jan1, "Initial deposit")
+	_, err = sim.RecordMovement(equity.ID, savings.Account.ID, 100000, luca.CodeBookTransfer, jan1, "Initial deposit")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -200,7 +202,7 @@ func TestDailyUpdateHandler(t *testing.T) {
 	}
 
 	jan1 := time.Date(2026, 1, 1, 12, 0, 0, 0, time.UTC)
-	_, err = sim.RecordMovement(equity.ID, savings.Account.ID, 100000, jan1, "Deposit")
+	_, err = sim.RecordMovement(equity.ID, savings.Account.ID, 100000, luca.CodeBookTransfer, jan1, "Deposit")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -237,7 +239,7 @@ func TestFutureDatedPosting(t *testing.T) {
 
 	// Post a movement dated Jan 5 (future from Jan 1)
 	jan5 := time.Date(2026, 1, 5, 12, 0, 0, 0, time.UTC)
-	_, err = sim.RecordMovement(equity.ID, savings.Account.ID, 50000, jan5, "Future deposit")
+	_, err = sim.RecordMovement(equity.ID, savings.Account.ID, 50000, luca.CodeBookTransfer, jan5, "Future deposit")
 	if err != nil {
 		t.Fatal(err)
 	}

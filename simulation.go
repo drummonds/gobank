@@ -112,7 +112,7 @@ func (s *Simulation) GetManagedAccount(accountID string) (*ManagedAccount, bool)
 }
 
 // RecordMovement records a movement with optional pre/post hooks on involved accounts.
-func (s *Simulation) RecordMovement(fromID, toID string, amount luca.Amount, valueTime time.Time, description string) (*luca.Movement, error) {
+func (s *Simulation) RecordMovement(fromID, toID string, amount luca.Amount, code string, valueTime time.Time, description string) (*luca.Movement, error) {
 	// Fire pre-movement hooks
 	for _, id := range []string{fromID, toID} {
 		if ma, ok := s.accounts[id]; ok {
@@ -127,7 +127,7 @@ func (s *Simulation) RecordMovement(fromID, toID string, amount luca.Amount, val
 		}
 	}
 
-	mov, err := s.Ledger.RecordMovement(fromID, toID, amount, valueTime, description)
+	mov, err := s.Ledger.RecordMovement(fromID, toID, amount, code, valueTime, description)
 	if err != nil {
 		return nil, err
 	}

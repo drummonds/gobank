@@ -98,7 +98,7 @@ func benchmarkAccounts(b *testing.B, numAccounts, numDays int, dsn string) {
 			}
 
 			jan1 := time.Date(2026, 1, 1, 12, 0, 0, 0, time.UTC)
-			_, err = sim.RecordMovement(equity.ID, ma.Account.ID, 100000, jan1, "Initial deposit")
+			_, err = sim.RecordMovement(equity.ID, ma.Account.ID, 100000, luca.CodeBookTransfer, jan1, "Initial deposit")
 			if err != nil {
 				ledger.Close()
 				b.Fatal(err)

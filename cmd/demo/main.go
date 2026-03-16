@@ -101,7 +101,7 @@ func renderDashBalances(d DashData, oob bool) string {
 	return s.String()
 }
 
-func renderDashControls(d DashData, oob bool) string {
+func renderDashControls(d DashData, oob bool, role Role) string {
 	var s strings.Builder
 	s.WriteString(`<div id="dash-controls"`)
 	if oob {
@@ -109,27 +109,37 @@ func renderDashControls(d DashData, oob bool) string {
 	}
 	s.WriteString(`>`)
 
-	var startStopBtn string
-	if d.Running {
-		startStopBtn = `<form action="/stop" method="post" style="display:inline"><button class="button is-danger" type="submit">Stop</button></form>`
-	} else {
-		startStopBtn = `<form action="/start" method="post" style="display:inline"><button class="button is-success" type="submit">Run</button></form>`
-	}
+	if role.Can("sim_controls") {
+		var startStopBtn string
+		if d.Running {
+			startStopBtn = `<form action="/stop" method="post" style="display:inline"><button class="button is-danger" type="submit">Stop</button></form>`
+		} else {
+			startStopBtn = `<form action="/start" method="post" style="display:inline"><button class="button is-success" type="submit">Run</button></form>`
+		}
 
-	s.WriteString(fmt.Sprintf(`<div class="buttons">%s
+		s.WriteString(fmt.Sprintf(`<div class="buttons">%s
   <form action="/advance" method="post" style="display:inline"><button class="button is-info" type="submit">Advance Day</button></form>
-  <form action="/reset" method="post" style="display:inline"><button class="button is-light" type="submit">Reset</button></form>
+  <form action="/reset" method="post" style="display:inline"><button class="button is-light" type="submit">Reset</button></form>`, startStopBtn))
+		if role.Can("export") {
+			s.WriteString(`
   <a href="/export.goluca" class="button is-link is-light" download>Export .goluca</a>
   <form action="/import" method="post" enctype="multipart/form-data" style="display:inline">
     <label class="button is-info is-light">Import .goluca<input type="file" name="file" accept=".goluca" onchange="this.form.submit()" style="display:none"></label>
-  </form>
-</div>`, startStopBtn))
+  </form>`)
+		}
+		s.WriteString(`
+</div>`)
+	}
+
 	s.WriteString(`</div>`)
 	return s.String()
 }
 
 // renderDashAddCustomers is static (never OOB-swapped) so the input field isn't reset during polling.
-func renderDashAddCustomers() string {
+func renderDashAddCustomers(role Role) string {
+	if !role.Can("sim_controls") {
+		return `<div id="dash-add-customers"></div>`
+	}
 	return `<div id="dash-add-customers" class="mb-4">
   <form action="/add-customers" method="post" style="display:inline">
     <div class="field has-addons"><div class="control"><input class="input is-small" type="number" name="n" value="100" min="1" max="1000000" style="width:7em"></div>
@@ -177,46 +187,48 @@ func renderDashCustomerChart(d DashData, oob bool) string {
 	return s.String()
 }
 
-func renderDashboardFull(d DashData, polling bool) string {
+func renderDashboardFull(d DashData, polling bool, role Role) string {
 	var s strings.Builder
 	s.WriteString(renderDashSummary(d, polling))
 	s.WriteString(renderDashBalances(d, false))
-	s.WriteString(renderDashControls(d, false))
-	s.WriteString(renderDashAddCustomers())
+	s.WriteString(renderDashControls(d, false, role))
+	s.WriteString(renderDashAddCustomers(role))
 	s.WriteString(renderDashNIMChart(d, false))
 	s.WriteString(renderDashBalanceChart(d, false))
 	s.WriteString(renderDashCustomerChart(d, false))
 	return s.String()
 }
 
-func renderDashboardUpdate(d DashData) string {
+func renderDashboardUpdate(d DashData, role Role) string {
 	var s strings.Builder
 	// Primary target: summary (with polling attribute)
 	s.WriteString(renderDashSummary(d, true))
 	// OOB swaps for all other sections
 	s.WriteString(renderDashBalances(d, true))
-	s.WriteString(renderDashControls(d, true))
+	s.WriteString(renderDashControls(d, true, role))
 	s.WriteString(renderDashNIMChart(d, true))
 	s.WriteString(renderDashBalanceChart(d, true))
 	s.WriteString(renderDashCustomerChart(d, true))
 	return s.String()
 }
 
-func renderPaymentsPage(ds *DemoState, piiAuth bool, page int) {
+func renderPaymentsPage(ds *DemoState, piiAuth bool, page int, role Role) {
 	lofigui.HTML(ds.BuildPaymentsHTML(piiAuth, page))
 
-	running := ds.IsPaymentsRunning()
-	var startStopBtn string
-	if running {
-		startStopBtn = `<form action="/payments/stop" method="post" style="display:inline"><button class="button is-danger" type="submit">Stop Auto</button></form>`
-	} else {
-		startStopBtn = `<form action="/payments/run" method="post" style="display:inline"><button class="button is-success" type="submit">Auto Send</button></form>`
-	}
+	if role.Can("send_payment") {
+		running := ds.IsPaymentsRunning()
+		var startStopBtn string
+		if running {
+			startStopBtn = `<form action="/payments/stop" method="post" style="display:inline"><button class="button is-danger" type="submit">Stop Auto</button></form>`
+		} else {
+			startStopBtn = `<form action="/payments/run" method="post" style="display:inline"><button class="button is-success" type="submit">Auto Send</button></form>`
+		}
 
-	lofigui.HTML(fmt.Sprintf(`<div class="buttons mt-4">
+		lofigui.HTML(fmt.Sprintf(`<div class="buttons mt-4">
   <form action="/payments/send" method="post" style="display:inline"><button class="button is-primary" type="submit">Send Payment</button></form>
   %s
 </div>`, startStopBtn))
+	}
 }
 
 func simStatus(ds *DemoState) string {
@@ -257,14 +269,50 @@ func main() {
 
 	// fullPage renders template with app state context (no Refresh header).
 	fullPage := func(w http.ResponseWriter, r *http.Request, content string) {
+		sessID := getSessionID(w, r)
+		role := authStore.GetRole(sessID)
 		ctrl.RenderTemplate(w, pongo2.Context{
 			"request":         r,
 			"version":         app.Version,
 			"controller_name": ctrl.Name,
 			"results":         content,
 			"polling":         simStatus(state),
+			"role":            string(role),
 		})
 	}
+
+	// requireRole returns 403 if the session's role lacks the given permission.
+	requireRole := func(w http.ResponseWriter, r *http.Request, action string) bool {
+		sessID := getSessionID(w, r)
+		role := authStore.GetRole(sessID)
+		if !role.Can(action) {
+			http.Error(w, "Forbidden", http.StatusForbidden)
+			return false
+		}
+		return true
+	}
+
+	// --- Role ---
+
+	http.HandleFunc("/role", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != "POST" {
+			http.Redirect(w, r, "/", http.StatusSeeOther)
+			return
+		}
+		r.ParseForm()
+		roleStr := r.FormValue("role")
+		if !ValidRole(roleStr) {
+			http.Redirect(w, r, "/", http.StatusSeeOther)
+			return
+		}
+		sessID := getSessionID(w, r)
+		authStore.SetRole(sessID, Role(roleStr))
+		redirect := r.FormValue("redirect")
+		if redirect == "" {
+			redirect = "/"
+		}
+		http.Redirect(w, r, redirect, http.StatusSeeOther)
+	})
 
 	// --- Dashboard ---
 
@@ -277,8 +325,10 @@ func main() {
 			http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 			return
 		}
+		sessID := getSessionID(w, r)
+		role := authStore.GetRole(sessID)
 		d := state.DashboardData()
-		content := renderDashboardFull(d, d.Running)
+		content := renderDashboardFull(d, d.Running, role)
 		if serveHTMX(w, r, content) {
 			return
 		}
@@ -289,6 +339,7 @@ func main() {
 			"controller_name": ctrl.Name,
 			"results":         content,
 			"polling":         "Stopped",
+			"role":            string(role),
 		})
 	})
 
@@ -297,14 +348,19 @@ func main() {
 			http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 			return
 		}
+		sessID := getSessionID(w, r)
+		role := authStore.GetRole(sessID)
 		d := state.DashboardData()
 		w.Header().Set("Content-Type", "text/html; charset=utf-8")
-		fmt.Fprint(w, renderDashboardUpdate(d))
+		fmt.Fprint(w, renderDashboardUpdate(d, role))
 	})
 
 	http.HandleFunc("/start", func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != "POST" {
 			http.Redirect(w, r, "/", http.StatusSeeOther)
+			return
+		}
+		if !requireRole(w, r, "sim_controls") {
 			return
 		}
 		state.Start()
@@ -316,6 +372,9 @@ func main() {
 			http.Redirect(w, r, "/", http.StatusSeeOther)
 			return
 		}
+		if !requireRole(w, r, "sim_controls") {
+			return
+		}
 		state.Stop()
 		http.Redirect(w, r, "/", http.StatusSeeOther)
 	})
@@ -323,6 +382,9 @@ func main() {
 	http.HandleFunc("/advance", func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != "POST" {
 			http.Redirect(w, r, "/", http.StatusSeeOther)
+			return
+		}
+		if !requireRole(w, r, "sim_controls") {
 			return
 		}
 		state.AdvanceDay()
@@ -334,6 +396,9 @@ func main() {
 			http.Redirect(w, r, "/", http.StatusSeeOther)
 			return
 		}
+		if !requireRole(w, r, "sim_controls") {
+			return
+		}
 		state.Reset()
 		http.Redirect(w, r, "/", http.StatusSeeOther)
 	})
@@ -341,6 +406,9 @@ func main() {
 	http.HandleFunc("/add-customers", func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != "POST" {
 			http.Redirect(w, r, "/", http.StatusSeeOther)
+			return
+		}
+		if !requireRole(w, r, "sim_controls") {
 			return
 		}
 		r.ParseForm()
@@ -353,8 +421,18 @@ func main() {
 
 	// --- Export/Import ---
 
-	http.HandleFunc("/export.goluca", state.handleExport)
-	http.HandleFunc("/import", state.handleImport)
+	http.HandleFunc("/export.goluca", func(w http.ResponseWriter, r *http.Request) {
+		if !requireRole(w, r, "export") {
+			return
+		}
+		state.handleExport(w, r)
+	})
+	http.HandleFunc("/import", func(w http.ResponseWriter, r *http.Request) {
+		if !requireRole(w, r, "export") {
+			return
+		}
+		state.handleImport(w, r)
+	})
 
 	// --- Accounting ---
 
@@ -438,7 +516,7 @@ func main() {
 		}
 		txPage, _ := strconv.Atoi(r.URL.Query().Get("txpage"))
 		sessID := getSessionID(w, r)
-		piiAuth := authStore.IsAuthorized(sessID)
+		piiAuth := authStore.EffectivePII(sessID)
 		content := renderAndCapture(func() { lofigui.HTML(state.BuildCustomerDetailHTML(id, piiAuth, txPage)) })
 		if serveHTMX(w, r, content) {
 			return
@@ -454,12 +532,13 @@ func main() {
 			return
 		}
 		sessID := getSessionID(w, r)
-		piiAuth := authStore.IsAuthorized(sessID)
+		piiAuth := authStore.EffectivePII(sessID)
+		role := authStore.GetRole(sessID)
 		page, _ := strconv.Atoi(r.URL.Query().Get("page"))
 		if page < 1 {
 			page = 1
 		}
-		content := renderAndCapture(func() { renderPaymentsPage(state, piiAuth, page) })
+		content := renderAndCapture(func() { renderPaymentsPage(state, piiAuth, page, role) })
 		if serveHTMX(w, r, content) {
 			return
 		}
@@ -475,6 +554,9 @@ func main() {
 				http.Redirect(w, r, "/payments", http.StatusSeeOther)
 				return
 			}
+			if !requireRole(w, r, "send_payment") {
+				return
+			}
 			state.SendPayment()
 			http.Redirect(w, r, "/payments", http.StatusSeeOther)
 			return
@@ -483,12 +565,18 @@ func main() {
 				http.Redirect(w, r, "/payments", http.StatusSeeOther)
 				return
 			}
+			if !requireRole(w, r, "send_payment") {
+				return
+			}
 			state.StartPayments()
 			http.Redirect(w, r, "/payments", http.StatusSeeOther)
 			return
 		case "stop":
 			if r.Method != "POST" {
 				http.Redirect(w, r, "/payments", http.StatusSeeOther)
+				return
+			}
+			if !requireRole(w, r, "send_payment") {
 				return
 			}
 			state.StopPayments()
@@ -506,7 +594,7 @@ func main() {
 			return
 		}
 		sessID := getSessionID(w, r)
-		piiAuth := authStore.IsAuthorized(sessID)
+		piiAuth := authStore.EffectivePII(sessID)
 		content := renderAndCapture(func() { lofigui.HTML(state.BuildPaymentDetailHTML(id, piiAuth)) })
 		if serveHTMX(w, r, content) {
 			return
@@ -518,6 +606,9 @@ func main() {
 
 	http.HandleFunc("/settings", func(w http.ResponseWriter, r *http.Request) {
 		if r.Method == "POST" {
+			if !requireRole(w, r, "settings") {
+				return
+			}
 			r.ParseForm()
 			maxCust, _ := strconv.Atoi(r.FormValue("max_customers"))
 			state.UpdateSettings(maxCust)
@@ -573,7 +664,7 @@ func main() {
 			return
 		}
 		sessID := getSessionID(w, r)
-		piiAuth := authStore.IsAuthorized(sessID)
+		piiAuth := authStore.EffectivePII(sessID)
 		content := renderAndCapture(func() { lofigui.HTML(state.BuildBBSIHTML(piiAuth)) })
 		if serveHTMX(w, r, content) {
 			return
@@ -592,7 +683,7 @@ func main() {
 			return
 		}
 		sessID := getSessionID(w, r)
-		piiAuth := authStore.IsAuthorized(sessID)
+		piiAuth := authStore.EffectivePII(sessID)
 		content := renderAndCapture(func() { lofigui.HTML(state.BuildCustomerViewHTML(id, piiAuth)) })
 		if serveHTMX(w, r, content) {
 			return
@@ -641,6 +732,9 @@ func main() {
 	http.HandleFunc("/treasury/gilts/buy", func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != "POST" {
 			http.Redirect(w, r, "/treasury/gilts", http.StatusSeeOther)
+			return
+		}
+		if !requireRole(w, r, "buy_gilt") {
 			return
 		}
 		r.ParseForm()
