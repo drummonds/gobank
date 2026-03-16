@@ -694,39 +694,6 @@ func main() {
 		fullPage(w, r, content)
 	})
 
-	http.HandleFunc("/internal/tables", func(w http.ResponseWriter, r *http.Request) {
-		if r.URL.Path != "/internal/tables" {
-			http.NotFound(w, r)
-			return
-		}
-		if r.Method != "GET" {
-			http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
-			return
-		}
-		content := state.BuildTablesHTML()
-		if serveHTMX(w, r, content) {
-			return
-		}
-		fullPage(w, r, content)
-	})
-
-	http.HandleFunc("/internal/tables/", func(w http.ResponseWriter, r *http.Request) {
-		if r.Method != "GET" {
-			http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
-			return
-		}
-		name := strings.TrimPrefix(r.URL.Path, "/internal/tables/")
-		if name == "" {
-			http.Redirect(w, r, "/internal/tables", http.StatusSeeOther)
-			return
-		}
-		content := state.BuildTableDetailHTML(name)
-		if serveHTMX(w, r, content) {
-			return
-		}
-		fullPage(w, r, content)
-	})
-
 	// --- About ---
 
 	http.HandleFunc("/about", func(w http.ResponseWriter, r *http.Request) {

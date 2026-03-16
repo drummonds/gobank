@@ -102,9 +102,9 @@ func NewDemoState() *DemoState {
 	return ds
 }
 
-// initLedger creates an in-memory go-luca ledger and gobank simulation.
+// initLedger creates a go-luca ledger sharing ds.db and gobank simulation.
 func (ds *DemoState) initLedger() {
-	ledger, err := luca.NewLedger(":memory:")
+	ledger, err := luca.NewSQLLedger(ds.db)
 	if err != nil {
 		log.Printf("initLedger: open ledger: %v", err)
 		return

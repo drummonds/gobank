@@ -30,7 +30,6 @@ const navTreasuryCash = document.getElementById('nav-treasury-cash');
 const navTreasuryCapital = document.getElementById('nav-treasury-capital');
 const navTreasuryGilts = document.getElementById('nav-treasury-gilts');
 const navSettings = document.getElementById('nav-settings');
-const navTables = document.getElementById('nav-tables');
 const navExplorer = document.getElementById('nav-explorer');
 const navBbsi = document.getElementById('nav-bbsi');
 const navCustomerView = document.getElementById('nav-customer-view');
@@ -40,7 +39,7 @@ const navModels = document.getElementById('nav-models');
 
 const allNavItems = [navDashboard, navPnl, navBalanceSheet, navSavings, navLending,
     navCustomers, navPayments, navTreasuryCash, navTreasuryCapital, navTreasuryGilts,
-    navSettings, navTables, navExplorer, navBbsi, navCustomerView, navAbout, navRuntime, navModels];
+    navSettings, navExplorer, navBbsi, navCustomerView, navAbout, navRuntime, navModels];
 
 let currentPage = 'dashboard';
 let renderInterval = null;
@@ -93,13 +92,6 @@ function renderPage() {
             break;
         case 'settings':
             if (typeof goRenderSettings === 'function') outputDiv.innerHTML = goRenderSettings();
-            break;
-        case 'tables':
-            if (typeof goRenderTables === 'function') outputDiv.innerHTML = goRenderTables();
-            break;
-        case 'table-detail':
-            if (typeof goRenderTableDetail === 'function' && detailId)
-                outputDiv.innerHTML = goRenderTableDetail(detailId);
             break;
         case 'explorer':
             if (typeof goRenderExplorer === 'function') outputDiv.innerHTML = goRenderExplorer();
@@ -183,15 +175,6 @@ function attachDetailLinks() {
             showPage('customer-view');
         });
     });
-    // Internal table detail links
-    outputDiv.querySelectorAll('a[href^="/internal/tables/"]').forEach(function(a) {
-        a.addEventListener('click', function(e) {
-            e.preventDefault();
-            var name = a.getAttribute('href').replace('/internal/tables/', '');
-            detailId = name;
-            showPage('table-detail');
-        });
-    });
     // Explorer table detail links
     outputDiv.querySelectorAll('a[href^="/internal/explorer/"]').forEach(function(a) {
         a.addEventListener('click', function(e) {
@@ -212,13 +195,6 @@ function attachDetailLinks() {
         a.addEventListener('click', function(e) {
             e.preventDefault();
             showPage('explorer');
-        });
-    });
-    // Tables back link
-    outputDiv.querySelectorAll('a[href="/internal/tables"]').forEach(function(a) {
-        a.addEventListener('click', function(e) {
-            e.preventDefault();
-            showPage('tables');
         });
     });
     // PII auth links
@@ -263,7 +239,7 @@ function showPage(page) {
 
     // Clear detail ID for non-detail pages
     if (page !== 'customer-detail' && page !== 'payment-detail' && page !== 'customer-view'
-        && page !== 'table-detail' && page !== 'explorer-table') {
+        && page !== 'explorer-table') {
         detailId = null;
         detailTxPage = 1;
         detailSort = '';
@@ -284,7 +260,6 @@ function showPage(page) {
         case 'treasury-capital': navTreasuryCapital.classList.add('is-active'); break;
         case 'treasury-gilts': navTreasuryGilts.classList.add('is-active'); break;
         case 'settings': navSettings.classList.add('is-active'); break;
-        case 'tables': case 'table-detail': navTables.classList.add('is-active'); break;
         case 'explorer': case 'explorer-table': navExplorer.classList.add('is-active'); break;
         case 'bbsi': navBbsi.classList.add('is-active'); break;
         case 'customer-view': navCustomerView.classList.add('is-active'); break;
@@ -367,7 +342,6 @@ navTreasuryCash.addEventListener('click', function(e) { e.preventDefault(); show
 navTreasuryCapital.addEventListener('click', function(e) { e.preventDefault(); showPage('treasury-capital'); });
 navTreasuryGilts.addEventListener('click', function(e) { e.preventDefault(); showPage('treasury-gilts'); });
 navSettings.addEventListener('click', function(e) { e.preventDefault(); showPage('settings'); });
-navTables.addEventListener('click', function(e) { e.preventDefault(); showPage('tables'); });
 navExplorer.addEventListener('click', function(e) { e.preventDefault(); showPage('explorer'); });
 navBbsi.addEventListener('click', function(e) { e.preventDefault(); showPage('bbsi'); });
 navCustomerView.addEventListener('click', function(e) { e.preventDefault(); showPage('customer-view'); });

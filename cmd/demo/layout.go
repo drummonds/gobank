@@ -60,7 +60,6 @@ const LayoutModelBank = `<!DOCTYPE html>
           <a class="navbar-link">Internal</a>
           <div class="navbar-dropdown">
             <a class="navbar-item" href="/settings">Settings</a>
-            <a class="navbar-item" href="/internal/tables">DB Tables</a>
             <a class="navbar-item" href="/internal/explorer">DB Explorer</a>
           </div>
         </div>
