@@ -1,5 +1,7 @@
 .claude/settings.json
 .vscode
+.tp-release-comment
+
 docs/
 .task/
 cmd/demo/diagrams/*.svg
