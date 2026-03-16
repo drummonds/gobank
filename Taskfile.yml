@@ -44,6 +44,7 @@ tasks:
     desc: Run fmt, vet, test, and rebuild pages
     cmds:
       - task: fmt
+      - task: diagrams
       - task: vet
       - task: test
       - task: docs:build
