@@ -59,46 +59,16 @@ func getSessionID(w http.ResponseWriter, r *http.Request) string {
 
 // --- Dashboard section renderers ---
 
-func renderDashSummary(d DashData, polling bool) string {
+// renderDashDataDiv wraps shared dashboard content in a div with optional HTMX polling.
+func renderDashDataDiv(d DashData, polling bool) string {
 	var s strings.Builder
-	s.WriteString(`<div id="dash-summary"`)
+	s.WriteString(`<div id="dash-data"`)
 	if polling {
 		s.WriteString(` hx-get="/dashboard/update" hx-trigger="every 1s" hx-swap="outerHTML"`)
 	}
 	s.WriteString(`>`)
-
-	dateStr := d.Day.Format("2 Jan 2006")
-	nimStr := fmt.Sprintf("%.0f bps", d.NIMBps)
-
-	s.WriteString(`<nav class="level mb-4">`)
-	s.WriteString(fmt.Sprintf(`<div class="level-item has-text-centered"><div><p class="heading">Day</p><p class="title is-5">%d &mdash; %s</p></div></div>`, d.DayCount, dateStr))
-	s.WriteString(fmt.Sprintf(`<div class="level-item has-text-centered"><div><p class="heading">Customers</p><p class="title is-5">%d</p></div></div>`, d.CustomerCount))
-	s.WriteString(fmt.Sprintf(`<div class="level-item has-text-centered"><div><p class="heading">NIM</p><p class="title is-5">%s</p></div></div>`, nimStr))
-	if d.AddingCust {
-		s.WriteString(fmt.Sprintf(`<div class="level-item has-text-centered"><div><p class="heading">Adding</p><p class="title is-6">%d / %d</p></div></div>`, d.AddingProgress, d.AddingTarget))
-	}
-	s.WriteString(`</nav>`)
+	s.WriteString(renderDashContent(d))
 	s.WriteString(`</div>`)
-	return s.String()
-}
-
-func renderDashBalances(d DashData, oob bool) string {
-	var s strings.Builder
-	s.WriteString(`<div id="dash-balances"`)
-	if oob {
-		s.WriteString(` hx-swap-oob="outerHTML"`)
-	}
-	s.WriteString(`>`)
-	s.WriteString(`<div class="columns">`)
-	s.WriteString(fmt.Sprintf(`<div class="column"><div class="box dash-box has-background-success-light"><p class="heading">Savings (deposits)</p><p class="title is-5">%s</p></div></div>`, fmtMoney(d.Savings)))
-	s.WriteString(fmt.Sprintf(`<div class="column"><div class="box dash-box has-background-info-light"><p class="heading">Lending (loans)</p><p class="title is-5">%s</p></div></div>`, fmtMoney(d.Lending)))
-	reserveClass := "has-background-warning-light"
-	if d.Cash < d.RequiredReserves {
-		reserveClass = "has-background-danger-light"
-	}
-	s.WriteString(fmt.Sprintf(`<div class="column"><div class="box dash-box %s"><p class="heading">BoE Cash Reserve</p><p class="title is-5">%s</p><p class="subtitle is-7 mb-0">Required: %s (%.0f%%) | BoE: %.2f%%</p></div></div>`,
-		reserveClass, fmtMoney(d.Cash), fmtMoney(d.RequiredReserves), d.CapitalReserveRatio*100, d.BoeRate*100))
-	s.WriteString(`</div></div>`)
 	return s.String()
 }
 
@@ -149,67 +119,18 @@ func renderDashAddCustomers(role Role) string {
 </div>`
 }
 
-func renderDashNIMChart(d DashData, oob bool) string {
-	var s strings.Builder
-	s.WriteString(`<div id="dash-nim-chart"`)
-	if oob {
-		s.WriteString(` hx-swap-oob="outerHTML"`)
-	}
-	s.WriteString(`>`)
-	s.WriteString(`<h3 class="title is-6 has-text-grey mt-4 mb-2">NIM History (bps)</h3>`)
-	s.WriteString(buildNIMChart(d.NIMHistory))
-	s.WriteString(`</div>`)
-	return s.String()
-}
-
-func renderDashBalanceChart(d DashData, oob bool) string {
-	var s strings.Builder
-	s.WriteString(`<div id="dash-balance-chart"`)
-	if oob {
-		s.WriteString(` hx-swap-oob="outerHTML"`)
-	}
-	s.WriteString(`>`)
-	s.WriteString(`<h3 class="title is-6 has-text-grey mt-4 mb-2">Balance History</h3>`)
-	s.WriteString(buildBalanceChartSVG(d.BalanceHistory))
-	s.WriteString(`</div>`)
-	return s.String()
-}
-
-func renderDashCustomerChart(d DashData, oob bool) string {
-	var s strings.Builder
-	s.WriteString(`<div id="dash-customer-chart"`)
-	if oob {
-		s.WriteString(` hx-swap-oob="outerHTML"`)
-	}
-	s.WriteString(`>`)
-	s.WriteString(`<h3 class="title is-6 has-text-grey mt-4 mb-2">Customer Count</h3>`)
-	s.WriteString(buildCustomerChartSVG(d.CustomerHistory))
-	s.WriteString(`</div>`)
-	return s.String()
-}
-
 func renderDashboardFull(d DashData, polling bool, role Role) string {
 	var s strings.Builder
-	s.WriteString(renderDashSummary(d, polling))
-	s.WriteString(renderDashBalances(d, false))
+	s.WriteString(renderDashDataDiv(d, polling))
 	s.WriteString(renderDashControls(d, false, role))
 	s.WriteString(renderDashAddCustomers(role))
-	s.WriteString(renderDashNIMChart(d, false))
-	s.WriteString(renderDashBalanceChart(d, false))
-	s.WriteString(renderDashCustomerChart(d, false))
 	return s.String()
 }
 
 func renderDashboardUpdate(d DashData, role Role) string {
 	var s strings.Builder
-	// Primary target: summary (with polling attribute)
-	s.WriteString(renderDashSummary(d, true))
-	// OOB swaps for all other sections
-	s.WriteString(renderDashBalances(d, true))
+	s.WriteString(renderDashDataDiv(d, true))
 	s.WriteString(renderDashControls(d, true, role))
-	s.WriteString(renderDashNIMChart(d, true))
-	s.WriteString(renderDashBalanceChart(d, true))
-	s.WriteString(renderDashCustomerChart(d, true))
 	return s.String()
 }
 

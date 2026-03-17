@@ -17,6 +17,9 @@ func (ds *DemoState) initDB() {
 		log.Printf("initDB: open failed: %v", err)
 		return
 	}
+	// Force single connection — each :memory: open gets its own empty database,
+	// so we must prevent the pool from opening additional connections.
+	db.SetMaxOpenConns(1)
 	ds.db = db
 
 	_, err = db.Exec(`CREATE TABLE IF NOT EXISTS gilt_yields (

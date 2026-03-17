@@ -47,7 +47,7 @@ func goImport(this js.Value, args []js.Value) any {
 
 func goRender(this js.Value, args []js.Value) any {
 	lofigui.Reset()
-	lofigui.HTML(state.buildSVG())
+	lofigui.HTML(state.BuildDashboardHTML())
 	return js.ValueOf(lofigui.Buffer())
 }
 
