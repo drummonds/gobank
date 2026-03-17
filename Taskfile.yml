@@ -26,19 +26,34 @@ tasks:
       - go test ./...
 
   bench:
-    desc: Run benchmarks (in-memory SQLite)
+    desc: Run quick benchmarks (1K-10K accounts)
+    dir: cmd/demo
     cmds:
-      - go test -bench='^BenchmarkSimulation/' -benchmem -count=1 -timeout=600s ./...
+      - go test -run=^$ -bench='^BenchmarkFullYear/(1000|10000)$' -benchmem -count=1 -timeout=600s -v .
 
-  bench:file:
-    desc: Run benchmarks with file-backed SQLite
+  bench:create:
+    desc: Benchmark account creation (all sizes)
+    dir: cmd/demo
     cmds:
-      - go test -bench=BenchmarkSimulationFile -benchmem -count=1 -timeout=600s ./...
+      - go test -run=^$ -bench='^BenchmarkCreateAccounts/' -benchmem -count=1 -timeout=3600s -v .
+
+  bench:sim:
+    desc: Benchmark 1-year simulation (all sizes)
+    dir: cmd/demo
+    cmds:
+      - go test -run=^$ -bench='^BenchmarkSimulateYear/' -benchmem -count=1 -timeout=86400s -v .
+
+  bench:full:
+    desc: Run full year benchmarks (all sizes)
+    dir: cmd/demo
+    cmds:
+      - go test -run=^$ -bench='^BenchmarkFullYear/' -benchmem -count=1 -timeout=86400s -v .
 
   bench:all:
-    desc: Run all benchmarks (in-memory + file-backed)
+    desc: Run all benchmarks
+    dir: cmd/demo
     cmds:
-      - go test -bench=. -benchmem -count=1 -timeout=600s ./...
+      - go test -run=^$ -bench=. -benchmem -count=1 -timeout=86400s -v .
 
   check:
     desc: Run fmt, vet, test, and rebuild pages
