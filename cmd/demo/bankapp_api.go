@@ -52,6 +52,20 @@ type apiTransactionsResponse struct {
 	Entries    []apiTxEntry `json:"entries"`
 }
 
+type apiProductDetail struct {
+	CustomerID   string  `json:"customer_id"`
+	CustomerName string  `json:"customer_name"`
+	AccountIndex int     `json:"account_index"`
+	ProductName  string  `json:"product_name"`
+	Family       string  `json:"family"`
+	Rate         float64 `json:"rate"`
+	Balance      float64 `json:"balance"`
+	Interest     float64 `json:"interest"`
+	SortCode     string  `json:"sort_code"`
+	AccountNum   string  `json:"account_num"`
+	OpenDate     string  `json:"open_date"`
+}
+
 // --- Service functions (shared by HTML views and JSON API) ---
 
 const txPerPage = 20
@@ -134,6 +148,62 @@ func (ds *DemoState) bankAppTransactions(custID string, page int) apiTransaction
 	}
 }
 
+func (ds *DemoState) bankAppProductDetail(custID string, accountIdx int) *apiProductDetail {
+	ds.mu.Lock()
+	var cust *CustomerRecord
+	for i := range ds.customers {
+		if ds.customers[i].ID == custID {
+			c := ds.customers[i]
+			cust = &c
+			break
+		}
+	}
+	piiStore := ds.piiStore
+	ds.mu.Unlock()
+
+	if cust == nil || accountIdx < 0 || accountIdx >= len(cust.Accounts) {
+		return nil
+	}
+
+	a := cust.Accounts[accountIdx]
+	return &apiProductDetail{
+		CustomerID:   cust.ID,
+		CustomerName: piiStore.RetrieveName(cust.ID),
+		AccountIndex: accountIdx,
+		ProductName:  a.ProductName,
+		Family:       string(a.Family),
+		Rate:         a.Rate,
+		Balance:      a.Balance,
+		Interest:     a.Interest,
+		SortCode:     a.SortCode,
+		AccountNum:   a.AccountNum,
+		OpenDate:     a.OpenDate.Format("2006-01-02"),
+	}
+}
+
+func (ds *DemoState) bankAppProductTransactions(custID string, accountIdx, page int) apiTransactionsResponse {
+	entries, total := ds.ProductTransactions(custID, accountIdx, page, txPerPage)
+	apiEntries := make([]apiTxEntry, len(entries))
+	for i, tx := range entries {
+		apiEntries[i] = apiTxEntry{
+			ID:          tx.ID,
+			Date:        tx.Date.Format("2006-01-02"),
+			ProductName: tx.ProductName,
+			Type:        tx.Type.String(),
+			Amount:      tx.Amount,
+			Balance:     tx.Balance,
+			Reference:   tx.Reference,
+		}
+	}
+	return apiTransactionsResponse{
+		CustomerID: custID,
+		Page:       page,
+		TotalCount: total,
+		PerPage:    txPerPage,
+		Entries:    apiEntries,
+	}
+}
+
 // --- JSON HTTP handlers ---
 
 func registerBankAppAPI(state *DemoState) {
@@ -165,20 +235,49 @@ func registerBankAppAPI(state *DemoState) {
 		}
 
 		w.Header().Set("Content-Type", "application/json")
-		switch sub {
-		case "accounts":
+		switch {
+		case sub == "accounts":
 			resp := state.bankAppAccounts(custID)
 			if resp == nil {
 				http.NotFound(w, r)
 				return
 			}
 			json.NewEncoder(w).Encode(resp)
-		case "transactions":
+		case sub == "transactions":
 			page, _ := strconv.Atoi(r.URL.Query().Get("page"))
 			if page < 1 {
 				page = 1
 			}
 			json.NewEncoder(w).Encode(state.bankAppTransactions(custID, page))
+		case strings.HasPrefix(sub, "product/"):
+			productRest := strings.TrimPrefix(sub, "product/")
+			productParts := strings.SplitN(productRest, "/", 2)
+			idx, err := strconv.Atoi(productParts[0])
+			if err != nil {
+				http.NotFound(w, r)
+				return
+			}
+			productSub := ""
+			if len(productParts) > 1 {
+				productSub = productParts[1]
+			}
+			switch productSub {
+			case "":
+				resp := state.bankAppProductDetail(custID, idx)
+				if resp == nil {
+					http.NotFound(w, r)
+					return
+				}
+				json.NewEncoder(w).Encode(resp)
+			case "transactions":
+				page, _ := strconv.Atoi(r.URL.Query().Get("page"))
+				if page < 1 {
+					page = 1
+				}
+				json.NewEncoder(w).Encode(state.bankAppProductTransactions(custID, idx, page))
+			default:
+				http.NotFound(w, r)
+			}
 		default:
 			http.NotFound(w, r)
 		}

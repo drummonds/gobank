@@ -90,12 +90,6 @@ tasks:
       - task-plus md2html --file ROADMAP.md --dst docs
       - d2 roadmap.d2 docs/roadmap.svg
 
-  docs:research:
-    desc: Copy research HTML to docs
-    cmds:
-      - mkdir -p docs/research
-      - cp research/*.html docs/research/
-
   diagrams:
     desc: Render d2 architecture diagrams to SVG
     cmds:
@@ -118,7 +112,6 @@ tasks:
       - rm cmd/demo/main.wasm
       - task: docs:gen
       - task: docs:md
-      - task: docs:research
 
   boe:fetch:
     desc: Fetch BoE base rate history and write CSV
@@ -141,7 +134,7 @@ tasks:
       - go run .
 
   clean:
-    desc: Remove build artifacts
+    desc: Remove build artifacts (preserves docs/research/)
     cmds:
       - rm -f cmd/demo/main.wasm cmd/demo/wasm_exec.js
-      - rm -rf docs
+      - find docs -mindepth 1 -not -path 'docs/research' -not -path 'docs/research/*' -delete 2>/dev/null || true

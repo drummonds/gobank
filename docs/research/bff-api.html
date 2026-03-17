@@ -1,0 +1,244 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>BFF API Reference &mdash; GoBank Research</title>
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bulma@1.0.4/css/bulma.min.css">
+  <style>
+    .endpoint { font-family: monospace; font-weight: bold; }
+    pre { background: #f5f5f5; padding: 1rem; border-radius: 6px; overflow-x: auto; font-size: 0.85rem; }
+    .method { display: inline-block; padding: 2px 8px; border-radius: 4px; font-size: 0.75rem; font-weight: bold; color: #fff; margin-right: 8px; }
+    .method-get { background: #48c78e; }
+    .method-post { background: #3e8ed0; }
+  </style>
+</head>
+<body>
+  <nav class="navbar is-primary">
+    <div class="navbar-brand">
+      <a class="navbar-item has-text-weight-bold" href="../">GoBank</a>
+    </div>
+  </nav>
+  <section class="section">
+    <div class="container">
+      <div class="columns">
+        <div class="column is-3">
+          <aside class="menu is-sticky" style="position:sticky;top:1.5rem">
+            <p class="menu-label">Project</p>
+            <ul class="menu-list">
+              <li><a href="../">Overview</a></li>
+            </ul>
+            <p class="menu-label">Demos</p>
+            <ul class="menu-list">
+              <li><a href="../demo/">Model Bank (WASM)</a></li>
+            </ul>
+            <p class="menu-label">Research Notes</p>
+            <ul class="menu-list">
+              <li><a href="https://h3-lofigui.statichost.page/research.html">Chart Renderer Comparison</a></li>
+              <li><a href="blue-green-schemas.html">Blue-Green Schemas</a></li>
+              <li><a href="project-hierarchy.html">Project Hierarchy</a></li>
+              <li><a href="scaling-benchmarks.html">Scaling Benchmarks</a></li>
+              <li><a href="bff-api.html" class="is-active">BFF API Reference</a></li>
+            </ul>
+          </aside>
+        </div>
+        <div class="column is-9">
+          <h1 class="title">BFF API Reference</h1>
+          <p class="subtitle has-text-grey">Backend-for-Frontend API powering the customer mobile banking app.</p>
+
+          <div class="box">
+            <h3 class="title is-5">Overview</h3>
+            <p>The BFF (Backend-for-Frontend) API provides a thin, customer-facing JSON layer over the GoBank simulation. It is designed to serve the mobile banking app UI and sits between the customer&rsquo;s device and the internal bank systems.</p>
+            <p class="mt-2">In production this would be a separate service with its own authentication, rate limiting, and audit logging. In the demo it runs in-process alongside the admin dashboard.</p>
+
+            <h4 class="title is-6 mt-4">Architecture</h4>
+            <table class="table is-fullwidth">
+              <tr><td><strong>Base path</strong></td><td><code>/api/</code></td></tr>
+              <tr><td><strong>Format</strong></td><td>JSON (UTF-8)</td></tr>
+              <tr><td><strong>Auth</strong></td><td>None (demo) &mdash; production would use OAuth 2.0 / Open Banking</td></tr>
+              <tr><td><strong>Phone UI</strong></td><td><code>/app/</code> &mdash; server-rendered HTML consuming the same service methods</td></tr>
+            </table>
+
+            <h4 class="title is-6 mt-4">Flow</h4>
+            <ol>
+              <li><strong>Login</strong> &mdash; customer selects account + enters PIN (<code>POST /app/login</code>, simulated)</li>
+              <li><strong>Holding page</strong> &mdash; <code>GET /api/customer/{id}/accounts</code> &mdash; net balance, all products</li>
+              <li><strong>Product detail</strong> &mdash; <code>GET /api/customer/{id}/product/{idx}</code> &mdash; sort code, account no., rate, balance</li>
+              <li><strong>Transactions</strong> &mdash; <code>GET /api/customer/{id}/product/{idx}/transactions</code> &mdash; per-product activity</li>
+            </ol>
+          </div>
+
+          <div class="box">
+            <h3 class="title is-5">Endpoints</h3>
+
+            <h4 class="title is-6 mt-4">
+              <span class="method method-get">GET</span>
+              <span class="endpoint">/api/customers</span>
+            </h4>
+            <p>List all customers (for login / account selection). Returns ID and name only.</p>
+            <p class="mt-2"><strong>Response:</strong> <code>200 OK</code></p>
+<pre>[
+  { "id": "C-00001", "name": "Alice Smith" },
+  { "id": "C-00002", "name": "Bob Jones" }
+]</pre>
+
+            <hr>
+
+            <h4 class="title is-6 mt-4">
+              <span class="method method-get">GET</span>
+              <span class="endpoint">/api/customer/{id}/accounts</span>
+            </h4>
+            <p>Holding page data: all accounts for a customer with aggregate balances. This is the primary endpoint loaded after login.</p>
+            <table class="table is-fullwidth mt-2">
+              <thead><tr><th>Param</th><th>Type</th><th>Description</th></tr></thead>
+              <tbody>
+                <tr><td><code>{id}</code></td><td>path</td><td>Customer ID (e.g. <code>C-00001</code>)</td></tr>
+              </tbody>
+            </table>
+            <p><strong>Response:</strong> <code>200 OK</code> / <code>404 Not Found</code></p>
+<pre>{
+  "customer_id": "C-00001",
+  "customer_name": "Alice Smith",
+  "accounts": [
+    {
+      "product_name": "Easy Access Saver",
+      "family": "Savings",
+      "rate": 0.015,
+      "balance": 12500.00,
+      "interest": 47.26
+    },
+    {
+      "product_name": "Personal Loan",
+      "family": "Lending",
+      "rate": 0.049,
+      "balance": 5000.00,
+      "interest": 61.50
+    }
+  ],
+  "total_savings": 12500.00,
+  "total_lending": 5000.00
+}</pre>
+
+            <hr>
+
+            <h4 class="title is-6 mt-4">
+              <span class="method method-get">GET</span>
+              <span class="endpoint">/api/customer/{id}/product/{idx}</span>
+            </h4>
+            <p>Detail for a single product/account. Includes sort code, account number, and opening date &mdash; the information a customer needs for payments and direct debits.</p>
+            <table class="table is-fullwidth mt-2">
+              <thead><tr><th>Param</th><th>Type</th><th>Description</th></tr></thead>
+              <tbody>
+                <tr><td><code>{id}</code></td><td>path</td><td>Customer ID</td></tr>
+                <tr><td><code>{idx}</code></td><td>path</td><td>Account index (0-based position in the accounts array)</td></tr>
+              </tbody>
+            </table>
+            <p><strong>Response:</strong> <code>200 OK</code> / <code>404 Not Found</code></p>
+<pre>{
+  "customer_id": "C-00001",
+  "customer_name": "Alice Smith",
+  "account_index": 0,
+  "product_name": "Easy Access Saver",
+  "family": "Savings",
+  "rate": 0.015,
+  "balance": 12500.00,
+  "interest": 47.26,
+  "sort_code": "30-90-01",
+  "account_num": "12345678",
+  "open_date": "2020-01-15"
+}</pre>
+
+            <hr>
+
+            <h4 class="title is-6 mt-4">
+              <span class="method method-get">GET</span>
+              <span class="endpoint">/api/customer/{id}/product/{idx}/transactions</span>
+            </h4>
+            <p>Transaction history for a single product. Paginated, newest first. Use this to show activity on the product detail screen.</p>
+            <table class="table is-fullwidth mt-2">
+              <thead><tr><th>Param</th><th>Type</th><th>Description</th></tr></thead>
+              <tbody>
+                <tr><td><code>{id}</code></td><td>path</td><td>Customer ID</td></tr>
+                <tr><td><code>{idx}</code></td><td>path</td><td>Account index</td></tr>
+                <tr><td><code>page</code></td><td>query</td><td>Page number (1-based, default 1)</td></tr>
+              </tbody>
+            </table>
+            <p><strong>Response:</strong> <code>200 OK</code></p>
+<pre>{
+  "customer_id": "C-00001",
+  "page": 1,
+  "total_count": 42,
+  "per_page": 20,
+  "entries": [
+    {
+      "id": 1234,
+      "date": "2021-06-15",
+      "product_name": "Easy Access Saver",
+      "type": "Interest",
+      "amount": 0.51,
+      "balance": 12500.51,
+      "reference": "INT-001234"
+    }
+  ]
+}</pre>
+
+            <hr>
+
+            <h4 class="title is-6 mt-4">
+              <span class="method method-get">GET</span>
+              <span class="endpoint">/api/customer/{id}/transactions</span>
+            </h4>
+            <p>Transaction history across all products for a customer. Same pagination and response shape as the per-product endpoint.</p>
+            <table class="table is-fullwidth mt-2">
+              <thead><tr><th>Param</th><th>Type</th><th>Description</th></tr></thead>
+              <tbody>
+                <tr><td><code>{id}</code></td><td>path</td><td>Customer ID</td></tr>
+                <tr><td><code>page</code></td><td>query</td><td>Page number (1-based, default 1)</td></tr>
+              </tbody>
+            </table>
+          </div>
+
+          <div class="box">
+            <h3 class="title is-5">Phone UI Screens</h3>
+            <p>The <code>/app/</code> routes serve the same data as the BFF API, rendered as server-side HTML inside a phone frame. Each screen maps to an API call:</p>
+            <table class="table is-fullwidth is-striped mt-3">
+              <thead>
+                <tr><th>Screen</th><th>Route</th><th>API Equivalent</th></tr>
+              </thead>
+              <tbody>
+                <tr><td>Login</td><td><code>GET /app/</code></td><td><code>GET /api/customers</code></td></tr>
+                <tr><td>Login (submit)</td><td><code>POST /app/login</code></td><td>&mdash; (redirect only)</td></tr>
+                <tr><td>Holding page</td><td><code>GET /app/customer/{id}</code></td><td><code>GET /api/customer/{id}/accounts</code></td></tr>
+                <tr><td>Product detail</td><td><code>GET /app/customer/{id}/product/{idx}</code></td><td><code>GET /api/customer/{id}/product/{idx}</code></td></tr>
+                <tr><td>All activity</td><td><code>GET /app/customer/{id}/transactions</code></td><td><code>GET /api/customer/{id}/transactions</code></td></tr>
+              </tbody>
+            </table>
+          </div>
+
+          <div class="box">
+            <h3 class="title is-5">Production Considerations</h3>
+            <table class="table is-fullwidth is-striped">
+              <thead><tr><th>Concern</th><th>Demo</th><th>Production</th></tr></thead>
+              <tbody>
+                <tr><td><strong>Authentication</strong></td><td>None &mdash; customer selected from list</td><td>OAuth 2.0 / Open Banking OIDC; PIN verified against HSM</td></tr>
+                <tr><td><strong>Authorisation</strong></td><td>Any customer can view any account</td><td>Token-scoped to authenticated customer; consent model for third-party access</td></tr>
+                <tr><td><strong>Rate limiting</strong></td><td>None</td><td>Per-customer rate limits; DDoS protection</td></tr>
+                <tr><td><strong>Audit</strong></td><td>None</td><td>Every API call logged with customer ID, IP, timestamp</td></tr>
+                <tr><td><strong>PII</strong></td><td>Name returned in JSON</td><td>PII minimised; name returned only where needed; GDPR-compliant retention</td></tr>
+                <tr><td><strong>TLS</strong></td><td>HTTP (localhost)</td><td>TLS 1.3 required; certificate pinning on mobile app</td></tr>
+                <tr><td><strong>Versioning</strong></td><td>None</td><td><code>/api/v1/</code> prefix; deprecation policy</td></tr>
+              </tbody>
+            </table>
+          </div>
+
+        </div>
+      </div>
+    </div>
+  </section>
+  <footer class="footer">
+    <div class="content has-text-centered">
+      <p><a href="../">GoBank</a> &mdash; <a href="https://github.com/drummonds/gobank">github.com/drummonds/gobank</a></p>
+    </div>
+  </footer>
+</body>
+</html>

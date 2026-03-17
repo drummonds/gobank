@@ -48,9 +48,12 @@ func BenchmarkCreateAccounts(b *testing.B) {
 				ds := newBenchState(n)
 				b.StartTimer()
 
+				start := time.Now()
 				benchAddCustomers(ds, n)
+				dur := time.Since(start)
 
 				b.StopTimer()
+				b.ReportMetric(float64(n)/dur.Seconds(), "accounts/sec")
 				ds.db.Close()
 			}
 		})
@@ -70,9 +73,14 @@ func BenchmarkSimulateYear(b *testing.B) {
 				ds.mu.Unlock()
 				b.StartTimer()
 
+				start := time.Now()
 				benchSimulateYear(ds)
+				dur := time.Since(start)
 
 				b.StopTimer()
+				accountDays := float64(n) * 365
+				b.ReportMetric(accountDays/dur.Seconds(), "account-days/sec")
+				b.ReportMetric(float64(n)/dur.Seconds(), "eod-accounts/sec")
 				ds.db.Close()
 			}
 		})
@@ -80,7 +88,7 @@ func BenchmarkSimulateYear(b *testing.B) {
 }
 
 // BenchmarkFullYear measures account creation + 365-day simulation combined.
-// Reports create-ms and sim-ms as custom metrics.
+// Reports create-ms, sim-ms, and throughput metrics.
 func BenchmarkFullYear(b *testing.B) {
 	for _, n := range benchAccountCounts {
 		b.Run(fmt.Sprintf("%d", n), func(b *testing.B) {
@@ -101,6 +109,9 @@ func BenchmarkFullYear(b *testing.B) {
 
 				b.ReportMetric(float64(createDur.Milliseconds()), "create-ms")
 				b.ReportMetric(float64(simDur.Milliseconds()), "sim-ms")
+				b.ReportMetric(float64(n)/createDur.Seconds(), "accounts/sec")
+				accountDays := float64(n) * 365
+				b.ReportMetric(accountDays/simDur.Seconds(), "account-days/sec")
 
 				ds.db.Close()
 			}

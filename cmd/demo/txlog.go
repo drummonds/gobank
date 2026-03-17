@@ -62,6 +62,40 @@ func (ds *DemoState) emitTx(date time.Time, custID string, accIdx int, productNa
 	})
 }
 
+// ProductTransactions returns transaction entries for a specific customer account,
+// newest first. page is 1-based; perPage entries per page.
+func (ds *DemoState) ProductTransactions(custID string, accountIdx, page, perPage int) (entries []TxEntry, totalCount int) {
+	ds.mu.Lock()
+	defer ds.mu.Unlock()
+
+	var matches []TxEntry
+	for _, tx := range ds.txLog {
+		if tx.CustomerID == custID && tx.AccountIdx == accountIdx {
+			matches = append(matches, tx)
+		}
+	}
+
+	totalCount = len(matches)
+	if page < 1 {
+		page = 1
+	}
+
+	// Reverse to newest-first
+	for i, j := 0, len(matches)-1; i < j; i, j = i+1, j-1 {
+		matches[i], matches[j] = matches[j], matches[i]
+	}
+
+	start := (page - 1) * perPage
+	if start >= len(matches) {
+		return nil, totalCount
+	}
+	end := start + perPage
+	if end > len(matches) {
+		end = len(matches)
+	}
+	return matches[start:end], totalCount
+}
+
 // CustomerTransactions returns transaction entries for a given customer,
 // newest first. page is 1-based; perPage entries per page.
 func (ds *DemoState) CustomerTransactions(custID string, page, perPage int) (entries []TxEntry, totalCount int) {

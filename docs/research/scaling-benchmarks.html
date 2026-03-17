@@ -1,0 +1,403 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Scaling &amp; Performance Benchmarks &mdash; GoBank Research</title>
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bulma@1.0.4/css/bulma.min.css">
+  <style>
+    .metric-card { text-align: center; }
+    .metric-card .title { margin-bottom: 0.25rem !important; }
+    .metric-card .subtitle { margin-top: 0; }
+    td.num, th.num { text-align: right; }
+  </style>
+</head>
+<body>
+  <nav class="navbar is-primary">
+    <div class="navbar-brand">
+      <a class="navbar-item has-text-weight-bold" href="../">GoBank</a>
+    </div>
+  </nav>
+  <section class="section">
+    <div class="container">
+      <div class="columns">
+        <div class="column is-3">
+          <aside class="menu is-sticky" style="position:sticky;top:1.5rem">
+            <p class="menu-label">Project</p>
+            <ul class="menu-list">
+              <li><a href="../">Overview</a></li>
+            </ul>
+            <p class="menu-label">Demos</p>
+            <ul class="menu-list">
+              <li><a href="../demo/">Model Bank (WASM)</a></li>
+            </ul>
+            <p class="menu-label">Research Notes</p>
+            <ul class="menu-list">
+              <li><a href="https://h3-lofigui.statichost.page/research.html">Chart Renderer Comparison</a></li>
+              <li><a href="blue-green-schemas.html">Blue-Green Schemas</a></li>
+              <li><a href="project-hierarchy.html">Project Hierarchy</a></li>
+              <li><a href="scaling-benchmarks.html" class="is-active">Scaling Benchmarks</a></li>
+              <li><a href="bff-api.html">BFF API Reference</a></li>
+            </ul>
+          </aside>
+        </div>
+        <div class="column is-9">
+          <h1 class="title">Scaling &amp; Performance Benchmarks</h1>
+          <p class="subtitle has-text-grey">How the GoBank simulation scales across account counts and what that means for different deployment environments.</p>
+
+          <div class="box">
+            <h3 class="title is-5">Test Environment</h3>
+            <table class="table is-fullwidth">
+              <tbody>
+                <tr><td><strong>CPU</strong></td><td>Intel Core Ultra 7 165H (22 threads)</td></tr>
+                <tr><td><strong>OS</strong></td><td>Linux (amd64)</td></tr>
+                <tr><td><strong>Go</strong></td><td>1.25.3</td></tr>
+                <tr><td><strong>Backend</strong></td><td>SQLite <code>:memory:</code> (go-sqlite3, pure Go)</td></tr>
+                <tr><td><strong>Ledger</strong></td><td>go-luca double-entry accounting</td></tr>
+                <tr><td><strong>Date</strong></td><td>2026-03-17</td></tr>
+              </tbody>
+            </table>
+          </div>
+
+          <div class="box">
+            <h3 class="title is-5">Headline Throughput</h3>
+            <div class="columns is-multiline">
+              <div class="column is-4">
+                <div class="metric-card">
+                  <p class="title is-3 has-text-info">~650</p>
+                  <p class="subtitle is-6">accounts/sec (creation)</p>
+                </div>
+              </div>
+              <div class="column is-4">
+                <div class="metric-card">
+                  <p class="title is-3 has-text-info">~47K</p>
+                  <p class="subtitle is-6">EOD accounts/sec (1K)</p>
+                </div>
+              </div>
+              <div class="column is-4">
+                <div class="metric-card">
+                  <p class="title is-3 has-text-info">~17M</p>
+                  <p class="subtitle is-6">account-days/sec (1K)</p>
+                </div>
+              </div>
+            </div>
+            <p class="has-text-grey is-size-7">Measured at 1K accounts. Throughput degrades at larger scales &mdash; see tables below.</p>
+          </div>
+
+          <div class="box">
+            <h3 class="title is-5">Account Creation</h3>
+            <p>Each account creation involves: generate customer, store PII, append to slice, register in go-luca ledger (creates account paths), and fund with initial deposit. This is the most expensive operation per-account due to multiple SQL round-trips through go-luca.</p>
+            <table class="table is-fullwidth is-striped mt-3">
+              <thead>
+                <tr>
+                  <th>Accounts</th>
+                  <th class="num">Wall Time</th>
+                  <th class="num">accounts/sec</th>
+                  <th class="num">ms/account</th>
+                  <th class="num">Cumulative Allocs</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <td>1,000</td>
+                  <td class="num">1.5s</td>
+                  <td class="num">675</td>
+                  <td class="num">1.48</td>
+                  <td class="num">803 MB / 1.7M</td>
+                </tr>
+                <tr>
+                  <td>10,000</td>
+                  <td class="num">16.8s</td>
+                  <td class="num">595</td>
+                  <td class="num">1.68</td>
+                  <td class="num">8.1 GB / 17.5M</td>
+                </tr>
+              </tbody>
+            </table>
+            <p class="mt-2"><strong>Scaling:</strong> Near-linear. Throughput drops ~12% from 1K to 10K due to growing ledger size. Each account generates ~8 MB of cumulative allocations (mostly SQL operations in go-luca). The per-account cost is dominated by 3&ndash;4 SQL round-trips for ledger registration and initial funding.</p>
+          </div>
+
+          <div class="box">
+            <h3 class="title is-5">End-of-Day Simulation (365 days)</h3>
+            <p>Each simulated day: accrue interest on all accounts (daily_rate = annual_rate / 365), update balances via go-luca, emit transaction log entries. The txLog is cleared each day to bound memory.</p>
+            <table class="table is-fullwidth is-striped mt-3">
+              <thead>
+                <tr>
+                  <th>Accounts</th>
+                  <th class="num">Wall Time (365d)</th>
+                  <th class="num">account-days/sec</th>
+                  <th class="num">EOD accounts/sec</th>
+                  <th class="num">ms per EOD</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <td>1,000</td>
+                  <td class="num">22.6ms</td>
+                  <td class="num">17.3M</td>
+                  <td class="num">47,384</td>
+                  <td class="num">0.062</td>
+                </tr>
+                <tr>
+                  <td>10,000</td>
+                  <td class="num">368ms</td>
+                  <td class="num">10.4M</td>
+                  <td class="num">28,591</td>
+                  <td class="num">1.01</td>
+                </tr>
+              </tbody>
+            </table>
+            <p class="mt-2"><strong>Scaling:</strong> Sublinear &mdash; throughput drops ~40% from 1K to 10K (10.4M vs 17.3M account-days/sec). The per-day cost grows slightly faster than linearly because go-luca SQL queries (GetAccountByID, BalanceAt, RecordMovement) become slower as the ledger table grows. Memory per iteration is constant (161 KB / 36 allocs) since txLog is cleared daily.</p>
+          </div>
+
+          <div class="box">
+            <h3 class="title is-5">Full Year (Create + Simulate)</h3>
+            <p>Combined benchmark: create all accounts then simulate 365 days.</p>
+            <table class="table is-fullwidth is-striped mt-3">
+              <thead>
+                <tr>
+                  <th>Accounts</th>
+                  <th class="num">Total</th>
+                  <th class="num">Create</th>
+                  <th class="num">Simulate</th>
+                  <th class="num">Create %</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <td>1,000</td>
+                  <td class="num">1.9s</td>
+                  <td class="num">1.5s</td>
+                  <td class="num">22ms</td>
+                  <td class="num">99%</td>
+                </tr>
+                <tr>
+                  <td>10,000</td>
+                  <td class="num">17.5s</td>
+                  <td class="num">17.0s</td>
+                  <td class="num">417ms</td>
+                  <td class="num">97%</td>
+                </tr>
+              </tbody>
+            </table>
+            <p class="mt-2"><strong>Key insight:</strong> Account creation dominates total runtime (~97&ndash;99%). Once accounts exist, simulating an entire year is fast. This means the simulation is well-suited for long-running scenarios where you create once and simulate over extended periods.</p>
+          </div>
+
+          <div class="box">
+            <h3 class="title is-5">Extrapolated Scaling</h3>
+            <p>Projections based on observed scaling behaviour. Actual numbers may differ &mdash; the sublinear degradation in SQL performance means these are lower bounds for time.</p>
+            <table class="table is-fullwidth is-striped mt-3">
+              <thead>
+                <tr>
+                  <th>Accounts</th>
+                  <th class="num">Create (est.)</th>
+                  <th class="num">Sim Year (est.)</th>
+                  <th class="num">Total (est.)</th>
+                  <th class="num">Cumul. Allocs (est.)</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <td>1,000</td>
+                  <td class="num">1.5s</td>
+                  <td class="num">23ms</td>
+                  <td class="num">~2s</td>
+                  <td class="num">~1 GB</td>
+                </tr>
+                <tr>
+                  <td>10,000</td>
+                  <td class="num">17s</td>
+                  <td class="num">370ms</td>
+                  <td class="num">~17s</td>
+                  <td class="num">~8 GB</td>
+                </tr>
+                <tr>
+                  <td>100,000</td>
+                  <td class="num">~3 min</td>
+                  <td class="num">~6s</td>
+                  <td class="num">~3 min</td>
+                  <td class="num">~80 GB</td>
+                </tr>
+                <tr>
+                  <td>1,000,000</td>
+                  <td class="num">~30 min</td>
+                  <td class="num">~2 min</td>
+                  <td class="num">~30 min</td>
+                  <td class="num">~800 GB</td>
+                </tr>
+              </tbody>
+            </table>
+            <p class="mt-2 has-text-grey is-size-7"><strong>Note:</strong> &ldquo;Cumulative Allocs&rdquo; is total bytes allocated and freed over the run (from <code>-benchmem</code>), not peak RSS. Go&rsquo;s GC reclaims most of it. Observed peak RSS for 1K accounts is ~145 MB.</p>
+          </div>
+
+          <div class="box">
+            <h3 class="title is-5">Environment Sizing Guide</h3>
+            <p>Each environment has a natural scale determined by available RAM (for the in-memory SQLite backend) and acceptable wall-clock time for initial creation.</p>
+            <table class="table is-fullwidth is-striped mt-3">
+              <thead>
+                <tr>
+                  <th>Environment</th>
+                  <th>RAM</th>
+                  <th>Natural Scale</th>
+                  <th>Create Time</th>
+                  <th>Year Sim</th>
+                  <th>Use Case</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <td><strong>Raspberry Pi / gokrazy</strong></td>
+                  <td>2&ndash;4 GB</td>
+                  <td>1K&ndash;5K</td>
+                  <td>&lt; 10s</td>
+                  <td>&lt; 1s</td>
+                  <td>Demos, IoT dashboard, teaching</td>
+                </tr>
+                <tr>
+                  <td><strong>Small VPS</strong></td>
+                  <td>4&ndash;8 GB</td>
+                  <td>5K&ndash;20K</td>
+                  <td>&lt; 1 min</td>
+                  <td>&lt; 5s</td>
+                  <td>Dev/test, CI benchmarks</td>
+                </tr>
+                <tr>
+                  <td><strong>Laptop / Workstation</strong></td>
+                  <td>16&ndash;64 GB</td>
+                  <td>10K&ndash;100K</td>
+                  <td>&lt; 3 min</td>
+                  <td>&lt; 10s</td>
+                  <td>Development, scenario testing</td>
+                </tr>
+                <tr>
+                  <td><strong>Cloud instance</strong></td>
+                  <td>64&ndash;256 GB</td>
+                  <td>100K&ndash;500K</td>
+                  <td>&lt; 15 min</td>
+                  <td>&lt; 1 min</td>
+                  <td>Stress testing, regulatory scenarios</td>
+                </tr>
+                <tr>
+                  <td><strong>High-memory server</strong></td>
+                  <td>256 GB+</td>
+                  <td>1M+</td>
+                  <td>&lt; 30 min</td>
+                  <td>&lt; 5 min</td>
+                  <td>Full-scale retail bank simulation</td>
+                </tr>
+              </tbody>
+            </table>
+            <p class="mt-2"><strong>WASM (browser):</strong> Limited to browser memory (~2&ndash;4 GB). Safe ceiling is ~1K&ndash;5K accounts. The demo defaults to 1K for this reason.</p>
+          </div>
+
+          <div class="box">
+            <h3 class="title is-5">Resource Constraints</h3>
+            <table class="table is-fullwidth is-striped">
+              <thead>
+                <tr><th>Constraint</th><th>Limit</th><th>Notes</th></tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <td><strong>Benchmark timeout</strong></td>
+                  <td>10 min (quick), 1h / 24h (full)</td>
+                  <td>Set via <code>-timeout</code> flag in Taskfile. Quick bench caps at 600s to keep CI fast.</td>
+                </tr>
+                <tr>
+                  <td><strong>Memory (SQLite :memory:)</strong></td>
+                  <td>Available RAM</td>
+                  <td>The in-memory database grows with account count. No disk I/O, but no persistence either. Peak RSS is much less than cumulative allocs due to GC.</td>
+                </tr>
+                <tr>
+                  <td><strong>Disk (temp files)</strong></td>
+                  <td>Minimal</td>
+                  <td>SQLite :memory: writes nothing to disk. The Go test binary and any core dumps are the only disk use. No 100 GB temp file risk with current backend.</td>
+                </tr>
+                <tr>
+                  <td><strong>CPU</strong></td>
+                  <td>Single-threaded</td>
+                  <td>Current simulation is single-goroutine under a mutex. Multi-core machines get no scaling benefit. This is the most obvious optimisation path after batch SQL.</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+
+          <div class="box">
+            <h3 class="title is-5">Bottleneck Analysis</h3>
+            <p>The dominant cost is go-luca&rsquo;s per-account SQL round-trips, each requiring:</p>
+            <ol>
+              <li><code>GetAccountByID</code> &mdash; fetch account details</li>
+              <li><code>BalanceAt</code> &mdash; query closing balance</li>
+              <li><code>RecordMovement</code> &mdash; insert interest movement</li>
+            </ol>
+            <p class="mt-2">That&rsquo;s <strong>3 SQL operations per account per day</strong> for interest accrual alone. Account creation adds further round-trips for ledger registration and initial funding.</p>
+
+            <h4 class="title is-6 mt-4">Optimisation Paths (not yet implemented)</h4>
+            <table class="table is-fullwidth is-striped">
+              <thead>
+                <tr><th>Optimisation</th><th>Expected Impact</th><th>Complexity</th></tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <td>Batch SQL in go-luca (bulk balance query + bulk insert)</td>
+                  <td>10&ndash;100x for EOD processing</td>
+                  <td>Medium &mdash; requires go-luca API changes</td>
+                </tr>
+                <tr>
+                  <td>Parallel daily processing (shard accounts across goroutines)</td>
+                  <td>Near-linear with core count</td>
+                  <td>Medium &mdash; requires ledger to support concurrent writes</td>
+                </tr>
+                <tr>
+                  <td>File-backed SQLite (avoid RAM ceiling)</td>
+                  <td>Unlocks 1M+ on modest hardware, slower per-op</td>
+                  <td>Low &mdash; change DSN from <code>:memory:</code> to file path</td>
+                </tr>
+                <tr>
+                  <td>PostgreSQL / CockroachDB backend</td>
+                  <td>Production-grade scaling, persistence</td>
+                  <td>High &mdash; requires go-luca backend abstraction</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+
+          <div class="box">
+            <h3 class="title is-5">Sense Checks</h3>
+            <ul>
+              <li><strong>Linear creation:</strong> 1.48ms/account at 1K vs 1.68ms at 10K &mdash; ~12% degradation is consistent with B-tree index growth in SQLite. Plausible.</li>
+              <li><strong>Sublinear simulation:</strong> 10x accounts takes 16x as long &mdash; consistent with SQL query time growing with table size. The O(n log n) profile matches SQLite B-tree lookup cost increasing as the movements table grows.</li>
+              <li><strong>Memory constant per-day:</strong> 161 KB / 36 allocs per simulation iteration regardless of account count &mdash; confirms txLog clearing works and daily overhead is fixed.</li>
+              <li><strong>Creation dominates:</strong> 97&ndash;99% of total time is account creation. This makes sense: creation does ~4 SQL round-trips per account versus simulation doing 3 per account per day, but creation also involves RNG, PII storage, and slice management.</li>
+              <li><strong>Cumulative vs peak:</strong> 8.1 GB cumulative allocs for 10K accounts, but peak RSS is far lower thanks to GC. The B/op metric from <code>-benchmem</code> is total allocated, not retained.</li>
+            </ul>
+          </div>
+
+          <div class="box">
+            <h3 class="title is-5">Running Benchmarks</h3>
+            <p>All benchmarks are defined in <code>cmd/demo/benchmark_test.go</code> and invoked via Taskfile:</p>
+            <table class="table is-fullwidth is-striped mt-3">
+              <thead>
+                <tr><th>Command</th><th>Scope</th><th>Timeout</th><th>Typical Duration</th></tr>
+              </thead>
+              <tbody>
+                <tr><td><code>task bench</code></td><td>Full year, 1K&ndash;10K</td><td>10 min</td><td>~20s</td></tr>
+                <tr><td><code>task bench:create</code></td><td>Account creation, all sizes</td><td>1h</td><td>~20 min</td></tr>
+                <tr><td><code>task bench:sim</code></td><td>Year simulation, all sizes</td><td>24h</td><td>varies</td></tr>
+                <tr><td><code>task bench:full</code></td><td>Full year, all sizes</td><td>24h</td><td>varies</td></tr>
+                <tr><td><code>task bench:all</code></td><td>Everything</td><td>24h</td><td>varies</td></tr>
+              </tbody>
+            </table>
+            <p class="mt-2">Custom metrics reported: <code>accounts/sec</code>, <code>account-days/sec</code>, <code>eod-accounts/sec</code>, <code>create-ms</code>, <code>sim-ms</code>.</p>
+          </div>
+
+        </div>
+      </div>
+    </div>
+  </section>
+  <footer class="footer">
+    <div class="content has-text-centered">
+      <p><a href="../">GoBank</a> &mdash; <a href="https://github.com/drummonds/gobank">github.com/drummonds/gobank</a></p>
+    </div>
+  </footer>
+</body>
+</html>

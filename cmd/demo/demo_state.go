@@ -44,38 +44,40 @@ type NIMPoint struct {
 
 // DemoState holds all unified state for the model bank demo.
 type DemoState struct {
-	mu                 sync.Mutex
-	running            bool
-	cancel             context.CancelFunc
-	products           []Product
-	customers          []CustomerRecord
-	payments           []Payment
-	currentDay         time.Time
-	dayCount           int
-	nextPaymentID      int
-	payRunning         bool
-	payCancel          context.CancelFunc
-	opCostPerDay       float64
-	rng                *rand.Rand
-	piiStore           *PIIStore
-	settings           Settings
-	nextCustSeq        int
-	piiAuthorized      bool
-	boeHistory         []RatePoint
-	balanceHistory     []BalancePoint
-	customerHistory    []CustomerPoint
-	addingCustRunning  bool
-	addingCustCancel   context.CancelFunc
-	addingCustProgress int
-	addingCustTarget   int
-	nimHistory         []NIMPoint
-	boeInterestAccum   float64
-	db                 *sql.DB
-	txLog              []TxEntry
-	nextTxID           int
-	sim                *gbp.Simulation
-	simClock           *gbp.SimClock
-	equityAccountID    string
+	mu                    sync.Mutex
+	running               bool
+	cancel                context.CancelFunc
+	products              []Product
+	customers             []CustomerRecord
+	payments              []Payment
+	currentDay            time.Time
+	dayCount              int
+	nextPaymentID         int
+	payRunning            bool
+	payCancel             context.CancelFunc
+	opCostPerDay          float64
+	rng                   *rand.Rand
+	piiStore              *PIIStore
+	settings              Settings
+	nextCustSeq           int
+	piiAuthorized         bool
+	boeHistory            []RatePoint
+	balanceHistory        []BalancePoint
+	customerHistory       []CustomerPoint
+	addingCustRunning     bool
+	addingCustCancel      context.CancelFunc
+	addingCustProgress    int
+	addingCustTarget      int
+	nimHistory            []NIMPoint
+	boeInterestAccum      float64
+	db                    *sql.DB
+	txLog                 []TxEntry
+	nextTxID              int
+	sim                   *gbp.Simulation
+	simClock              *gbp.SimClock
+	equityAccountID       string
+	interestExpenseAcctID string
+	interestIncomeAcctID  string
 }
 
 func NewDemoState() *DemoState {
@@ -125,6 +127,14 @@ func (ds *DemoState) initLedger() {
 	}
 	ds.sim = sim
 	ds.equityAccountID = equityAcct.ID
+
+	// Cache interest account IDs (created by EnsureInterestAccounts in NewSimulation).
+	if expAcct, err := ledger.GetAccount("Expense:Interest"); err == nil && expAcct != nil {
+		ds.interestExpenseAcctID = expAcct.ID
+	}
+	if incAcct, err := ledger.GetAccount("Income:Interest"); err == nil && incAcct != nil {
+		ds.interestIncomeAcctID = incAcct.ID
+	}
 }
 
 // addCustomerToLedger registers a customer's accounts in the go-luca ledger.
@@ -220,11 +230,17 @@ func (ds *DemoState) advanceDay() {
 				totalDeposits += a.Balance
 				if interest != 0 {
 					ds.emitTx(ds.currentDay, ds.customers[ci].ID, ai, a.ProductName, TxInterestCredit, interest, a.Balance, "INT")
+					if ds.sim != nil && a.LedgerAccountID != "" && ds.interestExpenseAcctID != "" {
+						ds.sim.RecordMovement(ds.interestExpenseAcctID, a.LedgerAccountID, poundsToPence(interest), luca.CodeInterestAccrual, ds.currentDay, "INT")
+					}
 				}
 			} else {
 				totalLoans += a.Balance
 				if interest != 0 {
 					ds.emitTx(ds.currentDay, ds.customers[ci].ID, ai, a.ProductName, TxInterestDebit, interest, a.Balance, "INT")
+					if ds.sim != nil && a.LedgerAccountID != "" && ds.interestIncomeAcctID != "" {
+						ds.sim.RecordMovement(a.LedgerAccountID, ds.interestIncomeAcctID, poundsToPence(interest), luca.CodeInterestAccrual, ds.currentDay, "INT")
+					}
 				}
 			}
 		}
