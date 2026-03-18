@@ -18,6 +18,10 @@ var state = NewDemoState()
 func goExport(this js.Value, args []js.Value) any {
 	var buf bytes.Buffer
 	state.mu.Lock()
+	if state.sim == nil {
+		state.mu.Unlock()
+		return js.ValueOf("error: simulation not initialised")
+	}
 	err := state.sim.ExportGoluca(&buf)
 	state.mu.Unlock()
 	if err != nil {
@@ -32,6 +36,10 @@ func goImport(this js.Value, args []js.Value) any {
 	}
 	data := args[0].String()
 	state.mu.Lock()
+	if state.sim == nil {
+		state.mu.Unlock()
+		return js.ValueOf("error: simulation not initialised")
+	}
 	err := state.sim.Ledger.Import(bytes.NewReader([]byte(data)), &luca.ImportOptions{
 		AutoCreateAccounts: true,
 		DefaultCurrency:    "GBP",
