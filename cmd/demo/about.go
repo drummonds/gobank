@@ -1,6 +1,7 @@
 package main
 
 import (
+	"database/sql"
 	"fmt"
 	"runtime"
 	"strings"
@@ -19,6 +20,10 @@ func (ds *DemoState) BuildRuntimeHTML() string {
 	paymentCount := len(ds.payments)
 	boeRate := ds.settings.BoEBaseRate * 100
 	piiCount := ds.piiStore.Count()
+	var dbStats sql.DBStats
+	if ds.db != nil {
+		dbStats = ds.db.Stats()
+	}
 	ds.mu.Unlock()
 
 	var s strings.Builder
@@ -40,19 +45,28 @@ func (ds *DemoState) BuildRuntimeHTML() string {
 	// Memory
 	s.WriteString(`<div class="box">`)
 	s.WriteString(`<h3 class="title is-5">Memory</h3>`)
+	s.WriteString(`<p class="has-text-grey mb-3">Go runtime memory statistics from <code>runtime.MemStats</code>.</p>`)
 	s.WriteString(`<table class="table is-fullwidth">`)
-	s.WriteString(fmt.Sprintf(`<tr><th>Alloc</th><td>%s</td></tr>`, formatBytes(m.Alloc)))
-	s.WriteString(fmt.Sprintf(`<tr><th>TotalAlloc</th><td>%s</td></tr>`, formatBytes(m.TotalAlloc)))
-	s.WriteString(fmt.Sprintf(`<tr><th>Sys</th><td>%s</td></tr>`, formatBytes(m.Sys)))
-	s.WriteString(fmt.Sprintf(`<tr><th>NumGC</th><td>%d</td></tr>`, m.NumGC))
+	s.WriteString(fmt.Sprintf(`<tr><th>Alloc</th><td>%s</td><td class="has-text-grey">Heap memory in use by live objects</td></tr>`, formatBytes(m.Alloc)))
+	s.WriteString(fmt.Sprintf(`<tr><th>TotalAlloc</th><td>%s</td><td class="has-text-grey">Cumulative bytes allocated (never decreases)</td></tr>`, formatBytes(m.TotalAlloc)))
+	s.WriteString(fmt.Sprintf(`<tr><th>Sys</th><td>%s</td><td class="has-text-grey">Total memory obtained from the OS</td></tr>`, formatBytes(m.Sys)))
+	s.WriteString(fmt.Sprintf(`<tr><th>HeapObjects</th><td>%d</td><td class="has-text-grey">Number of allocated heap objects</td></tr>`, m.HeapObjects))
+	s.WriteString(fmt.Sprintf(`<tr><th>NumGC</th><td>%d</td><td class="has-text-grey">Completed garbage collection cycles</td></tr>`, m.NumGC))
+	s.WriteString(fmt.Sprintf(`<tr><th>Goroutines</th><td>%d</td><td class="has-text-grey">Active goroutines</td></tr>`, runtime.NumGoroutine()))
 	s.WriteString(`</table></div>`)
 
 	// Data store
 	s.WriteString(`<div class="box">`)
 	s.WriteString(`<h3 class="title is-5">Data Store</h3>`)
 	s.WriteString(`<table class="table is-fullwidth">`)
-	s.WriteString(`<tr><th>Type</th><td>In-memory</td></tr>`)
+	s.WriteString(`<tr><th>Type</th><td>In-memory (pglike/SQLite)</td></tr>`)
 	s.WriteString(fmt.Sprintf(`<tr><th>PII records (encrypted)</th><td>%d</td></tr>`, piiCount))
+	s.WriteString(fmt.Sprintf(`<tr><th>Max open connections</th><td>%d</td></tr>`, dbStats.MaxOpenConnections))
+	s.WriteString(fmt.Sprintf(`<tr><th>Open connections</th><td>%d</td><td class="has-text-grey">In use: %d, Idle: %d</td></tr>`, dbStats.OpenConnections, dbStats.InUse, dbStats.Idle))
+	s.WriteString(fmt.Sprintf(`<tr><th>Wait count</th><td>%d</td><td class="has-text-grey">Connections waited for due to pool limit</td></tr>`, dbStats.WaitCount))
+	if dbStats.MaxIdleClosed > 0 || dbStats.MaxLifetimeClosed > 0 {
+		s.WriteString(fmt.Sprintf(`<tr><th>Connections closed</th><td>idle: %d, lifetime: %d</td><td class="has-text-grey">Closed by pool maintenance</td></tr>`, dbStats.MaxIdleClosed, dbStats.MaxLifetimeClosed))
+	}
 	s.WriteString(`</table></div>`)
 
 	// Simulation

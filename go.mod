@@ -10,7 +10,7 @@ require codeberg.org/hum3/gobank-products v0.0.0
 
 require (
 	github.com/drummonds/go-luca v0.2.19 // indirect
-	github.com/drummonds/go-postgres v0.4.0 // indirect
+	github.com/drummonds/go-postgres v0.4.1 // indirect
 	github.com/drummonds/gotreesitter v0.6.1 // indirect
 	github.com/google/uuid v1.6.0 // indirect
 	github.com/ncruces/go-sqlite3 v0.32.0 // indirect

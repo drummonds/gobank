@@ -529,220 +529,56 @@ func (ds *DemoState) DashboardData() DashData {
 	}
 }
 
-// --- Dashboard SVG ---
+// --- Dashboard HTML (shared by server + WASM) ---
 
-func (ds *DemoState) buildSVG() string {
-	ds.mu.Lock()
-	day := ds.currentDay
-	dayCount := ds.dayCount
-
-	savingsTotal := 0.0
-	lendingTotal := 0.0
-	totalInterest := 0.0
-	for _, c := range ds.customers {
-		for _, a := range c.Accounts {
-			if a.Family == gbp.FamilySavings {
-				savingsTotal += a.Balance
-			} else {
-				lendingTotal += a.Balance
-			}
-			totalInterest += a.Interest
-		}
-	}
-	customerCount := len(ds.customers)
-	addingProgress := ds.addingCustProgress
-	addingTarget := ds.addingCustTarget
-	addingRunning := ds.addingCustRunning
-	boeRate := ds.settings.BoEBaseRate
-	boeInterest := ds.boeInterestAccum
-	cash := savingsTotal - lendingTotal
-	balHist := make([]BalancePoint, len(ds.balanceHistory))
-	copy(balHist, ds.balanceHistory)
-	custHist := make([]CustomerPoint, len(ds.customerHistory))
-	copy(custHist, ds.customerHistory)
-	nimHist := make([]NIMPoint, len(ds.nimHistory))
-	copy(nimHist, ds.nimHistory)
-	ds.mu.Unlock()
-
-	// Current NIM bps
-	nimBps := 0.0
-	if len(nimHist) > 0 {
-		nimBps = nimHist[len(nimHist)-1].NIM
-	}
-
+// renderDashContent renders dashboard data sections as Bulma-styled HTML.
+// Shared by HTTP server and WASM modes.
+func renderDashContent(d DashData) string {
 	var s strings.Builder
-	const (
-		width   = 700
-		height  = 700
-		barMaxW = 350.0
-		barH    = 30
-		barX    = 170
-	)
 
-	maxBal := savingsTotal
-	if lendingTotal > maxBal {
-		maxBal = lendingTotal
+	// Summary stats level
+	dateStr := d.Day.Format("2 Jan 2006")
+	nimStr := fmt.Sprintf("%.0f bps", d.NIMBps)
+	s.WriteString(`<nav class="level mb-4">`)
+	s.WriteString(fmt.Sprintf(`<div class="level-item has-text-centered"><div><p class="heading">Day</p><p class="title is-5">%d &mdash; %s</p></div></div>`, d.DayCount, dateStr))
+	s.WriteString(fmt.Sprintf(`<div class="level-item has-text-centered"><div><p class="heading">Customers</p><p class="title is-5">%d</p></div></div>`, d.CustomerCount))
+	s.WriteString(fmt.Sprintf(`<div class="level-item has-text-centered"><div><p class="heading">NIM</p><p class="title is-5">%s</p></div></div>`, nimStr))
+	if d.AddingCust {
+		s.WriteString(fmt.Sprintf(`<div class="level-item has-text-centered"><div><p class="heading">Adding</p><p class="title is-6">%d / %d</p></div></div>`, d.AddingProgress, d.AddingTarget))
 	}
-	if maxBal < 100 {
-		maxBal = 100
+	s.WriteString(`</nav>`)
+
+	// Balance boxes
+	s.WriteString(`<div class="columns">`)
+	s.WriteString(fmt.Sprintf(`<div class="column"><div class="box dash-box has-background-success-light"><p class="heading">Savings (deposits)</p><p class="title is-5">%s</p></div></div>`, fmtMoney(d.Savings)))
+	s.WriteString(fmt.Sprintf(`<div class="column"><div class="box dash-box has-background-info-light"><p class="heading">Lending (loans)</p><p class="title is-5">%s</p></div></div>`, fmtMoney(d.Lending)))
+	reserveClass := "has-background-warning-light"
+	if d.Cash < d.RequiredReserves {
+		reserveClass = "has-background-danger-light"
 	}
+	s.WriteString(fmt.Sprintf(`<div class="column"><div class="box dash-box %s"><p class="heading">BoE Cash Reserve</p><p class="title is-5">%s</p><p class="subtitle is-7 mb-0">Required: %s (%.0f%%) | BoE: %.2f%%</p></div></div>`,
+		reserveClass, fmtMoney(d.Cash), fmtMoney(d.RequiredReserves), d.CapitalReserveRatio*100, d.BoeRate*100))
+	s.WriteString(`</div>`)
 
-	s.WriteString(fmt.Sprintf(`<svg viewBox="0 0 %d %d" xmlns="http://www.w3.org/2000/svg" style="max-width:%dpx;width:100%%;height:auto">`, width, height, width))
-	s.WriteString(`<style>text{font-family:Arial,Helvetica,sans-serif}</style>`)
+	// NIM chart
+	s.WriteString(`<h3 class="title is-6 has-text-grey mt-4 mb-2">NIM History (bps)</h3>`)
+	s.WriteString(buildNIMChart(d.NIMHistory))
 
-	// Header
-	s.WriteString(`<rect x="0" y="0" width="700" height="50" rx="6" fill="#00d1b2"/>`)
-	s.WriteString(`<text x="20" y="33" font-size="22" font-weight="bold" fill="#fff">Model Bank</text>`)
-	dateStr := day.Format("2 Jan 2006")
-	s.WriteString(fmt.Sprintf(`<text x="680" y="20" text-anchor="end" font-size="14" fill="#fff">Day %d — %s</text>`, dayCount, dateStr))
-	if addingRunning {
-		s.WriteString(fmt.Sprintf(`<text x="680" y="35" text-anchor="end" font-size="11" fill="rgba(255,255,255,0.8)">Adding customers: %d / %d</text>`, addingProgress, addingTarget))
-	} else {
-		s.WriteString(fmt.Sprintf(`<text x="680" y="35" text-anchor="end" font-size="11" fill="rgba(255,255,255,0.8)">Customers: %d | Cash: %s (BoE: %.2f%%) | NIM: %.0f bps</text>`,
-			customerCount, fmtMoney(cash), boeRate*100, nimBps))
-	}
-	_ = boeInterest
+	// Balance chart
+	s.WriteString(`<h3 class="title is-6 has-text-grey mt-4 mb-2">Balance History</h3>`)
+	s.WriteString(buildBalanceChartSVG(d.BalanceHistory))
 
-	// Family bars
-	families := []struct {
-		Name    string
-		Balance float64
-		Color   string
-	}{
-		{"Savings (deposits)", savingsTotal, "#48c78e"},
-		{"Lending (loans)", lendingTotal, "#3e8ed0"},
-	}
+	// Customer chart
+	s.WriteString(`<h3 class="title is-6 has-text-grey mt-4 mb-2">Customer Count</h3>`)
+	s.WriteString(buildCustomerChartSVG(d.CustomerHistory))
 
-	yStart := 75.0
-	rowH := 65.0
-	for i, f := range families {
-		y := yStart + float64(i)*rowH
-		s.WriteString(fmt.Sprintf(`<text x="20" y="%.0f" font-size="15" font-weight="bold" fill="#363636">%s</text>`, y+12, f.Name))
-		s.WriteString(fmt.Sprintf(`<rect x="%d" y="%.0f" width="%.0f" height="%d" rx="4" fill="#f0f0f0" stroke="#dbdbdb" stroke-width="1"/>`, barX, y, barMaxW, barH))
-		barW := barMaxW * f.Balance / maxBal
-		if barW < 2 {
-			barW = 2
-		}
-		if barW > barMaxW {
-			barW = barMaxW
-		}
-		s.WriteString(fmt.Sprintf(`<rect x="%d" y="%.0f" width="%.1f" height="%d" rx="4" fill="%s" opacity="0.85"/>`, barX, y, barW, barH, f.Color))
-		s.WriteString(fmt.Sprintf(`<text x="%.0f" y="%.0f" font-size="14" fill="#363636" font-weight="bold">%s</text>`, float64(barX)+barMaxW+10, y+20, fmtMoney(f.Balance)))
-	}
-
-	// Divider
-	divY := yStart + 2*rowH
-	s.WriteString(fmt.Sprintf(`<line x1="20" y1="%.0f" x2="680" y2="%.0f" stroke="#dbdbdb" stroke-width="1"/>`, divY, divY))
-
-	// --- Balance history chart ---
-	chartTop := divY + 15
-	s.WriteString(fmt.Sprintf(`<text x="20" y="%.0f" font-size="13" font-weight="bold" fill="#7a7a7a">Balance History</text>`, chartTop+12))
-	s.WriteString(buildBalanceChart(balHist, chartTop+20))
-
-	// --- Customer count chart ---
-	custChartTop := chartTop + 20 + 200 + 15
-	s.WriteString(fmt.Sprintf(`<text x="20" y="%.0f" font-size="13" font-weight="bold" fill="#7a7a7a">Customer Count</text>`, custChartTop+12))
-	s.WriteString(buildCustomerChart(custHist, custChartTop+20))
-
-	s.WriteString(`</svg>`)
 	return s.String()
 }
 
-// buildBalanceChart renders a dual-line chart (savings=green, lending=blue) as an SVG <g>.
-func buildBalanceChart(history []BalancePoint, yOffset float64) string {
-	if len(history) == 0 {
-		return ""
-	}
-	const (
-		padL   = 80
-		padR   = 20
-		chartW = 700 - padL - padR
-		chartH = 160
-		padT   = 10
-	)
-
-	// Find Y range
-	minVal := history[0].Savings
-	maxVal := history[0].Savings
-	for _, bp := range history {
-		for _, v := range []float64{bp.Savings, bp.Lending} {
-			if v < minVal {
-				minVal = v
-			}
-			if v > maxVal {
-				maxVal = v
-			}
-		}
-	}
-	valRange := maxVal - minVal
-	if valRange < 100 {
-		valRange = 200
-		minVal -= 100
-		maxVal += 100
-	} else {
-		minVal -= valRange * 0.1
-		maxVal += valRange * 0.1
-		valRange = maxVal - minVal
-	}
-	if minVal < 0 {
-		minVal = 0
-		valRange = maxVal - minVal
-	}
-
-	var s strings.Builder
-
-	// Background
-	s.WriteString(fmt.Sprintf(`<rect x="%d" y="%.0f" width="%d" height="%d" fill="#fafafa" stroke="#dbdbdb" stroke-width="1"/>`, padL, yOffset+float64(padT), chartW, chartH))
-
-	// Y-axis labels
-	for i := 0; i <= 4; i++ {
-		val := minVal + valRange*float64(i)/4.0
-		y := yOffset + float64(padT+chartH) - float64(chartH)*float64(i)/4.0
-		s.WriteString(fmt.Sprintf(`<line x1="%d" y1="%.0f" x2="%d" y2="%.0f" stroke="#ededed" stroke-width="1"/>`, padL, y, padL+chartW, y))
-		s.WriteString(fmt.Sprintf(`<text x="%d" y="%.0f" text-anchor="end" font-size="9" fill="#7a7a7a">%s</text>`, padL-5, y+3, fmtMoney(val)))
-	}
-
-	// Lines
-	type lineSpec struct {
-		color string
-		vals  func(BalancePoint) float64
-	}
-	lines := []lineSpec{
-		{"#48c78e", func(bp BalancePoint) float64 { return bp.Savings }},
-		{"#3e8ed0", func(bp BalancePoint) float64 { return bp.Lending }},
-	}
-
-	for _, line := range lines {
-		if len(history) == 1 {
-			v := line.vals(history[0])
-			x := float64(padL) + float64(chartW)/2
-			y := yOffset + float64(padT+chartH) - float64(chartH)*(v-minVal)/valRange
-			s.WriteString(fmt.Sprintf(`<circle cx="%.0f" cy="%.0f" r="3" fill="%s"/>`, x, y, line.color))
-			continue
-		}
-		var pts strings.Builder
-		for i, bp := range history {
-			v := line.vals(bp)
-			x := float64(padL) + float64(chartW)*float64(i)/float64(len(history)-1)
-			y := yOffset + float64(padT+chartH) - float64(chartH)*(v-minVal)/valRange
-			y = math.Max(yOffset+float64(padT), math.Min(yOffset+float64(padT+chartH), y))
-			if i == 0 {
-				pts.WriteString(fmt.Sprintf("%.1f,%.1f", x, y))
-			} else {
-				pts.WriteString(fmt.Sprintf(" %.1f,%.1f", x, y))
-			}
-		}
-		s.WriteString(fmt.Sprintf(`<polyline points="%s" fill="none" stroke="%s" stroke-width="2"/>`, pts.String(), line.color))
-	}
-
-	// Legend
-	legendY := yOffset + float64(padT+chartH) + 18
-	s.WriteString(fmt.Sprintf(`<circle cx="%d" cy="%.0f" r="4" fill="#48c78e"/>`, padL, legendY-3))
-	s.WriteString(fmt.Sprintf(`<text x="%d" y="%.0f" font-size="10" fill="#363636">Savings</text>`, padL+8, legendY))
-	s.WriteString(fmt.Sprintf(`<circle cx="%d" cy="%.0f" r="4" fill="#3e8ed0"/>`, padL+70, legendY-3))
-	s.WriteString(fmt.Sprintf(`<text x="%d" y="%.0f" font-size="10" fill="#363636">Lending</text>`, padL+78, legendY))
-
-	return s.String()
+// BuildDashboardHTML renders the dashboard data sections as Bulma-styled HTML.
+// Shared by HTTP server and WASM modes. Does not include controls.
+func (ds *DemoState) BuildDashboardHTML() string {
+	return renderDashContent(ds.DashboardData())
 }
 
 // buildNIMChart renders a single-line chart of NIM in basis points as an SVG fragment.
@@ -965,80 +801,4 @@ func buildCustomerChartSVG(history []CustomerPoint) string {
 		return fmt.Sprintf(`<p class="has-text-danger">Chart render error: %v</p>`, err)
 	}
 	return string(svgBytes)
-}
-
-// buildCustomerChart renders a single-line chart of customer count as an SVG <g>.
-func buildCustomerChart(history []CustomerPoint, yOffset float64) string {
-	if len(history) == 0 {
-		return ""
-	}
-	const (
-		padL   = 80
-		padR   = 20
-		chartW = 700 - padL - padR
-		chartH = 140
-		padT   = 10
-	)
-
-	minVal := float64(history[0].Count)
-	maxVal := float64(history[0].Count)
-	for _, cp := range history {
-		v := float64(cp.Count)
-		if v < minVal {
-			minVal = v
-		}
-		if v > maxVal {
-			maxVal = v
-		}
-	}
-	valRange := maxVal - minVal
-	if valRange < 1 {
-		valRange = 2
-		minVal -= 1
-		maxVal += 1
-	} else {
-		minVal -= valRange * 0.1
-		maxVal += valRange * 0.1
-		valRange = maxVal - minVal
-	}
-	if minVal < 0 {
-		minVal = 0
-		valRange = maxVal - minVal
-	}
-
-	var s strings.Builder
-
-	// Background
-	s.WriteString(fmt.Sprintf(`<rect x="%d" y="%.0f" width="%d" height="%d" fill="#fafafa" stroke="#dbdbdb" stroke-width="1"/>`, padL, yOffset+float64(padT), chartW, chartH))
-
-	// Y-axis labels
-	for i := 0; i <= 4; i++ {
-		val := minVal + valRange*float64(i)/4.0
-		y := yOffset + float64(padT+chartH) - float64(chartH)*float64(i)/4.0
-		s.WriteString(fmt.Sprintf(`<line x1="%d" y1="%.0f" x2="%d" y2="%.0f" stroke="#ededed" stroke-width="1"/>`, padL, y, padL+chartW, y))
-		s.WriteString(fmt.Sprintf(`<text x="%d" y="%.0f" text-anchor="end" font-size="9" fill="#7a7a7a">%d</text>`, padL-5, y+3, int(val)))
-	}
-
-	// Line
-	if len(history) == 1 {
-		x := float64(padL) + float64(chartW)/2
-		y := yOffset + float64(padT+chartH)/2
-		s.WriteString(fmt.Sprintf(`<circle cx="%.0f" cy="%.0f" r="3" fill="#00947e"/>`, x, y))
-	} else {
-		var pts strings.Builder
-		for i, cp := range history {
-			v := float64(cp.Count)
-			x := float64(padL) + float64(chartW)*float64(i)/float64(len(history)-1)
-			y := yOffset + float64(padT+chartH) - float64(chartH)*(v-minVal)/valRange
-			y = math.Max(yOffset+float64(padT), math.Min(yOffset+float64(padT+chartH), y))
-			if i == 0 {
-				pts.WriteString(fmt.Sprintf("%.1f,%.1f", x, y))
-			} else {
-				pts.WriteString(fmt.Sprintf(" %.1f,%.1f", x, y))
-			}
-		}
-		s.WriteString(fmt.Sprintf(`<polyline points="%s" fill="none" stroke="#00947e" stroke-width="2"/>`, pts.String()))
-	}
-
-	return s.String()
 }

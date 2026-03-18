@@ -45,6 +45,7 @@ let currentPage = 'dashboard';
 let renderInterval = null;
 let detailId = null; // for customer/payment/table detail pages
 let detailTxPage = 1; // transaction page for customer detail, or explorer page
+let detailAccountIdx = -1; // account index for customer-account page
 let detailSort = ''; // explorer sort column
 let detailDir = 'asc'; // explorer sort direction
 
@@ -73,6 +74,10 @@ function renderPage() {
         case 'customer-detail':
             if (typeof goRenderCustomerDetail === 'function' && detailId)
                 outputDiv.innerHTML = goRenderCustomerDetail(detailId, detailTxPage);
+            break;
+        case 'customer-account':
+            if (typeof goRenderCustomerAccount === 'function' && detailId)
+                outputDiv.innerHTML = goRenderCustomerAccount(detailId, detailAccountIdx, detailTxPage);
             break;
         case 'payments':
             if (typeof goRenderPayments === 'function') outputDiv.innerHTML = goRenderPayments();
@@ -144,18 +149,31 @@ function updateStatus() {
 
 // Attach click handlers to dynamically rendered detail links (View buttons)
 function attachDetailLinks() {
-    // Customer detail links (including txpage pagination)
+    // Customer account links (/customers/{id}/account/{idx})
     outputDiv.querySelectorAll('a[href^="/customers/"]').forEach(function(a) {
-        a.addEventListener('click', function(e) {
-            e.preventDefault();
-            var href = a.getAttribute('href');
-            var path = href.split('?')[0];
-            var id = path.replace('/customers/', '');
-            var params = new URLSearchParams(href.split('?')[1] || '');
-            detailId = id;
-            detailTxPage = parseInt(params.get('txpage')) || 1;
-            showPage('customer-detail');
-        });
+        var href = a.getAttribute('href');
+        var accountMatch = href.match(/^\/customers\/([^/]+)\/account\/(\d+)/);
+        if (accountMatch) {
+            a.addEventListener('click', function(e) {
+                e.preventDefault();
+                var params = new URLSearchParams(href.split('?')[1] || '');
+                detailId = accountMatch[1];
+                detailAccountIdx = parseInt(accountMatch[2], 10);
+                detailTxPage = parseInt(params.get('txpage')) || 1;
+                showPage('customer-account');
+            });
+        } else {
+            // Customer detail links (including txpage pagination)
+            a.addEventListener('click', function(e) {
+                e.preventDefault();
+                var path = href.split('?')[0];
+                var id = path.replace('/customers/', '');
+                var params = new URLSearchParams(href.split('?')[1] || '');
+                detailId = id;
+                detailTxPage = parseInt(params.get('txpage')) || 1;
+                showPage('customer-detail');
+            });
+        }
     });
     // Payment detail links
     outputDiv.querySelectorAll('a[href^="/payments/"]').forEach(function(a) {
@@ -238,10 +256,11 @@ function showPage(page) {
     currentPage = page;
 
     // Clear detail ID for non-detail pages
-    if (page !== 'customer-detail' && page !== 'payment-detail' && page !== 'customer-view'
-        && page !== 'explorer-table') {
+    if (page !== 'customer-detail' && page !== 'customer-account' && page !== 'payment-detail'
+        && page !== 'customer-view' && page !== 'explorer-table') {
         detailId = null;
         detailTxPage = 1;
+        detailAccountIdx = -1;
         detailSort = '';
         detailDir = 'asc';
     }
@@ -254,7 +273,7 @@ function showPage(page) {
         case 'balance-sheet': navBalanceSheet.classList.add('is-active'); break;
         case 'savings': navSavings.classList.add('is-active'); break;
         case 'lending': navLending.classList.add('is-active'); break;
-        case 'customers': case 'customer-detail': navCustomers.classList.add('is-active'); break;
+        case 'customers': case 'customer-detail': case 'customer-account': navCustomers.classList.add('is-active'); break;
         case 'payments': case 'payment-detail': navPayments.classList.add('is-active'); break;
         case 'treasury-cash': navTreasuryCash.classList.add('is-active'); break;
         case 'treasury-capital': navTreasuryCapital.classList.add('is-active'); break;

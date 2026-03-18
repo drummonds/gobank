@@ -1,7 +1,7 @@
 github.com/davecgh/go-spew v1.1.1 h1:vj9j/u1bqnvCEfJOwUhtlOARqs3+rkHYY13jYWTU97c=
 github.com/davecgh/go-spew v1.1.1/go.mod h1:J7Y8YcW2NihsgmVo/mv3lAwl/skON4iLHjSsI+c5H38=
-github.com/drummonds/go-postgres v0.4.0 h1:vl2bKiWWYXpvNzvH2Z+vLVXQAZcXbsiK1ntfHLRxZgg=
-github.com/drummonds/go-postgres v0.4.0/go.mod h1:8SuTrXsSCxDDIqg/JREz6CIBQZ3kaSKY9FhY16QKIQU=
+github.com/drummonds/go-postgres v0.4.1 h1:D7yIJzopfxBYLjpuEBjqMWfKSyLceJ8OjvSdNHMo3Ao=
+github.com/drummonds/go-postgres v0.4.1/go.mod h1:8SuTrXsSCxDDIqg/JREz6CIBQZ3kaSKY9FhY16QKIQU=
 github.com/drummonds/gotreesitter v0.6.1 h1:HVzz9G3B87+SFnscmBqacm8lhSHSqax0S/z0FOJXFog=
 github.com/drummonds/gotreesitter v0.6.1/go.mod h1:M++B9cQI0dFwaD6J17UQFNO23BrP9lH2HD4NhY7NofU=
 github.com/dustin/go-humanize v1.0.1 h1:GzkhY7T5VNhEkwH0PVJgjz+fX1rhBrR7pRT3mDkpeCY=
