@@ -52,7 +52,7 @@ func (ds *DemoState) initDB() {
 	}
 	for _, y := range yields {
 		_, err = db.Exec(`INSERT INTO gilt_yields (tenor, rate) VALUES ($1, $2)
-			ON CONFLICT (tenor) DO UPDATE SET rate = $2`, y.tenor, y.rate)
+			ON CONFLICT (tenor) DO UPDATE SET rate = EXCLUDED.rate`, y.tenor, y.rate)
 		if err != nil {
 			log.Printf("initDB: seed %s: %v", y.tenor, err)
 		}

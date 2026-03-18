@@ -5,7 +5,7 @@ go 1.25.3
 require (
 	codeberg.org/hum3/gobank-products v0.0.0
 	github.com/drummonds/go-luca v0.2.19
-	github.com/drummonds/go-postgres v0.4.1
+	github.com/drummonds/go-postgres v0.4.2
 	github.com/drummonds/lofigui v0.17.5
 	github.com/flosch/pongo2/v6 v6.0.0
 	github.com/go-analyze/charts v0.5.25
@@ -23,7 +23,7 @@ require (
 	github.com/shopspring/decimal v1.4.0 // indirect
 	github.com/tetratelabs/wazero v1.11.0 // indirect
 	golang.org/x/image v0.24.0 // indirect
-	golang.org/x/sys v0.41.0 // indirect
+	golang.org/x/sys v0.42.0 // indirect
 )
 
 replace github.com/drummonds/go-luca => ../../../go-luca

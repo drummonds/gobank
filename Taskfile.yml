@@ -55,14 +55,21 @@ tasks:
     cmds:
       - go test -run=^$ -bench=. -benchmem -count=1 -timeout=86400s -v .
 
+  test:wasm:
+    desc: WASM integration test (Node.js)
+    deps: [docs:build]
+    cmds:
+      - node cmd/demo/wasm_test.js docs/demo
+
   check:
-    desc: Run fmt, vet, test, and rebuild pages
+    desc: Run fmt, vet, test, rebuild pages, and WASM integration test
     cmds:
       - task: fmt
       - task: diagrams
       - task: vet
       - task: test
       - task: docs:build
+      - task: test:wasm
 
   deps:tidy:
     desc: Tidy module dependencies
