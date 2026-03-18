@@ -4,4 +4,6 @@
 
 .task/
 cmd/demo/diagrams/*.svg
+docs/*
+!docs/research/
 
