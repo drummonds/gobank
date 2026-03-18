@@ -30,7 +30,8 @@
 
  - Working on documenation and interest## [0.3.32] - 2026-03-18
 
- - fixing db
+ - fixing db## [0.3.34] - 2026-03-18
+
 ## [0.3.33] - 2026-03-18
 
  - adding benchmark
