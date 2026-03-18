@@ -5,21 +5,40 @@ import (
 	"log"
 
 	_ "github.com/drummonds/go-postgres"
+	_ "github.com/jackc/pgx/v5/stdlib"
 )
 
 // initDB opens an in-memory pglike database and creates the gilt tables.
 func (ds *DemoState) initDB() {
+	ds.initDBWithDSN("")
+}
+
+// initDBWithDSN opens a database connection. Empty dsn uses in-memory pglike;
+// a postgres:// DSN uses pgx for real PostgreSQL.
+func (ds *DemoState) initDBWithDSN(dsn string) {
 	if ds.db != nil {
 		ds.db.Close()
 	}
-	db, err := sql.Open("pglike", "file::memory:?_pragma=temp_store(2)")
+	var db *sql.DB
+	var err error
+	if dsn == "" {
+		db, err = sql.Open("pglike", "file::memory:?_pragma=temp_store(2)")
+	} else {
+		db, err = sql.Open("pgx", dsn)
+	}
 	if err != nil {
 		log.Printf("initDB: open failed: %v", err)
 		return
 	}
 	ds.db = db
+	ds.createGiltTables()
+}
 
-	_, err = db.Exec(`CREATE TABLE IF NOT EXISTS gilt_yields (
+// createGiltTables creates gilt_yields and gilt_holdings tables and seeds yields.
+func (ds *DemoState) createGiltTables() {
+	db := ds.db
+
+	_, err := db.Exec(`CREATE TABLE IF NOT EXISTS gilt_yields (
 		tenor VARCHAR(10) PRIMARY KEY,
 		rate REAL NOT NULL,
 		effective_date TIMESTAMP DEFAULT NOW()
@@ -59,7 +78,7 @@ func (ds *DemoState) initDB() {
 	}
 }
 
-// DB returns the pglike database handle.
+// DB returns the database handle.
 func (ds *DemoState) DB() *sql.DB {
 	ds.mu.Lock()
 	defer ds.mu.Unlock()

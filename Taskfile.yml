@@ -31,6 +31,32 @@ tasks:
     cmds:
       - go test -run=^$ -bench='^BenchmarkFullYear/(1000|10000)$' -benchmem -count=1 -timeout=600s -v .
 
+  bench:baseline:
+    desc: Run baseline benchmarks (1 customer, 60 days — direct + HTTP + render)
+    dir: cmd/demo
+    cmds:
+      - go test -run=^$ -bench='^BenchmarkBaseline' -benchmem -count=3 -timeout=120s -v .
+
+  bench:days:
+    desc: Run day-scaling benchmarks (pglike; add GOBANK_PG_DSN for postgres)
+    dir: cmd/demo
+    cmds:
+      - go test -run=^$ -bench='^BenchmarkDayScale' -benchmem -count=1 -timeout=600s -v .
+
+  bench:profile:
+    desc: Run day-scaling benchmark with CPU + memory profiling
+    dir: cmd/demo
+    cmds:
+      - go test -run=^$ -bench='^BenchmarkDayScale/pglike/c1/d365$' -benchmem -count=1 -timeout=300s -cpuprofile=cpu.prof -memprofile=mem.prof .
+      - echo "Profiles in cmd/demo/cpu.prof and cmd/demo/mem.prof"
+      - 'echo "View: go tool pprof -http=:8080 cpu.prof"'
+
+  bench:wasm:
+    desc: Run WASM day-scaling benchmark (Node.js)
+    deps: [docs:build]
+    cmds:
+      - node cmd/demo/wasm_bench.js docs/demo
+
   bench:create:
     desc: Benchmark account creation (all sizes)
     dir: cmd/demo

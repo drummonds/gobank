@@ -81,6 +81,12 @@ type DemoState struct {
 }
 
 func NewDemoState() *DemoState {
+	return NewDemoStateWithDSN("")
+}
+
+// NewDemoStateWithDSN creates a DemoState backed by the given database.
+// Empty dsn uses in-memory pglike; a postgres:// DSN uses real PostgreSQL.
+func NewDemoStateWithDSN(dsn string) *DemoState {
 	piiStore := NewPIIStore()
 	startDay := time.Date(2020, 1, 1, 0, 0, 0, 0, time.UTC)
 	settings := DefaultSettings()
@@ -98,7 +104,7 @@ func NewDemoState() *DemoState {
 		nextCustSeq:   1,
 		boeHistory:    []RatePoint{{Date: startDay, Rate: settings.BoEBaseRate}},
 	}
-	ds.initDB()
+	ds.initDBWithDSN(dsn)
 	ds.initLedger()
 	ds.recordHistory()
 	return ds
