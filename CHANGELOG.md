@@ -29,6 +29,9 @@
  - tidying## [0.3.30] - 2026-03-17
 
  - Working on documenation and interest
+## [0.3.31] - 2026-03-18
+
+ - Adding customer app preview
 
 ## [0.3.29] - 2026-03-16
 
