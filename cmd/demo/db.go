@@ -12,7 +12,7 @@ func (ds *DemoState) initDB() {
 	if ds.db != nil {
 		ds.db.Close()
 	}
-	db, err := sql.Open("pglike", ":memory:")
+	db, err := sql.Open("pglike", "file::memory:?_pragma=temp_store(2)")
 	if err != nil {
 		log.Printf("initDB: open failed: %v", err)
 		return

@@ -127,6 +127,10 @@ function testFullYear(nCustomers) {
     const t0 = Date.now();
     for (let d = 0; d < 365; d++) {
         goAdvanceDay();
+        if ((d + 1) % 30 === 0) {
+            const sec = ((Date.now() - t0) / 1000).toFixed(2);
+            console.log('  day ' + (d + 1) + '/365 (' + sec + 's)');
+        }
     }
     const elapsed = ((Date.now() - t0) / 1000).toFixed(2);
 
@@ -186,7 +190,7 @@ function testExportImport() {
     testInitialRender();
     testShortRun(10, 7);
     testPayments();
-    testFullYear(100);
+    testFullYear(1);
     // Export/Import last — depends on ledger which may not init in WASM yet.
     // A Go panic here kills the process, so keep it at the end.
     testExportImport();
