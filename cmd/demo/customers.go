@@ -130,8 +130,12 @@ func (ds *DemoState) BuildCustomersHTML(page int) string {
 
 const txPerDetailPage = 20
 
-// BuildCustomerDetailHTML renders a single customer's detail page with card-based layout.
-// Shows auth gate if piiAuthorized is false; full PII only shown when authorized.
+// phonePreviewFunc renders an inline phone preview for the admin customer pages.
+// Set by init() in customers_http.go (HTTP mode only); nil in WASM mode.
+var phonePreviewFunc func(ds *DemoState, custID string, accountIdx int) string
+
+// BuildCustomerDetailHTML renders a single customer's detail page with two-column layout.
+// Left column: summary, PII, KYC, accounts table. Right column: phone preview.
 func (ds *DemoState) BuildCustomerDetailHTML(id string, piiAuthorized bool, txPage int) string {
 	ds.mu.Lock()
 	var cust *CustomerRecord
@@ -176,6 +180,9 @@ func (ds *DemoState) BuildCustomerDetailHTML(id string, piiAuthorized bool, txPa
 
 	s.WriteString(fmt.Sprintf(`<h2 class="title is-4">%s</h2>`, name))
 	s.WriteString(fmt.Sprintf(`<p class="subtitle is-6 has-text-grey">ID: %s</p>`, cust.ID))
+
+	s.WriteString(`<div class="columns">`)
+	s.WriteString(`<div class="column is-7">`)
 
 	// A. Summary panel (no PII)
 	s.WriteString(`<div class="box">
@@ -235,26 +242,94 @@ func (ds *DemoState) BuildCustomerDetailHTML(id string, piiAuthorized bool, txPa
 	s.WriteString(fmt.Sprintf(`<div class="column"><strong>Risk Rating:</strong> %s</div>`, riskTag))
 	s.WriteString(`</div></div>`)
 
-	// D. Accounts table with sort code + account number
+	// D. Accounts table with View links
 	s.WriteString(`<h3 class="title is-5 mt-5">Accounts</h3>`)
 	s.WriteString(`<div class="table-container"><table class="table is-fullwidth is-striped">`)
-	s.WriteString(`<thead><tr><th>Product</th><th>Type</th><th>Sort Code</th><th>Account No.</th><th>Rate</th><th>Balance</th><th>Interest</th><th>Opened</th></tr></thead><tbody>`)
-	for _, a := range cust.Accounts {
+	s.WriteString(`<thead><tr><th>Product</th><th>Type</th><th>Sort Code</th><th>Account No.</th><th>Rate</th><th>Balance</th><th>Interest</th><th>Opened</th><th></th></tr></thead><tbody>`)
+	for i, a := range cust.Accounts {
 		familyTag := `<span class="tag is-success is-light">Savings</span>`
 		if a.Family == gbp.FamilyLending {
 			familyTag = `<span class="tag is-info is-light">Lending</span>`
 		}
 		s.WriteString(fmt.Sprintf(`<tr>
   <td>%s</td><td>%s</td><td><code>%s</code></td><td><code>%s</code></td><td>%.1f%%</td><td>%s</td><td>%s</td><td>%s</td>
-</tr>`, a.ProductName, familyTag, a.SortCode, a.AccountNum, a.Rate*100, fmtMoney(a.Balance), fmtMoney(a.Interest), a.OpenDate.Format("2 Jan 2006")))
+  <td><a href="/customers/%s/account/%d" class="button is-small is-link is-light">View</a></td>
+</tr>`, a.ProductName, familyTag, a.SortCode, a.AccountNum, a.Rate*100, fmtMoney(a.Balance), fmtMoney(a.Interest), a.OpenDate.Format("2 Jan 2006"), cust.ID, i))
 	}
 	s.WriteString(`</tbody></table></div>`)
 
-	// E. Transaction history (paginated from txlog)
+	s.WriteString(`</div>`) // end column is-7
+
+	// Right column: phone preview
+	s.WriteString(`<div class="column is-5">`)
+	if phonePreviewFunc != nil {
+		s.WriteString(phonePreviewFunc(ds, cust.ID, -1))
+	}
+	s.WriteString(`</div>`)
+
+	s.WriteString(`</div>`) // end columns
+
+	return s.String()
+}
+
+// BuildCustomerAccountHTML renders a per-account detail page with transactions and phone preview.
+func (ds *DemoState) BuildCustomerAccountHTML(custID string, accountIdx int, piiAuthorized bool, txPage int) string {
+	ds.mu.Lock()
+	var cust *CustomerRecord
+	for i := range ds.customers {
+		if ds.customers[i].ID == custID {
+			c := ds.customers[i]
+			cust = &c
+			break
+		}
+	}
+	piiStore := ds.piiStore
+	ds.mu.Unlock()
+
+	if cust == nil {
+		return `<div class="notification is-warning">Customer not found.</div>`
+	}
+	if accountIdx < 0 || accountIdx >= len(cust.Accounts) {
+		return `<div class="notification is-warning">Account not found.</div>`
+	}
+
+	name := piiStore.RetrieveName(cust.ID)
+	a := cust.Accounts[accountIdx]
+
+	var s strings.Builder
+
+	// Breadcrumb
+	s.WriteString(`<nav class="breadcrumb mb-4" aria-label="breadcrumbs"><ul>`)
+	s.WriteString(`<li><a href="/customers">Customers</a></li>`)
+	s.WriteString(fmt.Sprintf(`<li><a href="/customers/%s">%s</a></li>`, cust.ID, name))
+	s.WriteString(fmt.Sprintf(`<li class="is-active"><a href="#">%s</a></li>`, a.ProductName))
+	s.WriteString(`</ul></nav>`)
+
+	s.WriteString(`<div class="columns">`)
+	s.WriteString(`<div class="column is-7">`)
+
+	// Account detail card
+	familyTag := `<span class="tag is-success is-light">Savings</span>`
+	if a.Family == gbp.FamilyLending {
+		familyTag = `<span class="tag is-info is-light">Lending</span>`
+	}
+	s.WriteString(`<div class="box">`)
+	s.WriteString(fmt.Sprintf(`<h3 class="title is-5">%s %s</h3>`, a.ProductName, familyTag))
+	s.WriteString(`<div class="columns">`)
+	s.WriteString(fmt.Sprintf(`<div class="column"><strong>Sort Code:</strong> <code>%s</code></div>`, a.SortCode))
+	s.WriteString(fmt.Sprintf(`<div class="column"><strong>Account No.:</strong> <code>%s</code></div>`, a.AccountNum))
+	s.WriteString(fmt.Sprintf(`<div class="column"><strong>Rate:</strong> %.2f%%</div>`, a.Rate*100))
+	s.WriteString(`</div><div class="columns">`)
+	s.WriteString(fmt.Sprintf(`<div class="column"><strong>Balance:</strong> %s</div>`, fmtMoney(a.Balance)))
+	s.WriteString(fmt.Sprintf(`<div class="column"><strong>Interest:</strong> %s</div>`, fmtMoney(a.Interest)))
+	s.WriteString(fmt.Sprintf(`<div class="column"><strong>Opened:</strong> %s</div>`, a.OpenDate.Format("2 Jan 2006")))
+	s.WriteString(`</div></div>`)
+
+	// Per-account transaction history
 	if txPage < 1 {
 		txPage = 1
 	}
-	txEntries, txTotal := ds.CustomerTransactions(cust.ID, txPage, txPerDetailPage)
+	txEntries, txTotal := ds.ProductTransactions(cust.ID, accountIdx, txPage, txPerDetailPage)
 	txTotalPages := (txTotal + txPerDetailPage - 1) / txPerDetailPage
 	if txTotalPages < 1 {
 		txTotalPages = 1
@@ -266,25 +341,23 @@ func (ds *DemoState) BuildCustomerDetailHTML(id string, piiAuthorized bool, txPa
 	} else {
 		s.WriteString(fmt.Sprintf(`<p class="mb-2 has-text-grey is-size-7">%d transactions</p>`, txTotal))
 		s.WriteString(`<div class="table-container"><table class="table is-fullwidth is-striped is-hoverable">`)
-		s.WriteString(`<thead><tr><th>Date</th><th>Product</th><th>Type</th><th>Amount</th><th>Balance</th><th>Reference</th></tr></thead><tbody>`)
+		s.WriteString(`<thead><tr><th>Date</th><th>Type</th><th>Amount</th><th>Balance</th><th>Reference</th></tr></thead><tbody>`)
 		for _, tx := range txEntries {
-			typeTag := tx.Type.String()
 			s.WriteString(fmt.Sprintf(`<tr>
-  <td>%s</td><td>%s</td><td>%s</td><td>%s</td><td>%s</td><td>%s</td>
-</tr>`, tx.Date.Format("2 Jan 2006"), tx.ProductName, typeTag, fmtMoney(tx.Amount), fmtMoney(tx.Balance), tx.Reference))
+  <td>%s</td><td>%s</td><td>%s</td><td>%s</td><td>%s</td>
+</tr>`, tx.Date.Format("2 Jan 2006"), tx.Type.String(), fmtMoney(tx.Amount), fmtMoney(tx.Balance), tx.Reference))
 		}
 		s.WriteString(`</tbody></table></div>`)
 
-		// Pagination
 		if txTotalPages > 1 {
 			s.WriteString(`<nav class="pagination is-small mt-4" role="navigation">`)
 			if txPage > 1 {
-				s.WriteString(fmt.Sprintf(`<a class="pagination-previous" href="/customers/%s?txpage=%d">Previous</a>`, cust.ID, txPage-1))
+				s.WriteString(fmt.Sprintf(`<a class="pagination-previous" href="/customers/%s/account/%d?txpage=%d">Previous</a>`, cust.ID, accountIdx, txPage-1))
 			} else {
 				s.WriteString(`<a class="pagination-previous" disabled>Previous</a>`)
 			}
 			if txPage < txTotalPages {
-				s.WriteString(fmt.Sprintf(`<a class="pagination-next" href="/customers/%s?txpage=%d">Next</a>`, cust.ID, txPage+1))
+				s.WriteString(fmt.Sprintf(`<a class="pagination-next" href="/customers/%s/account/%d?txpage=%d">Next</a>`, cust.ID, accountIdx, txPage+1))
 			} else {
 				s.WriteString(`<a class="pagination-next" disabled>Next</a>`)
 			}
@@ -292,6 +365,17 @@ func (ds *DemoState) BuildCustomerDetailHTML(id string, piiAuthorized bool, txPa
 			s.WriteString(`</nav>`)
 		}
 	}
+
+	s.WriteString(`</div>`) // end column is-7
+
+	// Right column: phone preview
+	s.WriteString(`<div class="column is-5">`)
+	if phonePreviewFunc != nil {
+		s.WriteString(phonePreviewFunc(ds, cust.ID, accountIdx))
+	}
+	s.WriteString(`</div>`)
+
+	s.WriteString(`</div>`) // end columns
 
 	return s.String()
 }

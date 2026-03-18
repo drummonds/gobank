@@ -5,7 +5,7 @@ go 1.25.3
 require (
 	codeberg.org/hum3/gobank-products v0.0.0
 	github.com/drummonds/go-luca v0.2.19
-	github.com/drummonds/go-postgres v0.4.0
+	github.com/drummonds/go-postgres v0.4.1
 	github.com/drummonds/lofigui v0.17.5
 	github.com/flosch/pongo2/v6 v6.0.0
 	github.com/go-analyze/charts v0.5.25

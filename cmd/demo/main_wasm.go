@@ -224,6 +224,27 @@ func goRenderCustomerDetail(this js.Value, args []js.Value) any {
 	return js.ValueOf(lofigui.Buffer())
 }
 
+func goRenderCustomerAccount(this js.Value, args []js.Value) any {
+	id := ""
+	accountIdx := 0
+	txPage := 1
+	if len(args) > 0 {
+		id = args[0].String()
+	}
+	if len(args) > 1 {
+		accountIdx = args[1].Int()
+	}
+	if len(args) > 2 {
+		txPage = args[2].Int()
+	}
+	state.mu.Lock()
+	piiAuth := state.piiAuthorized
+	state.mu.Unlock()
+	lofigui.Reset()
+	lofigui.HTML(state.BuildCustomerAccountHTML(id, accountIdx, piiAuth, txPage))
+	return js.ValueOf(lofigui.Buffer())
+}
+
 // --- Payment detail ---
 
 func goRenderPaymentDetail(this js.Value, args []js.Value) any {
@@ -377,6 +398,7 @@ func main() {
 	// Customers
 	js.Global().Set("goRenderCustomers", js.FuncOf(goRenderCustomers))
 	js.Global().Set("goRenderCustomerDetail", js.FuncOf(goRenderCustomerDetail))
+	js.Global().Set("goRenderCustomerAccount", js.FuncOf(goRenderCustomerAccount))
 
 	// Payment detail
 	js.Global().Set("goRenderPaymentDetail", js.FuncOf(goRenderPaymentDetail))

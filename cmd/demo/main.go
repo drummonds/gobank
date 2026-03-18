@@ -431,14 +431,32 @@ func main() {
 			http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 			return
 		}
-		id := strings.TrimPrefix(r.URL.Path, "/customers/")
-		if id == "" {
+		rest := strings.TrimPrefix(r.URL.Path, "/customers/")
+		if rest == "" {
 			http.Redirect(w, r, "/customers", http.StatusSeeOther)
 			return
 		}
-		txPage, _ := strconv.Atoi(r.URL.Query().Get("txpage"))
 		sessID := getSessionID(w, r)
 		piiAuth := authStore.EffectivePII(sessID)
+		txPage, _ := strconv.Atoi(r.URL.Query().Get("txpage"))
+
+		// Parse /customers/{id}/account/{idx}
+		parts := strings.SplitN(rest, "/", 3)
+		if len(parts) >= 3 && parts[1] == "account" {
+			idx, err := strconv.Atoi(parts[2])
+			if err != nil {
+				http.NotFound(w, r)
+				return
+			}
+			content := renderAndCapture(func() { lofigui.HTML(state.BuildCustomerAccountHTML(parts[0], idx, piiAuth, txPage)) })
+			if serveHTMX(w, r, content) {
+				return
+			}
+			fullPage(w, r, content)
+			return
+		}
+
+		id := parts[0]
 		content := renderAndCapture(func() { lofigui.HTML(state.BuildCustomerDetailHTML(id, piiAuth, txPage)) })
 		if serveHTMX(w, r, content) {
 			return
