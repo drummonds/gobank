@@ -31,6 +31,9 @@
  - Working on documenation and interest## [0.3.32] - 2026-03-18
 
  - fixing db## [0.3.34] - 2026-03-18
+## [0.3.35] - 2026-03-19
+
+ - New DB and updating customer view
 
 ## [0.3.33] - 2026-03-18
 
