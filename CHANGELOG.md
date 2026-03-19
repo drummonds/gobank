@@ -30,7 +30,10 @@
 
  - Working on documenation and interest## [0.3.32] - 2026-03-18
 
- - fixing db## [0.3.34] - 2026-03-18
+ - fixing db## [0.3.34] - 2026-03-18## [0.3.36] - 2026-03-19
+
+ - Adding app functionality to wasm
+
 ## [0.3.35] - 2026-03-19
 
  - New DB and updating customer view
