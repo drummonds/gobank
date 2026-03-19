@@ -37,10 +37,11 @@ const navCustomerView = document.getElementById('nav-customer-view');
 const navAbout = document.getElementById('nav-about');
 const navRuntime = document.getElementById('nav-runtime');
 const navModels = document.getElementById('nav-models');
+const navBankapp = document.getElementById('nav-bankapp');
 
 const allNavItems = [navDashboard, navPnl, navBalanceSheet, navSavings, navLending,
     navCustomers, navPayments, navTreasuryCash, navTreasuryCapital, navTreasuryGilts,
-    navSettings, navExplorer, navCharts, navBbsi, navCustomerView, navAbout, navRuntime, navModels];
+    navSettings, navExplorer, navCharts, navBbsi, navCustomerView, navAbout, navRuntime, navModels, navBankapp];
 
 let currentPage = 'dashboard';
 let renderInterval = null;
@@ -128,6 +129,22 @@ function renderPage() {
             if (typeof goRenderModels === 'function') {
                 outputDiv.innerHTML = goRenderModels();
             }
+            break;
+        case 'bankapp-login':
+            if (typeof goRenderBankAppLogin === 'function')
+                outputDiv.innerHTML = goRenderBankAppLogin();
+            break;
+        case 'bankapp-balance':
+            if (typeof goRenderBankAppBalance === 'function' && detailId)
+                outputDiv.innerHTML = goRenderBankAppBalance(detailId);
+            break;
+        case 'bankapp-transactions':
+            if (typeof goRenderBankAppTransactions === 'function' && detailId)
+                outputDiv.innerHTML = goRenderBankAppTransactions(detailId, detailTxPage);
+            break;
+        case 'bankapp-product':
+            if (typeof goRenderBankAppProduct === 'function' && detailId)
+                outputDiv.innerHTML = goRenderBankAppProduct(detailId, detailAccountIdx, detailTxPage);
             break;
     }
     updateStatus();
@@ -219,6 +236,42 @@ function attachDetailLinks() {
             showPage('explorer');
         });
     });
+    // Bank app links (/app/...)
+    outputDiv.querySelectorAll('a[href^="/app/"]').forEach(function(a) {
+        a.addEventListener('click', function(e) {
+            e.preventDefault();
+            var href = a.getAttribute('href');
+            var path = href.split('?')[0].replace(/^\/app\/?/, '');
+            var params = new URLSearchParams(href.split('?')[1] || '');
+
+            if (path === '' || path === '/') {
+                // /app/ — login/home
+                showPage('bankapp-login');
+            } else if (path.match(/^customer\/([^/]+)\/product\/(\d+)/)) {
+                var m = path.match(/^customer\/([^/]+)\/product\/(\d+)/);
+                detailId = m[1];
+                detailAccountIdx = parseInt(m[2], 10);
+                detailTxPage = parseInt(params.get('page')) || 1;
+                showPage('bankapp-product');
+            } else if (path.match(/^customer\/([^/]+)\/transactions/)) {
+                var m = path.match(/^customer\/([^/]+)\/transactions/);
+                detailId = m[1];
+                detailTxPage = parseInt(params.get('page')) || 1;
+                showPage('bankapp-transactions');
+            } else if (path.match(/^customer\/([^/]+)/)) {
+                var m = path.match(/^customer\/([^/]+)/);
+                detailId = m[1];
+                showPage('bankapp-balance');
+            }
+        });
+    });
+    // Also intercept /app links without trailing slash
+    outputDiv.querySelectorAll('a[href="/app"]').forEach(function(a) {
+        a.addEventListener('click', function(e) {
+            e.preventDefault();
+            showPage('bankapp-login');
+        });
+    });
     // PII auth links
     outputDiv.querySelectorAll('form[action="/auth/authorize"]').forEach(function(form) {
         form.addEventListener('submit', function(e) {
@@ -261,7 +314,8 @@ function showPage(page) {
 
     // Clear detail ID for non-detail pages
     if (page !== 'customer-detail' && page !== 'customer-account' && page !== 'payment-detail'
-        && page !== 'customer-view' && page !== 'explorer-table') {
+        && page !== 'customer-view' && page !== 'explorer-table'
+        && page !== 'bankapp-balance' && page !== 'bankapp-transactions' && page !== 'bankapp-product') {
         detailId = null;
         detailTxPage = 1;
         detailAccountIdx = -1;
@@ -290,6 +344,7 @@ function showPage(page) {
         case 'about': navAbout.classList.add('is-active'); break;
         case 'runtime': navRuntime.classList.add('is-active'); break;
         case 'models': navModels.classList.add('is-active'); break;
+        case 'bankapp-login': case 'bankapp-balance': case 'bankapp-transactions': case 'bankapp-product': navBankapp.classList.add('is-active'); break;
     }
 
     // Show/hide controls
@@ -373,6 +428,7 @@ navCustomerView.addEventListener('click', function(e) { e.preventDefault(); show
 navAbout.addEventListener('click', function(e) { e.preventDefault(); showPage('about'); });
 navRuntime.addEventListener('click', function(e) { e.preventDefault(); showPage('runtime'); });
 navModels.addEventListener('click', function(e) { e.preventDefault(); showPage('models'); });
+navBankapp.addEventListener('click', function(e) { e.preventDefault(); showPage('bankapp-login'); });
 
 // Bank controls
 startStopBtn.addEventListener('click', toggleStartStop);

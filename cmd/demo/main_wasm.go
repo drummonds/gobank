@@ -368,6 +368,56 @@ func goIsPIIAuthorized(this js.Value, args []js.Value) any {
 	return js.ValueOf(auth)
 }
 
+// --- Bank App functions ---
+
+func goRenderBankAppLogin(this js.Value, args []js.Value) any {
+	lofigui.Reset()
+	lofigui.HTML(wrapPhoneFrame(state.buildAppLoginHTML()))
+	return js.ValueOf(lofigui.Buffer())
+}
+
+func goRenderBankAppBalance(this js.Value, args []js.Value) any {
+	custID := ""
+	if len(args) > 0 {
+		custID = args[0].String()
+	}
+	lofigui.Reset()
+	lofigui.HTML(wrapPhoneFrame(state.buildAppBalanceHTML(custID)))
+	return js.ValueOf(lofigui.Buffer())
+}
+
+func goRenderBankAppTransactions(this js.Value, args []js.Value) any {
+	custID := ""
+	page := 1
+	if len(args) > 0 {
+		custID = args[0].String()
+	}
+	if len(args) > 1 {
+		page = args[1].Int()
+	}
+	lofigui.Reset()
+	lofigui.HTML(wrapPhoneFrame(state.buildAppTransactionsHTML(custID, page)))
+	return js.ValueOf(lofigui.Buffer())
+}
+
+func goRenderBankAppProduct(this js.Value, args []js.Value) any {
+	custID := ""
+	accountIdx := 0
+	txPage := 1
+	if len(args) > 0 {
+		custID = args[0].String()
+	}
+	if len(args) > 1 {
+		accountIdx = args[1].Int()
+	}
+	if len(args) > 2 {
+		txPage = args[2].Int()
+	}
+	lofigui.Reset()
+	lofigui.HTML(wrapPhoneFrame(state.buildAppProductHTML(custID, accountIdx, txPage)))
+	return js.ValueOf(lofigui.Buffer())
+}
+
 func main() {
 	// Export/Import
 	js.Global().Set("goExport", js.FuncOf(goExport))
@@ -435,6 +485,12 @@ func main() {
 	js.Global().Set("goAuthorizePII", js.FuncOf(goAuthorizePII))
 	js.Global().Set("goRevokePII", js.FuncOf(goRevokePII))
 	js.Global().Set("goIsPIIAuthorized", js.FuncOf(goIsPIIAuthorized))
+
+	// Bank App
+	js.Global().Set("goRenderBankAppLogin", js.FuncOf(goRenderBankAppLogin))
+	js.Global().Set("goRenderBankAppBalance", js.FuncOf(goRenderBankAppBalance))
+	js.Global().Set("goRenderBankAppTransactions", js.FuncOf(goRenderBankAppTransactions))
+	js.Global().Set("goRenderBankAppProduct", js.FuncOf(goRenderBankAppProduct))
 
 	js.Global().Call("wasmReady")
 
