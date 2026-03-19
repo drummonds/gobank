@@ -100,8 +100,9 @@ function testInitialRender() {
 
 function testShortRun(nCustomers, nDays) {
     console.log('\n--- Short run: ' + nCustomers + ' customers, ' + nDays + ' days ---');
+    goReset();
+    goUpdateSettings(nCustomers); // fix customer count
     goAddCustomers(nCustomers);
-    // AddCustomersBatch is synchronous in WASM (no goroutine tick needed)
     const custHTML = goRenderCustomers();
     assertHTML(custHTML, 'customers after add');
 
@@ -122,17 +123,24 @@ function testShortRun(nCustomers, nDays) {
 function testFullYear(nCustomers) {
     console.log('\n--- Full year: ' + nCustomers + ' customers, 365 days ---');
     goReset();
+    goUpdateSettings(nCustomers); // fix customer count
     goAddCustomers(nCustomers);
 
+    // Time each half to detect non-linear scaling
     const t0 = Date.now();
-    for (let d = 0; d < 365; d++) {
+    for (let d = 0; d < 182; d++) {
         goAdvanceDay();
-        if ((d + 1) % 30 === 0) {
-            const sec = ((Date.now() - t0) / 1000).toFixed(2);
-            console.log('  day ' + (d + 1) + '/365 (' + sec + 's)');
-        }
     }
-    const elapsed = ((Date.now() - t0) / 1000).toFixed(2);
+    const firstHalfMs = Date.now() - t0;
+
+    const t1 = Date.now();
+    for (let d = 182; d < 365; d++) {
+        goAdvanceDay();
+    }
+    const secondHalfMs = Date.now() - t1;
+
+    const totalMs = firstHalfMs + secondHalfMs;
+    const ratio = secondHalfMs / firstHalfMs;
 
     const dash = goRender();
     assertHTML(dash, 'dashboard after 365 days');
@@ -143,7 +151,10 @@ function testFullYear(nCustomers) {
     assertHTML(goRenderTreasuryCapital(), 'treasury capital after 365 days');
     assertHTML(goRenderBBSI(), 'BBSI after 365 days');
 
-    console.log('  365 days in ' + elapsed + 's');
+    console.log('  365 days in ' + (totalMs / 1000).toFixed(2) + 's (first half ' + firstHalfMs + 'ms, second half ' + secondHalfMs + 'ms, ratio ' + ratio.toFixed(2) + ')');
+    // With linear scaling the second half should cost about the same as the first.
+    // Allow up to 2x for WASM/GC variance; anything above indicates non-linear regression.
+    assert(ratio < 2.0, 'day scaling is near-linear (second/first half ratio ' + ratio.toFixed(2) + ' < 2.0)');
 }
 
 function testPayments() {

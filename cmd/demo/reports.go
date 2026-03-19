@@ -7,6 +7,47 @@ import (
 	gbp "codeberg.org/hum3/gobank-products"
 )
 
+// BuildChartsHTML renders historical charts: NIM, balances, customer count, BoE rate.
+func (ds *DemoState) BuildChartsHTML() string {
+	ds.mu.Lock()
+	nimHist := make([]NIMPoint, len(ds.nimHistory))
+	copy(nimHist, ds.nimHistory)
+	balHist := make([]BalancePoint, len(ds.balanceHistory))
+	copy(balHist, ds.balanceHistory)
+	custHist := make([]CustomerPoint, len(ds.customerHistory))
+	copy(custHist, ds.customerHistory)
+	boeHist := make([]RatePoint, len(ds.boeHistory))
+	copy(boeHist, ds.boeHistory)
+	dayCount := ds.dayCount
+	ds.mu.Unlock()
+
+	var s strings.Builder
+	s.WriteString(`<h2 class="title is-4">Charts</h2>`)
+	s.WriteString(fmt.Sprintf(`<p class="subtitle is-6 has-text-grey">Historical trends over %d simulated days</p>`, dayCount))
+
+	s.WriteString(`<div class="box">`)
+	s.WriteString(`<h3 class="title is-5">Net Interest Margin (bps)</h3>`)
+	s.WriteString(buildNIMChart(nimHist))
+	s.WriteString(`</div>`)
+
+	s.WriteString(`<div class="box">`)
+	s.WriteString(`<h3 class="title is-5">Balance History</h3>`)
+	s.WriteString(buildBalanceChartSVG(balHist))
+	s.WriteString(`</div>`)
+
+	s.WriteString(`<div class="box">`)
+	s.WriteString(`<h3 class="title is-5">Customer Count</h3>`)
+	s.WriteString(buildCustomerChartSVG(custHist))
+	s.WriteString(`</div>`)
+
+	s.WriteString(`<div class="box">`)
+	s.WriteString(`<h3 class="title is-5">BoE Base Rate</h3>`)
+	s.WriteString(buildBoERateGraph(boeHist))
+	s.WriteString(`</div>`)
+
+	return s.String()
+}
+
 // BuildBBSIHTML renders the BBSI annual report. Shows auth gate when not authorized.
 func (ds *DemoState) BuildBBSIHTML(piiAuthorized bool) string {
 	ds.mu.Lock()

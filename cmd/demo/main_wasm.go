@@ -270,6 +270,12 @@ func goRenderPaymentDetail(this js.Value, args []js.Value) any {
 
 // --- Reports functions ---
 
+func goRenderCharts(this js.Value, args []js.Value) any {
+	lofigui.Reset()
+	lofigui.HTML(state.BuildChartsHTML())
+	return js.ValueOf(lofigui.Buffer())
+}
+
 func goRenderBBSI(this js.Value, args []js.Value) any {
 	state.mu.Lock()
 	piiAuth := state.piiAuthorized
@@ -412,6 +418,7 @@ func main() {
 	js.Global().Set("goRenderPaymentDetail", js.FuncOf(goRenderPaymentDetail))
 
 	// Reports
+	js.Global().Set("goRenderCharts", js.FuncOf(goRenderCharts))
 	js.Global().Set("goRenderBBSI", js.FuncOf(goRenderBBSI))
 	js.Global().Set("goRenderCustomerViewReport", js.FuncOf(goRenderCustomerViewReport))
 
