@@ -178,7 +178,7 @@ func (ds *DemoState) BuildCustomerDetailHTML(id string, piiAuthorized bool, txPa
 
 	var s strings.Builder
 
-	s.WriteString(fmt.Sprintf(`<h2 class="title is-4">%s</h2>`, name))
+	s.WriteString(fmt.Sprintf(`<div class="level"><div class="level-left"><div class="level-item"><h2 class="title is-4 mb-0">%s</h2></div><div class="level-item"><a href="/app/customer/%s" target="_blank" class="button is-small is-success is-outlined">Bank App</a></div></div></div>`, name, cust.ID))
 	s.WriteString(fmt.Sprintf(`<p class="subtitle is-6 has-text-grey">ID: %s</p>`, cust.ID))
 
 	s.WriteString(`<div class="columns">`)
@@ -299,11 +299,15 @@ func (ds *DemoState) BuildCustomerAccountHTML(custID string, accountIdx int, pii
 	var s strings.Builder
 
 	// Breadcrumb
-	s.WriteString(`<nav class="breadcrumb mb-4" aria-label="breadcrumbs"><ul>`)
+	s.WriteString(`<div class="level"><div class="level-left"><div class="level-item">`)
+	s.WriteString(`<nav class="breadcrumb mb-0" aria-label="breadcrumbs"><ul>`)
 	s.WriteString(`<li><a href="/customers">Customers</a></li>`)
 	s.WriteString(fmt.Sprintf(`<li><a href="/customers/%s">%s</a></li>`, cust.ID, name))
 	s.WriteString(fmt.Sprintf(`<li class="is-active"><a href="#">%s</a></li>`, a.ProductName))
 	s.WriteString(`</ul></nav>`)
+	s.WriteString(`</div><div class="level-item">`)
+	s.WriteString(fmt.Sprintf(`<a href="/app/customer/%s/product/%d" target="_blank" class="button is-small is-success is-outlined">Bank App</a>`, cust.ID, accountIdx))
+	s.WriteString(`</div></div></div>`)
 
 	s.WriteString(`<div class="columns">`)
 	s.WriteString(`<div class="column is-7">`)

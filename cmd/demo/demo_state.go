@@ -78,6 +78,17 @@ type DemoState struct {
 	equityAccountID       string
 	interestExpenseAcctID string
 	interestIncomeAcctID  string
+	pendingMovements      []pendingMovement // deferred ledger writes
+}
+
+// pendingMovement holds a ledger movement deferred from the hot advanceDay loop.
+// Flushed to SQL in batches before export or on demand.
+type pendingMovement struct {
+	fromID, toID string
+	amount       luca.Amount
+	code         string
+	valueTime    time.Time
+	description  string
 }
 
 func NewDemoState() *DemoState {
@@ -230,7 +241,8 @@ func (ds *DemoState) advanceDay() {
 	nCust := len(ds.customers)
 	ds.mu.Unlock()
 
-	// Phase 1: Interest accrual — yield lock between customers
+	// Phase 1: Interest accrual — yield lock between customers.
+	// Ledger movements are deferred to pendingMovements to avoid SQL in the hot loop.
 	var totalDeposits, totalLoans float64
 	for ci := range nCust {
 		ds.mu.Lock()
@@ -245,7 +257,11 @@ func (ds *DemoState) advanceDay() {
 				if interest != 0 {
 					ds.emitTx(ds.currentDay, ds.customers[ci].ID, ai, a.ProductName, TxInterestCredit, interest, a.Balance, "INT")
 					if ds.sim != nil && a.LedgerAccountID != "" && ds.interestExpenseAcctID != "" {
-						ds.sim.RecordMovement(ds.interestExpenseAcctID, a.LedgerAccountID, poundsToPence(interest), luca.CodeInterestAccrual, ds.currentDay, "INT")
+						ds.pendingMovements = append(ds.pendingMovements, pendingMovement{
+							fromID: ds.interestExpenseAcctID, toID: a.LedgerAccountID,
+							amount: poundsToPence(interest), code: luca.CodeInterestAccrual,
+							valueTime: ds.currentDay, description: "INT",
+						})
 					}
 				}
 			} else {
@@ -253,7 +269,11 @@ func (ds *DemoState) advanceDay() {
 				if interest != 0 {
 					ds.emitTx(ds.currentDay, ds.customers[ci].ID, ai, a.ProductName, TxInterestDebit, interest, a.Balance, "INT")
 					if ds.sim != nil && a.LedgerAccountID != "" && ds.interestIncomeAcctID != "" {
-						ds.sim.RecordMovement(a.LedgerAccountID, ds.interestIncomeAcctID, poundsToPence(interest), luca.CodeInterestAccrual, ds.currentDay, "INT")
+						ds.pendingMovements = append(ds.pendingMovements, pendingMovement{
+							fromID: a.LedgerAccountID, toID: ds.interestIncomeAcctID,
+							amount: poundsToPence(interest), code: luca.CodeInterestAccrual,
+							valueTime: ds.currentDay, description: "INT",
+						})
 					}
 				}
 			}
@@ -309,6 +329,42 @@ func (ds *DemoState) advanceDay() {
 
 func (ds *DemoState) AdvanceDay() {
 	ds.advanceDay()
+}
+
+// flushPendingMovements writes deferred interest movements to the ledger.
+// Must be called with ds.mu held.
+func (ds *DemoState) flushPendingMovements() {
+	if ds.sim == nil || len(ds.pendingMovements) == 0 {
+		return
+	}
+	// Group by date so each RecordLinkedMovements call shares one value_time.
+	type batch struct {
+		valueTime time.Time
+		inputs    []luca.MovementInput
+	}
+	var batches []batch
+	batchIdx := make(map[time.Time]int)
+	for _, pm := range ds.pendingMovements {
+		idx, ok := batchIdx[pm.valueTime]
+		if !ok {
+			idx = len(batches)
+			batchIdx[pm.valueTime] = idx
+			batches = append(batches, batch{valueTime: pm.valueTime})
+		}
+		batches[idx].inputs = append(batches[idx].inputs, luca.MovementInput{
+			FromAccountID: pm.fromID,
+			ToAccountID:   pm.toID,
+			Amount:        pm.amount,
+			Code:          pm.code,
+			Description:   pm.description,
+		})
+	}
+	for _, b := range batches {
+		if _, err := ds.sim.Ledger.RecordLinkedMovements(b.inputs, b.valueTime); err != nil {
+			log.Printf("flushPendingMovements: %v", err)
+		}
+	}
+	ds.pendingMovements = ds.pendingMovements[:0]
 }
 
 func (ds *DemoState) Start() {
@@ -463,6 +519,7 @@ func (ds *DemoState) Reset() {
 	ds.boeInterestAccum = 0
 	ds.txLog = nil
 	ds.nextTxID = 0
+	ds.pendingMovements = nil
 	ds.initDB()
 	ds.initLedger()
 	ds.recordHistory()

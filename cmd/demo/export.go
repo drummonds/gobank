@@ -17,6 +17,7 @@ func (ds *DemoState) handleExport(w http.ResponseWriter, r *http.Request) {
 	}
 	var buf bytes.Buffer
 	ds.mu.Lock()
+	ds.flushPendingMovements()
 	err := ds.sim.ExportGoluca(&buf)
 	ds.mu.Unlock()
 	if err != nil {

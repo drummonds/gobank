@@ -22,6 +22,7 @@ func goExport(this js.Value, args []js.Value) any {
 		state.mu.Unlock()
 		return js.ValueOf("error: simulation not initialised")
 	}
+	state.flushPendingMovements()
 	err := state.sim.ExportGoluca(&buf)
 	state.mu.Unlock()
 	if err != nil {
