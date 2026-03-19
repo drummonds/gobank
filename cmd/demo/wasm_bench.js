@@ -33,6 +33,7 @@ async function loadWASM() {
 
 function benchDays(nCustomers, nDays) {
     goReset();
+    goUpdateSettings(nCustomers); // cap MaxCustomers to prevent unbounded generation
     goAddCustomers(nCustomers);
 
     const t0 = process.hrtime.bigint();
@@ -60,14 +61,23 @@ function benchDays(nCustomers, nDays) {
         results.push({ days, ...r });
     }
 
-    // Check linearity: us/day should be roughly constant if scaling is linear
-    const first = results[0].usPerDay;
-    const last = results[results.length - 1].usPerDay;
-    console.log(`\n  Scaling: ${(last / first).toFixed(2)}x cost/day increase (${results[0].days}d → ${results[results.length - 1].days}d)`);
+    // Check linearity: us/day should be roughly constant if scaling is linear.
+    // Compare 60d vs 365d (skip 7d — too short for stable measurement).
+    const r60 = results.find(r => r.days === 60);
+    const r365 = results.find(r => r.days === 365);
+    const ratio = r365.usPerDay / r60.usPerDay;
+    console.log(`\n  Scaling: ${ratio.toFixed(2)}x cost/day increase (60d → 365d)`);
+    if (ratio > 2.0) {
+        console.error('  WARN: non-linear scaling detected (ratio ' + ratio.toFixed(2) + ' > 2.0)');
+        process.exitCode = 1;
+    } else {
+        console.log('  OK: scaling is near-linear');
+    }
 
     // --- Render cost ---
     console.log('\n=== Render cost (after 60 days, 1 customer) ===');
     goReset();
+    goUpdateSettings(1); // fix customer count
     goAddCustomers(1);
     for (let d = 0; d < 60; d++) goAdvanceDay();
 

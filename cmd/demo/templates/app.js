@@ -31,6 +31,7 @@ const navTreasuryCapital = document.getElementById('nav-treasury-capital');
 const navTreasuryGilts = document.getElementById('nav-treasury-gilts');
 const navSettings = document.getElementById('nav-settings');
 const navExplorer = document.getElementById('nav-explorer');
+const navCharts = document.getElementById('nav-charts');
 const navBbsi = document.getElementById('nav-bbsi');
 const navCustomerView = document.getElementById('nav-customer-view');
 const navAbout = document.getElementById('nav-about');
@@ -39,7 +40,7 @@ const navModels = document.getElementById('nav-models');
 
 const allNavItems = [navDashboard, navPnl, navBalanceSheet, navSavings, navLending,
     navCustomers, navPayments, navTreasuryCash, navTreasuryCapital, navTreasuryGilts,
-    navSettings, navExplorer, navBbsi, navCustomerView, navAbout, navRuntime, navModels];
+    navSettings, navExplorer, navCharts, navBbsi, navCustomerView, navAbout, navRuntime, navModels];
 
 let currentPage = 'dashboard';
 let renderInterval = null;
@@ -104,6 +105,9 @@ function renderPage() {
         case 'explorer-table':
             if (typeof goRenderExplorerTable === 'function' && detailId)
                 outputDiv.innerHTML = goRenderExplorerTable(detailId, detailTxPage, detailSort, detailDir);
+            break;
+        case 'charts':
+            if (typeof goRenderCharts === 'function') outputDiv.innerHTML = goRenderCharts();
             break;
         case 'bbsi':
             if (typeof goRenderBBSI === 'function') outputDiv.innerHTML = goRenderBBSI();
@@ -280,6 +284,7 @@ function showPage(page) {
         case 'treasury-gilts': navTreasuryGilts.classList.add('is-active'); break;
         case 'settings': navSettings.classList.add('is-active'); break;
         case 'explorer': case 'explorer-table': navExplorer.classList.add('is-active'); break;
+        case 'charts': navCharts.classList.add('is-active'); break;
         case 'bbsi': navBbsi.classList.add('is-active'); break;
         case 'customer-view': navCustomerView.classList.add('is-active'); break;
         case 'about': navAbout.classList.add('is-active'); break;
@@ -362,6 +367,7 @@ navTreasuryCapital.addEventListener('click', function(e) { e.preventDefault(); s
 navTreasuryGilts.addEventListener('click', function(e) { e.preventDefault(); showPage('treasury-gilts'); });
 navSettings.addEventListener('click', function(e) { e.preventDefault(); showPage('settings'); });
 navExplorer.addEventListener('click', function(e) { e.preventDefault(); showPage('explorer'); });
+navCharts.addEventListener('click', function(e) { e.preventDefault(); showPage('charts'); });
 navBbsi.addEventListener('click', function(e) { e.preventDefault(); showPage('bbsi'); });
 navCustomerView.addEventListener('click', function(e) { e.preventDefault(); showPage('customer-view'); });
 navAbout.addEventListener('click', function(e) { e.preventDefault(); showPage('about'); });

@@ -222,10 +222,18 @@ func (ds *DemoState) lendingHeadroom() float64 {
 	return maxLoans - loans
 }
 
+// advanceDay advances one day, releasing ds.mu between customers so that
+// concurrent reads are not blocked for the entire duration.
+// Must be called WITHOUT ds.mu held.
 func (ds *DemoState) advanceDay() {
-	// Interest accrual
+	ds.mu.Lock()
+	nCust := len(ds.customers)
+	ds.mu.Unlock()
+
+	// Phase 1: Interest accrual — yield lock between customers
 	var totalDeposits, totalLoans float64
-	for ci := range ds.customers {
+	for ci := range nCust {
+		ds.mu.Lock()
 		for ai := range ds.customers[ci].Accounts {
 			a := &ds.customers[ci].Accounts[ai]
 			dailyRate := a.Rate / 365.0
@@ -250,9 +258,11 @@ func (ds *DemoState) advanceDay() {
 				}
 			}
 		}
+		ds.mu.Unlock()
 	}
 
-	// BoE interest on excess cash (only on reserves above the required minimum)
+	// Phase 2: Finalize — single lock hold for day bookkeeping
+	ds.mu.Lock()
 	requiredReserves := totalDeposits * ds.settings.CapitalReserveRatio
 	cash := totalDeposits - totalLoans
 	excessCash := cash - requiredReserves
@@ -266,11 +276,9 @@ func (ds *DemoState) advanceDay() {
 		ds.simClock.SetDate(ds.currentDay)
 	}
 
-	// Look up BoE rate for current day and record history
 	ds.settings.BoEBaseRate = lookupBoERate(ds.currentDay)
 	ds.boeHistory = append(ds.boeHistory, RatePoint{Date: ds.currentDay, Rate: ds.settings.BoEBaseRate})
 
-	// Customer generation
 	if len(ds.customers) < ds.settings.MaxCustomers {
 		boeRate := ds.settings.BoEBaseRate
 		avgSavings := averageRate(ds.products, gbp.FamilySavings)
@@ -296,11 +304,10 @@ func (ds *DemoState) advanceDay() {
 	}
 
 	ds.recordHistory()
+	ds.mu.Unlock()
 }
 
 func (ds *DemoState) AdvanceDay() {
-	ds.mu.Lock()
-	defer ds.mu.Unlock()
 	ds.advanceDay()
 }
 
@@ -323,9 +330,7 @@ func (ds *DemoState) Start() {
 			case <-ctx.Done():
 				return
 			case <-ticker.C:
-				ds.mu.Lock()
 				ds.advanceDay()
-				ds.mu.Unlock()
 			}
 		}
 	}()
@@ -565,10 +570,6 @@ func renderDashContent(d DashData) string {
 	s.WriteString(fmt.Sprintf(`<div class="column"><div class="box dash-box %s"><p class="heading">BoE Cash Reserve</p><p class="title is-5">%s</p><p class="subtitle is-7 mb-0">Required: %s (%.0f%%) | BoE: %.2f%%</p></div></div>`,
 		reserveClass, fmtMoney(d.Cash), fmtMoney(d.RequiredReserves), d.CapitalReserveRatio*100, d.BoeRate*100))
 	s.WriteString(`</div>`)
-
-	// NIM chart
-	s.WriteString(`<h3 class="title is-6 has-text-grey mt-4 mb-2">NIM History (bps)</h3>`)
-	s.WriteString(buildNIMChart(d.NIMHistory))
 
 	// Balance chart
 	s.WriteString(`<h3 class="title is-6 has-text-grey mt-4 mb-2">Balance History</h3>`)

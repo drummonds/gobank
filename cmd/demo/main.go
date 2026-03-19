@@ -598,6 +598,18 @@ func main() {
 
 	// --- Reports ---
 
+	http.HandleFunc("/reports/charts", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != "GET" {
+			http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+			return
+		}
+		content := renderAndCapture(func() { lofigui.HTML(state.BuildChartsHTML()) })
+		if serveHTMX(w, r, content) {
+			return
+		}
+		fullPage(w, r, content)
+	})
+
 	http.HandleFunc("/reports/bbsi", func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != "GET" {
 			http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)

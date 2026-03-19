@@ -1,0 +1,163 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Development Notes &mdash; GoBank Research</title>
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bulma@1.0.4/css/bulma.min.css">
+  <style>
+    td.num, th.num { text-align: right; }
+    code { font-size: 0.9em; }
+  </style>
+</head>
+<body>
+  <nav class="navbar is-primary">
+    <div class="navbar-brand">
+      <a class="navbar-item has-text-weight-bold" href="../">GoBank</a>
+    </div>
+  </nav>
+  <section class="section">
+    <div class="container">
+      <div class="columns">
+        <div class="column is-3">
+          <aside class="menu is-sticky" style="position:sticky;top:1.5rem">
+            <p class="menu-label">Project</p>
+            <ul class="menu-list">
+              <li><a href="../">Overview</a></li>
+            </ul>
+            <p class="menu-label">Demos</p>
+            <ul class="menu-list">
+              <li><a href="../demo/">Model Bank (WASM)</a></li>
+            </ul>
+            <p class="menu-label">Research Notes</p>
+            <ul class="menu-list">
+              <li><a href="https://h3-lofigui.statichost.page/research.html">Chart Renderer Comparison</a></li>
+              <li><a href="blue-green-schemas.html">Blue-Green Schemas</a></li>
+              <li><a href="project-hierarchy.html">Project Hierarchy</a></li>
+              <li><a href="scaling-benchmarks.html">Scaling Benchmarks</a></li>
+              <li><a href="bff-api.html">BFF API Reference</a></li>
+              <li><a href="development-notes.html" class="is-active">Development Notes</a></li>
+            </ul>
+          </aside>
+        </div>
+        <div class="column is-9">
+          <h1 class="title">Development Notes</h1>
+          <p class="subtitle has-text-grey">Ephemeral results, investigations, and design decisions captured during development.</p>
+
+          <!-- ============================================================ -->
+          <h2 class="title is-4 mt-6">2026-03-19 &mdash; WASM test quadratic scaling &amp; yielding advanceDay</h2>
+          <!-- ============================================================ -->
+
+          <div class="box">
+            <h3 class="title is-5">Problem: WASM test runs in quadratic time</h3>
+            <p><code>node cmd/demo/wasm_test.js docs/demo</code> ran dramatically slower than the Go benchmark (<code>benchmark_test.go</code>), with per-day cost growing over time instead of staying constant.</p>
+
+            <h4 class="title is-6 mt-4">Root cause</h4>
+            <p>The Go benchmark sets <code>MaxCustomers = n</code> (e.g. 1 for the baseline), preventing <code>advanceDay()</code> from generating new customers. The WASM test called <code>goReset()</code> which restored <code>DefaultSettings().MaxCustomers = 1,000,000</code>, so new customers were generated on ~15% of days.</p>
+            <p class="mt-2">With accumulating customers, each day became more expensive: day <em>d</em> processes ~0.15&times;<em>d</em> customers, giving O(D&sup2;) total work over D days.</p>
+
+            <h4 class="title is-6 mt-4">Fix</h4>
+            <p>Added <code>goUpdateSettings(nCustomers)</code> after <code>goReset()</code> in both <code>wasm_test.js</code> and <code>wasm_bench.js</code> to cap customer count. The live WASM demo retains <code>MaxCustomers = 1,000,000</code> for normal browser use.</p>
+            <p class="mt-2">Also added a linearity assertion to <code>testFullYear</code>: times the first and second halves of 365 days and fails if the ratio exceeds 2.0&times;.</p>
+          </div>
+
+          <div class="box">
+            <h3 class="title is-5">API load benchmarks</h3>
+            <p>New benchmarks added to measure HTTP API throughput under concurrent load. Scenario: 1000 customers, 10 days simulated, then sustained load for 3 seconds at each concurrency level.</p>
+
+            <h4 class="title is-6 mt-4">Per-endpoint latency (serial, 1000 customers)</h4>
+            <table class="table is-fullwidth is-striped mt-3">
+              <thead>
+                <tr><th>Endpoint</th><th class="num">Latency</th><th class="num">Throughput</th></tr>
+              </thead>
+              <tbody>
+                <tr><td><code>GET /api/customer/{id}/transactions</code></td><td class="num">0.12ms</td><td class="num">8,262 req/s</td></tr>
+                <tr><td><code>GET /api/customer/{id}/accounts</code></td><td class="num">0.16ms</td><td class="num">6,152 req/s</td></tr>
+                <tr><td><code>GET /accounting/pnl</code></td><td class="num">0.20ms</td><td class="num">5,037 req/s</td></tr>
+                <tr><td><code>POST /payments/send</code></td><td class="num">0.70ms</td><td class="num">1,425 req/s</td></tr>
+                <tr><td><code>GET /customers</code> (HTML)</td><td class="num">1.09ms</td><td class="num">913 req/s</td></tr>
+                <tr><td><code>GET /dashboard</code> (HTML)</td><td class="num">1.45ms</td><td class="num">690 req/s</td></tr>
+                <tr><td><code>GET /api/customers</code></td><td class="num">9.20ms</td><td class="num">109 req/s</td></tr>
+                <tr><td><code>POST /advance</code></td><td class="num">1,235ms</td><td class="num">0.8 req/s</td></tr>
+              </tbody>
+            </table>
+            <p class="mt-2"><strong>Note:</strong> <code>/api/customers</code> is slow at 9ms because it JSON-encodes all 1000 customer records. <code>/advance</code> dominates at 1.2s due to per-account ledger SQL (3 round-trips &times; ~2000 accounts).</p>
+          </div>
+
+          <div class="box">
+            <h3 class="title is-5">Yielding advanceDay</h3>
+            <p>The original <code>advanceDay()</code> held <code>ds.mu</code> for the entire duration (~1.2s with 1000 customers), blocking all reads. Refactored to release the lock between each customer&rsquo;s interest accrual, giving reads ~1.2ms windows to run.</p>
+
+            <h4 class="title is-6 mt-4">Overhead</h4>
+            <table class="table is-fullwidth is-striped mt-3">
+              <thead>
+                <tr><th>Mode</th><th class="num">Time per advance</th><th class="num">Overhead</th></tr>
+              </thead>
+              <tbody>
+                <tr><td>Single lock hold</td><td class="num">783ms</td><td class="num">&mdash;</td></tr>
+                <tr><td>Yielding (lock per customer)</td><td class="num">804ms</td><td class="num">+2.7%</td></tr>
+              </tbody>
+            </table>
+            <p class="mt-2">1000 mutex lock/unlock pairs add ~20&micro;s total &mdash; negligible against 800ms of work. The yielding version became the only implementation.</p>
+
+            <h4 class="title is-6 mt-4">Impact on read throughput</h4>
+            <table class="table is-fullwidth is-striped mt-3">
+              <thead>
+                <tr><th>Workload</th><th>Metric</th><th class="num">Before</th><th class="num">After</th><th class="num">Change</th></tr>
+              </thead>
+              <tbody>
+                <tr><td>Read-only c1</td><td>req/s</td><td class="num">447</td><td class="num">652</td><td class="num">+46%</td></tr>
+                <tr><td>Read-only c8</td><td>req/s</td><td class="num">1,053</td><td class="num">1,362</td><td class="num">+29%</td></tr>
+                <tr><td>Read-only c32</td><td>req/s</td><td class="num">955</td><td class="num">1,658</td><td class="num">+74%</td></tr>
+                <tr><td>Mixed c1</td><td>avg latency</td><td class="num">126ms</td><td class="num">94ms</td><td class="num">&minus;25%</td></tr>
+                <tr><td>Mixed c8</td><td>avg latency</td><td class="num">1,424ms</td><td class="num">768ms</td><td class="num">&minus;46%</td></tr>
+                <tr><td>Mixed c1&ndash;c64</td><td>req/s</td><td class="num">5&ndash;9</td><td class="num">~10.8</td><td class="num">stable</td></tr>
+              </tbody>
+            </table>
+            <p class="mt-2">Read throughput improved significantly. Mixed throughput stabilised at ~10.8 req/s regardless of concurrency (vs erratic 5&ndash;9 before). The throughput ceiling remains set by <code>advance</code> at ~1.2s per call, but reads now interleave instead of queuing.</p>
+          </div>
+
+          <div class="box">
+            <h3 class="title is-5">Design: advanceDay lock strategy</h3>
+            <p>Two phases:</p>
+            <ol>
+              <li><strong>Interest accrual</strong> &mdash; iterates customers, locks <code>ds.mu</code> per customer, processes all accounts for that customer, unlocks. Local accumulators (<code>totalDeposits</code>, <code>totalLoans</code>) span the loop without needing the lock.</li>
+              <li><strong>Finalize</strong> &mdash; single lock hold for BoE interest, day increment, customer generation, history recording.</li>
+            </ol>
+            <p class="mt-2"><strong>Trade-off:</strong> Reads during phase 1 may see partially-advanced state (some customers have day N+1 interest, others still at day N). For a simulation demo this is acceptable &mdash; renders show approximate values and the inconsistency lasts &lt;1s.</p>
+            <p class="mt-2"><strong>Safety:</strong> Render functions only snapshot fields under a brief lock then build HTML outside it. They do not access <code>ds.sim</code> (the go-luca ledger), so there is no contention with the ledger writes in phase 1.</p>
+          </div>
+
+          <div class="box">
+            <h3 class="title is-5">Benchmark suite</h3>
+            <p>Three new benchmarks in <code>cmd/demo/benchmark_test.go</code>:</p>
+            <table class="table is-fullwidth is-striped mt-3">
+              <thead>
+                <tr><th>Benchmark</th><th>What it measures</th><th>How to run</th></tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <td><code>BenchmarkAPIEndpoint</code></td>
+                  <td>Per-endpoint serial latency (1000 customers, 10 days)</td>
+                  <td><code>go test -bench=APIEndpoint -benchtime=3s</code></td>
+                </tr>
+                <tr>
+                  <td><code>BenchmarkAPILoad</code></td>
+                  <td>Concurrent throughput at 1&ndash;64 goroutines, read-only and mixed workloads (3s per level)</td>
+                  <td><code>go test -bench=APILoad -benchtime=1x</code></td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+
+        </div>
+      </div>
+    </div>
+  </section>
+  <footer class="footer">
+    <div class="content has-text-centered">
+      <p><a href="../">GoBank</a> &mdash; <a href="https://github.com/drummonds/gobank">github.com/drummonds/gobank</a></p>
+    </div>
+  </footer>
+</body>
+</html>
