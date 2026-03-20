@@ -1,12 +1,53 @@
 package main
 
 import (
+	"context"
 	"fmt"
 	"strings"
 	"time"
 
 	gbp "codeberg.org/hum3/gobank-products"
 )
+
+// lookupName returns the decrypted customer name from the SQL store, falling back to id.
+func (ds *DemoState) lookupName(id string) string {
+	if ds.custStore != nil {
+		name, err := ds.custStore.GetNameByID(context.Background(), id)
+		if err == nil && name != "" {
+			return name
+		}
+	}
+	return id
+}
+
+// lookupPII returns decrypted PII from the SQL store for a customer.
+func (ds *DemoState) lookupPII(id string) PIIData {
+	if ds.custStore != nil {
+		pii, err := ds.custStore.GetPIIByID(context.Background(), id)
+		if err == nil && pii != nil {
+			return PIIData{
+				Name:    pii.Name,
+				NI:      pii.NI,
+				DOB:     pii.DOB,
+				Address: pii.Address,
+				Email:   pii.Email,
+				Phone:   pii.Phone,
+			}
+		}
+	}
+	return PIIData{NI: "unavailable", DOB: "unavailable", Address: "unavailable", Email: "unavailable", Phone: "unavailable"}
+}
+
+// custStoreCount returns the count of customers in the SQL store.
+func (ds *DemoState) custStoreCount() int {
+	if ds.custStore != nil {
+		n, err := ds.custStore.Count(context.Background())
+		if err == nil {
+			return n
+		}
+	}
+	return 0
+}
 
 // KYCStatus tracks Know Your Customer verification state.
 type KYCStatus struct {
@@ -40,12 +81,11 @@ type CustomerAccount struct {
 const customersPerPage = 50
 
 // BuildCustomersHTML renders the customer list table with pagination.
-// Names are looked up from piiStore; NI is not shown on the list page.
+// Names are looked up from custStore; NI is not shown on the list page.
 func (ds *DemoState) BuildCustomersHTML(page int) string {
 	ds.mu.Lock()
 	customers := make([]CustomerRecord, len(ds.customers))
 	copy(customers, ds.customers)
-	piiStore := ds.piiStore
 	ds.mu.Unlock()
 
 	// Compute aggregate totals
@@ -90,7 +130,7 @@ func (ds *DemoState) BuildCustomersHTML(page int) string {
 	s.WriteString(`<thead><tr><th>Name</th><th>Accounts</th><th>Total Savings</th><th>Total Lending</th><th></th></tr></thead><tbody>`)
 
 	for _, c := range pageCustomers {
-		name := piiStore.RetrieveName(c.ID)
+		name := ds.lookupName(c.ID)
 		savings := 0.0
 		lending := 0.0
 		for _, a := range c.Accounts {
@@ -146,14 +186,13 @@ func (ds *DemoState) BuildCustomerDetailHTML(id string, piiAuthorized bool, txPa
 			break
 		}
 	}
-	piiStore := ds.piiStore
 	ds.mu.Unlock()
 
 	if cust == nil {
 		return `<div class="notification is-warning">Customer not found.</div>`
 	}
 
-	name := piiStore.RetrieveName(cust.ID)
+	name := ds.lookupName(cust.ID)
 
 	// Compute aggregate values
 	var totalSavings, totalLending float64
@@ -196,10 +235,8 @@ func (ds *DemoState) BuildCustomerDetailHTML(id string, piiAuthorized bool, txPa
 
 	// B. PII section (behind auth gate)
 	if piiAuthorized {
-		piiData, err := piiStore.Retrieve(cust.ID)
-		if err != nil {
-			piiData = PIIData{NI: "unavailable", DOB: "unavailable", Address: "unavailable", Email: "unavailable", Phone: "unavailable"}
-		}
+		piiData := ds.lookupPII(cust.ID)
+
 		s.WriteString(`<div class="box">
 <h3 class="title is-5">Personal Information</h3>
 <div class="columns">
@@ -283,7 +320,6 @@ func (ds *DemoState) BuildCustomerAccountHTML(custID string, accountIdx int, pii
 			break
 		}
 	}
-	piiStore := ds.piiStore
 	ds.mu.Unlock()
 
 	if cust == nil {
@@ -293,7 +329,7 @@ func (ds *DemoState) BuildCustomerAccountHTML(custID string, accountIdx int, pii
 		return `<div class="notification is-warning">Account not found.</div>`
 	}
 
-	name := piiStore.RetrieveName(cust.ID)
+	name := ds.lookupName(cust.ID)
 	a := cust.Accounts[accountIdx]
 
 	var s strings.Builder

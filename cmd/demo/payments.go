@@ -317,7 +317,6 @@ func (ds *DemoState) BuildPaymentsHTML(piiAuth bool, page int) string {
 	payments := make([]Payment, len(ds.payments))
 	copy(payments, ds.payments)
 	running := ds.payRunning
-	piiStore := ds.piiStore
 	ds.mu.Unlock()
 
 	total := len(payments)
@@ -368,10 +367,10 @@ func (ds *DemoState) BuildPaymentsHTML(piiAuth bool, page int) string {
 			from := p.FromID
 			to := p.ToID
 			if piiAuth {
-				if name := piiStore.RetrieveName(p.FromID); name != "" {
+				if name := ds.lookupName(p.FromID); name != p.FromID {
 					from = fmt.Sprintf("%s (%s)", p.FromID, name)
 				}
-				if name := piiStore.RetrieveName(p.ToID); name != "" {
+				if name := ds.lookupName(p.ToID); name != p.ToID {
 					to = fmt.Sprintf("%s (%s)", p.ToID, name)
 				}
 			}
@@ -418,7 +417,6 @@ func (ds *DemoState) BuildPaymentDetailHTML(id int, piiAuth bool) string {
 			break
 		}
 	}
-	piiStore := ds.piiStore
 	ds.mu.Unlock()
 
 	if found == nil {
@@ -429,10 +427,10 @@ func (ds *DemoState) BuildPaymentDetailHTML(id int, piiAuth bool) string {
 	from := p.FromID
 	to := p.ToID
 	if piiAuth {
-		if name := piiStore.RetrieveName(p.FromID); name != "" {
+		if name := ds.lookupName(p.FromID); name != p.FromID {
 			from = fmt.Sprintf("%s (%s)", p.FromID, name)
 		}
-		if name := piiStore.RetrieveName(p.ToID); name != "" {
+		if name := ds.lookupName(p.ToID); name != p.ToID {
 			to = fmt.Sprintf("%s (%s)", p.ToID, name)
 		}
 	}

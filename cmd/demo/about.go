@@ -19,7 +19,7 @@ func (ds *DemoState) BuildRuntimeHTML() string {
 	productCount := len(ds.products)
 	paymentCount := len(ds.payments)
 	boeRate := ds.settings.BoEBaseRate * 100
-	piiCount := ds.piiStore.Count()
+	piiCount := ds.custStoreCount()
 	var dbStats sql.DBStats
 	if ds.db != nil {
 		dbStats = ds.db.Stats()

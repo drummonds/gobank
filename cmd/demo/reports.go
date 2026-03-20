@@ -54,7 +54,6 @@ func (ds *DemoState) BuildBBSIHTML(piiAuthorized bool) string {
 	customers := make([]CustomerRecord, len(ds.customers))
 	copy(customers, ds.customers)
 	currentDay := ds.currentDay
-	piiStore := ds.piiStore
 	ds.mu.Unlock()
 
 	var s strings.Builder
@@ -89,13 +88,9 @@ func (ds *DemoState) BuildBBSIHTML(piiAuthorized bool) string {
 		}
 		if interest > 0 {
 			totalInterest += interest
-			piiData, err := piiStore.Retrieve(c.ID)
+			piiData := ds.lookupPII(c.ID)
 			name := piiData.Name
 			ni := piiData.NI
-			if err != nil {
-				name = c.ID
-				ni = "N/A"
-			}
 			s.WriteString(fmt.Sprintf(`<tr>
   <td>%s</td><td><code>%s</code></td><td>%s</td><td>%s</td>
 </tr>`, name, ni, fmtMoney(interest), fmtMoney(0)))
@@ -136,14 +131,13 @@ func (ds *DemoState) BuildCustomerViewHTML(id string, piiAuthorized bool) string
 		}
 	}
 	currentDay := ds.currentDay
-	piiStore := ds.piiStore
 	ds.mu.Unlock()
 
 	if cust == nil {
 		return `<div class="notification is-warning">Customer not found.</div>`
 	}
 
-	name := piiStore.RetrieveName(cust.ID)
+	name := ds.lookupName(cust.ID)
 
 	var s strings.Builder
 	s.WriteString(`<h2 class="title is-4">Customer Report</h2>`)
@@ -160,11 +154,8 @@ func (ds *DemoState) BuildCustomerViewHTML(id string, piiAuthorized bool) string
 		return s.String()
 	}
 
-	piiData, err := piiStore.Retrieve(cust.ID)
+	piiData := ds.lookupPII(cust.ID)
 	ni := piiData.NI
-	if err != nil {
-		ni = "N/A"
-	}
 
 	// Customer summary box
 	s.WriteString(`<div class="box">`)
@@ -221,7 +212,7 @@ func (ds *DemoState) BuildCustomerViewHTML(id string, piiAuthorized bool) string
 				direction = "Received"
 				counterpartyID = p.FromID
 			}
-			counterparty := piiStore.RetrieveName(counterpartyID)
+			counterparty := ds.lookupName(counterpartyID)
 			dirTag := `<span class="tag is-danger is-light">Sent</span>`
 			if direction == "Received" {
 				dirTag = `<span class="tag is-success is-light">Received</span>`

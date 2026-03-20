@@ -14,6 +14,7 @@ import (
 
 	gbp "codeberg.org/hum3/gobank-products"
 	luca "github.com/drummonds/go-luca"
+	customers "github.com/drummonds/gobanks-customers"
 	"github.com/go-analyze/charts"
 )
 
@@ -57,7 +58,6 @@ type DemoState struct {
 	payCancel             context.CancelFunc
 	opCostPerDay          float64
 	rng                   *rand.Rand
-	piiStore              *PIIStore
 	settings              Settings
 	nextCustSeq           int
 	piiAuthorized         bool
@@ -71,6 +71,7 @@ type DemoState struct {
 	nimHistory            []NIMPoint
 	boeInterestAccum      float64
 	db                    *sql.DB
+	custStore             *customers.SQLCustomerStore
 	txLog                 []TxEntry
 	nextTxID              int
 	sim                   *gbp.Simulation
@@ -79,6 +80,7 @@ type DemoState struct {
 	interestExpenseAcctID string
 	interestIncomeAcctID  string
 	pendingMovements      []pendingMovement // deferred ledger writes
+	memoryExceeded        bool              // true when heap > 800MB (WASM safety)
 }
 
 // pendingMovement holds a ledger movement deferred from the hot advanceDay loop.
@@ -91,6 +93,31 @@ type pendingMovement struct {
 	description  string
 }
 
+const (
+	maxTxLogEntries  = 100_000           // B3: cap txLog size
+	txLogTrimPercent = 10                // trim oldest 10% when exceeded
+	maxHistoryPoints = 7_300             // B4: ~20 years of daily data
+	memoryLimitBytes = 800 * 1024 * 1024 // B2: auto-stop threshold
+	memCheckInterval = 10                // check every N sim-days
+)
+
+// capSlice returns a slice trimmed to maxLen by dropping the oldest entries.
+func capSlice[T any](s []T, maxLen int) []T {
+	if len(s) <= maxLen {
+		return s
+	}
+	drop := len(s) - maxLen
+	copy(s, s[drop:])
+	return s[:maxLen]
+}
+
+// checkMemory reads heap stats and returns true if memory is exceeded.
+func checkMemory() bool {
+	var m runtime.MemStats
+	runtime.ReadMemStats(&m)
+	return m.Alloc > memoryLimitBytes
+}
+
 func NewDemoState() *DemoState {
 	return NewDemoStateWithDSN("")
 }
@@ -98,7 +125,6 @@ func NewDemoState() *DemoState {
 // NewDemoStateWithDSN creates a DemoState backed by the given database.
 // Empty dsn uses in-memory pglike; a postgres:// DSN uses real PostgreSQL.
 func NewDemoStateWithDSN(dsn string) *DemoState {
-	piiStore := NewPIIStore()
 	startDay := time.Date(2020, 1, 1, 0, 0, 0, 0, time.UTC)
 	settings := DefaultSettings()
 	settings.BoEBaseRate = lookupBoERate(startDay)
@@ -110,7 +136,6 @@ func NewDemoStateWithDSN(dsn string) *DemoState {
 		nextPaymentID: 1,
 		opCostPerDay:  50.0,
 		rng:           rng,
-		piiStore:      piiStore,
 		settings:      settings,
 		nextCustSeq:   1,
 		boeHistory:    []RatePoint{{Date: startDay, Rate: settings.BoEBaseRate}},
@@ -151,6 +176,33 @@ func (ds *DemoState) initLedger() {
 	}
 	if incAcct, err := ledger.GetAccount("Income:Interest"); err == nil && incAcct != nil {
 		ds.interestIncomeAcctID = incAcct.ID
+	}
+}
+
+// persistCustomer writes a customer record and PII to the SQL customer store.
+// Must be called with ds.mu held.
+func (ds *DemoState) persistCustomer(cust *CustomerRecord, pii PIIInput) {
+	if ds.custStore == nil {
+		return
+	}
+	rec := customers.CustomerRecord{
+		ID:            cust.ID,
+		Ref:           cust.ID, // ref == id in demo (e.g. "cust-001")
+		JoinDate:      cust.JoinDate,
+		KYCVerified:   cust.KYCStatus.Verified,
+		KYCLastCheck:  cust.KYCStatus.LastCheckDate,
+		KYCRiskRating: cust.KYCStatus.RiskRating,
+	}
+	cpii := customers.PIIInput{
+		Name:    pii.Name,
+		NI:      pii.NI,
+		DOB:     pii.DOB,
+		Address: pii.Address,
+		Email:   pii.Email,
+		Phone:   pii.Phone,
+	}
+	if err := ds.custStore.Create(context.Background(), rec, cpii); err != nil {
+		log.Printf("persistCustomer: %v", err)
 	}
 }
 
@@ -238,6 +290,10 @@ func (ds *DemoState) lendingHeadroom() float64 {
 // Must be called WITHOUT ds.mu held.
 func (ds *DemoState) advanceDay() {
 	ds.mu.Lock()
+	if ds.memoryExceeded {
+		ds.mu.Unlock()
+		return
+	}
 	nCust := len(ds.customers)
 	ds.mu.Unlock()
 
@@ -316,14 +372,38 @@ func (ds *DemoState) advanceDay() {
 		if ds.rng.Float64() < dailyProb {
 			cust, pii := generateCustomer(ds.rng, ds.nextCustSeq, ds.products, ds.currentDay)
 			ds.nextCustSeq++
-			_ = ds.piiStore.Store(cust.ID, pii)
+			ds.persistCustomer(&cust, pii)
 			ds.customers = append(ds.customers, cust)
 			ds.addCustomerToLedger(&ds.customers[len(ds.customers)-1])
 			ds.fundCustomer(len(ds.customers) - 1)
 		}
 	}
 
+	// B3: Cap txLog
+	if len(ds.txLog) > maxTxLogEntries {
+		trim := len(ds.txLog) * txLogTrimPercent / 100
+		copy(ds.txLog, ds.txLog[trim:])
+		ds.txLog = ds.txLog[:len(ds.txLog)-trim]
+	}
+
 	ds.recordHistory()
+
+	// B4: Cap history arrays
+	ds.boeHistory = capSlice(ds.boeHistory, maxHistoryPoints)
+	ds.balanceHistory = capSlice(ds.balanceHistory, maxHistoryPoints)
+	ds.customerHistory = capSlice(ds.customerHistory, maxHistoryPoints)
+	ds.nimHistory = capSlice(ds.nimHistory, maxHistoryPoints)
+
+	// B2: Periodic memory check
+	if ds.dayCount%memCheckInterval == 0 && checkMemory() {
+		ds.memoryExceeded = true
+		ds.running = false
+		if ds.cancel != nil {
+			ds.cancel()
+			ds.cancel = nil
+		}
+	}
+
 	ds.mu.Unlock()
 }
 
@@ -451,7 +531,7 @@ func (ds *DemoState) AddCustomersBatch(n int) {
 			}
 			cust, pii := generateCustomer(ds.rng, ds.nextCustSeq, ds.products, ds.currentDay)
 			ds.nextCustSeq++
-			_ = ds.piiStore.Store(cust.ID, pii)
+			ds.persistCustomer(&cust, pii)
 			ds.customers = append(ds.customers, cust)
 			ds.addCustomerToLedger(&ds.customers[len(ds.customers)-1])
 			ds.fundCustomer(len(ds.customers) - 1)
@@ -506,12 +586,15 @@ func (ds *DemoState) Reset() {
 	ds.payments = nil
 	ds.nextPaymentID = 1
 	ds.rng = rand.New(rand.NewSource(42))
-	ds.piiStore.Reset()
+	if ds.custStore != nil {
+		ds.custStore.Reset(context.Background())
+	}
 	ds.settings = DefaultSettings()
 	ds.settings.BoEBaseRate = lookupBoERate(ds.currentDay)
 	ds.nextCustSeq = 1
 	ds.customers = nil
 	ds.piiAuthorized = false
+	ds.memoryExceeded = false
 	ds.boeHistory = []RatePoint{{Date: ds.currentDay, Rate: ds.settings.BoEBaseRate}}
 	ds.balanceHistory = nil
 	ds.customerHistory = nil
@@ -542,6 +625,7 @@ type DashData struct {
 	AddingCust          bool
 	AddingProgress      int
 	AddingTarget        int
+	MemoryExceeded      bool
 	BalanceHistory      []BalancePoint
 	CustomerHistory     []CustomerPoint
 	NIMHistory          []NIMPoint
@@ -591,6 +675,7 @@ func (ds *DemoState) DashboardData() DashData {
 		AddingCust:          ds.addingCustRunning,
 		AddingProgress:      ds.addingCustProgress,
 		AddingTarget:        ds.addingCustTarget,
+		MemoryExceeded:      ds.memoryExceeded,
 		BalanceHistory:      balHist,
 		CustomerHistory:     custHist,
 		NIMHistory:          nimHist,
@@ -603,6 +688,11 @@ func (ds *DemoState) DashboardData() DashData {
 // Shared by HTTP server and WASM modes.
 func renderDashContent(d DashData) string {
 	var s strings.Builder
+
+	// B5: Memory warning banner
+	if d.MemoryExceeded {
+		s.WriteString(`<div class="notification is-danger"><strong>Memory limit approaching.</strong> Simulation paused. Export data or reset to continue.</div>`)
+	}
 
 	// Summary stats level
 	dateStr := d.Day.Format("2 Jan 2006")

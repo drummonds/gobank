@@ -70,7 +70,7 @@ func TestLedgerSurvivesConnectionPool(t *testing.T) {
 	for i := 0; i < 200; i++ {
 		cust, pii := generateCustomer(ds.rng, ds.nextCustSeq, ds.products, ds.currentDay)
 		ds.nextCustSeq++
-		_ = ds.piiStore.Store(cust.ID, pii)
+		ds.persistCustomer(&cust, pii)
 		ds.customers = append(ds.customers, cust)
 		ds.addCustomerToLedger(&ds.customers[len(ds.customers)-1])
 		ds.fundCustomer(len(ds.customers) - 1)

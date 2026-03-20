@@ -28,7 +28,7 @@ func benchAddCustomers(ds *DemoState, n int) {
 	for range n {
 		cust, pii := generateCustomer(ds.rng, ds.nextCustSeq, ds.products, ds.currentDay)
 		ds.nextCustSeq++
-		_ = ds.piiStore.Store(cust.ID, pii)
+		ds.persistCustomer(&cust, pii)
 		ds.customers = append(ds.customers, cust)
 		ds.addCustomerToLedger(&ds.customers[len(ds.customers)-1])
 		ds.fundCustomer(len(ds.customers) - 1)

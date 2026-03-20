@@ -4,12 +4,17 @@ package main
 
 import (
 	"bytes"
+	"runtime/debug"
 	"syscall/js"
 
 	gbp "codeberg.org/hum3/gobank-products"
 	luca "github.com/drummonds/go-luca"
 	"github.com/drummonds/lofigui"
 )
+
+func init() {
+	debug.SetMemoryLimit(900 * 1024 * 1024) // 900 MB advisory GC limit
+}
 
 var state = NewDemoState()
 
@@ -368,6 +373,13 @@ func goIsPIIAuthorized(this js.Value, args []js.Value) any {
 	return js.ValueOf(auth)
 }
 
+func goIsMemoryExceeded(this js.Value, args []js.Value) any {
+	state.mu.Lock()
+	exceeded := state.memoryExceeded
+	state.mu.Unlock()
+	return js.ValueOf(exceeded)
+}
+
 // --- Bank App functions ---
 
 func goRenderBankAppLogin(this js.Value, args []js.Value) any {
@@ -485,6 +497,9 @@ func main() {
 	js.Global().Set("goAuthorizePII", js.FuncOf(goAuthorizePII))
 	js.Global().Set("goRevokePII", js.FuncOf(goRevokePII))
 	js.Global().Set("goIsPIIAuthorized", js.FuncOf(goIsPIIAuthorized))
+
+	// Memory
+	js.Global().Set("goIsMemoryExceeded", js.FuncOf(goIsMemoryExceeded))
 
 	// Bank App
 	js.Global().Set("goRenderBankAppLogin", js.FuncOf(goRenderBankAppLogin))

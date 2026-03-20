@@ -6,6 +6,7 @@ require (
 	codeberg.org/hum3/gobank-products v0.0.0
 	github.com/drummonds/go-luca v0.2.22
 	github.com/drummonds/go-postgres v0.5.0
+	github.com/drummonds/gobanks-customers v0.0.0
 	github.com/drummonds/lofigui v0.17.5
 	github.com/flosch/pongo2/v6 v6.0.0
 	github.com/go-analyze/charts v0.5.25
@@ -38,5 +39,7 @@ replace github.com/drummonds/go-luca => ../../../go-luca
 replace github.com/drummonds/lofigui => ../../../../minor/lofigui
 
 replace codeberg.org/hum3/gobank-products => ../../../gobank-products
+
+replace github.com/drummonds/gobanks-customers => ../../../gobanks-customers
 
 replace github.com/ncruces/go-sqlite3 v0.32.0 => github.com/ncruces/go-sqlite3 v0.30.6-0.20260318175627-361fdc52faa5

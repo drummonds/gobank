@@ -5,8 +5,15 @@ import (
 	"log"
 
 	_ "github.com/drummonds/go-postgres"
+	customers "github.com/drummonds/gobanks-customers"
 	_ "github.com/jackc/pgx/v5/stdlib"
 )
+
+// piiKeyProvider is the default key for PII encryption in the demo.
+// WASM uses this hardcoded key; server mode could use EnvKeyProvider.
+var piiKeyProvider customers.KeyProvider = customers.FixedKeyProvider{
+	Key: []byte("gobank-demo-pii-key-32bytes!!!!!"),
+}
 
 // initDB opens an in-memory pglike database and creates the gilt tables.
 func (ds *DemoState) initDB() {
@@ -32,6 +39,14 @@ func (ds *DemoState) initDBWithDSN(dsn string) {
 	}
 	ds.db = db
 	ds.createGiltTables()
+
+	// Create customer store (shares same DB)
+	custStore, err := customers.NewSQLCustomerStore(db, piiKeyProvider)
+	if err != nil {
+		log.Printf("initDB: customer store: %v", err)
+	} else {
+		ds.custStore = custStore
+	}
 }
 
 // createGiltTables creates gilt_yields and gilt_holdings tables and seeds yields.

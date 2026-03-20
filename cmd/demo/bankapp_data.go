@@ -67,14 +67,13 @@ func (ds *DemoState) bankAppCustomerList() []apiCustomer {
 	ds.mu.Lock()
 	customers := make([]CustomerRecord, len(ds.customers))
 	copy(customers, ds.customers)
-	piiStore := ds.piiStore
 	ds.mu.Unlock()
 
 	result := make([]apiCustomer, len(customers))
 	for i, c := range customers {
 		result[i] = apiCustomer{
 			ID:   c.ID,
-			Name: piiStore.RetrieveName(c.ID),
+			Name: ds.lookupName(c.ID),
 		}
 	}
 	return result
@@ -90,7 +89,6 @@ func (ds *DemoState) bankAppAccounts(custID string) *apiAccountsResponse {
 			break
 		}
 	}
-	piiStore := ds.piiStore
 	ds.mu.Unlock()
 
 	if cust == nil {
@@ -99,7 +97,7 @@ func (ds *DemoState) bankAppAccounts(custID string) *apiAccountsResponse {
 
 	resp := &apiAccountsResponse{
 		CustomerID:   cust.ID,
-		CustomerName: piiStore.RetrieveName(cust.ID),
+		CustomerName: ds.lookupName(cust.ID),
 	}
 	for _, a := range cust.Accounts {
 		resp.Accounts = append(resp.Accounts, apiAccount{
@@ -151,7 +149,6 @@ func (ds *DemoState) bankAppProductDetail(custID string, accountIdx int) *apiPro
 			break
 		}
 	}
-	piiStore := ds.piiStore
 	ds.mu.Unlock()
 
 	if cust == nil || accountIdx < 0 || accountIdx >= len(cust.Accounts) {
@@ -161,7 +158,7 @@ func (ds *DemoState) bankAppProductDetail(custID string, accountIdx int) *apiPro
 	a := cust.Accounts[accountIdx]
 	return &apiProductDetail{
 		CustomerID:   cust.ID,
-		CustomerName: piiStore.RetrieveName(cust.ID),
+		CustomerName: ds.lookupName(cust.ID),
 		AccountIndex: accountIdx,
 		ProductName:  a.ProductName,
 		Family:       string(a.Family),
