@@ -33,6 +33,9 @@
  - fixing db## [0.3.34] - 2026-03-18## [0.3.36] - 2026-03-19
 
  - Adding app functionality to wasm
+## [0.3.37] - 2026-03-20
+
+ - Adding memory management
 
 ## [0.3.35] - 2026-03-19
 
