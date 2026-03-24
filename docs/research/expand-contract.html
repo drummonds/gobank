@@ -1,0 +1,375 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Expand/Contract Database Migrations &mdash; GoBank Research</title>
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bulma@1.0.4/css/bulma.min.css">
+</head>
+<body>
+  <nav class="navbar is-primary">
+    <div class="navbar-brand">
+      <a class="navbar-item has-text-weight-bold" href="../">GoBank</a>
+    </div>
+  </nav>
+  <section class="section">
+    <div class="container">
+      <div class="columns">
+        <div class="column is-3">
+          <aside class="menu is-sticky" style="position:sticky;top:1.5rem">
+            <p class="menu-label">Project</p>
+            <ul class="menu-list">
+              <li><a href="../">Overview</a></li>
+            </ul>
+            <p class="menu-label">Demos</p>
+            <ul class="menu-list">
+              <li><a href="../demo/">Model Bank (WASM)</a></li>
+            </ul>
+            <p class="menu-label">Research Notes</p>
+            <ul class="menu-list">
+              <li><a href="https://h3-lofigui.statichost.page/research.html">Chart Renderer Comparison</a></li>
+              <li><a href="blue-green-schemas.html">Blue-Green Schemas</a></li>
+              <li><a href="expand-contract.html" class="is-active">Expand/Contract Migrations</a></li>
+              <li><a href="project-hierarchy.html">Project Hierarchy</a></li>
+              <li><a href="scaling-benchmarks.html">Scaling Benchmarks</a></li>
+              <li><a href="bff-api.html">BFF API Reference</a></li>
+              <li><a href="development-notes.html">Development Notes</a></li>
+            </ul>
+          </aside>
+        </div>
+        <div class="column is-9">
+          <h1 class="title">Expand/Contract Database Migrations</h1>
+          <p class="subtitle has-text-grey">Zero-downtime schema evolution using separate databases, logical replication, and the expand/contract pattern.</p>
+
+          <div class="box">
+            <h3 class="title is-5">Origin</h3>
+            <p>The <strong>expand/contract</strong> pattern (also called <em>parallel change</em>) was articulated by
+              <a href="https://martinfowler.com/bliki/ParallelChange.html">Pete Hodgson</a> on martinfowler.com.
+              The core idea: first <em>expand</em> the system so it supports both old and new simultaneously,
+              then <em>contract</em> by removing the old once everything has migrated.</p>
+            <p class="mt-2">Applied to databases, this means schema changes are split into two releases:
+              an additive expand migration (new columns, tables, indexes &mdash; no drops or renames)
+              and a later contract migration that removes deprecated structures after cutover.</p>
+            <p class="mt-3"><strong>Reference:</strong> Hodgson, Pete. &ldquo;Parallel Change&rdquo;.
+              <em>martinfowler.com</em>, 2014.
+              <a href="https://martinfowler.com/bliki/ParallelChange.html">https://martinfowler.com/bliki/ParallelChange.html</a></p>
+          </div>
+
+          <div class="box">
+            <h3 class="title is-5">Why Separate Databases?</h3>
+            <p>The blue-green schemas approach (same DB, two schemas) works well for data swaps
+              but doesn&rsquo;t cover PostgreSQL version upgrades, zone failovers, or cross-provider migrations.
+              Using <strong>separate database instances</strong> makes all of these routine:</p>
+            <ul>
+              <li>PG version upgrades (e.g. 15 &rarr; 17) &mdash; green runs the new version</li>
+              <li>Zone/region failover &mdash; green is provisioned in a different availability zone</li>
+              <li>Cloud provider migration &mdash; green can be on a different provider entirely</li>
+              <li>Major schema refactors &mdash; green gets the target schema from scratch</li>
+            </ul>
+            <p class="mt-2">The same pipeline handles all cases. Routine becomes boring, which is the goal.</p>
+          </div>
+
+          <div class="box">
+            <h3 class="title is-5">Workflow Overview</h3>
+            <figure class="image">
+              <img src="expand-contract-workflow.svg" alt="Expand/Contract workflow diagram showing blue DB, application with feature flag, and green DB with replication">
+            </figure>
+          </div>
+
+          <div class="box">
+            <h3 class="title is-5">Release Phases</h3>
+            <figure class="image">
+              <img src="expand-contract-phases.svg" alt="Six phases: Provision, Expand, Replicate, Cutover, Contract, Teardown">
+            </figure>
+
+            <table class="table is-fullwidth is-striped mt-4">
+              <thead>
+                <tr><th>Phase</th><th>Action</th><th>Constraint</th></tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <td>1. Provision</td>
+                  <td>Create green DB instance</td>
+                  <td>Can be different PG version, zone, or provider</td>
+                </tr>
+                <tr>
+                  <td>2. Expand</td>
+                  <td>Apply additive-only schema to green</td>
+                  <td>No drops, no renames &mdash; replication requires schema compatibility</td>
+                </tr>
+                <tr>
+                  <td>3. Replicate</td>
+                  <td>Start logical replication blue &rarr; green; wait for lag &rarr; 0</td>
+                  <td>PG 10+ for logical replication; PG 17+ for <code>pg_createsubscriber</code></td>
+                </tr>
+                <tr>
+                  <td>4. Cutover</td>
+                  <td>Flip feature flag / connection string to green</td>
+                  <td>Design for idempotency around the switch point</td>
+                </tr>
+                <tr>
+                  <td>5. Contract</td>
+                  <td>Stop replication; drop deprecated columns/tables on green</td>
+                  <td>Only safe after replication is stopped and blue traffic is zero</td>
+                </tr>
+                <tr>
+                  <td>6. Teardown</td>
+                  <td>Remove blue DB; green becomes next cycle&rsquo;s blue</td>
+                  <td>Keep blue as rollback target until confident</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+
+          <div class="box">
+            <h3 class="title is-5">Replication</h3>
+            <p>PostgreSQL logical replication copies row-level changes from a publication on blue
+              to a subscription on green. The expand migration must be applied to green <em>before</em>
+              replication starts, since logical replication transfers data, not DDL.</p>
+
+            <h4 class="title is-6 mt-4">Setup (PG 10+)</h4>
+            <pre><code>-- On blue
+CREATE PUBLICATION blue_pub FOR ALL TABLES;
+
+-- On green (after expand migration)
+CREATE SUBSCRIPTION blue_to_green
+  CONNECTION 'host=blue-db dbname=mydb ...'
+  PUBLICATION blue_pub;</code></pre>
+
+            <h4 class="title is-6 mt-4">PG 17+ shortcut</h4>
+            <p><code>pg_createsubscriber</code> converts a physical standby into a logical replica,
+              creating publications and subscriptions without copying initial table data.</p>
+
+            <h4 class="title is-6 mt-4">Teardown</h4>
+            <pre><code>-- After cutover
+DROP SUBSCRIPTION blue_to_green;  -- on green
+DROP PUBLICATION blue_pub;        -- on blue</code></pre>
+          </div>
+
+          <div class="box">
+            <h3 class="title is-5">Go Migration Tooling</h3>
+            <p>Several Go tools can manage the expand and contract migrations.
+              The key criterion is whether the tool can enforce &ldquo;expand only&rdquo;
+              (no destructive operations) during phase 2.</p>
+
+            <table class="table is-fullwidth is-striped">
+              <thead>
+                <tr><th>Tool</th><th>Approach</th><th>Expand/Contract Fit</th></tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <td><a href="https://atlasgo.io/">Atlas</a> (ariga.io/atlas)</td>
+                  <td>Declarative schema-as-code. Diffs desired state vs live DB, generates migration plan. Also supports versioned SQL files.</td>
+                  <td><strong>Best fit.</strong> <code>atlas schema diff</code> auto-generates expand migration. Migration linting catches destructive ops. Two schema directories (<code>schema/</code> and <code>schema-final/</code>) formalise the expand/contract boundary.</td>
+                </tr>
+                <tr>
+                  <td><a href="https://github.com/golang-migrate/migrate">golang-migrate/migrate</a></td>
+                  <td>SQL up/down files. CLI + Go library. Supports <code>io/fs</code> embedding.</td>
+                  <td>Good. You structure expand and contract as separate migration pairs. No built-in lint for destructive ops.</td>
+                </tr>
+                <tr>
+                  <td><a href="https://github.com/pressly/goose">pressly/goose</a></td>
+                  <td>SQL files + Go-function migrations. CLI + library. v3 API.</td>
+                  <td>Good. Go-function migrations useful for data backfills during expand. Same manual discipline as migrate.</td>
+                </tr>
+                <tr>
+                  <td><a href="https://github.com/amacneil/dbmate">dbmate</a></td>
+                  <td>Language-agnostic CLI. Pure SQL migrations.</td>
+                  <td>Adequate. Lightweight, no Go import needed. No lint or declarative diffing.</td>
+                </tr>
+              </tbody>
+            </table>
+
+            <h4 class="title is-6 mt-4">Recommendation: Atlas</h4>
+            <p>Atlas is the strongest fit because:</p>
+            <ul>
+              <li><strong>Declarative diffing:</strong> define the desired end state; Atlas generates the migration</li>
+              <li><strong>Migration linting:</strong> catches drops and renames that would break replication</li>
+              <li><strong>Two-directory split:</strong> <code>schema/</code> (expand-safe target) and <code>schema-final/</code> (clean final state) formalises the pattern</li>
+              <li><strong>CI integration:</strong> <code>atlas migrate lint</code> can enforce &ldquo;no destructive ops&rdquo; in the expand phase</li>
+            </ul>
+          </div>
+
+          <div class="box">
+            <h3 class="title is-5">Atlas Schema Structure</h3>
+            <pre><code>schema/
+  schema.hcl          # expand-safe target (additive only)
+schema-final/
+  schema.hcl          # clean final state (old stuff removed)
+scripts/
+  create_publication.sql
+  create_subscription.sql
+  wait_for_sync.sh</code></pre>
+            <p class="mt-2">CI can lint <code>schema/</code> to ensure it contains no destructive operations.</p>
+
+            <h4 class="title is-6 mt-4">Key Atlas commands</h4>
+            <pre><code># Preview expand migration
+atlas schema diff \
+  --from "$BLUE_DB_URL" \
+  --to file://schema \
+  --dev-url "docker://postgres"
+
+# Apply expand to green
+atlas schema apply \
+  --url "$GREEN_DB_URL" \
+  --to file://schema \
+  --dev-url "docker://postgres"
+
+# Apply contract after cutover
+atlas schema apply \
+  --url "$GREEN_DB_URL" \
+  --to file://schema-final \
+  --dev-url "docker://postgres"</code></pre>
+          </div>
+
+          <div class="box">
+            <h3 class="title is-5">Taskfile Integration</h3>
+            <pre><code># Taskfile.yml (excerpt)
+tasks:
+  green:migrate-expand:
+    desc: Apply additive-only schema to green
+    cmds:
+      - atlas schema apply
+          --url "{{.GREEN_DB_URL}}"
+          --to file://schema
+          --dev-url "docker://postgres"
+
+  green:replicate:
+    desc: Start logical replication blue→green
+    cmds:
+      - psql "{{.BLUE_DB_URL}}" -f scripts/create_publication.sql
+      - psql "{{.GREEN_DB_URL}}" -f scripts/create_subscription.sql
+
+  green:wait-sync:
+    desc: Wait for replication lag to reach zero
+    cmds:
+      - scripts/wait_for_sync.sh "{{.GREEN_DB_URL}}"
+
+  green:cutover:
+    desc: Switch feature flag to green
+    cmds:
+      - echo "flip feature flag / update connection string"
+
+  green:contract:
+    desc: Apply contract migrations (drop old columns/tables)
+    cmds:
+      - psql "{{.GREEN_DB_URL}}" -c "DROP SUBSCRIPTION blue_to_green;"
+      - psql "{{.BLUE_DB_URL}}" -c "DROP PUBLICATION blue_pub;"
+      - atlas schema apply
+          --url "{{.GREEN_DB_URL}}"
+          --to file://schema-final
+          --dev-url "docker://postgres"
+
+  deploy:
+    desc: Full blue→green cutover
+    cmds:
+      - task: green:migrate-expand
+      - task: green:replicate
+      - task: green:wait-sync
+      - task: green:cutover
+      - task: green:contract</code></pre>
+          </div>
+
+          <div class="box">
+            <h3 class="title is-5">Comparison with Blue-Green Schemas</h3>
+            <table class="table is-fullwidth is-striped">
+              <thead>
+                <tr><th></th><th>Blue-Green Schemas (same DB)</th><th>Expand/Contract (separate DBs)</th></tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <td><strong>Scope</strong></td>
+                  <td>Data swaps, ETL refresh</td>
+                  <td>Schema evolution, PG upgrades, zone failover</td>
+                </tr>
+                <tr>
+                  <td><strong>Mechanism</strong></td>
+                  <td><code>search_path</code> switch</td>
+                  <td>Connection string switch + logical replication</td>
+                </tr>
+                <tr>
+                  <td><strong>PG version change</strong></td>
+                  <td>Not possible</td>
+                  <td>Native &mdash; green runs new version</td>
+                </tr>
+                <tr>
+                  <td><strong>Cross-zone/provider</strong></td>
+                  <td>No</td>
+                  <td>Yes</td>
+                </tr>
+                <tr>
+                  <td><strong>Rollback speed</strong></td>
+                  <td>Sub-second (<code>ALTER DATABASE</code>)</td>
+                  <td>Seconds (flip connection string back)</td>
+                </tr>
+                <tr>
+                  <td><strong>Complexity</strong></td>
+                  <td>Low</td>
+                  <td>Medium &mdash; replication setup and monitoring</td>
+                </tr>
+                <tr>
+                  <td><strong>Best for</strong></td>
+                  <td>Periodic full data rebuilds</td>
+                  <td>Routine release-cycle schema changes</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+
+          <div class="box">
+            <h3 class="title is-5">Caveats</h3>
+            <table class="table is-fullwidth is-striped">
+              <thead>
+                <tr><th>Concern</th><th>Notes</th></tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <td>Logical replication limits</td>
+                  <td>DDL not replicated; sequences not synced; large objects not supported. All tables must have a replica identity (primary key or <code>REPLICA IDENTITY FULL</code>).</td>
+                </tr>
+                <tr>
+                  <td>Expand discipline</td>
+                  <td>Expand migrations <strong>must</strong> be additive only. Any drop or rename breaks replication or loses data. Use Atlas linting to enforce.</td>
+                </tr>
+                <tr>
+                  <td>Replication lag</td>
+                  <td>High-write workloads may take time to sync. Monitor <code>pg_stat_subscription</code> and wait for lag &rarr; 0 before cutover.</td>
+                </tr>
+                <tr>
+                  <td>Sequence continuity</td>
+                  <td>Sequences are not replicated. If using sequences (not UUIDs), set green sequences to start above blue&rsquo;s current max before cutover.</td>
+                </tr>
+                <tr>
+                  <td>In-flight transactions</td>
+                  <td>Transactions open at cutover may fail. Design for retry/idempotency at the application level.</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+
+          <div class="box">
+            <h3 class="title is-5">References</h3>
+            <ul>
+              <li>Hodgson, Pete. &ldquo;Parallel Change&rdquo;. <em>martinfowler.com</em>, 2014.
+                <a href="https://martinfowler.com/bliki/ParallelChange.html">martinfowler.com/bliki/ParallelChange.html</a></li>
+              <li>Sato, Danilo. &ldquo;Evolutionary Database Design&rdquo;. <em>martinfowler.com</em>, 2016.
+                <a href="https://martinfowler.com/articles/evodb.html">martinfowler.com/articles/evodb.html</a></li>
+              <li>Atlas documentation. <a href="https://atlasgo.io/getting-started">atlasgo.io</a></li>
+              <li>PostgreSQL Logical Replication.
+                <a href="https://www.postgresql.org/docs/current/logical-replication.html">postgresql.org/docs/current/logical-replication.html</a></li>
+              <li>PostgreSQL 17: <code>pg_createsubscriber</code>.
+                <a href="https://www.postgresql.org/docs/17/app-pgcreatesubscriber.html">postgresql.org/docs/17/app-pgcreatesubscriber.html</a></li>
+            </ul>
+          </div>
+
+        </div>
+      </div>
+    </div>
+  </section>
+  <footer class="footer">
+    <div class="content has-text-centered">
+      <p><a href="../">GoBank</a> &mdash; <a href="https://codeberg.org/hum3/gobank">codeberg.org/hum3/gobank</a></p>
+    </div>
+  </footer>
+</body>
+</html>

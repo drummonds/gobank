@@ -58,9 +58,13 @@ const tmpl = `<!DOCTYPE html>
             </ul>
             <p class="menu-label">Research Notes</p>
             <ul class="menu-list">
-              <li><a href="research/chart-comparison.html">Chart Renderer Comparison</a></li>
+              <li><a href="https://h3-lofigui.statichost.page/research.html">Chart Renderer Comparison</a></li>
               <li><a href="research/blue-green-schemas.html">Blue-Green Schemas</a></li>
+              <li><a href="research/expand-contract.html">Expand/Contract Migrations</a></li>
               <li><a href="research/project-hierarchy.html">Project Hierarchy</a></li>
+              <li><a href="research/scaling-benchmarks.html">Scaling Benchmarks</a></li>
+              <li><a href="research/bff-api.html">BFF API Reference</a></li>
+              <li><a href="research/development-notes.html">Development Notes</a></li>
             </ul>
             <p class="menu-label">Docs</p>
             <ul class="menu-list">

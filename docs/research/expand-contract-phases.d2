@@ -1,0 +1,63 @@
+direction: down
+
+title: |md
+  # Release Phases
+|
+
+phase1: 1. Provision Green {
+  shape: rectangle
+  style.fill: "#dcfce7"
+  desc: |md
+    Create new DB instance
+    (can be different PG version, zone, provider)
+  |
+}
+
+phase2: 2. Expand Migration {
+  shape: rectangle
+  style.fill: "#dbeafe"
+  desc: |md
+    Apply additive-only schema changes
+    New columns, tables, indexes
+    **No drops or renames**
+  |
+}
+
+phase3: 3. Replicate {
+  shape: rectangle
+  style.fill: "#fef3c7"
+  desc: |md
+    Start logical replication blue → green
+    Wait for lag → 0
+  |
+}
+
+phase4: 4. Cutover {
+  shape: rectangle
+  style.fill: "#fee2e2"
+  desc: |md
+    Flip feature flag / connection string
+    Traffic moves to green
+  |
+}
+
+phase5: 5. Contract Migration {
+  shape: rectangle
+  style.fill: "#f3e8ff"
+  desc: |md
+    Stop replication
+    Drop deprecated columns/tables
+    Green is now clean final schema
+  |
+}
+
+phase6: 6. Teardown {
+  shape: rectangle
+  style.fill: "#e5e7eb"
+  desc: |md
+    Remove old blue DB
+    Green becomes next cycle's blue
+  |
+}
+
+phase1 -> phase2 -> phase3 -> phase4 -> phase5 -> phase6

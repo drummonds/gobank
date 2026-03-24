@@ -1,0 +1,45 @@
+direction: right
+
+title: |md
+  # Expand / Contract Workflow
+  Separate-database blue-green deployment
+|
+
+blue_db: Blue DB {
+  shape: cylinder
+  style.fill: "#dbeafe"
+  schema_v1: Schema v1
+  data: Live Data
+}
+
+app: Application {
+  shape: rectangle
+  style.fill: "#fef3c7"
+  feature_flag: Feature Flag
+}
+
+green_db: Green DB {
+  shape: cylinder
+  style.fill: "#dcfce7"
+  schema_v2: Schema v2 (expanded)
+  data: Replicated Data
+}
+
+# Phase 1: Provision + Expand
+app -> blue_db: serves traffic {
+  style.stroke: "#2563eb"
+  style.stroke-width: 3
+}
+
+# Phase 2: Replication
+blue_db -> green_db: logical replication {
+  style.stroke: "#16a34a"
+  style.stroke-dash: 5
+}
+
+# Phase 3: Cutover
+app -> green_db: after flag flip {
+  style.stroke: "#16a34a"
+  style.stroke-width: 2
+  style.stroke-dash: 3
+}
