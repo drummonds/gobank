@@ -8,7 +8,7 @@ import (
 	"time"
 
 	gbp "codeberg.org/hum3/gobank-products"
-	luca "github.com/drummonds/go-luca"
+	luca "codeberg.org/hum3/go-luca"
 )
 
 func poundsToPence(pounds float64) luca.Amount {

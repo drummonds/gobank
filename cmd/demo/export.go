@@ -7,7 +7,7 @@ import (
 	"io"
 	"net/http"
 
-	luca "github.com/drummonds/go-luca"
+	luca "codeberg.org/hum3/go-luca"
 )
 
 func (ds *DemoState) handleExport(w http.ResponseWriter, r *http.Request) {
@@ -50,7 +50,7 @@ func (ds *DemoState) handleImport(w http.ResponseWriter, r *http.Request) {
 	ds.mu.Lock()
 	err = ds.sim.Ledger.Import(bytes.NewReader(data), &luca.ImportOptions{
 		AutoCreateAccounts: true,
-		DefaultCurrency:    "GBP",
+		DefaultCommodity:    "GBP",
 	})
 	ds.mu.Unlock()
 	if err != nil {

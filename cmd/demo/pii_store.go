@@ -1,7 +1,7 @@
 package main
 
 // PIIInput is the input struct for generating customer PII.
-// Passed to the gobanks-customers store for encryption and persistence.
+// Passed to the gobank-customers store for encryption and persistence.
 type PIIInput struct {
 	Name    string
 	NI      string

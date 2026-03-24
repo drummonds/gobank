@@ -81,8 +81,8 @@ type CustomerAccount struct {
 const customersPerPage = 50
 
 // BuildCustomersHTML renders the customer list table with pagination.
-// Names are looked up from custStore; NI is not shown on the list page.
-func (ds *DemoState) BuildCustomersHTML(page int) string {
+// Names are shown only when piiAuth is true; otherwise only the customer ID is displayed.
+func (ds *DemoState) BuildCustomersHTML(page int, piiAuth bool) string {
 	ds.mu.Lock()
 	customers := make([]CustomerRecord, len(ds.customers))
 	copy(customers, ds.customers)
@@ -127,10 +127,13 @@ func (ds *DemoState) BuildCustomersHTML(page int) string {
   <div class="control"><span class="tag is-link is-light">Lending: %s</span></div>
 </div>`, total, fmtMoney(aggSavings), fmtMoney(aggLending)))
 	s.WriteString(`<div class="table-container"><table class="table is-fullwidth is-striped is-hoverable">`)
-	s.WriteString(`<thead><tr><th>Name</th><th>Accounts</th><th>Total Savings</th><th>Total Lending</th><th></th></tr></thead><tbody>`)
+	if piiAuth {
+		s.WriteString(`<thead><tr><th>ID</th><th>Name</th><th>Accounts</th><th>Total Savings</th><th>Total Lending</th><th></th></tr></thead><tbody>`)
+	} else {
+		s.WriteString(`<thead><tr><th>ID</th><th>Accounts</th><th>Total Savings</th><th>Total Lending</th><th></th></tr></thead><tbody>`)
+	}
 
 	for _, c := range pageCustomers {
-		name := ds.lookupName(c.ID)
 		savings := 0.0
 		lending := 0.0
 		for _, a := range c.Accounts {
@@ -140,10 +143,18 @@ func (ds *DemoState) BuildCustomersHTML(page int) string {
 				lending += a.Balance
 			}
 		}
-		s.WriteString(fmt.Sprintf(`<tr>
-  <td>%s</td><td>%d</td><td>%s</td><td>%s</td>
+		if piiAuth {
+			name := ds.lookupName(c.ID)
+			s.WriteString(fmt.Sprintf(`<tr>
+  <td><code>%s</code></td><td>%s</td><td>%d</td><td>%s</td><td>%s</td>
   <td><a href="/customers/%s" class="button is-small is-link is-light">View</a></td>
-</tr>`, name, len(c.Accounts), fmtMoney(savings), fmtMoney(lending), c.ID))
+</tr>`, c.ID, name, len(c.Accounts), fmtMoney(savings), fmtMoney(lending), c.ID))
+		} else {
+			s.WriteString(fmt.Sprintf(`<tr>
+  <td><code>%s</code></td><td>%d</td><td>%s</td><td>%s</td>
+  <td><a href="/customers/%s" class="button is-small is-link is-light">View</a></td>
+</tr>`, c.ID, len(c.Accounts), fmtMoney(savings), fmtMoney(lending), c.ID))
+		}
 	}
 
 	s.WriteString(`</tbody></table></div>`)

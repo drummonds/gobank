@@ -3,7 +3,9 @@ package main
 import (
 	"database/sql"
 	"fmt"
+	"math"
 	"runtime"
+	"runtime/debug"
 	"strings"
 )
 
@@ -53,6 +55,20 @@ func (ds *DemoState) BuildRuntimeHTML() string {
 	s.WriteString(fmt.Sprintf(`<tr><th>HeapObjects</th><td>%d</td><td class="has-text-grey">Number of allocated heap objects</td></tr>`, m.HeapObjects))
 	s.WriteString(fmt.Sprintf(`<tr><th>NumGC</th><td>%d</td><td class="has-text-grey">Completed garbage collection cycles</td></tr>`, m.NumGC))
 	s.WriteString(fmt.Sprintf(`<tr><th>Goroutines</th><td>%d</td><td class="has-text-grey">Active goroutines</td></tr>`, runtime.NumGoroutine()))
+
+	// Memory limits
+	gcLimit := debug.SetMemoryLimit(-1) // read without changing
+	if gcLimit > 0 && gcLimit < math.MaxInt64 {
+		s.WriteString(fmt.Sprintf(`<tr><th>GC memory limit</th><td>%s</td><td class="has-text-grey">Advisory limit from <code>debug.SetMemoryLimit</code></td></tr>`, formatBytes(uint64(gcLimit))))
+	}
+	s.WriteString(fmt.Sprintf(`<tr><th>Auto-stop threshold</th><td>%s</td><td class="has-text-grey">Simulation pauses when heap exceeds this</td></tr>`, formatBytes(memoryLimitBytes)))
+	ds.mu.Lock()
+	exceeded := ds.memoryExceeded
+	ds.mu.Unlock()
+	if exceeded {
+		s.WriteString(`<tr><th>Status</th><td><span class="tag is-danger">Memory exceeded — simulation paused</span></td><td></td></tr>`)
+	}
+
 	s.WriteString(`</table></div>`)
 
 	// Data store

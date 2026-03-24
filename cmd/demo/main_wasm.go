@@ -8,7 +8,7 @@ import (
 	"syscall/js"
 
 	gbp "codeberg.org/hum3/gobank-products"
-	luca "github.com/drummonds/go-luca"
+	luca "codeberg.org/hum3/go-luca"
 	"github.com/drummonds/lofigui"
 )
 
@@ -48,7 +48,7 @@ func goImport(this js.Value, args []js.Value) any {
 	}
 	err := state.sim.Ledger.Import(bytes.NewReader([]byte(data)), &luca.ImportOptions{
 		AutoCreateAccounts: true,
-		DefaultCurrency:    "GBP",
+		DefaultCommodity:    "GBP",
 	})
 	state.mu.Unlock()
 	if err != nil {
@@ -216,8 +216,11 @@ func goRenderCustomers(this js.Value, args []js.Value) any {
 	if len(args) >= 1 {
 		page = args[0].Int()
 	}
+	state.mu.Lock()
+	piiAuth := state.piiAuthorized
+	state.mu.Unlock()
 	lofigui.Reset()
-	lofigui.HTML(state.BuildCustomersHTML(page))
+	lofigui.HTML(state.BuildCustomersHTML(page, piiAuth))
 	return js.ValueOf(lofigui.Buffer())
 }
 

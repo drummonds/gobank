@@ -359,7 +359,7 @@ func benchBuildMux(ds *DemoState) *http.ServeMux {
 	})
 	mux.HandleFunc("GET /customers", func(w http.ResponseWriter, r *http.Request) {
 		renderMu.Lock()
-		html := ds.BuildCustomersHTML(1)
+		html := ds.BuildCustomersHTML(1, false)
 		renderMu.Unlock()
 		w.Header().Set("Content-Type", "text/html")
 		io.WriteString(w, html)

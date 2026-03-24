@@ -419,7 +419,9 @@ func main() {
 		if page < 1 {
 			page = 1
 		}
-		content := renderAndCapture(func() { lofigui.HTML(state.BuildCustomersHTML(page)) })
+		sessID := getSessionID(w, r)
+		piiAuth := authStore.EffectivePII(sessID)
+		content := renderAndCapture(func() { lofigui.HTML(state.BuildCustomersHTML(page, piiAuth)) })
 		if serveHTMX(w, r, content) {
 			return
 		}

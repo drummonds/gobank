@@ -13,8 +13,8 @@ import (
 	"time"
 
 	gbp "codeberg.org/hum3/gobank-products"
-	luca "github.com/drummonds/go-luca"
-	customers "github.com/drummonds/gobanks-customers"
+	luca "codeberg.org/hum3/go-luca"
+	customers "codeberg.org/hum3/gobanks-customers"
 	"github.com/go-analyze/charts"
 )
 
@@ -537,7 +537,7 @@ func (ds *DemoState) AddCustomersBatch(n int) {
 			ds.fundCustomer(len(ds.customers) - 1)
 			ds.addingCustProgress = i + 1
 			ds.mu.Unlock()
-			runtime.Gosched()
+			time.Sleep(time.Millisecond) // yield to JS event loop in WASM
 		}
 		ds.mu.Lock()
 		ds.addingCustRunning = false

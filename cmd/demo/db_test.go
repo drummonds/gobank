@@ -6,7 +6,7 @@ import (
 	"sync"
 	"testing"
 
-	_ "github.com/drummonds/go-postgres"
+	_ "codeberg.org/hum3/go-postgres"
 )
 
 // TestMemoryDBSharedAcrossConnections verifies that multiple connections from
