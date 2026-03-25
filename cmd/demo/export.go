@@ -50,7 +50,7 @@ func (ds *DemoState) handleImport(w http.ResponseWriter, r *http.Request) {
 	ds.mu.Lock()
 	err = ds.sim.Ledger.Import(bytes.NewReader(data), &luca.ImportOptions{
 		AutoCreateAccounts: true,
-		DefaultCommodity:    "GBP",
+		DefaultCommodity:   "GBP",
 	})
 	ds.mu.Unlock()
 	if err != nil {

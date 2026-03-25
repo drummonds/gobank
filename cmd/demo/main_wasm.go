@@ -7,8 +7,8 @@ import (
 	"runtime/debug"
 	"syscall/js"
 
-	gbp "codeberg.org/hum3/gobank-products"
 	luca "codeberg.org/hum3/go-luca"
+	gbp "codeberg.org/hum3/gobank-products"
 	"github.com/drummonds/lofigui"
 )
 
@@ -48,7 +48,7 @@ func goImport(this js.Value, args []js.Value) any {
 	}
 	err := state.sim.Ledger.Import(bytes.NewReader([]byte(data)), &luca.ImportOptions{
 		AutoCreateAccounts: true,
-		DefaultCommodity:    "GBP",
+		DefaultCommodity:   "GBP",
 	})
 	state.mu.Unlock()
 	if err != nil {

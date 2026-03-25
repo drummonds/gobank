@@ -12,8 +12,8 @@ import (
 	"sync"
 	"time"
 
-	gbp "codeberg.org/hum3/gobank-products"
 	luca "codeberg.org/hum3/go-luca"
+	gbp "codeberg.org/hum3/gobank-products"
 	customers "codeberg.org/hum3/gobanks-customers"
 	"github.com/go-analyze/charts"
 )

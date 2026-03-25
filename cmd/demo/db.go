@@ -5,9 +5,9 @@ import (
 	"log"
 
 	_ "codeberg.org/hum3/go-postgres"
-	_ "github.com/ncruces/go-sqlite3/embed"
 	customers "codeberg.org/hum3/gobanks-customers"
 	_ "github.com/jackc/pgx/v5/stdlib"
+	_ "github.com/ncruces/go-sqlite3/embed"
 )
 
 // piiKeyProvider is the default key for PII encryption in the demo.
