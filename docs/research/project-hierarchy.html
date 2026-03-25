@@ -47,13 +47,18 @@
         </div>
         <div class="column is-9">
           <h1 class="title">Project Hierarchy</h1>
-          <p class="subtitle has-text-grey">Dependency map of drummonds Go projects from GoBank down to the base libraries.</p>
+          <p class="subtitle has-text-grey">Dependency map of the GoBank family of Go projects down to the base libraries.</p>
 
           <div class="box">
             <h3 class="title is-5">Dependency Graph</h3>
             <pre class="mermaid">
 graph TD
     GB["gobank<br/><small>Model bank simulation</small>"]
+    GBP["gobank-products<br/><small>Product catalogue</small>"]
+    GBA["gobank-accounts<br/><small>CoA, reports, periods</small>"]
+    GBW["gobank-workflow<br/><small>Workflows &amp; daily tasks</small>"]
+    GBD["gobank-db<br/><small>Shared DB abstraction</small>"]
+    GBC["gobanks-customers<br/><small>Customer identity &amp; PII</small>"]
     GL["go-luca<br/><small>Double-entry accounting</small>"]
     GLP["go-luca-pnl<br/><small>P&amp;L reports</small>"]
     GP["go-postgres<br/><small>DB abstraction (pglike)</small>"]
@@ -64,13 +69,21 @@ graph TD
     LFG["lofigui<br/><small>HTML/CSS UI framework</small>"]
     TP["task-plus<br/><small>Release workflow</small>"]
 
-    GB -->|v0.2.9| GL
-    GB --> GP
-    GB -->|v0.17.5| LFG
-    GL -->|v0.3.1| GP
-    GL -->|v0.6.1| GTS
+    GB --> GBP
+    GB --> GBA
+    GB --> GBW
+    GB --> GBD
+    GB --> GBC
+    GB --> LFG
+    GBP --> GL
+    GBA --> GL
+    GBW --> GL
+    GBD --> GP
+    GBC --> GP
+    GL --> GP
+    GL --> GTS
     GLP --> GL
-    PTA -->|v0.5.4| GTS
+    PTA --> GTS
     TSA -.->|generates| TSG
     TSG -.->|grammar used by| GTS
     TP --> LFG
@@ -83,7 +96,7 @@ graph TD
     classDef tool fill:#fce4ec,stroke:#e91e63
 
     class GB app
-    class GL,GLP,PTA lib
+    class GBP,GBA,GBW,GBD,GBC,GL,GLP,PTA lib
     class GP,GTS,LFG base
     class TSA,TSG,TP tool
             </pre>
@@ -116,9 +129,44 @@ graph TD
                   <td>Go</td>
                 </tr>
                 <tr>
+                  <td><strong>gobank-products</strong></td>
+                  <td>Product catalogue &amp; simulation engine</td>
+                  <td><a href="https://codeberg.org/hum3/gobank-products">codeberg</a> / <a href="https://github.com/drummonds/gobank-products">github</a></td>
+                  <td>&mdash;</td>
+                  <td>Go</td>
+                </tr>
+                <tr>
+                  <td><strong>gobank-accounts</strong></td>
+                  <td>Chart of accounts, financial reports, accounting periods</td>
+                  <td><a href="https://codeberg.org/hum3/gobank-accounts">codeberg</a> / <a href="https://github.com/drummonds/gobank-accounts">github</a></td>
+                  <td>&mdash;</td>
+                  <td>Go</td>
+                </tr>
+                <tr>
+                  <td><strong>gobank-workflow</strong></td>
+                  <td>Workflow engine &amp; daily tasks (interest accrual, EOD)</td>
+                  <td><a href="https://codeberg.org/hum3/gobank-workflow">codeberg</a> / <a href="https://github.com/drummonds/gobank-workflow">github</a></td>
+                  <td>&mdash;</td>
+                  <td>Go</td>
+                </tr>
+                <tr>
+                  <td><strong>gobank-db</strong></td>
+                  <td>Core DB abstraction, shared schema, multi-user base</td>
+                  <td><a href="https://codeberg.org/hum3/gobank-db">codeberg</a> / <a href="https://github.com/drummonds/gobank-db">github</a></td>
+                  <td>&mdash;</td>
+                  <td>Go</td>
+                </tr>
+                <tr>
+                  <td><strong>gobanks-customers</strong></td>
+                  <td>Customer identity &amp; encrypted PII storage</td>
+                  <td><a href="https://codeberg.org/hum3/gobanks-customers">codeberg</a> / <a href="https://github.com/drummonds/gobanks-customers">github</a></td>
+                  <td>&mdash;</td>
+                  <td>Go</td>
+                </tr>
+                <tr>
                   <td><strong>go-luca</strong></td>
                   <td>Double-entry accounting engine</td>
-                  <td><a href="https://github.com/drummonds/go-luca">github</a></td>
+                  <td><a href="https://codeberg.org/hum3/go-luca">codeberg</a> / <a href="https://github.com/drummonds/go-luca">github</a></td>
                   <td>&mdash;</td>
                   <td>Go</td>
                 </tr>
@@ -216,7 +264,12 @@ graph TD
           <div class="box">
             <h3 class="title is-5">Notes</h3>
             <ul>
-              <li><strong>gobank</strong> uses a local <code>replace</code> directive for go-luca during development.</li>
+              <li><strong>gobank</strong> is the top-level model bank simulation, depending on the companion libraries below.</li>
+              <li><strong>gobank-products</strong> defines the product catalogue (savings, loans) and simulation engine.</li>
+              <li><strong>gobank-accounts</strong> provides chart of accounts, P&amp;L, balance sheet, and accounting period management.</li>
+              <li><strong>gobank-workflow</strong> orchestrates daily tasks (interest accrual, EOD processing) via go-workflows.</li>
+              <li><strong>gobank-db</strong> abstracts the database layer &mdash; shared schema, migrations, multi-service base.</li>
+              <li><strong>gobanks-customers</strong> handles customer identity with encrypted PII storage.</li>
               <li><strong>go-postgres</strong> wraps <code>modernc.org/sqlite</code> to provide a pglike interface &mdash; pure Go, no CGo.</li>
               <li><strong>gotreesitter</strong> is a pure-Go tree-sitter runtime used by go-luca and plain-text-accounting-formats for parsing PTA syntax.</li>
               <li><strong>tree-sitter-goluca</strong> is the grammar definition (JS/node); <strong>tree-sitter2abnf</strong> converts it to ABNF for documentation.</li>
