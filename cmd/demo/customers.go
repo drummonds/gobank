@@ -104,19 +104,13 @@ func (ds *DemoState) BuildCustomersHTML(page int, piiAuth bool) string {
 	if page < 1 {
 		page = 1
 	}
-	totalPages := (total + customersPerPage - 1) / customersPerPage
-	if totalPages < 1 {
-		totalPages = 1
-	}
+	totalPages := max((total+customersPerPage-1)/customersPerPage, 1)
 	if page > totalPages {
 		page = totalPages
 	}
 
 	start := (page - 1) * customersPerPage
-	end := start + customersPerPage
-	if end > total {
-		end = total
-	}
+	end := min(start+customersPerPage, total)
 	pageCustomers := customers[start:end]
 
 	var s strings.Builder
@@ -381,10 +375,7 @@ func (ds *DemoState) BuildCustomerAccountHTML(custID string, accountIdx int, pii
 		txPage = 1
 	}
 	txEntries, txTotal := ds.ProductTransactions(cust.ID, accountIdx, txPage, txPerDetailPage)
-	txTotalPages := (txTotal + txPerDetailPage - 1) / txPerDetailPage
-	if txTotalPages < 1 {
-		txTotalPages = 1
-	}
+	txTotalPages := max((txTotal+txPerDetailPage-1)/txPerDetailPage, 1)
 
 	s.WriteString(`<h3 class="title is-5 mt-5">Transaction History</h3>`)
 	if txTotal == 0 {

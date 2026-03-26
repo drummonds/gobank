@@ -20,7 +20,7 @@ func init() {
 
 func parseBoeRates(csv string) []RatePoint {
 	var pts []RatePoint
-	for _, line := range strings.Split(strings.TrimSpace(csv), "\n") {
+	for line := range strings.SplitSeq(strings.TrimSpace(csv), "\n") {
 		line = strings.TrimSpace(line)
 		if line == "" {
 			continue

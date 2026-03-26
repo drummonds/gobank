@@ -3,6 +3,7 @@ package main
 import (
 	"fmt"
 	"html"
+	"slices"
 	"strings"
 )
 
@@ -125,13 +126,7 @@ func (ds *DemoState) BuildExplorerTableHTML(name string, page int, sort string, 
 
 	// Validate table name against actual DB catalog
 	tables := ds.getDBTables()
-	valid := false
-	for _, t := range tables {
-		if t == name {
-			valid = true
-			break
-		}
-	}
+	valid := slices.Contains(tables, name)
 	if !valid {
 		s.WriteString(`<h2 class="title is-4">Table Not Found</h2>`)
 		s.WriteString(fmt.Sprintf(`<p class="has-text-danger">Unknown table: %s</p>`, html.EscapeString(name)))
@@ -269,13 +264,7 @@ func (ds *DemoState) BuildExplorerTableHTML(name string, page int, sort string, 
 	}
 
 	// Validate sort column against actual columns
-	validSort := false
-	for _, c := range colNames {
-		if c == sort {
-			validSort = true
-			break
-		}
-	}
+	validSort := slices.Contains(colNames, sort)
 	if !validSort {
 		sort = ""
 	}
@@ -286,10 +275,7 @@ func (ds *DemoState) BuildExplorerTableHTML(name string, page int, sort string, 
 	// Get total row count
 	var totalRows int
 	db.QueryRow(fmt.Sprintf(`SELECT COUNT(*) FROM "%s"`, name)).Scan(&totalRows)
-	totalPages := (totalRows + pageSize - 1) / pageSize
-	if totalPages < 1 {
-		totalPages = 1
-	}
+	totalPages := max((totalRows+pageSize-1)/pageSize, 1)
 	if page > totalPages {
 		page = totalPages
 	}
@@ -337,8 +323,8 @@ func (ds *DemoState) BuildExplorerTableHTML(name string, page int, sort string, 
 		}
 		s.WriteString(`</tr></thead><tbody>`)
 
-		vals := make([]interface{}, len(cols))
-		ptrs := make([]interface{}, len(cols))
+		vals := make([]any, len(cols))
+		ptrs := make([]any, len(cols))
 		for i := range vals {
 			ptrs[i] = &vals[i]
 		}

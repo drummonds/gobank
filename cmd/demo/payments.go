@@ -323,10 +323,7 @@ func (ds *DemoState) BuildPaymentsHTML(piiAuth bool, page int) string {
 	if page < 1 {
 		page = 1
 	}
-	totalPages := (total + paymentsPerPage - 1) / paymentsPerPage
-	if totalPages < 1 {
-		totalPages = 1
-	}
+	totalPages := max((total+paymentsPerPage-1)/paymentsPerPage, 1)
 	if page > totalPages {
 		page = totalPages
 	}
@@ -337,10 +334,7 @@ func (ds *DemoState) BuildPaymentsHTML(piiAuth bool, page int) string {
 	}
 
 	start := (page - 1) * paymentsPerPage
-	end := start + paymentsPerPage
-	if end > total {
-		end = total
-	}
+	end := min(start+paymentsPerPage, total)
 	pagePayments := payments[start:end]
 
 	var s strings.Builder

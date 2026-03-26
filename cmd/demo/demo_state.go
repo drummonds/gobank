@@ -507,7 +507,7 @@ func (ds *DemoState) AddCustomersBatch(n int) {
 	ds.mu.Unlock()
 
 	go func() {
-		for i := 0; i < n; i++ {
+		for i := range n {
 			select {
 			case <-ctx.Done():
 				ds.mu.Lock()
@@ -940,7 +940,7 @@ func buildCustomerChartSVG(history []CustomerPoint) string {
 		charts.SVGOutputOptionFunc(),
 		charts.DimensionsOptionFunc(660, 180),
 		charts.XAxisLabelsOptionFunc(labels),
-		charts.LegendOptionFunc(charts.LegendOption{Show: charts.Ptr(false)}),
+		charts.LegendOptionFunc(charts.LegendOption{Show: new(false)}),
 		charts.PaddingOptionFunc(charts.Box{Left: 60, Right: 10, Top: 10, Bottom: 10, IsSet: true}),
 		func(opt *charts.ChartOption) {
 			opt.Symbol = charts.SymbolNone

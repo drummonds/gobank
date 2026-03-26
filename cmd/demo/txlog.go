@@ -89,10 +89,7 @@ func (ds *DemoState) ProductTransactions(custID string, accountIdx, page, perPag
 	if start >= len(matches) {
 		return nil, totalCount
 	}
-	end := start + perPage
-	if end > len(matches) {
-		end = len(matches)
-	}
+	end := min(start+perPage, len(matches))
 	return matches[start:end], totalCount
 }
 
@@ -124,9 +121,6 @@ func (ds *DemoState) CustomerTransactions(custID string, page, perPage int) (ent
 	if start >= len(matches) {
 		return nil, totalCount
 	}
-	end := start + perPage
-	if end > len(matches) {
-		end = len(matches)
-	}
+	end := min(start+perPage, len(matches))
 	return matches[start:end], totalCount
 }

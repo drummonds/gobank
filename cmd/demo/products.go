@@ -148,10 +148,7 @@ func buildBoERateGraph(history []RatePoint) string {
 
 	// X-axis date labels
 	if len(history) > 1 {
-		numLabels := 5
-		if len(history) < numLabels {
-			numLabels = len(history)
-		}
+		numLabels := min(len(history), 5)
 		// Use "Jan 06" format (month + 2-digit year) for compactness
 		dateFmt := "Jan 06"
 		// If span is less than a year, include day

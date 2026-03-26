@@ -57,10 +57,7 @@ func (ds *DemoState) buildAppLoginHTML() string {
 		s.WriteString(`<p style="color:#7a7a7a;text-align:center;margin-top:2rem">No customers yet. Start the simulation in the admin dashboard.</p>`)
 	} else {
 		// Quick-access customer cards (skip login form in WASM — just show customer list)
-		limit := len(customers)
-		if limit > 50 {
-			limit = 50
-		}
+		limit := min(len(customers), 50)
 		for _, c := range customers[:limit] {
 			fmt.Fprintf(&s, `<a href="/app/customer/%s" style="display:block;text-decoration:none;color:inherit;margin-bottom:8px">
   <div style="background:#f5f5f5;border-radius:10px;padding:12px 16px;display:flex;align-items:center">

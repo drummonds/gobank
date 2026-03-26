@@ -36,10 +36,8 @@ func TestMemoryDBSharedAcrossConnections(t *testing.T) {
 	// Read from potentially different connections concurrently.
 	var wg sync.WaitGroup
 	errs := make(chan error, 10)
-	for i := 0; i < 10; i++ {
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
+	for range 10 {
+		wg.Go(func() {
 			var name string
 			if err := db.QueryRow(`SELECT name FROM test_accounts WHERE id = 'a1'`).Scan(&name); err != nil {
 				errs <- err
@@ -48,7 +46,7 @@ func TestMemoryDBSharedAcrossConnections(t *testing.T) {
 			if name != "Alice" {
 				errs <- fmt.Errorf("expected Alice, got %s", name)
 			}
-		}()
+		})
 	}
 	wg.Wait()
 	close(errs)
@@ -67,7 +65,7 @@ func TestLedgerSurvivesConnectionPool(t *testing.T) {
 	// Add 200 customers — must not hit "no such table: accounts".
 	ds.mu.Lock()
 	defer ds.mu.Unlock()
-	for i := 0; i < 200; i++ {
+	for range 200 {
 		cust, pii := generateCustomer(ds.rng, ds.nextCustSeq, ds.products, ds.currentDay)
 		ds.nextCustSeq++
 		ds.persistCustomer(&cust, pii)

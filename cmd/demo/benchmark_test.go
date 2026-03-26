@@ -558,7 +558,6 @@ func BenchmarkAPIEndpoint(b *testing.B) {
 
 	client := ts.Client()
 	for _, ep := range endpoints {
-		ep := ep
 		b.Run(ep.name, func(b *testing.B) {
 			for b.Loop() {
 				req, _ := http.NewRequest(ep.method, ts.URL+ep.path, nil)
