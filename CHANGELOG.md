@@ -35,6 +35,9 @@
  - Adding app functionality to wasm## [0.3.38] - 2026-03-25
 
  - adding extra files
+## [0.3.39] - 2026-03-26
+
+ - Add RC deploy site and fix tp check warnings
 
 ## [0.3.37] - 2026-03-20
 
