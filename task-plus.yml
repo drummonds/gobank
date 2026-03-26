@@ -6,3 +6,4 @@ pages_build:
 pages_deploy:
   - type: statichost
     site: h3-gobank
+    rc_site: h3-gobank-rc
