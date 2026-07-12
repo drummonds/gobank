@@ -1,0 +1,108 @@
+# gobank family — how all the parts relate
+# Rendered by: d2 --layout elk docs/research/gobank-family.d2 docs/research/gobank-family.svg
+# Edge labels show the version pinned by gobank/cmd/demo (July 2026, gobank v0.3.39).
+# Amber dashed edges = pin lags the latest published tag.
+
+direction: right
+
+classes: {
+  repo: {
+    style: {
+      border-radius: 8
+      shadow: true
+    }
+  }
+  thirdparty: {
+    style: {
+      border-radius: 8
+      stroke-dash: 2
+      fill: "#f4f4f4"
+    }
+  }
+  drift: {
+    style: {
+      stroke: "#c77400"
+      stroke-dash: 4
+    }
+  }
+  pending: {
+    style: {
+      stroke: "#b03030"
+      stroke-dash: 4
+    }
+  }
+}
+
+app: "gobank  (this repo, v0.3.39)" {
+  demo: "cmd/demo — Model Bank\n(own module)" {
+    native: "native build\nnet/http + HTMX\nRBAC roles" {class: repo}
+    wasm: "GOOS=js build\nmain.wasm + app.js SPA\nno RBAC" {class: repo}
+  }
+  serve: "cmd/serve\nstatic + wasm MIME" {class: repo}
+  gendocs: "cmd/gendocs\nproject_data.json → docs" {class: repo}
+  boefetch: "cmd/boefetch\nBoE base-rate CSV" {class: repo}
+  chartcompare: "cmd/chartcompare\n(own module)" {class: repo}
+  root: "root package\n(blank import shell)" {class: repo}
+}
+
+domain: "Banking domain" {
+  products: "gobank-products\nproducts + simulation engine\nEasyAccess · FixedTerm · ISA\nLoan · Mortgage · Overdraft" {class: repo}
+  customers: "gobanks-customers\nencrypted PII store (AES-GCM)" {class: repo}
+}
+
+core: "Accounting core" {
+  luca: "go-luca\nmovement-based double-entry\nAmount = int64 smallest unit" {class: repo}
+  gobankdb: "gobank-db\nOpen/Migrate helpers\n(enters graph at go-luca ≥ 0.2.26)" {
+    class: repo
+    style.stroke-dash: 4
+  }
+}
+
+data: "Data layer" {
+  pglike: "go-postgres\n\"pglike\" driver:\nPostgreSQL SQL → SQLite" {class: repo}
+  sqlite: "ncruces/go-sqlite3\nSQLite compiled to wasm\n(runs natively AND in-browser)" {class: thirdparty}
+  pgx: "jackc/pgx\nreal Postgres (native only)" {class: thirdparty}
+}
+
+parsing: "Parsing" {
+  gts: "gotreesitter\npure-Go tree-sitter\n.goluca grammar + 209 more" {class: repo}
+}
+
+ui: "UI" {
+  lofigui: "lofigui\nbuffer → template MVC" {class: repo}
+  pongo2: "pongo2 templates" {class: thirdparty}
+  charts: "go-analyze/charts" {class: thirdparty}
+}
+
+deploy: "Docs & deploy" {
+  taskplus: "task-plus\ndocs:build → statichost" {class: repo}
+  site: "h3-gobank.statichost.page\n(+ h3-gobank-rc)" {class: thirdparty}
+}
+
+# --- application wiring ---
+app.root -> domain.products: "blank import"
+app.demo -> domain.products: "v0.1.5  [v0.1.6]" {class: drift}
+app.demo -> domain.customers: "v0.1.0"
+app.demo -> core.luca: "v0.2.25  [v0.2.30]" {class: drift}
+app.demo -> data.pglike: "v0.5.2  [v0.5.4]" {class: drift}
+app.demo -> data.sqlite: "v0.32.0"
+app.demo -> data.pgx: "native only:\noptional GOBANK_PG_DSN"
+app.demo -> ui.lofigui: "v0.17.22  [v0.17.39]" {class: drift}
+app.demo -> ui.pongo2
+app.demo -> ui.charts
+app.chartcompare -> ui.charts
+app.serve -> app.demo: "serves docs/demo"
+
+# --- family wiring (as pinned) ---
+domain.products -> core.luca: "ledger + interest accrual"
+domain.customers -> data.pglike: "cust_* tables"
+core.luca -> data.pglike: "SQLLedger (any database/sql)"
+core.luca -> parsing.gts: ".goluca format\nv0.6.6  [v0.6.7]" {class: drift}
+core.luca -> core.gobankdb: "only at v0.2.26+\n(not in current build)" {class: pending}
+core.gobankdb -> data.pglike: "v0.5.3"
+data.pglike -> data.sqlite: "translates PG SQL,\nexecutes on SQLite"
+
+# --- docs & deploy ---
+app.gendocs -> deploy.taskplus: "index.html"
+deploy.taskplus -> deploy.site: "pages_deploy"
+app.demo -> deploy.site: "main.wasm bundle"
