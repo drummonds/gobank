@@ -14,7 +14,7 @@ import (
 	"time"
 )
 
-// fallbackData contains hardcoded BoE base rate changes (2020-01-01 to 2025-12-18).
+// fallbackData contains hardcoded BoE base rate changes (2020-01-01 to 2025-08-07).
 const fallbackData = `DATE,VALUE
 11/Mar/2020,0.25
 19/Mar/2020,0.10

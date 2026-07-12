@@ -57,7 +57,8 @@ func TestMemoryDBSharedAcrossConnections(t *testing.T) {
 
 // TestLedgerSurvivesConnectionPool creates a DemoState (which sets up the
 // go-luca ledger) and adds enough customers to exercise connection pooling.
-// Without the go-postgres v0.4.1 fix, this fails around customer 188.
+// Without the go-postgres shared in-memory DB fix (landed in v0.4.1;
+// current pin v0.5.2), this fails around customer 188.
 func TestLedgerSurvivesConnectionPool(t *testing.T) {
 	ds := NewDemoState()
 	defer ds.db.Close()

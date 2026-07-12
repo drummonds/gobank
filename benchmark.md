@@ -1,6 +1,7 @@
 # Benchmark Results
 
 Run on Intel Core Ultra 7 165H, Linux, Go 1.25.3, pglike (SQLite `:memory:`) backend.
+(These results predate the move to Go 1.26.0 — re-run to refresh.)
 
 ## Day-scaling (real customer pipeline, pglike)
 
