@@ -11,7 +11,7 @@ The browser-based model proves the banking core works end-to-end.
 
 ### Done
 
-- WASM build and deploy (statichost)
+- WASM build and deploy (docs.bytestone.uk)
 - lofigui web UI
 - go-luca double-entry accounting integration
 - RBAC infrastructure (admin role)
