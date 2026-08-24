@@ -5,7 +5,7 @@ import (
 	"math"
 	"strings"
 
-	gbp "codeberg.org/hum3/gobank-products"
+	gbp "git.bytestone.uk/hum3/gobank-products"
 )
 
 // Product wraps a gbp.Product with demo-specific UI fields.

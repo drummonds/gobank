@@ -6,7 +6,7 @@ import (
 	"strings"
 	"time"
 
-	gbp "codeberg.org/hum3/gobank-products"
+	gbp "git.bytestone.uk/hum3/gobank-products"
 )
 
 // lookupName returns the decrypted customer name from the SQL store, falling back to id.

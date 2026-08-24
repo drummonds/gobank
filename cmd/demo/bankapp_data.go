@@ -1,7 +1,7 @@
 package main
 
 import (
-	gbp "codeberg.org/hum3/gobank-products"
+	gbp "git.bytestone.uk/hum3/gobank-products"
 )
 
 // --- API response types (shared by HTML views and JSON API) ---

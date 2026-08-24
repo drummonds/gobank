@@ -7,9 +7,9 @@ import (
 	"runtime/debug"
 	"syscall/js"
 
-	luca "codeberg.org/hum3/go-luca"
-	gbp "codeberg.org/hum3/gobank-products"
-	"github.com/drummonds/lofigui"
+	luca "git.bytestone.uk/hum3/go-luca"
+	gbp "git.bytestone.uk/hum3/gobank-products"
+	"git.bytestone.uk/hum3/lofigui"
 )
 
 func init() {

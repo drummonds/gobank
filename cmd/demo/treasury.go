@@ -6,7 +6,7 @@ import (
 	"strings"
 	"time"
 
-	gbp "codeberg.org/hum3/gobank-products"
+	gbp "git.bytestone.uk/hum3/gobank-products"
 )
 
 // TreasurySnapshot holds data for treasury pages, grabbed under one lock.

@@ -12,9 +12,8 @@ import (
 	"sync"
 	"time"
 
-	gbp "codeberg.org/hum3/gobank-products"
-	"github.com/drummonds/lofigui"
-	"github.com/flosch/pongo2/v6"
+	gbp "git.bytestone.uk/hum3/gobank-products"
+	"git.bytestone.uk/hum3/lofigui"
 )
 
 var authStore = NewAuthStore(5 * time.Minute)
@@ -193,7 +192,7 @@ func main() {
 	fullPage := func(w http.ResponseWriter, r *http.Request, content string) {
 		sessID := getSessionID(w, r)
 		role := authStore.GetRole(sessID)
-		ctrl.RenderTemplate(w, pongo2.Context{
+		ctrl.RenderTemplate(w, lofigui.TemplateContext{
 			"request":         r,
 			"version":         app.Version,
 			"controller_name": ctrl.Name,
@@ -255,7 +254,7 @@ func main() {
 			return
 		}
 		// Dashboard self-manages polling via sections, so set "Stopped" to prevent #results polling
-		ctrl.RenderTemplate(w, pongo2.Context{
+		ctrl.RenderTemplate(w, lofigui.TemplateContext{
 			"request":         r,
 			"version":         app.Version,
 			"controller_name": ctrl.Name,

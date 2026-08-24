@@ -4,8 +4,8 @@ import (
 	"database/sql"
 	"log"
 
-	_ "codeberg.org/hum3/go-postgres"
-	customers "codeberg.org/hum3/gobanks-customers"
+	_ "git.bytestone.uk/hum3/go-postgres"
+	customers "git.bytestone.uk/hum3/gobanks-customers"
 	_ "github.com/jackc/pgx/v5/stdlib"
 	_ "github.com/ncruces/go-sqlite3/embed"
 )

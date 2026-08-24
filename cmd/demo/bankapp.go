@@ -7,14 +7,13 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/drummonds/lofigui"
-	"github.com/flosch/pongo2/v6"
+	"git.bytestone.uk/hum3/lofigui"
 )
 
 // registerBankAppRoutes wires up the phone UI HTML routes.
 func registerBankAppRoutes(state *DemoState, appCtrl *lofigui.Controller) {
 	appPage := func(w http.ResponseWriter, content string) {
-		appCtrl.RenderTemplate(w, pongo2.Context{
+		appCtrl.RenderTemplate(w, lofigui.TemplateContext{
 			"results": content,
 		})
 	}

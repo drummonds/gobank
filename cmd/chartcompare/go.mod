@@ -1,4 +1,4 @@
-module codeberg.org/hum3/gobank/cmd/chartcompare
+module git.bytestone.uk/hum3/gobank/cmd/chartcompare
 
 go 1.25.3
 

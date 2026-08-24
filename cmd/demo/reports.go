@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"strings"
 
-	gbp "codeberg.org/hum3/gobank-products"
+	gbp "git.bytestone.uk/hum3/gobank-products"
 )
 
 // BuildChartsHTML renders historical charts: NIM, balances, customer count, BoE rate.

@@ -7,7 +7,7 @@ import (
 	"io"
 	"net/http"
 
-	luca "codeberg.org/hum3/go-luca"
+	luca "git.bytestone.uk/hum3/go-luca"
 )
 
 func (ds *DemoState) handleExport(w http.ResponseWriter, r *http.Request) {

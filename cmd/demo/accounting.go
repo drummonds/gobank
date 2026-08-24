@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"strings"
 
-	gbp "codeberg.org/hum3/gobank-products"
+	gbp "git.bytestone.uk/hum3/gobank-products"
 )
 
 // BuildPnLHTML renders a Profit & Loss statement derived from current state.
