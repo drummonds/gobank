@@ -1,5 +1,7 @@
 remotes:
-  - origin
+  - name: origin
+    forge: forgejo
+    token_env: BYTESTONE_FORGEJO_TOKEN
   - github
 pages_build:
   - task docs:build

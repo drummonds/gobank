@@ -8,3 +8,4 @@ docs/*
 !docs/research/
 
 cmd/chartcompare/chartcompare
+task-plus.local.yaml
