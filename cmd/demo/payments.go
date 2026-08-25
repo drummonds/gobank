@@ -264,14 +264,15 @@ func (ds *DemoState) StartPayments() {
 	ds.mu.Unlock()
 
 	go func() {
-		ticker := time.NewTicker(2 * time.Second)
-		defer ticker.Stop()
+		// Self-pace (wait after completion) rather than a fixed-rate ticker —
+		// see Start(): in WASM a ticker that can't keep up starves the JS
+		// event loop and freezes the page.
 		ds.SendPayment()
 		for {
 			select {
 			case <-ctx.Done():
 				return
-			case <-ticker.C:
+			case <-time.After(2 * time.Second):
 				ds.SendPayment()
 			}
 		}

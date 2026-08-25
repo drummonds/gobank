@@ -36,6 +36,15 @@
    bumped v0.5.8 → v0.5.9.
  - Drop the deprecated ncruces/go-sqlite3/embed blank import that printed
    "you're unnecessarily importing ... embed" at startup.
+ - Fix the browser page freezing and eventually being killed by Chrome
+   (no console error) once ~100 customers were added: the simulation used
+   a fixed-rate 200ms ticker, and in WASM once advanceDay takes longer
+   than the interval the next tick is always due, the Go scheduler never
+   goes idle, and control never returns to the JS event loop — UI frozen,
+   days advancing flat-out, memory growing until the tab dies. The sim
+   (and payments) loops now self-pace: wait 200ms after each day
+   completes. Verified by driving the built wasm in headless Chrome via
+   CDP: page stays responsive with 130+ customers and stable memory.
 
 ## [0.3.39] - 2026-03-26
 

@@ -483,13 +483,17 @@ func (ds *DemoState) Start() {
 	ds.mu.Unlock()
 
 	go func() {
-		ticker := time.NewTicker(200 * time.Millisecond)
-		defer ticker.Stop()
+		// Self-pace: wait 200ms after each day completes rather than a
+		// fixed-rate ticker. In WASM a ticker deadlocks the page once
+		// advanceDay takes longer than the interval: the next tick is always
+		// already due, the Go scheduler never goes idle, and control never
+		// returns to the JS event loop — UI frozen, days advancing flat-out
+		// until the tab runs out of memory.
 		for {
 			select {
 			case <-ctx.Done():
 				return
-			case <-ticker.C:
+			case <-time.After(200 * time.Millisecond):
 				ds.advanceDay()
 			}
 		}
