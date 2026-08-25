@@ -8,8 +8,11 @@ const fs = require('fs');
 const path = require('path');
 const { webcrypto } = require('crypto');
 
-// Polyfill for wasm_exec.js
-globalThis.crypto = webcrypto;
+// Polyfill for wasm_exec.js on older Node (modern Node has a getter-only
+// globalThis.crypto that must not be assigned).
+if (typeof globalThis.crypto === 'undefined') {
+	globalThis.crypto = webcrypto;
+}
 
 const demoDir = path.resolve(process.argv[2] || path.join(__dirname, '..', '..', 'docs', 'demo'));
 require(path.join(demoDir, 'wasm_exec.js'));

@@ -36,6 +36,12 @@
    bumped v0.5.8 → v0.5.9.
  - Drop the deprecated ncruces/go-sqlite3/embed blank import that printed
    "you're unnecessarily importing ... embed" at startup.
+ - Fix a WASM deadlock ("all goroutines are asleep") when the DB explorer
+   queried while another query's rows were open: go-postgres v0.5.10 now
+   materialises query results instead of holding the shared-connection
+   lock until rows close. Pin bumped v0.5.9 → v0.5.10.
+ - Fix `task test:wasm` on modern Node: wasm_test.js/wasm_bench.js no
+   longer assign the getter-only globalThis.crypto.
  - Fix the browser page freezing and eventually being killed by Chrome
    (no console error) once ~100 customers were added: the simulation used
    a fixed-rate 200ms ticker, and in WASM once advanceDay takes longer

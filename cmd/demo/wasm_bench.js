@@ -8,7 +8,9 @@ const fs = require('fs');
 const path = require('path');
 const { webcrypto } = require('crypto');
 
-globalThis.crypto = webcrypto;
+if (typeof globalThis.crypto === "undefined") {
+	globalThis.crypto = webcrypto;
+}
 
 const demoDir = path.resolve(process.argv[2] || path.join(__dirname, '..', '..', 'docs', 'demo'));
 require(path.join(demoDir, 'wasm_exec.js'));

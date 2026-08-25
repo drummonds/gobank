@@ -155,7 +155,7 @@ func buildBoERateGraph(history []RatePoint) string {
 		if endDate.Sub(startDate).Hours() < 365*24 {
 			dateFmt = "2 Jan 06"
 		}
-		for i := 0; i < numLabels; i++ {
+		for i := range numLabels {
 			idx := i * (len(history) - 1) / (numLabels - 1)
 			x := float64(padL) + float64(chartW)*float64(idx)/float64(len(history)-1)
 			s.WriteString(fmt.Sprintf(`<text x="%.0f" y="%d" text-anchor="middle" font-size="9" fill="#7a7a7a">%s</text>`, x, svgH-5, history[idx].Date.Format(dateFmt)))

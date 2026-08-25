@@ -254,10 +254,7 @@ func xLabels(data []Point, s *strings.Builder) {
 	if len(data) < 2 {
 		return
 	}
-	numLabels := 5
-	if len(data) < numLabels {
-		numLabels = len(data)
-	}
+	numLabels := min(len(data), 5)
 	for i := 0; i < numLabels; i++ {
 		idx := i * (len(data) - 1) / (numLabels - 1)
 		x := float64(chartPadL) + float64(chartW)*float64(idx)/float64(len(data)-1)
