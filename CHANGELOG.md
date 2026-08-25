@@ -22,6 +22,12 @@
  - Fix native (server-mode) startup: layout templates still used pongo2
    syntax after lofigui's switch to html/template; results now passed as
    template.HTML.
+ - Fix "database is locked" errors under concurrent load (seen natively
+   once pool connections genuinely shared one database): go-postgres
+   v0.5.8 opens the shared temp file with immediate transactions, WAL and
+   a busy timeout, so read-then-write transactions no longer hit SQLite's
+   handler-bypassing SQLITE_BUSY deadlock-avoidance path. Pin bumped
+   v0.5.7 → v0.5.8.
 
 ## [0.3.39] - 2026-03-26
 
