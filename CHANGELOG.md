@@ -1,5 +1,19 @@
 # Changelog
 
+## [0.3.40] - 2026-08-25
+
+ - Fix daily interest postings never reaching the ledger database: demo
+   only looked up Expense:Interest / Income:Interest (relying on a
+   gobank-products EnsureInterestAccounts that does not exist), so the
+   cached account IDs stayed empty and every posting was silently skipped.
+   initLedger now creates the accounts when missing.
+ - Flush pending interest movements to SQL at each end-of-day finalize
+   (one batch per day) instead of only before export, so they show as
+   normal transactions in the DB explorer.
+ - Skip zero-pence interest movements; add regression tests.
+ - Bump gobank-products pin v0.1.8 → v0.1.9 (v0.1.8 tag pins an
+   unresolvable go-luca).
+
 ## [0.3.39] - 2026-03-26
 
  - Add RC deploy site and fix tp check warnings

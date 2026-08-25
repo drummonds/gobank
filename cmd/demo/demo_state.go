@@ -84,7 +84,7 @@ type DemoState struct {
 }
 
 // pendingMovement holds a ledger movement deferred from the hot advanceDay loop.
-// Flushed to SQL in batches before export or on demand.
+// Flushed to SQL in one batch per day at end-of-day finalize (and before export).
 type pendingMovement struct {
 	fromID, toID string
 	amount       luca.Amount
@@ -170,13 +170,31 @@ func (ds *DemoState) initLedger() {
 	ds.sim = sim
 	ds.equityAccountID = equityAcct.ID
 
-	// Cache interest account IDs (created by EnsureInterestAccounts in NewSimulation).
-	if expAcct, err := ledger.GetAccount("Expense:Interest"); err == nil && expAcct != nil {
+	// Ensure the bank-level interest accounts exist and cache their IDs.
+	// Nothing else creates them (NewSQLLedger only builds the schema), and
+	// without the IDs advanceDay silently skips every interest posting.
+	if expAcct, err := ensureLedgerAccount(ledger, "Expense:Interest"); err == nil {
 		ds.interestExpenseAcctID = expAcct.ID
+	} else {
+		log.Printf("initLedger: ensure Expense:Interest: %v", err)
 	}
-	if incAcct, err := ledger.GetAccount("Income:Interest"); err == nil && incAcct != nil {
+	if incAcct, err := ensureLedgerAccount(ledger, "Income:Interest"); err == nil {
 		ds.interestIncomeAcctID = incAcct.ID
+	} else {
+		log.Printf("initLedger: ensure Income:Interest: %v", err)
 	}
+}
+
+// ensureLedgerAccount returns the account at path, creating it if missing.
+func ensureLedgerAccount(ledger luca.Ledger, path string) (*luca.Account, error) {
+	acct, err := ledger.GetAccount(path)
+	if err != nil {
+		return nil, err
+	}
+	if acct != nil {
+		return acct, nil
+	}
+	return ledger.CreateAccount(path, "GBP", -2, 0)
 }
 
 // persistCustomer writes a customer record and PII to the SQL customer store.
@@ -312,10 +330,10 @@ func (ds *DemoState) advanceDay() {
 				totalDeposits += a.Balance
 				if interest != 0 {
 					ds.emitTx(ds.currentDay, ds.customers[ci].ID, ai, a.ProductName, TxInterestCredit, interest, a.Balance, "INT")
-					if ds.sim != nil && a.LedgerAccountID != "" && ds.interestExpenseAcctID != "" {
+					if pence := poundsToPence(interest); pence != 0 && ds.sim != nil && a.LedgerAccountID != "" && ds.interestExpenseAcctID != "" {
 						ds.pendingMovements = append(ds.pendingMovements, pendingMovement{
 							fromID: ds.interestExpenseAcctID, toID: a.LedgerAccountID,
-							amount: poundsToPence(interest), code: luca.CodeInterestAccrual,
+							amount: pence, code: luca.CodeInterestAccrual,
 							valueTime: ds.currentDay, description: "INT",
 						})
 					}
@@ -324,10 +342,10 @@ func (ds *DemoState) advanceDay() {
 				totalLoans += a.Balance
 				if interest != 0 {
 					ds.emitTx(ds.currentDay, ds.customers[ci].ID, ai, a.ProductName, TxInterestDebit, interest, a.Balance, "INT")
-					if ds.sim != nil && a.LedgerAccountID != "" && ds.interestIncomeAcctID != "" {
+					if pence := poundsToPence(interest); pence != 0 && ds.sim != nil && a.LedgerAccountID != "" && ds.interestIncomeAcctID != "" {
 						ds.pendingMovements = append(ds.pendingMovements, pendingMovement{
 							fromID: a.LedgerAccountID, toID: ds.interestIncomeAcctID,
-							amount: poundsToPence(interest), code: luca.CodeInterestAccrual,
+							amount: pence, code: luca.CodeInterestAccrual,
 							valueTime: ds.currentDay, description: "INT",
 						})
 					}
@@ -339,6 +357,12 @@ func (ds *DemoState) advanceDay() {
 
 	// Phase 2: Finalize — single lock hold for day bookkeeping
 	ds.mu.Lock()
+
+	// Flush the day's interest movements to the ledger (one batched SQL
+	// transaction per value date) so they appear in the database as normal
+	// transactions rather than waiting for an export.
+	ds.flushPendingMovements()
+
 	requiredReserves := totalDeposits * ds.settings.CapitalReserveRatio
 	cash := totalDeposits - totalLoans
 	excessCash := cash - requiredReserves
