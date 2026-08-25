@@ -28,6 +28,14 @@
    a busy timeout, so read-then-write transactions no longer hit SQLite's
    handler-bypassing SQLITE_BUSY deadlock-avoidance path. Pin bumped
    v0.5.7 → v0.5.8.
+ - Fix the browser (WASM) crash on adding customers: go-postgres's
+   single-shared-connection fallback only locked per driver call, so
+   concurrent pool "connections" interleaved statements on the one SQLite
+   connection and corrupted it (panic inside SQLite). go-postgres v0.5.9
+   holds the lock across whole transactions and open result sets; pin
+   bumped v0.5.8 → v0.5.9.
+ - Drop the deprecated ncruces/go-sqlite3/embed blank import that printed
+   "you're unnecessarily importing ... embed" at startup.
 
 ## [0.3.39] - 2026-03-26
 
