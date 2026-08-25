@@ -255,7 +255,7 @@ func xLabels(data []Point, s *strings.Builder) {
 		return
 	}
 	numLabels := min(len(data), 5)
-	for i := 0; i < numLabels; i++ {
+	for i := range numLabels {
 		idx := i * (len(data) - 1) / (numLabels - 1)
 		x := float64(chartPadL) + float64(chartW)*float64(idx)/float64(len(data)-1)
 		s.WriteString(fmt.Sprintf(`<text x="%.0f" y="%d" text-anchor="middle" font-size="9" fill="#7a7a7a">%s</text>`,
