@@ -60,7 +60,7 @@ const LayoutBankApp = `<!DOCTYPE html>
 <body>
   <div class="phone-frame">
     <div class="phone-notch"></div>
-    {{ results | safe }}
+    {{ .results }}
   </div>
 </body>
 </html>`

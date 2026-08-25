@@ -3,6 +3,7 @@
 package main
 
 import (
+	"html/template"
 	"net/http"
 	"strconv"
 	"strings"
@@ -14,7 +15,7 @@ import (
 func registerBankAppRoutes(state *DemoState, appCtrl *lofigui.Controller) {
 	appPage := func(w http.ResponseWriter, content string) {
 		appCtrl.RenderTemplate(w, lofigui.TemplateContext{
-			"results": content,
+			"results": template.HTML(content),
 		})
 	}
 

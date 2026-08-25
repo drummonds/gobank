@@ -1,7 +1,7 @@
 git.bytestone.uk/hum3/go-luca v0.2.31 h1:McXCGwxJqNNcV1ObyHSfLn0Sw+DhWNfLMQc9SMmmfy0=
 git.bytestone.uk/hum3/go-luca v0.2.31/go.mod h1:F8VzUWHG1Vm3riiHa4HW9zxQAlcTP3GaKfREwcrAFCs=
-git.bytestone.uk/hum3/go-postgres v0.5.5 h1:BKnmpHcGM3r/hmTMw+5jWG8OqGsXvW8YoKBc7PGVHZ0=
-git.bytestone.uk/hum3/go-postgres v0.5.5/go.mod h1:rAg4Pa3KpSTpcrv/takcZ7xlQpZdAKIe6jq5hx8CIUg=
+git.bytestone.uk/hum3/go-postgres v0.5.7 h1:Ae2irHcIcnaGKvRjc3pHqByhE0tHG/3l00iEXgVK59M=
+git.bytestone.uk/hum3/go-postgres v0.5.7/go.mod h1:rAg4Pa3KpSTpcrv/takcZ7xlQpZdAKIe6jq5hx8CIUg=
 git.bytestone.uk/hum3/gobank-db v0.1.3 h1:9SD5qMGUTLeTi072Fd4NAlJ3fI8oorILVdQzanpvHI0=
 git.bytestone.uk/hum3/gobank-db v0.1.3/go.mod h1:+D2TeDj5wDt49o9EPnCnaoGK+qXVKjGRUaAOhZoaaH4=
 git.bytestone.uk/hum3/gobank-products v0.1.9 h1:IJZ5a6bVEVyXz5wbagmnp+Gp7ZnjmDpWcEVntpSQ5x0=

@@ -13,6 +13,15 @@
  - Skip zero-pence interest movements; add regression tests.
  - Bump gobank-products pin v0.1.8 → v0.1.9 (v0.1.8 tag pins an
    unresolvable go-luca).
+ - Fix wasm crash when adding 100 customers: the demo DSN
+   `file::memory:` was only pool-safe for a single connection — go-postgres
+   special-cased just `:memory:`, so a second pool connection (opened when
+   dashboard polling overlaps a batch add) saw its own empty database.
+   Fixed in go-postgres v0.5.7 (all in-memory DSN spellings now share one
+   database); demo pin bumped v0.5.5 → v0.5.7, regression test added.
+ - Fix native (server-mode) startup: layout templates still used pongo2
+   syntax after lofigui's switch to html/template; results now passed as
+   template.HTML.
 
 ## [0.3.39] - 2026-03-26
 

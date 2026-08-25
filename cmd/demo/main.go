@@ -4,6 +4,7 @@ package main
 
 import (
 	"fmt"
+	"html/template"
 	"log"
 	"net"
 	"net/http"
@@ -196,7 +197,7 @@ func main() {
 			"request":         r,
 			"version":         app.Version,
 			"controller_name": ctrl.Name,
-			"results":         content,
+			"results":         template.HTML(content),
 			"polling":         simStatus(state),
 			"role":            string(role),
 		})
@@ -258,7 +259,7 @@ func main() {
 			"request":         r,
 			"version":         app.Version,
 			"controller_name": ctrl.Name,
-			"results":         content,
+			"results":         template.HTML(content),
 			"polling":         "Stopped",
 			"role":            string(role),
 		})

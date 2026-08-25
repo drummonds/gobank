@@ -56,7 +56,7 @@ const LayoutModelBank = `<!DOCTYPE html>
             <a class="navbar-item" href="/reports/customer-view">Customer View</a>
           </div>
         </div>
-        {% if role == "admin" %}
+        {{if eq .role "admin"}}
         <div class="navbar-item has-dropdown is-hoverable">
           <a class="navbar-link">Internal</a>
           <div class="navbar-dropdown">
@@ -64,7 +64,7 @@ const LayoutModelBank = `<!DOCTYPE html>
             <a class="navbar-item" href="/internal/explorer">DB Explorer</a>
           </div>
         </div>
-        {% endif %}
+        {{end}}
         <div class="navbar-item has-dropdown is-hoverable">
           <a class="navbar-link">About</a>
           <div class="navbar-dropdown">
@@ -77,20 +77,20 @@ const LayoutModelBank = `<!DOCTYPE html>
       <div class="navbar-end">
         <div class="navbar-item">
           <form action="/role" method="post" hx-boost="false">
-            <input type="hidden" name="redirect" value="{{ request.URL.Path }}">
+            <input type="hidden" name="redirect" value="{{ .request.URL.Path }}">
             <div class="select is-small">
               <select name="role" onchange="this.form.submit()">
-                <option value="admin"{% if role == "admin" %} selected{% endif %}>Admin</option>
-                <option value="auditor"{% if role == "auditor" %} selected{% endif %}>Auditor</option>
-                <option value="cs"{% if role == "cs" %} selected{% endif %}>Customer Service</option>
-                <option value="readonly"{% if role == "readonly" %} selected{% endif %}>Read Only</option>
+                <option value="admin"{{if eq .role "admin"}} selected{{end}}>Admin</option>
+                <option value="auditor"{{if eq .role "auditor"}} selected{{end}}>Auditor</option>
+                <option value="cs"{{if eq .role "cs"}} selected{{end}}>Customer Service</option>
+                <option value="readonly"{{if eq .role "readonly"}} selected{{end}}>Read Only</option>
               </select>
             </div>
           </form>
         </div>
         <a class="navbar-item" href="/app/" target="_blank">Bank App</a>
         <div class="navbar-item">
-          <span class="tag {% if polling == "Running" %}is-warning{% else %}is-success{% endif %}">{{ polling }}</span>
+          <span class="tag {{if eq .polling "Running"}}is-warning{{else}}is-success{{end}}">{{ .polling }}</span>
         </div>
       </div>
     </div>
@@ -98,16 +98,16 @@ const LayoutModelBank = `<!DOCTYPE html>
   <section class="section">
     <div class="container">
       <div id="results"
-        {% if polling == "Running" %}
-        hx-get="{{ request.URL.Path }}" hx-trigger="every 1s" hx-swap="innerHTML"
-        {% endif %}
-      >{{ results | safe }}</div>
+        {{if eq .polling "Running"}}
+        hx-get="{{ .request.URL.Path }}" hx-trigger="every 1s" hx-swap="innerHTML"
+        {{end}}
+      >{{ .results }}</div>
     </div>
   </section>
   <style>.dash-box{min-height:4.5rem}</style>
   <footer class="footer">
     <div class="content has-text-centered">
-      <p>{{ version }}</p>
+      <p>{{ .version }}</p>
     </div>
   </footer>
   <script>
