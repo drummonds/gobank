@@ -1,4 +1,5 @@
-# Changelog
+# Changelog## [0.3.42] - 2026-08-26
+
 ## [0.3.42] - 2026-08-26
 
  - The database now carries complete interest state: every simulated day
