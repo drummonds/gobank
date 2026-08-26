@@ -8,6 +8,7 @@ import (
 	"math"
 	"math/rand"
 	"runtime"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -939,40 +940,46 @@ func buildBalanceChartSVG(history []BalancePoint) string {
 	return s.String()
 }
 
-// buildCustomerChartSVG renders a standalone SVG customer count chart using go-analyze/charts.
+// buildCustomerChartSVG renders a standalone SVG customer count chart using go-analyze/charts
+// (local fork adding XAxisOption.CustomTicks for calendar-aware tick marks).
 func buildCustomerChartSVG(history []CustomerPoint) string {
 	if len(history) == 0 {
 		return ""
 	}
 
-	// Build data and labels
 	values := make([]float64, len(history))
-	labels := make([]string, len(history))
+	minCount, maxCount := history[0].Count, history[0].Count
 	for i, cp := range history {
 		values[i] = float64(cp.Count)
-		labels[i] = cp.Date.Format("Jan 06")
-	}
-
-	// Thin labels to max ~6
-	if len(labels) > 6 {
-		step := len(labels) / 6
-		for i := range labels {
-			if i%step != 0 && i != len(labels)-1 {
-				labels[i] = ""
-			}
+		if cp.Count < minCount {
+			minCount = cp.Count
+		}
+		if cp.Count > maxCount {
+			maxCount = cp.Count
 		}
 	}
+	yMin, yMax, yLabels := integerYAxis(minCount, maxCount)
+	xTicks := timeAxisTicks(history[0].Date, history[len(history)-1].Date)
 
 	p, err := charts.LineRender(
 		[][]float64{values},
 		charts.SVGOutputOptionFunc(),
 		charts.DimensionsOptionFunc(660, 180),
-		charts.XAxisLabelsOptionFunc(labels),
 		charts.LegendOptionFunc(charts.LegendOption{Show: new(false)}),
-		charts.PaddingOptionFunc(charts.Box{Left: 60, Right: 10, Top: 10, Bottom: 10, IsSet: true}),
+		charts.PaddingOptionFunc(charts.Box{Left: 60, Right: 40, Top: 10, Bottom: 5, IsSet: true}),
 		func(opt *charts.ChartOption) {
 			opt.Symbol = charts.SymbolNone
 			opt.LineStrokeWidth = 2
+			opt.XAxis.BoundaryGap = new(false)
+			opt.XAxis.CustomTicks = xTicks
+			opt.YAxis = []charts.YAxisOption{{
+				Min:        new(yMin),
+				Max:        new(yMax),
+				LabelCount: yLabels,
+				ValueFormatter: func(f float64) string {
+					return strconv.Itoa(int(math.Round(f)))
+				},
+			}}
 		},
 	)
 	if err != nil {
