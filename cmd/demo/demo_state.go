@@ -81,11 +81,14 @@ type DemoState struct {
 	interestExpenseAcctID string
 	interestIncomeAcctID  string
 	pendingMovements      []pendingMovement // deferred ledger writes
+	flushMu               sync.Mutex        // serializes ledger movement writers; never held with ds.mu waits inside
 	memoryExceeded        bool              // true when heap > 800MB (WASM safety)
 }
 
 // pendingMovement holds a ledger movement deferred from the hot advanceDay loop.
-// Flushed to SQL in one batch per day at end-of-day finalize (and before export).
+// Written to SQL at end of day in small chunks WITHOUT holding ds.mu, so the
+// dashboard stays responsive however many accounts accrue interest (and flushed
+// inline before export).
 type pendingMovement struct {
 	fromID, toID string
 	amount       luca.Amount
@@ -359,10 +362,10 @@ func (ds *DemoState) advanceDay() {
 	// Phase 2: Finalize — single lock hold for day bookkeeping
 	ds.mu.Lock()
 
-	// Flush the day's interest movements to the ledger (one batched SQL
-	// transaction per value date) so they appear in the database as normal
-	// transactions rather than waiting for an export.
-	ds.flushPendingMovements()
+	// Take the day's interest movements now; they are written to the ledger
+	// after the lock is released so the write cost never blocks readers.
+	dayMovements := ds.takePendingMovements()
+	sim := ds.sim
 
 	requiredReserves := totalDeposits * ds.settings.CapitalReserveRatio
 	cash := totalDeposits - totalLoans
@@ -430,26 +433,48 @@ func (ds *DemoState) advanceDay() {
 	}
 
 	ds.mu.Unlock()
+
+	// Write the day's interest movements without holding ds.mu, chunked so
+	// that on WASM the single-threaded page can breathe between chunks.
+	ds.writeMovements(sim, dayMovements, runtime.GOOS == "js")
 }
 
 func (ds *DemoState) AdvanceDay() {
 	ds.advanceDay()
 }
 
-// flushPendingMovements writes deferred interest movements to the ledger.
+// movementFlushChunk bounds movements per ledger transaction so each write
+// (and, on WASM, each stretch between event-loop yields) stays around 10ms.
+const movementFlushChunk = 32
+
+// takePendingMovements swaps out the queued movements in O(1).
 // Must be called with ds.mu held.
-func (ds *DemoState) flushPendingMovements() {
-	if ds.sim == nil || len(ds.pendingMovements) == 0 {
+func (ds *DemoState) takePendingMovements() []pendingMovement {
+	pms := ds.pendingMovements
+	ds.pendingMovements = nil
+	return pms
+}
+
+// writeMovements records taken movements to the ledger in chunks of
+// movementFlushChunk per transaction. Must be called WITHOUT ds.mu held so
+// dashboard reads proceed while writing; ds.flushMu serializes writers, and
+// taking it when pms is empty still waits out any in-flight writer.
+// With yieldBetween (WASM), it sleeps briefly between chunks so the browser
+// event loop can run.
+func (ds *DemoState) writeMovements(sim *gbp.Simulation, pms []pendingMovement, yieldBetween bool) {
+	ds.flushMu.Lock()
+	defer ds.flushMu.Unlock()
+	if sim == nil || len(pms) == 0 {
 		return
 	}
-	// Group by date so each RecordLinkedMovements call shares one value_time.
+	// Group by date so movements in a chunk share one value_time.
 	type batch struct {
 		valueTime time.Time
 		inputs    []luca.MovementInput
 	}
 	var batches []batch
 	batchIdx := make(map[time.Time]int)
-	for _, pm := range ds.pendingMovements {
+	for _, pm := range pms {
 		idx, ok := batchIdx[pm.valueTime]
 		if !ok {
 			idx = len(batches)
@@ -465,11 +490,24 @@ func (ds *DemoState) flushPendingMovements() {
 		})
 	}
 	for _, b := range batches {
-		if _, err := ds.sim.Ledger.RecordLinkedMovements(b.inputs, b.valueTime); err != nil {
-			log.Printf("flushPendingMovements: %v", err)
+		for start := 0; start < len(b.inputs); start += movementFlushChunk {
+			end := min(start+movementFlushChunk, len(b.inputs))
+			if _, err := sim.Ledger.RecordLinkedMovements(b.inputs[start:end], b.valueTime); err != nil {
+				log.Printf("writeMovements: %v", err)
+			}
+			if yieldBetween && end < len(b.inputs) {
+				time.Sleep(time.Millisecond)
+			}
 		}
 	}
-	ds.pendingMovements = ds.pendingMovements[:0]
+}
+
+// flushPendingMovements synchronously writes any queued movements and waits
+// out any in-flight background writer, so the ledger DB is complete on return.
+// Must be called with ds.mu held; used on export paths where the queue is
+// small (advanceDay drains it every day).
+func (ds *DemoState) flushPendingMovements() {
+	ds.writeMovements(ds.sim, ds.takePendingMovements(), false)
 }
 
 func (ds *DemoState) Start() {
