@@ -1,6 +1,28 @@
 # Changelog
 ## [0.3.41] - 2026-08-26
 
+ - Interest now runs on the gobank-products v0.1.10 engine: exact integer
+   daily accrual in memory (numerator over 10,000 × 365, remainder carried
+   — sub-penny interest is never lost) with one application movement per
+   account at month end. Balances step up monthly; reports include
+   accrued-but-unapplied interest. The demo's own float64 interest loop
+   and pending-movement flusher are gone.
+ - Blanket prohibition on float64 for money storage: all money is integer
+   minor units (luca.Amount) across accounts, payments, tx log, histories,
+   dashboards, treasury/gilts, P&L and the bank-app JSON (now *_minor
+   fields). fmtMoney takes pence, fixing its rounding-carry bug.
+   TestNoFloatMoneyStorage guards against regressions.
+ - Performance: a simulated day at 10k accounts drops from ~3.1s to ~5ms
+   (end-of-day sweep is query-free); WASM full-year integration run drops
+   19.3s → 2.0s. Month-end application sweeps are paced on WASM so the
+   page stays responsive; daily interest ledger writes no longer hold the
+   state lock (worst-case dashboard lock wait ~2.7s → under 2ms).
+ - Customer Count chart: integer y-axis labels; x-axis with pinned
+   YYYY-mm-dd end labels, calendar-boundary mid labels and day/week/month
+   minor tick marks (via a local go-analyze/charts fork adding
+   XAxisOption.CustomTicks); collision handling so date labels never
+   overlap, regression-scanned across 1500 spans.
+
 ## [0.3.40] - 2026-08-25
 
  - Fix daily interest postings never reaching the ledger database: demo
