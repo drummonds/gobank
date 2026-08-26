@@ -65,27 +65,55 @@ func timeAxisTicks(t0, t1 time.Time) []charts.CustomTick {
 		labelUnit = calYear
 	}
 
-	ticks := []charts.CustomTick{{Position: 0, Label: t0.Format(chartDateFormat)}}
-
-	// Mid labels at calendar boundaries, thinned to at most 4 and kept clear
-	// of the pinned end labels.
+	// Mid labels at calendar boundaries, thinned to at most 4.
 	var mids []time.Time
 	for t := nextBoundary(t0, labelUnit); t.Before(t1); t = nextBoundary(t, labelUnit) {
 		mids = append(mids, t)
 	}
 	labelStep := (len(mids) + 3) / 4
-	// The pinned end labels are ~60px wide on a ~560px axis and mid labels are
-	// centered, so anything within ~20% of an end would crowd or collide with it.
-	const endGuard = 0.20
+
+	// Collision handling in approximate pixel space. End labels are preferred,
+	// but when a calendar boundary lands essentially on top of an end the
+	// boundary label wins and the end label is dropped (the renderer clamps
+	// the boundary label to the axis edge).
+	const (
+		axisPx      = 520.0           // approximate plot width of the 660px-wide chart
+		labelPx     = 70.0            // ~10-char YYYY-mm-dd label width
+		crowdPx     = labelPx*1.5 + 6 // mid centered this close to an end overlaps its label
+		veryClosePx = labelPx * 0.6   // effectively coincident; the boundary label wins
+	)
+	showStart, showEnd := true, true
+	var midTicks []charts.CustomTick
 	for i, t := range mids {
 		if i%labelStep != 0 {
 			continue
 		}
-		if f := frac(t); f >= endGuard && f <= 1-endGuard {
-			ticks = append(ticks, charts.CustomTick{Position: f, Label: t.Format(chartDateFormat)})
+		f := frac(t)
+		fromStart := f * axisPx
+		fromEnd := (1 - f) * axisPx
+		switch {
+		case fromStart < veryClosePx:
+			showStart = false
+		case fromEnd < veryClosePx:
+			showEnd = false
+		case fromStart < crowdPx || fromEnd < crowdPx:
+			continue // would crowd a pinned end label
 		}
+		midTicks = append(midTicks, charts.CustomTick{Position: f, Label: t.Format(chartDateFormat)})
 	}
-	ticks = append(ticks, charts.CustomTick{Position: 1, Label: t1.Format(chartDateFormat)})
+
+	startTick := charts.CustomTick{Position: 0}
+	if showStart {
+		startTick.Label = t0.Format(chartDateFormat)
+	}
+	endTick := charts.CustomTick{Position: 1}
+	if showEnd {
+		endTick.Label = t1.Format(chartDateFormat)
+	}
+	ticks := make([]charts.CustomTick, 0, len(midTicks)+2)
+	ticks = append(ticks, startTick)
+	ticks = append(ticks, midTicks...)
+	ticks = append(ticks, endTick)
 	labeled := make([]float64, 0, len(ticks))
 	for _, t := range ticks {
 		labeled = append(labeled, t.Position)

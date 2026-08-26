@@ -46,24 +46,22 @@ func TestTimeAxisTicks(t *testing.T) {
 				}
 			}
 		}
-		if ticks[0].Position != 0 || ticks[0].Label != "2026-01-15" {
-			t.Errorf("%dd: first tick = %+v, want pinned start label", days, ticks[0])
+		if ticks[0].Position != 0 {
+			t.Errorf("%dd: first tick = %+v, want position 0", days, ticks[0])
 		}
-		wantLast := t1.Format(chartDateFormat)
-		foundLast := false
-		for _, tick := range ticks {
-			if tick.Position == 1 && tick.Label == wantLast {
-				foundLast = true
-			}
-		}
-		if !foundLast {
-			t.Errorf("%dd: no pinned end label %q", days, wantLast)
-		}
-		// mid labels stay clear of the pinned end labels
+		// each end is anchored by a label at or essentially at the edge:
+		// either the pinned end date or a near-coincident calendar boundary
+		startAnchored, endAnchored := false, false
 		for _, f := range labeled {
-			if f != 0 && f != 1 && (f < 0.2 || f > 0.8) {
-				t.Errorf("%dd: mid label at %v inside end guard", days, f)
+			if f <= 0.1 {
+				startAnchored = true
 			}
+			if f >= 0.9 {
+				endAnchored = true
+			}
+		}
+		if !startAnchored || !endAnchored {
+			t.Errorf("%dd: axis ends not anchored by labels (start %v, end %v)", days, startAnchored, endAnchored)
 		}
 		if len(labeled) > 6 {
 			t.Errorf("%dd: %d labels, want <= 6", days, len(labeled))
