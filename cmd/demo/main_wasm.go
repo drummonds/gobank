@@ -336,8 +336,12 @@ func goRenderExplorerTable(this js.Value, args []js.Value) any {
 	if len(args) > 3 {
 		dir = args[3].String()
 	}
+	trunc := false
+	if len(args) > 4 {
+		trunc = args[4].Truthy()
+	}
 	lofigui.Reset()
-	lofigui.HTML(state.BuildExplorerTableHTML(name, page, sort, dir))
+	lofigui.HTML(state.BuildExplorerTableHTML(name, page, sort, dir, trunc))
 	return js.ValueOf(lofigui.Buffer())
 }
 
@@ -391,7 +395,7 @@ func goIsMemoryExceeded(this js.Value, args []js.Value) any {
 
 func goRenderBankAppLogin(this js.Value, args []js.Value) any {
 	lofigui.Reset()
-	lofigui.HTML(wrapPhoneFrame(state.buildAppLoginHTML()))
+	lofigui.HTML(wrapPhoneFrame(state.buildAppLoginHTML(false)))
 	return js.ValueOf(lofigui.Buffer())
 }
 

@@ -42,9 +42,11 @@ func phoneNav(custID, activeTab string) string {
 
 // --- Screen builders ---
 
-func (ds *DemoState) buildAppLoginHTML() string {
-	customers := ds.bankAppCustomerList()
-
+// buildAppLoginHTML renders the mock login screen. It deliberately shows no
+// customer data: like a real internet-banking front door, entry requires a
+// customer ID (any password — this is a model). notFound shows an error after
+// a failed login attempt.
+func (ds *DemoState) buildAppLoginHTML(notFound bool) string {
 	var s strings.Builder
 	s.WriteString(`<div class="phone-header" style="padding:24px 16px 20px;text-align:center">`)
 	s.WriteString(`<div style="width:56px;height:56px;border-radius:50%;background:rgba(255,255,255,0.2);margin:0 auto 8px;display:flex;align-items:center;justify-content:center;font-size:1.8rem">&#127974;</div>`)
@@ -53,24 +55,21 @@ func (ds *DemoState) buildAppLoginHTML() string {
 	s.WriteString(`</div>`)
 	s.WriteString(`<div class="phone-body">`)
 
-	if len(customers) == 0 {
-		s.WriteString(`<p style="color:#7a7a7a;text-align:center;margin-top:2rem">No customers yet. Start the simulation in the admin dashboard.</p>`)
-	} else {
-		// Quick-access customer cards (skip login form in WASM — just show customer list)
-		limit := min(len(customers), 50)
-		for _, c := range customers[:limit] {
-			fmt.Fprintf(&s, `<a href="/app/customer/%s" style="display:block;text-decoration:none;color:inherit;margin-bottom:8px">
-  <div style="background:#f5f5f5;border-radius:10px;padding:12px 16px;display:flex;align-items:center">
-    <div style="width:36px;height:36px;border-radius:50%%;background:#00947e;color:#fff;display:flex;align-items:center;justify-content:center;font-weight:bold;font-size:0.9rem;margin-right:12px">%s</div>
-    <div style="flex:1"><strong>%s</strong><br><span style="font-size:0.75rem;color:#7a7a7a">%s</span></div>
-    <span style="color:#b5b5b5;font-size:1.2rem">&#8250;</span>
-  </div>
-</a>`, c.ID, string(c.Name[0]), c.Name, c.ID)
-		}
-		if len(customers) > limit {
-			fmt.Fprintf(&s, `<p style="color:#7a7a7a;text-align:center;font-size:0.8rem">Showing %d of %d customers</p>`, limit, len(customers))
-		}
+	if notFound {
+		s.WriteString(`<div style="background:#feecf0;color:#cc0f35;border-radius:10px;padding:10px 14px;font-size:0.8rem;margin-bottom:12px">Unknown customer ID. Check the ID and try again.</div>`)
 	}
+
+	s.WriteString(`<form method="POST" action="/app/login" style="margin-top:1rem">
+  <label style="display:block;font-size:0.75rem;color:#7a7a7a;margin-bottom:4px">Customer ID</label>
+  <input name="customer_id" placeholder="e.g. cust-001" required autocomplete="off"
+    style="width:100%;padding:10px 14px;border:1px solid #dbdbdb;border-radius:10px;font-size:0.9rem;margin-bottom:12px">
+  <label style="display:block;font-size:0.75rem;color:#7a7a7a;margin-bottom:4px">Password</label>
+  <input type="password" name="password" placeholder="Password"
+    style="width:100%;padding:10px 14px;border:1px solid #dbdbdb;border-radius:10px;font-size:0.9rem;margin-bottom:16px">
+  <button type="submit"
+    style="width:100%;padding:12px;border:none;border-radius:10px;background:#00947e;color:#fff;font-weight:bold;font-size:0.95rem;cursor:pointer">Log in</button>
+</form>`)
+	s.WriteString(`<p style="color:#b5b5b5;text-align:center;font-size:0.7rem;margin-top:1.5rem">Model bank: any password is accepted.<br>Customer IDs are listed on the admin Customers page.</p>`)
 	s.WriteString(`</div>`)
 	return s.String()
 }

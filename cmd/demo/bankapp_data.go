@@ -64,6 +64,18 @@ type apiProductDetail struct {
 
 const txPerPage = 20
 
+// customerExists reports whether a customer with the given ID exists.
+func (ds *DemoState) customerExists(id string) bool {
+	ds.mu.Lock()
+	defer ds.mu.Unlock()
+	for i := range ds.customers {
+		if ds.customers[i].ID == id {
+			return true
+		}
+	}
+	return false
+}
+
 func (ds *DemoState) bankAppCustomerList() []apiCustomer {
 	ds.mu.Lock()
 	customers := make([]CustomerRecord, len(ds.customers))

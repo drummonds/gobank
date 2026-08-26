@@ -736,7 +736,8 @@ func main() {
 		}
 		sort := r.URL.Query().Get("sort")
 		dir := r.URL.Query().Get("dir")
-		content := state.BuildExplorerTableHTML(name, page, sort, dir)
+		trunc := r.URL.Query().Get("trunc") == "1"
+		content := state.BuildExplorerTableHTML(name, page, sort, dir, trunc)
 		if serveHTMX(w, r, content) {
 			return
 		}

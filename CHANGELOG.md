@@ -1,4 +1,29 @@
 # Changelog
+## [0.3.42] - 2026-08-26
+
+ - The database now carries complete interest state: every simulated day
+   the per-account accrual numerators (and the BoE accumulator) persist
+   to a new accrual_state table, written off the state locks. An
+   accrued_pounds_e7 column models each accrual as 7dp pounds (integer
+   fixed point, rounded from the exact numerator; the pence conversion
+   truncates, matching engine application). refreshFromLedger rehydrates
+   engine numerators, account mirrors and BoE state after an import.
+ - Daily accruals are visible in the ledger: newly accrued whole pence
+   post daily (code LDAS:FTDP:ACRU) from Expense:Interest /
+   Income:Interest into AccruedInterest holding accounts, reversed on
+   month-end application so net P&L stays exactly the engine's.
+ - BoE reserve interest is modelled in accounts: Income:Interest:BoE
+   accrues daily into Asset:AccruedInterest:BoE and is received into
+   Asset:BoEReserves at month end; reports show applied plus accrued.
+ - Customer report shows accrued-but-unapplied interest at 7dp pounds
+   alongside applied interest.
+ - DB explorer: per-table option to truncate ID/text cells to 10 chars
+   with the full value as hover tooltip (?trunc=1), persisted across
+   sort and pagination links.
+ - Bank app front door no longer lists every customer: /app/ is a mock
+   login screen (customer ID plus any password) and unknown IDs are
+   rejected; customer names no longer appear pre-login.
+
 ## [0.3.41] - 2026-08-26
 
  - Interest now runs on the gobank-products v0.1.10 engine: exact integer

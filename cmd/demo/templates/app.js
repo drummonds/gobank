@@ -50,6 +50,7 @@ let detailTxPage = 1; // transaction page for customer detail, or explorer page
 let detailAccountIdx = -1; // account index for customer-account page
 let detailSort = ''; // explorer sort column
 let detailDir = 'asc'; // explorer sort direction
+let detailTrunc = false; // explorer: truncate ID/text cells to 10 chars
 
 // --- Page rendering ---
 
@@ -105,7 +106,7 @@ function renderPage() {
             break;
         case 'explorer-table':
             if (typeof goRenderExplorerTable === 'function' && detailId)
-                outputDiv.innerHTML = goRenderExplorerTable(detailId, detailTxPage, detailSort, detailDir);
+                outputDiv.innerHTML = goRenderExplorerTable(detailId, detailTxPage, detailSort, detailDir, detailTrunc);
             break;
         case 'charts':
             if (typeof goRenderCharts === 'function') outputDiv.innerHTML = goRenderCharts();
@@ -226,6 +227,7 @@ function attachDetailLinks() {
             detailTxPage = parseInt(params.get('page')) || 1;
             detailSort = params.get('sort') || '';
             detailDir = params.get('dir') || 'asc';
+            detailTrunc = params.get('trunc') === '1';
             showPage('explorer-table');
         });
     });
@@ -270,6 +272,16 @@ function attachDetailLinks() {
         a.addEventListener('click', function(e) {
             e.preventDefault();
             showPage('bankapp-login');
+        });
+    });
+    // Bank app mock login form
+    outputDiv.querySelectorAll('form[action="/app/login"]').forEach(function(form) {
+        form.addEventListener('submit', function(e) {
+            e.preventDefault();
+            var id = form.querySelector('[name="customer_id"]').value.trim();
+            if (!id) return;
+            detailId = id;
+            showPage('bankapp-balance'); // shows "Customer not found" for a bad ID
         });
     });
     // PII auth links
@@ -321,6 +333,7 @@ function showPage(page) {
         detailAccountIdx = -1;
         detailSort = '';
         detailDir = 'asc';
+        detailTrunc = false;
     }
 
     // Update active nav

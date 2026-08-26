@@ -193,9 +193,15 @@ func (ds *DemoState) BuildCustomerViewHTML(id string, piiAuthorized bool) string
 		if a.Family == gbp.FamilyLending {
 			familyTag = `<span class="tag is-info is-light">Lending</span>`
 		}
+		interestCell := fmtMoney(a.Interest)
+		if a.AccruedE7 != 0 {
+			// Accrued-but-unapplied interest modelled as 7dp pounds; it
+			// converts to whole pence on application.
+			interestCell += fmt.Sprintf(` <span class="has-text-grey is-size-7">+%s accruing</span>`, a.AccruedE7)
+		}
 		s.WriteString(fmt.Sprintf(`<tr>
   <td>%s</td><td>%s</td><td>%.1f%%</td><td>%s</td><td>%s</td><td>%s</td>
-</tr>`, a.ProductName, familyTag, a.Rate*100, fmtMoney(a.Balance), fmtMoney(a.Interest), a.OpenDate.Format("2 Jan 2006")))
+</tr>`, a.ProductName, familyTag, a.Rate*100, fmtMoney(a.Balance), interestCell, a.OpenDate.Format("2 Jan 2006")))
 	}
 	s.WriteString(`</tbody></table></div>`)
 

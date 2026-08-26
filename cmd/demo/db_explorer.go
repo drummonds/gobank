@@ -114,8 +114,33 @@ func (ds *DemoState) BuildExplorerHTML() string {
 	return s.String()
 }
 
-// BuildExplorerTableHTML renders the detail view for a single table: schema, FKs, indexes, and paginated data.
-func (ds *DemoState) BuildExplorerTableHTML(name string, page int, sort string, dir string) string {
+// truncLen is the display length string/ID cell values are cut to when the
+// explorer's truncate option is on; the full value stays in the hover tooltip.
+const truncLen = 10
+
+// truncCell renders one data cell. With trunc on, string and []byte values
+// longer than truncLen display as a prefix plus an ellipsis, keeping the full
+// value in the title attribute. Other types (numbers, times) are never cut.
+func truncCell(v any, trunc bool) string {
+	full := fmt.Sprintf("%v", v)
+	if trunc {
+		var isText bool
+		switch v.(type) {
+		case string, []byte:
+			isText = true
+		}
+		if isText && len([]rune(full)) > truncLen {
+			short := string([]rune(full)[:truncLen])
+			return fmt.Sprintf(`<td title="%s">%s&hellip;</td>`, html.EscapeString(full), html.EscapeString(short))
+		}
+	}
+	return fmt.Sprintf(`<td>%s</td>`, html.EscapeString(full))
+}
+
+// BuildExplorerTableHTML renders the detail view for a single table: schema,
+// FKs, indexes, and paginated data. trunc shortens ID/text cells to truncLen
+// characters and is carried through sort/pagination links as ?trunc=1.
+func (ds *DemoState) BuildExplorerTableHTML(name string, page int, sort string, dir string, trunc bool) string {
 	db := ds.DB()
 	var s strings.Builder
 
@@ -281,8 +306,27 @@ func (ds *DemoState) BuildExplorerTableHTML(name string, page int, sort string, 
 	}
 	offset := (page - 1) * pageSize
 
+	truncParam := ""
+	if trunc {
+		truncParam = "&trunc=1"
+	}
+	sortParams := ""
+	if sort != "" {
+		sortParams = fmt.Sprintf("&sort=%s&dir=%s", sort, dir)
+	}
+
 	s.WriteString(`<div class="box">`)
 	s.WriteString(fmt.Sprintf(`<h3 class="title is-5">Data (%d rows)</h3>`, totalRows))
+
+	// Truncation toggle, preserving page and sort in the link.
+	toggleLabel := "Truncate IDs/text to 10 chars"
+	toggleParam := "&trunc=1"
+	if trunc {
+		toggleLabel = "Show full values"
+		toggleParam = ""
+	}
+	s.WriteString(fmt.Sprintf(`<p class="mb-3"><a class="button is-small" href="/internal/explorer/%s?page=%d%s%s">%s</a></p>`,
+		name, page, sortParams, toggleParam, toggleLabel))
 
 	// Build query
 	query := fmt.Sprintf(`SELECT * FROM "%s"`, name)
@@ -306,7 +350,7 @@ func (ds *DemoState) BuildExplorerTableHTML(name string, page int, sort string, 
 		s.WriteString(`<thead><tr>`)
 
 		// Build base URL for sort links
-		baseURL := fmt.Sprintf("/internal/explorer/%s?page=%d", name, page)
+		baseURL := fmt.Sprintf("/internal/explorer/%s?page=%d%s", name, page, truncParam)
 		for _, col := range cols {
 			newDir := "asc"
 			arrow := ""
@@ -334,7 +378,7 @@ func (ds *DemoState) BuildExplorerTableHTML(name string, page int, sort string, 
 			if dataRows.Scan(ptrs...) == nil {
 				s.WriteString(`<tr>`)
 				for _, v := range vals {
-					s.WriteString(fmt.Sprintf(`<td>%s</td>`, html.EscapeString(fmt.Sprintf("%v", v))))
+					s.WriteString(truncCell(v, trunc))
 				}
 				s.WriteString(`</tr>`)
 				rowCount++
@@ -346,12 +390,9 @@ func (ds *DemoState) BuildExplorerTableHTML(name string, page int, sort string, 
 		}
 	}
 
-	// Pagination
+	// Pagination — carry sort and trunc options across pages.
 	if totalPages > 1 {
-		sortParams := ""
-		if sort != "" {
-			sortParams = fmt.Sprintf("&sort=%s&dir=%s", sort, dir)
-		}
+		sortParams += truncParam
 		s.WriteString(`<nav class="pagination is-small mt-4" role="navigation">`)
 		if page > 1 {
 			s.WriteString(fmt.Sprintf(`<a class="pagination-previous" href="/internal/explorer/%s?page=%d%s">Previous</a>`,

@@ -78,6 +78,16 @@ type DemoState struct {
 	sim                 *gbp.Simulation
 	simClock            *gbp.SimClock
 	equityAccountID     string
+	accrualPosted       map[string]int64 // pence posted to AccruedInterest per account, not yet reversed (simMu)
+	expenseInterestID   string           // ledger IDs for accrual movements, resolved lazily (simMu)
+	incomeInterestID    string
+	accrSavingsID       string
+	accrLendingID       string
+	incomeBoEID         string
+	accrBoEID           string
+	boeReservesID       string
+	boePostedPence      int64       // whole pence of BoE accrual posted to the ledger, not yet applied (mu)
+	boeInterestApplied  luca.Amount // cumulative BoE interest applied into Asset:BoEReserves (mu)
 	simMu               sync.Mutex // serializes mutations of ds.sim in-memory state (engine sweeps vs payments)
 	memoryExceeded      bool       // true when heap > 800MB (WASM safety)
 }
@@ -137,6 +147,16 @@ func NewDemoStateWithDSN(dsn string) *DemoState {
 
 // initLedger creates a go-luca ledger sharing ds.db and gbp simulation.
 func (ds *DemoState) initLedger() {
+	ds.accrualPosted = nil
+	ds.expenseInterestID = ""
+	ds.incomeInterestID = ""
+	ds.accrSavingsID = ""
+	ds.accrLendingID = ""
+	ds.incomeBoEID = ""
+	ds.accrBoEID = ""
+	ds.boeReservesID = ""
+	ds.boePostedPence = 0
+	ds.boeInterestApplied = 0
 	ledger, err := luca.NewSQLLedger(ds.db)
 	if err != nil {
 		log.Printf("initLedger: open ledger: %v", err)
@@ -299,8 +319,11 @@ func (ds *DemoState) lendingHeadroom() luca.Amount {
 
 // advanceDay advances one simulated day. Interest is handled by the
 // gobank-products engine: exact daily accrual in memory, applied to accounts
-// as ledger movements at month end. The engine sweep runs without holding
-// ds.mu so dashboard reads stay responsive throughout.
+// as ledger movements at month end. The demo additionally posts each day's
+// whole accrued pence into AccruedInterest holding accounts (see
+// postAccrualMovements) and persists the exact numerators to accrual_state.
+// The engine sweep runs without holding ds.mu so dashboard reads stay
+// responsive throughout.
 // Must be called WITHOUT ds.mu held.
 func (ds *DemoState) advanceDay() {
 	ds.mu.Lock()
@@ -314,9 +337,24 @@ func (ds *DemoState) advanceDay() {
 
 	// Phase 1: products engine end-of-day (and month-end application) —
 	// no ds.mu held; simMu serializes against payments touching sim state.
+	var accrualRows []accrualRow
 	if sim != nil {
 		ds.simMu.Lock()
-		_, err := sim.AdvanceToDate(day)
+		updates, err := sim.AdvanceToDate(day)
+		ds.postAccrualMovements(updates)
+		// Snapshot each swept account's numerator while simMu still guards
+		// engine state: on month-end days the update's recorded numerator is
+		// pre-application, so read the live post-application value instead.
+		seen := make(map[string]bool)
+		for _, du := range updates {
+			for _, au := range du.Accounts {
+				id := au.Account.Account.ID
+				if !seen[id] {
+					seen[id] = true
+					accrualRows = append(accrualRows, accrualRow{id: id, numerator: au.Account.AccruedNumerator})
+				}
+			}
+		}
 		ds.simMu.Unlock()
 		if err != nil {
 			log.Printf("advanceDay: products engine: %v", err)
@@ -350,6 +388,7 @@ func (ds *DemoState) advanceDay() {
 						ds.emitTx(day, cust.ID, ai, a.ProductName, txType, amt, a.Balance, "INT")
 					}
 					a.Accrued = ma.AccruedInterest()
+					a.AccruedE7 = accrualPoundsE7(ma.AccruedNumerator)
 				}
 			}
 			if a.Family == gbp.FamilySavings {
@@ -367,6 +406,7 @@ func (ds *DemoState) advanceDay() {
 		// Exact BoE interest accrual: numerator over gbp.AccrualDenominator.
 		ds.boeAccruedNumerator += int64(excessCash) * int64(math.Round(ds.settings.BoEBaseRate*10_000))
 	}
+	ds.postBoEInterest(day)
 
 	ds.currentDay = ds.currentDay.AddDate(0, 0, 1)
 	ds.dayCount++
@@ -426,7 +466,233 @@ func (ds *DemoState) advanceDay() {
 		}
 	}
 
+	boeNumerator := ds.boeAccruedNumerator
+	db := ds.db
 	ds.mu.Unlock()
+
+	// Phase 3: persist accrual numerators off both locks so the DB alone
+	// carries the accrued-but-unapplied interest state for the day.
+	persistAccrualState(db, day, accrualRows, boeNumerator)
+}
+
+// codeDailyAccrual marks daily interest accrual movements and their month-end
+// reversals — distinct from the engine's application code (luca.CodeInterestAccrual).
+const codeDailyAccrual = "LDAS:FTDP:ACRU"
+
+// ensureAccrualAccounts resolves (creating on first use) the P&L and
+// AccruedInterest holding accounts used by daily accrual movements.
+// Must be called with ds.simMu held.
+func (ds *DemoState) ensureAccrualAccounts() bool {
+	if ds.expenseInterestID != "" {
+		return true
+	}
+	for _, t := range []struct {
+		path string
+		dst  *string
+	}{
+		{"Expense:Interest", &ds.expenseInterestID},
+		{"Income:Interest", &ds.incomeInterestID},
+		{"Liability:AccruedInterest", &ds.accrSavingsID},
+		{"Asset:AccruedInterest", &ds.accrLendingID},
+		{"Income:Interest:BoE", &ds.incomeBoEID},
+		{"Asset:AccruedInterest:BoE", &ds.accrBoEID},
+		{"Asset:BoEReserves", &ds.boeReservesID},
+	} {
+		acct, err := ensureLedgerAccount(ds.sim.Ledger, t.path)
+		if err != nil {
+			log.Printf("ensureAccrualAccounts: %s: %v", t.path, err)
+			ds.expenseInterestID = ""
+			return false
+		}
+		*t.dst = acct.ID
+	}
+	return true
+}
+
+// postAccrualMovements writes each day's interest accrual into the ledger:
+// newly accrued whole pence move from the P&L interest account into an
+// AccruedInterest holding account daily, and on month-end days the holding
+// account is emptied back to P&L, because the engine's application movement
+// posts the full month's interest from the same P&L account to the customer
+// account. Net P&L and customer balances therefore stay exactly the engine's;
+// the holding accounts expose the intra-month accrual. Sub-penny remainders
+// live in accrual_state, not the ledger. Must be called with ds.simMu held.
+func (ds *DemoState) postAccrualMovements(updates []gbp.DailyUpdate) {
+	if ds.sim == nil || len(updates) == 0 || !ds.ensureAccrualAccounts() {
+		return
+	}
+	if ds.accrualPosted == nil {
+		ds.accrualPosted = make(map[string]int64)
+	}
+	moved, nextYield := 0, 64
+	for _, du := range updates {
+		monthEnd := du.Date.Month() != du.Date.AddDate(0, 0, 1).Month()
+		// Just before the engine's application movements at 23:59:59.
+		valueTime := time.Date(du.Date.Year(), du.Date.Month(), du.Date.Day(), 23, 59, 58, 0, du.Date.Location())
+		for _, au := range du.Accounts {
+			id := au.Account.Account.ID
+			pnlID, holdID := ds.expenseInterestID, ds.accrSavingsID
+			if au.Account.Family == gbp.FamilyLending {
+				pnlID, holdID = ds.incomeInterestID, ds.accrLendingID
+			}
+			posted := ds.accrualPosted[id]
+			// au.AccruedNumerator is this day's post-accrual, pre-application
+			// value, so the difference is the account's unposted whole pence.
+			if newPence := au.AccruedNumerator/gbp.AccrualDenominator - posted; newPence > 0 {
+				if _, err := ds.sim.RecordMovement(pnlID, holdID, luca.Amount(newPence),
+					codeDailyAccrual, valueTime, "Daily interest accrual"); err != nil {
+					log.Printf("postAccrualMovements: accrue %s: %v", id, err)
+					return
+				}
+				posted += newPence
+				moved++
+			}
+			if monthEnd && posted > 0 {
+				desc := fmt.Sprintf("Accrual reversal on application %s", du.Date.Format("2006-01-02"))
+				if _, err := ds.sim.RecordMovement(holdID, pnlID, luca.Amount(posted),
+					codeDailyAccrual, valueTime, desc); err != nil {
+					log.Printf("postAccrualMovements: reverse %s: %v", id, err)
+					return
+				}
+				posted = 0
+				moved++
+			}
+			ds.accrualPosted[id] = posted
+			// Yield to the browser event loop during large sweeps (WASM).
+			if runtime.GOOS == "js" && moved >= nextYield {
+				nextYield += 64
+				time.Sleep(time.Millisecond)
+			}
+		}
+	}
+}
+
+// postBoEInterest models BoE reserve interest in the ledger: newly accrued
+// whole pence post daily as Income:Interest:BoE -> Asset:AccruedInterest:BoE
+// (income recognised as it accrues, receivable builds up), and at month end
+// the receivable moves into Asset:BoEReserves as the interest is received.
+// Unlike customer interest there is no reversal — the engine is not involved,
+// so income is never double-posted. Sub-penny remainders carry forward in
+// boeAccruedNumerator. Must be called with ds.mu held.
+func (ds *DemoState) postBoEInterest(day time.Time) {
+	if ds.sim == nil {
+		return
+	}
+	ds.simMu.Lock()
+	defer ds.simMu.Unlock()
+	if !ds.ensureAccrualAccounts() {
+		return
+	}
+	valueTime := time.Date(day.Year(), day.Month(), day.Day(), 23, 59, 58, 0, day.Location())
+	if newPence := ds.boeAccruedNumerator/gbp.AccrualDenominator - ds.boePostedPence; newPence > 0 {
+		if _, err := ds.sim.RecordMovement(ds.incomeBoEID, ds.accrBoEID, luca.Amount(newPence),
+			codeDailyAccrual, valueTime, "Daily BoE reserve interest accrual"); err != nil {
+			log.Printf("postBoEInterest: accrue: %v", err)
+			return
+		}
+		ds.boePostedPence += newPence
+	}
+	if monthEnd := day.Month() != day.AddDate(0, 0, 1).Month(); monthEnd && ds.boePostedPence > 0 {
+		desc := fmt.Sprintf("BoE reserve interest received for month ending %s", day.Format("2006-01-02"))
+		applyTime := time.Date(day.Year(), day.Month(), day.Day(), 23, 59, 59, 0, day.Location())
+		if _, err := ds.sim.RecordMovement(ds.accrBoEID, ds.boeReservesID, luca.Amount(ds.boePostedPence),
+			luca.CodeInterestAccrual, applyTime, desc); err != nil {
+			log.Printf("postBoEInterest: apply: %v", err)
+			return
+		}
+		ds.boeAccruedNumerator -= ds.boePostedPence * gbp.AccrualDenominator
+		ds.boeInterestApplied += luca.Amount(ds.boePostedPence)
+		ds.boePostedPence = 0
+	}
+}
+
+// boeInterestTotal returns cumulative BoE reserve interest earned: applied
+// into Asset:BoEReserves plus accrued-but-unapplied whole pence.
+// Must be called with ds.mu held.
+func (ds *DemoState) boeInterestTotal() luca.Amount {
+	return ds.boeInterestApplied + luca.Amount(ds.boeAccruedNumerator/gbp.AccrualDenominator)
+}
+
+// accrualRow is one account's accrued-interest numerator to persist.
+type accrualRow struct {
+	id        string
+	numerator int64
+}
+
+// persistAccrualState upserts the day's accrued-interest numerators (per
+// account, plus the BoE row) into accrual_state. Runs without ds.mu or
+// ds.simMu held so dashboard reads and payments stay responsive.
+func persistAccrualState(db *sql.DB, day time.Time, rows []accrualRow, boeNumerator int64) {
+	if db == nil {
+		return
+	}
+	tx, err := db.Begin()
+	if err != nil {
+		log.Printf("persistAccrualState: begin: %v", err)
+		return
+	}
+	const upsert = `INSERT INTO accrual_state (account_id, numerator, accrued_pounds_e7, as_of) VALUES ($1, $2, $3, $4)
+		ON CONFLICT (account_id) DO UPDATE SET numerator = EXCLUDED.numerator,
+			accrued_pounds_e7 = EXCLUDED.accrued_pounds_e7, as_of = EXCLUDED.as_of`
+	for i, r := range rows {
+		if _, err := tx.Exec(upsert, r.id, r.numerator, int64(accrualPoundsE7(r.numerator)), day); err != nil {
+			log.Printf("persistAccrualState: %s: %v", r.id, err)
+			tx.Rollback()
+			return
+		}
+		// Yield to the browser event loop during large sweeps (WASM).
+		if runtime.GOOS == "js" && i%64 == 63 {
+			time.Sleep(time.Millisecond)
+		}
+	}
+	if _, err := tx.Exec(upsert, boeAccrualKey, boeNumerator, int64(accrualPoundsE7(boeNumerator)), day); err != nil {
+		log.Printf("persistAccrualState: boe: %v", err)
+		tx.Rollback()
+		return
+	}
+	if err := tx.Commit(); err != nil {
+		log.Printf("persistAccrualState: commit: %v", err)
+	}
+}
+
+// loadAccrualState hydrates accrued-interest numerators (per account and BoE)
+// from accrual_state into the engine and demo state. Rows for accounts the
+// engine doesn't know are ignored. Must be called with ds.mu and ds.simMu held.
+func (ds *DemoState) loadAccrualState() {
+	if ds.db == nil || ds.sim == nil {
+		return
+	}
+	rows, err := ds.db.Query(`SELECT account_id, numerator FROM accrual_state`)
+	if err != nil {
+		log.Printf("loadAccrualState: %v", err)
+		return
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var id string
+		var numerator int64
+		if err := rows.Scan(&id, &numerator); err != nil {
+			log.Printf("loadAccrualState: scan: %v", err)
+			return
+		}
+		if id == boeAccrualKey {
+			ds.boeAccruedNumerator = numerator
+			ds.boePostedPence = numerator / gbp.AccrualDenominator
+			continue
+		}
+		if ma, ok := ds.sim.GetManagedAccount(id); ok {
+			ma.AccruedNumerator = numerator
+			// Daily posting maintains posted == floor(numerator/denominator)
+			// at every sync point, so the tracker is derivable on restore.
+			if ds.accrualPosted == nil {
+				ds.accrualPosted = make(map[string]int64)
+			}
+			ds.accrualPosted[id] = numerator / gbp.AccrualDenominator
+		}
+	}
+	if err := rows.Err(); err != nil {
+		log.Printf("loadAccrualState: %v", err)
+	}
 }
 
 func (ds *DemoState) AdvanceDay() {
@@ -446,6 +712,15 @@ func (ds *DemoState) refreshFromLedger() {
 		log.Printf("refreshFromLedger: %v", err)
 		return
 	}
+	ds.loadAccrualState()
+	// Applied BoE interest is derivable from its ledger account balance.
+	if ds.ensureAccrualAccounts() {
+		if bal, err := ds.sim.Ledger.Balance(ds.boeReservesID); err == nil {
+			ds.boeInterestApplied = bal
+		} else {
+			log.Printf("refreshFromLedger: BoE reserves balance: %v", err)
+		}
+	}
 	for ci := range ds.customers {
 		for ai := range ds.customers[ci].Accounts {
 			a := &ds.customers[ci].Accounts[ai]
@@ -454,6 +729,8 @@ func (ds *DemoState) refreshFromLedger() {
 			}
 			if ma, ok := ds.sim.GetManagedAccount(a.LedgerAccountID); ok {
 				a.Balance = ma.CachedBalance
+				a.Accrued = ma.AccruedInterest()
+				a.AccruedE7 = accrualPoundsE7(ma.AccruedNumerator)
 			}
 		}
 	}
@@ -632,6 +909,13 @@ func (ds *DemoState) Reset() {
 	ds.boeAccruedNumerator = 0
 	ds.txLog = nil
 	ds.nextTxID = 0
+	// Clear persisted numerators so a durable (postgres) DB doesn't carry
+	// accrual rows from before the reset.
+	if ds.db != nil {
+		if _, err := ds.db.Exec(`DELETE FROM accrual_state`); err != nil {
+			log.Printf("reset: clear accrual_state: %v", err)
+		}
+	}
 	ds.initDB()
 	ds.initLedger()
 	ds.recordHistory()
@@ -697,7 +981,7 @@ func (ds *DemoState) DashboardData() DashData {
 		RequiredReserves:    luca.Amount(float64(savings) * ds.settings.CapitalReserveRatio),
 		CapitalReserveRatio: ds.settings.CapitalReserveRatio,
 		BoeRate:             ds.settings.BoEBaseRate,
-		BoeInterest:         luca.Amount(ds.boeAccruedNumerator / gbp.AccrualDenominator),
+		BoeInterest:         ds.boeInterestTotal(),
 		NIMBps:              nimBps,
 		CustomerCount:       len(ds.customers),
 		Running:             ds.running,

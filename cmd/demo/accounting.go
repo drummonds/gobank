@@ -25,7 +25,7 @@ func (ds *DemoState) BuildPnLHTML() string {
 			}
 		}
 	}
-	boeInterestIncome := luca.Amount(ds.boeAccruedNumerator / gbp.AccrualDenominator)
+	boeInterestIncome := ds.boeInterestTotal()
 	ds.mu.Unlock()
 
 	opCosts := opCostPerDay * luca.Amount(dayCount)
@@ -76,7 +76,7 @@ func (ds *DemoState) BuildBalanceSheetHTML() string {
 			}
 		}
 	}
-	boeInterest := luca.Amount(ds.boeAccruedNumerator / gbp.AccrualDenominator)
+	boeInterest := ds.boeInterestTotal()
 	ds.mu.Unlock()
 
 	// Gilt holdings (DB query, outside lock)

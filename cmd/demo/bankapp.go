@@ -22,12 +22,13 @@ func registerBankAppRoutes(state *DemoState, appCtrl *lofigui.Controller) {
 	http.HandleFunc("/app/", func(w http.ResponseWriter, r *http.Request) {
 		path := strings.TrimPrefix(r.URL.Path, "/app/")
 
-		// POST /app/login — simulated login redirect
+		// POST /app/login — simulated login redirect (any password accepted;
+		// only the customer ID is checked)
 		if path == "login" && r.Method == "POST" {
 			r.ParseForm()
 			custID := r.FormValue("customer_id")
-			if custID == "" {
-				http.Redirect(w, r, "/app/", http.StatusSeeOther)
+			if custID == "" || !state.customerExists(custID) {
+				http.Redirect(w, r, "/app/?err=nf", http.StatusSeeOther)
 				return
 			}
 			http.Redirect(w, r, "/app/customer/"+custID, http.StatusSeeOther)
@@ -41,7 +42,7 @@ func registerBankAppRoutes(state *DemoState, appCtrl *lofigui.Controller) {
 
 		// /app/ — login screen
 		if path == "" {
-			appPage(w, state.buildAppLoginHTML())
+			appPage(w, state.buildAppLoginHTML(r.URL.Query().Get("err") == "nf"))
 			return
 		}
 

@@ -58,7 +58,7 @@ func (ds *DemoState) TreasuryData() TreasurySnapshot {
 		ExcessCash:       excess,
 		ReserveRatio:     ds.settings.CapitalReserveRatio,
 		BoeRate:          ds.settings.BoEBaseRate,
-		BoeInterest:      luca.Amount(ds.boeAccruedNumerator / gbp.AccrualDenominator),
+		BoeInterest:      ds.boeInterestTotal(),
 		BalanceHistory:   balHist,
 	}
 }

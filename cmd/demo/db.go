@@ -39,6 +39,7 @@ func (ds *DemoState) initDBWithDSN(dsn string) {
 	}
 	ds.db = db
 	ds.createGiltTables()
+	ds.createAccrualTable()
 
 	// Create customer store (shares same DB)
 	custStore, err := customers.NewSQLCustomerStore(db, piiKeyProvider)
@@ -91,6 +92,30 @@ func (ds *DemoState) createGiltTables() {
 			log.Printf("initDB: seed %s: %v", y.tenor, err)
 		}
 	}
+}
+
+// boeAccrualKey is the accrual_state row holding the bank-level BoE interest
+// numerator. Ledger account IDs are UUIDs, so it can never collide.
+const boeAccrualKey = "_boe"
+
+// createAccrualTable creates accrual_state, which persists accrued-but-unapplied
+// interest as exact integer numerators (minor units = numerator /
+// gbp.AccrualDenominator). The ledger only sees interest at month-end
+// application, so without this table the DB is missing up to a month of
+// accrual per account plus the BoE accumulator.
+func (ds *DemoState) createAccrualTable() {
+	_, err := ds.db.Exec(`CREATE TABLE IF NOT EXISTS accrual_state (
+		account_id VARCHAR(64) PRIMARY KEY,
+		numerator BIGINT NOT NULL,
+		accrued_pounds_e7 BIGINT NOT NULL DEFAULT 0, -- accrual as 7dp pounds (rounded view; numerator is canonical)
+		as_of TIMESTAMP NOT NULL
+	)`)
+	if err != nil {
+		log.Printf("initDB: create accrual_state: %v", err)
+	}
+	// Migrate tables created before the 7dp pounds column existed (durable
+	// postgres DBs); errors on an already-migrated table are expected.
+	ds.db.Exec(`ALTER TABLE accrual_state ADD COLUMN accrued_pounds_e7 BIGINT NOT NULL DEFAULT 0`)
 }
 
 // DB returns the database handle.

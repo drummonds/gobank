@@ -74,6 +74,7 @@ type CustomerAccount struct {
 	Rate            float64     // annual rate (a rate, not money)
 	Interest        luca.Amount // minor units; lifetime interest applied to the balance
 	Accrued         luca.Amount // minor units; accrued-but-unapplied interest (from the products engine)
+	AccruedE7       poundsE7    // same accrual modelled as 7dp pounds, for sub-penny display
 	OpenDate        time.Time
 	SortCode        string
 	AccountNum      string
