@@ -152,6 +152,8 @@ tasks:
       - cp cmd/demo/main.wasm docs/demo/
       - sed 's/Model Bank WASM/Model Bank {{.GIT_TAG}}/' cmd/demo/templates/index.html > docs/demo/index.html
       - cp cmd/demo/templates/app.js docs/demo/
+      - cp cmd/demo/templates/favicon.svg docs/
+      - cp cmd/demo/templates/favicon.svg docs/demo/
       - rm cmd/demo/main.wasm
       - task: docs:gen
       - task: docs:md

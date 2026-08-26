@@ -787,6 +787,10 @@ func main() {
 	})
 
 	http.HandleFunc("/favicon.ico", lofigui.ServeFavicon)
+	http.HandleFunc("/favicon.svg", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "image/svg+xml")
+		w.Write(faviconSVG)
+	})
 
 	// Try ports starting from 1347, auto-increment if in use
 	for port := 1347; port < 1357; port++ {
