@@ -693,9 +693,10 @@ func main() {
 		}
 		r.ParseForm()
 		tenor := r.FormValue("tenor")
-		faceValue := 0.0
-		fmt.Sscanf(r.FormValue("face_value"), "%f", &faceValue)
-		if tenor != "" && faceValue >= 1000 {
+		pounds := 0.0
+		fmt.Sscanf(r.FormValue("face_value"), "%f", &pounds)
+		faceValue := poundsToPence(pounds) // form input is pounds; storage is minor units
+		if tenor != "" && faceValue >= 1000_00 {
 			state.BuyGilt(tenor, faceValue)
 		}
 		http.Redirect(w, r, "/treasury/gilts", http.StatusSeeOther)

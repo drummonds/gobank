@@ -91,7 +91,7 @@ type Payment struct {
 	Type      PaymentType
 	FromID    string
 	ToID      string
-	Amount    float64
+	Amount    luca.Amount
 	Status    PaymentStatus
 	Reference string
 	CreatedAt time.Time
@@ -135,11 +135,10 @@ func (ds *DemoState) SendPayment() {
 	}
 
 	senderBal := ds.customers[fromIdx].Accounts[fromAccIdx].Balance
-	amount := float64(ds.rng.Intn(99901)+100) / 100.0
-	if amount > senderBal {
-		amount = senderBal
-	}
-	if amount < 1.0 {
+	amount := min(
+		// 100..100000 pence
+		luca.Amount(ds.rng.Intn(99901)+100), senderBal)
+	if amount < 100 {
 		ds.mu.Unlock()
 		return
 	}
@@ -152,7 +151,7 @@ func (ds *DemoState) SendPayment() {
 	fromLedgerID := ds.customers[fromIdx].Accounts[fromAccIdx].LedgerAccountID
 	toLedgerID := ds.customers[toIdx].Accounts[toAccIdx].LedgerAccountID
 	if ds.sim != nil && fromLedgerID != "" && toLedgerID != "" {
-		ds.sim.RecordMovement(fromLedgerID, toLedgerID, poundsToPence(amount), luca.CodeBookTransfer, ds.currentDay, fmt.Sprintf("PAY-%06d", ds.nextPaymentID))
+		ds.recordSimMovement(fromLedgerID, toLedgerID, amount, luca.CodeBookTransfer, fmt.Sprintf("PAY-%06d", ds.nextPaymentID))
 	}
 
 	fromID := ds.customers[fromIdx].ID
@@ -201,7 +200,7 @@ func (ds *DemoState) SendPayment() {
 
 // makePayment creates and records a payment, settling it immediately.
 // Must be called with ds.mu held. Directly modifies the target account balance.
-func (ds *DemoState) makePayment(ptype PaymentType, fromID, toID string, amount float64) {
+func (ds *DemoState) makePayment(ptype PaymentType, fromID, toID string, amount luca.Amount) {
 	ref := fmt.Sprintf("PAY-%06d", ds.nextPaymentID)
 	p := Payment{
 		ID:        ds.nextPaymentID,
@@ -225,27 +224,24 @@ func (ds *DemoState) fundCustomer(custIdx int) {
 	for i := range cust.Accounts {
 		a := &cust.Accounts[i]
 		if a.Family == gbp.FamilySavings {
-			amount := float64(500 + ds.rng.Intn(9500))
+			amount := luca.Amount(500+ds.rng.Intn(9500)) * 100
 			a.Balance = amount
 			ds.makePayment(PayDeposit, "EXTERNAL", cust.ID, amount)
 			ds.emitTx(ds.currentDay, cust.ID, i, a.ProductName, TxDepositIn, amount, a.Balance, fmt.Sprintf("PAY-%06d", ds.nextPaymentID-1))
 			if ds.sim != nil && a.LedgerAccountID != "" {
-				ds.sim.RecordMovement(ds.equityAccountID, a.LedgerAccountID, poundsToPence(amount), luca.CodeBookTransfer, ds.currentDay, "Initial deposit")
+				ds.recordSimMovement(ds.equityAccountID, a.LedgerAccountID, amount, luca.CodeBookTransfer, "Initial deposit")
 			}
 		} else {
 			headroom := ds.lendingHeadroom()
 			if headroom <= 0 {
 				continue
 			}
-			amount := float64(1000 + ds.rng.Intn(49000))
-			if amount > headroom {
-				amount = headroom
-			}
+			amount := min(luca.Amount(1000+ds.rng.Intn(49000))*100, headroom)
 			a.Balance = amount
 			ds.makePayment(PayLoanDisbursement, "BANK", cust.ID, amount)
 			ds.emitTx(ds.currentDay, cust.ID, i, a.ProductName, TxLoanDisbursement, amount, a.Balance, fmt.Sprintf("PAY-%06d", ds.nextPaymentID-1))
 			if ds.sim != nil && a.LedgerAccountID != "" {
-				ds.sim.RecordMovement(ds.equityAccountID, a.LedgerAccountID, poundsToPence(amount), luca.CodeBookTransfer, ds.currentDay, "Loan disbursement")
+				ds.recordSimMovement(ds.equityAccountID, a.LedgerAccountID, amount, luca.CodeBookTransfer, "Loan disbursement")
 			}
 		}
 	}

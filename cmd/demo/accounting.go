@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"strings"
 
+	luca "git.bytestone.uk/hum3/go-luca"
 	gbp "git.bytestone.uk/hum3/gobank-products"
 )
 
@@ -13,21 +14,21 @@ func (ds *DemoState) BuildPnLHTML() string {
 	dayCount := ds.dayCount
 	opCostPerDay := ds.opCostPerDay
 
-	loanInterestIncome := 0.0
-	depositInterestExpense := 0.0
+	// Accrual accounting: income/expense includes accrued-but-unapplied interest.
+	var loanInterestIncome, depositInterestExpense luca.Amount
 	for _, c := range ds.customers {
 		for _, a := range c.Accounts {
 			if a.Family == gbp.FamilyLending {
-				loanInterestIncome += a.Interest
+				loanInterestIncome += a.Interest + a.Accrued
 			} else {
-				depositInterestExpense += a.Interest
+				depositInterestExpense += a.Interest + a.Accrued
 			}
 		}
 	}
-	boeInterestIncome := ds.boeInterestAccum
+	boeInterestIncome := luca.Amount(ds.boeAccruedNumerator / gbp.AccrualDenominator)
 	ds.mu.Unlock()
 
-	opCosts := opCostPerDay * float64(dayCount)
+	opCosts := opCostPerDay * luca.Amount(dayCount)
 	netInterest := loanInterestIncome + boeInterestIncome - depositInterestExpense
 	profit := netInterest - opCosts
 
@@ -63,38 +64,34 @@ func (ds *DemoState) BuildBalanceSheetHTML() string {
 	dayCount := ds.dayCount
 	opCostPerDay := ds.opCostPerDay
 
-	totalLoans := 0.0
-	totalDeposits := 0.0
-	loanInterest := 0.0
-	depositInterest := 0.0
+	var totalLoans, totalDeposits, loanInterest, depositInterest luca.Amount
 	for _, c := range ds.customers {
 		for _, a := range c.Accounts {
 			if a.Family == gbp.FamilyLending {
 				totalLoans += a.Balance
-				loanInterest += a.Interest
+				loanInterest += a.Interest + a.Accrued
 			} else {
 				totalDeposits += a.Balance
-				depositInterest += a.Interest
+				depositInterest += a.Interest + a.Accrued
 			}
 		}
 	}
-	boeInterest := ds.boeInterestAccum
+	boeInterest := luca.Amount(ds.boeAccruedNumerator / gbp.AccrualDenominator)
 	ds.mu.Unlock()
 
 	// Gilt holdings (DB query, outside lock)
 	holdings := ds.getGiltHoldings()
-	totalGilts := 0.0
+	var totalGilts luca.Amount
 	for _, h := range holdings {
 		totalGilts += h.FaceValue
 	}
 
-	opCosts := opCostPerDay * float64(dayCount)
+	opCosts := opCostPerDay * luca.Amount(dayCount)
 	retainedEarnings := (loanInterest + boeInterest - depositInterest) - opCosts
 	cashTotal := totalDeposits - totalLoans + retainedEarnings
-	cashAtBoE := cashTotal - totalGilts // gilts purchased from cash
-	if cashAtBoE < 0 {
-		cashAtBoE = 0
-	}
+	cashAtBoE := max(
+		// gilts purchased from cash
+		cashTotal-totalGilts, 0)
 	totalAssets := totalLoans + totalGilts + cashAtBoE
 	totalLiabilities := totalDeposits
 	equity := retainedEarnings
@@ -104,7 +101,7 @@ func (ds *DemoState) BuildBalanceSheetHTML() string {
 	rwa := totalLoans
 	cet1Ratio := 0.0
 	if rwa > 0 {
-		cet1Ratio = equity / rwa
+		cet1Ratio = float64(equity) / float64(rwa)
 	}
 
 	var s strings.Builder

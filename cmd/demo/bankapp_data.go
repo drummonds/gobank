@@ -1,6 +1,7 @@
 package main
 
 import (
+	luca "git.bytestone.uk/hum3/go-luca"
 	gbp "git.bytestone.uk/hum3/gobank-products"
 )
 
@@ -12,29 +13,29 @@ type apiCustomer struct {
 }
 
 type apiAccount struct {
-	ProductName string  `json:"product_name"`
-	Family      string  `json:"family"`
-	Rate        float64 `json:"rate"`
-	Balance     float64 `json:"balance"`
-	Interest    float64 `json:"interest"`
+	ProductName string      `json:"product_name"`
+	Family      string      `json:"family"`
+	Rate        float64     `json:"rate"`
+	Balance     luca.Amount `json:"balance_minor"` // integer minor units (pence)
+	Interest    luca.Amount `json:"interest_minor"`
 }
 
 type apiAccountsResponse struct {
 	CustomerID   string       `json:"customer_id"`
 	CustomerName string       `json:"customer_name"`
 	Accounts     []apiAccount `json:"accounts"`
-	TotalSavings float64      `json:"total_savings"`
-	TotalLending float64      `json:"total_lending"`
+	TotalSavings luca.Amount  `json:"total_savings_minor"`
+	TotalLending luca.Amount  `json:"total_lending_minor"`
 }
 
 type apiTxEntry struct {
-	ID          int     `json:"id"`
-	Date        string  `json:"date"`
-	ProductName string  `json:"product_name"`
-	Type        string  `json:"type"`
-	Amount      float64 `json:"amount"`
-	Balance     float64 `json:"balance"`
-	Reference   string  `json:"reference"`
+	ID          int         `json:"id"`
+	Date        string      `json:"date"`
+	ProductName string      `json:"product_name"`
+	Type        string      `json:"type"`
+	Amount      luca.Amount `json:"amount_minor"`
+	Balance     luca.Amount `json:"balance_minor"`
+	Reference   string      `json:"reference"`
 }
 
 type apiTransactionsResponse struct {
@@ -46,17 +47,17 @@ type apiTransactionsResponse struct {
 }
 
 type apiProductDetail struct {
-	CustomerID   string  `json:"customer_id"`
-	CustomerName string  `json:"customer_name"`
-	AccountIndex int     `json:"account_index"`
-	ProductName  string  `json:"product_name"`
-	Family       string  `json:"family"`
-	Rate         float64 `json:"rate"`
-	Balance      float64 `json:"balance"`
-	Interest     float64 `json:"interest"`
-	SortCode     string  `json:"sort_code"`
-	AccountNum   string  `json:"account_num"`
-	OpenDate     string  `json:"open_date"`
+	CustomerID   string      `json:"customer_id"`
+	CustomerName string      `json:"customer_name"`
+	AccountIndex int         `json:"account_index"`
+	ProductName  string      `json:"product_name"`
+	Family       string      `json:"family"`
+	Rate         float64     `json:"rate"`
+	Balance      luca.Amount `json:"balance_minor"`
+	Interest     luca.Amount `json:"interest_minor"`
+	SortCode     string      `json:"sort_code"`
+	AccountNum   string      `json:"account_num"`
+	OpenDate     string      `json:"open_date"`
 }
 
 // --- Service functions (shared by HTML views and JSON API) ---

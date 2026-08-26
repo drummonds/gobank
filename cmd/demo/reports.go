@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"strings"
 
+	luca "git.bytestone.uk/hum3/go-luca"
 	gbp "git.bytestone.uk/hum3/gobank-products"
 )
 
@@ -78,12 +79,13 @@ func (ds *DemoState) BuildBBSIHTML(piiAuthorized bool) string {
   <th>Customer</th><th>NI Number</th><th>Gross Interest Paid</th><th>Tax Deducted</th>
 </tr></thead><tbody>`)
 
-	totalInterest := 0.0
+	// BBSI reports gross interest paid: applied plus accrued-but-unapplied.
+	var totalInterest luca.Amount
 	for _, c := range customers {
-		interest := 0.0
+		var interest luca.Amount
 		for _, a := range c.Accounts {
 			if a.Family == gbp.FamilySavings {
-				interest += a.Interest
+				interest += a.Interest + a.Accrued
 			}
 		}
 		if interest > 0 {
@@ -167,16 +169,14 @@ func (ds *DemoState) BuildCustomerViewHTML(id string, piiAuthorized bool) string
 
 	// Account details
 	s.WriteString(`<h3 class="title is-5 mt-5">Account Summary</h3>`)
-	totalSavings := 0.0
-	totalLending := 0.0
-	totalInterest := 0.0
+	var totalSavings, totalLending, totalInterest luca.Amount
 	for _, a := range cust.Accounts {
 		if a.Family == gbp.FamilySavings {
 			totalSavings += a.Balance
 		} else {
 			totalLending += a.Balance
 		}
-		totalInterest += a.Interest
+		totalInterest += a.Interest + a.Accrued
 	}
 
 	s.WriteString(`<div class="columns mb-4">`)

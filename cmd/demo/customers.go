@@ -6,6 +6,7 @@ import (
 	"strings"
 	"time"
 
+	luca "git.bytestone.uk/hum3/go-luca"
 	gbp "git.bytestone.uk/hum3/gobank-products"
 )
 
@@ -69,9 +70,10 @@ type CustomerAccount struct {
 	ProductID       string
 	ProductName     string
 	Family          gbp.ProductFamily
-	Balance         float64
-	Rate            float64
-	Interest        float64 // accrued interest
+	Balance         luca.Amount // minor units (pence); principal plus applied interest
+	Rate            float64     // annual rate (a rate, not money)
+	Interest        luca.Amount // minor units; lifetime interest applied to the balance
+	Accrued         luca.Amount // minor units; accrued-but-unapplied interest (from the products engine)
 	OpenDate        time.Time
 	SortCode        string
 	AccountNum      string
@@ -89,7 +91,7 @@ func (ds *DemoState) BuildCustomersHTML(page int, piiAuth bool) string {
 	ds.mu.Unlock()
 
 	// Compute aggregate totals
-	var aggSavings, aggLending float64
+	var aggSavings, aggLending luca.Amount
 	for _, c := range customers {
 		for _, a := range c.Accounts {
 			if a.Family == gbp.FamilySavings {
@@ -128,8 +130,7 @@ func (ds *DemoState) BuildCustomersHTML(page int, piiAuth bool) string {
 	}
 
 	for _, c := range pageCustomers {
-		savings := 0.0
-		lending := 0.0
+		var savings, lending luca.Amount
 		for _, a := range c.Accounts {
 			if a.Family == gbp.FamilySavings {
 				savings += a.Balance
@@ -200,7 +201,7 @@ func (ds *DemoState) BuildCustomerDetailHTML(id string, piiAuthorized bool, txPa
 	name := ds.lookupName(cust.ID)
 
 	// Compute aggregate values
-	var totalSavings, totalLending float64
+	var totalSavings, totalLending luca.Amount
 	for _, a := range cust.Accounts {
 		if a.Family == gbp.FamilySavings {
 			totalSavings += a.Balance

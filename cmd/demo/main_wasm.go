@@ -27,8 +27,9 @@ func goExport(this js.Value, args []js.Value) any {
 		state.mu.Unlock()
 		return js.ValueOf("error: simulation not initialised")
 	}
-	state.flushPendingMovements()
+	state.simMu.Lock() // wait out any in-flight engine sweep so the export is consistent
 	err := state.sim.ExportGoluca(&buf)
+	state.simMu.Unlock()
 	state.mu.Unlock()
 	if err != nil {
 		return js.ValueOf("error: " + err.Error())
@@ -50,6 +51,9 @@ func goImport(this js.Value, args []js.Value) any {
 		AutoCreateAccounts: true,
 		DefaultCommodity:   "GBP",
 	})
+	if err == nil {
+		state.refreshFromLedger()
+	}
 	state.mu.Unlock()
 	if err != nil {
 		return js.ValueOf("error: " + err.Error())

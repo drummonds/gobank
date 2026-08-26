@@ -28,8 +28,8 @@ type RatePoint struct {
 // BalancePoint records aggregate savings/lending balances at a point in simulated time.
 type BalancePoint struct {
 	Date    time.Time
-	Savings float64
-	Lending float64
+	Savings luca.Amount // minor units
+	Lending luca.Amount // minor units
 }
 
 // CustomerPoint records the customer count at a point in simulated time.
@@ -46,55 +46,40 @@ type NIMPoint struct {
 
 // DemoState holds all unified state for the model bank demo.
 type DemoState struct {
-	mu                    sync.Mutex
-	running               bool
-	cancel                context.CancelFunc
-	products              []Product
-	customers             []CustomerRecord
-	payments              []Payment
-	currentDay            time.Time
-	dayCount              int
-	nextPaymentID         int
-	payRunning            bool
-	payCancel             context.CancelFunc
-	opCostPerDay          float64
-	rng                   *rand.Rand
-	settings              Settings
-	nextCustSeq           int
-	piiAuthorized         bool
-	boeHistory            []RatePoint
-	balanceHistory        []BalancePoint
-	customerHistory       []CustomerPoint
-	addingCustRunning     bool
-	addingCustCancel      context.CancelFunc
-	addingCustProgress    int
-	addingCustTarget      int
-	nimHistory            []NIMPoint
-	boeInterestAccum      float64
-	db                    *sql.DB
-	custStore             *customers.SQLCustomerStore
-	txLog                 []TxEntry
-	nextTxID              int
-	sim                   *gbp.Simulation
-	simClock              *gbp.SimClock
-	equityAccountID       string
-	interestExpenseAcctID string
-	interestIncomeAcctID  string
-	pendingMovements      []pendingMovement // deferred ledger writes
-	flushMu               sync.Mutex        // serializes ledger movement writers; never held with ds.mu waits inside
-	memoryExceeded        bool              // true when heap > 800MB (WASM safety)
-}
-
-// pendingMovement holds a ledger movement deferred from the hot advanceDay loop.
-// Written to SQL at end of day in small chunks WITHOUT holding ds.mu, so the
-// dashboard stays responsive however many accounts accrue interest (and flushed
-// inline before export).
-type pendingMovement struct {
-	fromID, toID string
-	amount       luca.Amount
-	code         string
-	valueTime    time.Time
-	description  string
+	mu                  sync.Mutex
+	running             bool
+	cancel              context.CancelFunc
+	products            []Product
+	customers           []CustomerRecord
+	payments            []Payment
+	currentDay          time.Time
+	dayCount            int
+	nextPaymentID       int
+	payRunning          bool
+	payCancel           context.CancelFunc
+	opCostPerDay        luca.Amount // minor units per day
+	rng                 *rand.Rand
+	settings            Settings
+	nextCustSeq         int
+	piiAuthorized       bool
+	boeHistory          []RatePoint
+	balanceHistory      []BalancePoint
+	customerHistory     []CustomerPoint
+	addingCustRunning   bool
+	addingCustCancel    context.CancelFunc
+	addingCustProgress  int
+	addingCustTarget    int
+	nimHistory          []NIMPoint
+	boeAccruedNumerator int64 // BoE interest on excess reserves, numerator units over gbp.AccrualDenominator
+	db                  *sql.DB
+	custStore           *customers.SQLCustomerStore
+	txLog               []TxEntry
+	nextTxID            int
+	sim                 *gbp.Simulation
+	simClock            *gbp.SimClock
+	equityAccountID     string
+	simMu               sync.Mutex // serializes mutations of ds.sim in-memory state (engine sweeps vs payments)
+	memoryExceeded      bool       // true when heap > 800MB (WASM safety)
 }
 
 const (
@@ -138,7 +123,7 @@ func NewDemoStateWithDSN(dsn string) *DemoState {
 		products:      AllProducts(),
 		currentDay:    startDay,
 		nextPaymentID: 1,
-		opCostPerDay:  50.0,
+		opCostPerDay:  50_00, // £50.00/day in minor units
 		rng:           rng,
 		settings:      settings,
 		nextCustSeq:   1,
@@ -174,18 +159,16 @@ func (ds *DemoState) initLedger() {
 	ds.sim = sim
 	ds.equityAccountID = equityAcct.ID
 
-	// Ensure the bank-level interest accounts exist and cache their IDs.
-	// Nothing else creates them (NewSQLLedger only builds the schema), and
-	// without the IDs advanceDay silently skips every interest posting.
-	if expAcct, err := ensureLedgerAccount(ledger, "Expense:Interest"); err == nil {
-		ds.interestExpenseAcctID = expAcct.ID
-	} else {
-		log.Printf("initLedger: ensure Expense:Interest: %v", err)
-	}
-	if incAcct, err := ensureLedgerAccount(ledger, "Income:Interest"); err == nil {
-		ds.interestIncomeAcctID = incAcct.ID
-	} else {
-		log.Printf("initLedger: ensure Income:Interest: %v", err)
+	// Pace large account sweeps so the single-threaded WASM host can yield
+	// to the browser event loop during month-end interest application.
+	if runtime.GOOS == "js" {
+		n := 0
+		sim.PaceHook = func() {
+			n++
+			if n%64 == 0 {
+				time.Sleep(time.Millisecond)
+			}
+		}
 	}
 }
 
@@ -244,11 +227,18 @@ func (ds *DemoState) addCustomerToLedger(cust *CustomerRecord) {
 		params := map[string]string{
 			"annual_rate": fmt.Sprintf("%f", a.Rate),
 		}
+		ds.simMu.Lock()
 		ma, err := ds.sim.OpenAccount(a.ProductID, fullPath, "GBP", -2, params)
 		if err != nil {
+			ds.simMu.Unlock()
 			log.Printf("ledger: open account %s: %v", fullPath, err)
 			continue
 		}
+		// The demo funds accounts via direct movements rather than the
+		// Deposit lifecycle, so activate explicitly: the products engine
+		// only accrues interest on active accounts.
+		ma.Status = gbp.StatusActive
+		ds.simMu.Unlock()
 		a.LedgerAccountID = ma.Account.ID
 	}
 }
@@ -256,16 +246,16 @@ func (ds *DemoState) addCustomerToLedger(cust *CustomerRecord) {
 // recordHistory appends current balance/customer/NIM totals to history slices.
 // Must be called with ds.mu held.
 func (ds *DemoState) recordHistory() {
-	var savings, lending float64
-	var totalLoanInt, totalDepInt float64
+	var savings, lending luca.Amount
+	var totalLoanInt, totalDepInt float64 // daily interest estimates in minor units (rate math, not storage)
 	for _, c := range ds.customers {
 		for _, a := range c.Accounts {
 			if a.Family == gbp.FamilySavings {
 				savings += a.Balance
-				totalDepInt += a.Balance * a.Rate / 365.0
+				totalDepInt += float64(a.Balance) * a.Rate / 365.0
 			} else {
 				lending += a.Balance
-				totalLoanInt += a.Balance * a.Rate / 365.0
+				totalLoanInt += float64(a.Balance) * a.Rate / 365.0
 			}
 		}
 	}
@@ -274,15 +264,15 @@ func (ds *DemoState) recordHistory() {
 
 	// NIM in bps: (loan interest income + BoE interest - deposit interest expense) / total deposits * 365 * 10000
 	cash := savings - lending
-	requiredReserves := savings * ds.settings.CapitalReserveRatio
+	requiredReserves := luca.Amount(float64(savings) * ds.settings.CapitalReserveRatio)
 	excessCash := cash - requiredReserves
 	dailyBoeInt := 0.0
 	if excessCash > 0 {
-		dailyBoeInt = excessCash * ds.settings.BoEBaseRate / 365.0
+		dailyBoeInt = float64(excessCash) * ds.settings.BoEBaseRate / 365.0
 	}
 	nimBps := 0.0
 	if savings > 0 {
-		nimBps = (totalLoanInt + dailyBoeInt - totalDepInt) / savings * 365.0 * 10000.0
+		nimBps = (totalLoanInt + dailyBoeInt - totalDepInt) / float64(savings) * 365.0 * 10000.0
 	}
 	ds.nimHistory = append(ds.nimHistory, NIMPoint{Date: ds.currentDay, NIM: nimBps})
 }
@@ -291,8 +281,8 @@ func (ds *DemoState) recordHistory() {
 
 // lendingHeadroom returns how much additional lending the bank can take on
 // while maintaining the capital reserve ratio. Must be called with ds.mu held.
-func (ds *DemoState) lendingHeadroom() float64 {
-	var deposits, loans float64
+func (ds *DemoState) lendingHeadroom() luca.Amount {
+	var deposits, loans luca.Amount
 	for _, c := range ds.customers {
 		for _, a := range c.Accounts {
 			if a.Family == gbp.FamilySavings {
@@ -303,12 +293,14 @@ func (ds *DemoState) lendingHeadroom() float64 {
 		}
 	}
 	// Required reserves = ratio * deposits. Max loans = deposits - required reserves.
-	maxLoans := deposits * (1 - ds.settings.CapitalReserveRatio)
+	maxLoans := luca.Amount(float64(deposits) * (1 - ds.settings.CapitalReserveRatio))
 	return maxLoans - loans
 }
 
-// advanceDay advances one day, releasing ds.mu between customers so that
-// concurrent reads are not blocked for the entire duration.
+// advanceDay advances one simulated day. Interest is handled by the
+// gobank-products engine: exact daily accrual in memory, applied to accounts
+// as ledger movements at month end. The engine sweep runs without holding
+// ds.mu so dashboard reads stay responsive throughout.
 // Must be called WITHOUT ds.mu held.
 func (ds *DemoState) advanceDay() {
 	ds.mu.Lock()
@@ -316,62 +308,64 @@ func (ds *DemoState) advanceDay() {
 		ds.mu.Unlock()
 		return
 	}
-	nCust := len(ds.customers)
+	sim := ds.sim
+	day := ds.currentDay
 	ds.mu.Unlock()
 
-	// Phase 1: Interest accrual — yield lock between customers.
-	// Ledger movements are deferred to pendingMovements to avoid SQL in the hot loop.
-	var totalDeposits, totalLoans float64
-	for ci := range nCust {
-		ds.mu.Lock()
-		for ai := range ds.customers[ci].Accounts {
-			a := &ds.customers[ci].Accounts[ai]
-			dailyRate := a.Rate / 365.0
-			interest := a.Balance * dailyRate
-			a.Balance += interest
-			a.Interest += interest
-			if a.Family == gbp.FamilySavings {
-				totalDeposits += a.Balance
-				if interest != 0 {
-					ds.emitTx(ds.currentDay, ds.customers[ci].ID, ai, a.ProductName, TxInterestCredit, interest, a.Balance, "INT")
-					if pence := poundsToPence(interest); pence != 0 && ds.sim != nil && a.LedgerAccountID != "" && ds.interestExpenseAcctID != "" {
-						ds.pendingMovements = append(ds.pendingMovements, pendingMovement{
-							fromID: ds.interestExpenseAcctID, toID: a.LedgerAccountID,
-							amount: pence, code: luca.CodeInterestAccrual,
-							valueTime: ds.currentDay, description: "INT",
-						})
-					}
-				}
-			} else {
-				totalLoans += a.Balance
-				if interest != 0 {
-					ds.emitTx(ds.currentDay, ds.customers[ci].ID, ai, a.ProductName, TxInterestDebit, interest, a.Balance, "INT")
-					if pence := poundsToPence(interest); pence != 0 && ds.sim != nil && a.LedgerAccountID != "" && ds.interestIncomeAcctID != "" {
-						ds.pendingMovements = append(ds.pendingMovements, pendingMovement{
-							fromID: a.LedgerAccountID, toID: ds.interestIncomeAcctID,
-							amount: pence, code: luca.CodeInterestAccrual,
-							valueTime: ds.currentDay, description: "INT",
-						})
-					}
-				}
-			}
+	// Phase 1: products engine end-of-day (and month-end application) —
+	// no ds.mu held; simMu serializes against payments touching sim state.
+	if sim != nil {
+		ds.simMu.Lock()
+		_, err := sim.AdvanceToDate(day)
+		ds.simMu.Unlock()
+		if err != nil {
+			log.Printf("advanceDay: products engine: %v", err)
 		}
-		ds.mu.Unlock()
 	}
 
-	// Phase 2: Finalize — single lock hold for day bookkeeping
+	// Phase 2: sync account mirrors from the engine and do day bookkeeping
+	// under a single short lock hold.
 	ds.mu.Lock()
 
-	// Take the day's interest movements now; they are written to the ledger
-	// after the lock is released so the write cost never blocks readers.
-	dayMovements := ds.takePendingMovements()
-	sim := ds.sim
+	var totalDeposits, totalLoans luca.Amount
+	for ci := range ds.customers {
+		cust := &ds.customers[ci]
+		for ai := range cust.Accounts {
+			a := &cust.Accounts[ai]
+			if sim != nil && a.LedgerAccountID != "" {
+				if ma, ok := sim.GetManagedAccount(a.LedgerAccountID); ok {
+					// Any drift between mirror and engine balance is interest
+					// applied at month end (payments update both in lockstep).
+					if applied := ma.CachedBalance - a.Balance; applied != 0 {
+						a.Balance = ma.CachedBalance
+						a.Interest += applied
+						txType := TxInterestCredit
+						if a.Family == gbp.FamilyLending {
+							txType = TxInterestDebit
+						}
+						amt := applied
+						if amt < 0 {
+							amt = -amt
+						}
+						ds.emitTx(day, cust.ID, ai, a.ProductName, txType, amt, a.Balance, "INT")
+					}
+					a.Accrued = ma.AccruedInterest()
+				}
+			}
+			if a.Family == gbp.FamilySavings {
+				totalDeposits += a.Balance
+			} else {
+				totalLoans += a.Balance
+			}
+		}
+	}
 
-	requiredReserves := totalDeposits * ds.settings.CapitalReserveRatio
+	requiredReserves := luca.Amount(float64(totalDeposits) * ds.settings.CapitalReserveRatio)
 	cash := totalDeposits - totalLoans
 	excessCash := cash - requiredReserves
 	if excessCash > 0 {
-		ds.boeInterestAccum += excessCash * ds.settings.BoEBaseRate / 365.0
+		// Exact BoE interest accrual: numerator over gbp.AccrualDenominator.
+		ds.boeAccruedNumerator += int64(excessCash) * int64(math.Round(ds.settings.BoEBaseRate*10_000))
 	}
 
 	ds.currentDay = ds.currentDay.AddDate(0, 0, 1)
@@ -433,81 +427,50 @@ func (ds *DemoState) advanceDay() {
 	}
 
 	ds.mu.Unlock()
-
-	// Write the day's interest movements without holding ds.mu, chunked so
-	// that on WASM the single-threaded page can breathe between chunks.
-	ds.writeMovements(sim, dayMovements, runtime.GOOS == "js")
 }
 
 func (ds *DemoState) AdvanceDay() {
 	ds.advanceDay()
 }
 
-// movementFlushChunk bounds movements per ledger transaction so each write
-// (and, on WASM, each stretch between event-loop yields) stays around 10ms.
-const movementFlushChunk = 32
-
-// takePendingMovements swaps out the queued movements in O(1).
+// refreshFromLedger re-primes the engine's cached balances from the ledger
+// and syncs account mirrors, e.g. after an import wrote movements directly.
 // Must be called with ds.mu held.
-func (ds *DemoState) takePendingMovements() []pendingMovement {
-	pms := ds.pendingMovements
-	ds.pendingMovements = nil
-	return pms
-}
-
-// writeMovements records taken movements to the ledger in chunks of
-// movementFlushChunk per transaction. Must be called WITHOUT ds.mu held so
-// dashboard reads proceed while writing; ds.flushMu serializes writers, and
-// taking it when pms is empty still waits out any in-flight writer.
-// With yieldBetween (WASM), it sleeps briefly between chunks so the browser
-// event loop can run.
-func (ds *DemoState) writeMovements(sim *gbp.Simulation, pms []pendingMovement, yieldBetween bool) {
-	ds.flushMu.Lock()
-	defer ds.flushMu.Unlock()
-	if sim == nil || len(pms) == 0 {
+func (ds *DemoState) refreshFromLedger() {
+	if ds.sim == nil {
 		return
 	}
-	// Group by date so movements in a chunk share one value_time.
-	type batch struct {
-		valueTime time.Time
-		inputs    []luca.MovementInput
+	ds.simMu.Lock()
+	defer ds.simMu.Unlock()
+	if err := ds.sim.RefreshBalances(); err != nil {
+		log.Printf("refreshFromLedger: %v", err)
+		return
 	}
-	var batches []batch
-	batchIdx := make(map[time.Time]int)
-	for _, pm := range pms {
-		idx, ok := batchIdx[pm.valueTime]
-		if !ok {
-			idx = len(batches)
-			batchIdx[pm.valueTime] = idx
-			batches = append(batches, batch{valueTime: pm.valueTime})
-		}
-		batches[idx].inputs = append(batches[idx].inputs, luca.MovementInput{
-			FromAccountID: pm.fromID,
-			ToAccountID:   pm.toID,
-			Amount:        pm.amount,
-			Code:          pm.code,
-			Description:   pm.description,
-		})
-	}
-	for _, b := range batches {
-		for start := 0; start < len(b.inputs); start += movementFlushChunk {
-			end := min(start+movementFlushChunk, len(b.inputs))
-			if _, err := sim.Ledger.RecordLinkedMovements(b.inputs[start:end], b.valueTime); err != nil {
-				log.Printf("writeMovements: %v", err)
+	for ci := range ds.customers {
+		for ai := range ds.customers[ci].Accounts {
+			a := &ds.customers[ci].Accounts[ai]
+			if a.LedgerAccountID == "" {
+				continue
 			}
-			if yieldBetween && end < len(b.inputs) {
-				time.Sleep(time.Millisecond)
+			if ma, ok := ds.sim.GetManagedAccount(a.LedgerAccountID); ok {
+				a.Balance = ma.CachedBalance
 			}
 		}
 	}
 }
 
-// flushPendingMovements synchronously writes any queued movements and waits
-// out any in-flight background writer, so the ledger DB is complete on return.
-// Must be called with ds.mu held; used on export paths where the queue is
-// small (advanceDay drains it every day).
-func (ds *DemoState) flushPendingMovements() {
-	ds.writeMovements(ds.sim, ds.takePendingMovements(), false)
+// recordSimMovement posts a movement through the products simulation so its
+// cached balances stay in sync, serialized against the daily engine sweep.
+// Must be called with ds.mu held.
+func (ds *DemoState) recordSimMovement(fromID, toID string, amount luca.Amount, code, description string) {
+	if ds.sim == nil || fromID == "" || toID == "" {
+		return
+	}
+	ds.simMu.Lock()
+	defer ds.simMu.Unlock()
+	if _, err := ds.sim.RecordMovement(fromID, toID, amount, code, ds.currentDay, description); err != nil {
+		log.Printf("recordSimMovement: %v", err)
+	}
 }
 
 func (ds *DemoState) Start() {
@@ -666,10 +629,9 @@ func (ds *DemoState) Reset() {
 	ds.balanceHistory = nil
 	ds.customerHistory = nil
 	ds.nimHistory = nil
-	ds.boeInterestAccum = 0
+	ds.boeAccruedNumerator = 0
 	ds.txLog = nil
 	ds.nextTxID = 0
-	ds.pendingMovements = nil
 	ds.initDB()
 	ds.initLedger()
 	ds.recordHistory()
@@ -679,13 +641,13 @@ func (ds *DemoState) Reset() {
 type DashData struct {
 	Day                 time.Time
 	DayCount            int
-	Savings             float64
-	Lending             float64
-	Cash                float64
-	RequiredReserves    float64
+	Savings             luca.Amount
+	Lending             luca.Amount
+	Cash                luca.Amount
+	RequiredReserves    luca.Amount
 	CapitalReserveRatio float64
 	BoeRate             float64
-	BoeInterest         float64
+	BoeInterest         luca.Amount
 	NIMBps              float64
 	CustomerCount       int
 	Running             bool
@@ -703,7 +665,7 @@ func (ds *DemoState) DashboardData() DashData {
 	ds.mu.Lock()
 	defer ds.mu.Unlock()
 
-	var savings, lending float64
+	var savings, lending luca.Amount
 	for _, c := range ds.customers {
 		for _, a := range c.Accounts {
 			if a.Family == gbp.FamilySavings {
@@ -732,10 +694,10 @@ func (ds *DemoState) DashboardData() DashData {
 		Savings:             savings,
 		Lending:             lending,
 		Cash:                savings - lending,
-		RequiredReserves:    savings * ds.settings.CapitalReserveRatio,
+		RequiredReserves:    luca.Amount(float64(savings) * ds.settings.CapitalReserveRatio),
 		CapitalReserveRatio: ds.settings.CapitalReserveRatio,
 		BoeRate:             ds.settings.BoEBaseRate,
-		BoeInterest:         ds.boeInterestAccum,
+		BoeInterest:         luca.Amount(ds.boeAccruedNumerator / gbp.AccrualDenominator),
 		NIMBps:              nimBps,
 		CustomerCount:       len(ds.customers),
 		Running:             ds.running,
@@ -892,10 +854,11 @@ func buildBalanceChartSVG(history []BalancePoint) string {
 		padT   = 10
 	)
 
-	minVal := history[0].Savings
-	maxVal := history[0].Savings
+	// Geometry in float64 minor units (display math only — money stays integer).
+	minVal := float64(history[0].Savings)
+	maxVal := float64(history[0].Savings)
 	for _, bp := range history {
-		for _, v := range []float64{bp.Savings, bp.Lending} {
+		for _, v := range []float64{float64(bp.Savings), float64(bp.Lending)} {
 			if v < minVal {
 				minVal = v
 			}
@@ -905,10 +868,10 @@ func buildBalanceChartSVG(history []BalancePoint) string {
 		}
 	}
 	valRange := maxVal - minVal
-	if valRange < 100 {
-		valRange = 200
-		minVal -= 100
-		maxVal += 100
+	if valRange < 100_00 {
+		valRange = 200_00
+		minVal -= 100_00
+		maxVal += 100_00
 	} else {
 		minVal -= valRange * 0.1
 		maxVal += valRange * 0.1
@@ -932,7 +895,7 @@ func buildBalanceChartSVG(history []BalancePoint) string {
 		val := minVal + valRange*float64(i)/4.0
 		y := float64(padT+chartH) - float64(chartH)*float64(i)/4.0
 		s.WriteString(fmt.Sprintf(`<line x1="%d" y1="%.0f" x2="%d" y2="%.0f" stroke="#ededed" stroke-width="1"/>`, padL, y, padL+chartW, y))
-		s.WriteString(fmt.Sprintf(`<text x="%d" y="%.0f" text-anchor="end" font-size="9" fill="#7a7a7a">%s</text>`, padL-5, y+3, fmtMoney(val)))
+		s.WriteString(fmt.Sprintf(`<text x="%d" y="%.0f" text-anchor="end" font-size="9" fill="#7a7a7a">%s</text>`, padL-5, y+3, fmtMoney(luca.Amount(math.Round(val)))))
 	}
 
 	// Lines
@@ -941,8 +904,8 @@ func buildBalanceChartSVG(history []BalancePoint) string {
 		vals  func(BalancePoint) float64
 	}
 	lines := []lineSpec{
-		{"#48c78e", func(bp BalancePoint) float64 { return bp.Savings }},
-		{"#3e8ed0", func(bp BalancePoint) float64 { return bp.Lending }},
+		{"#48c78e", func(bp BalancePoint) float64 { return float64(bp.Savings) }},
+		{"#3e8ed0", func(bp BalancePoint) float64 { return float64(bp.Lending) }},
 	}
 	for _, line := range lines {
 		if len(history) == 1 {

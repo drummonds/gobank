@@ -5,6 +5,7 @@ import (
 	"math"
 	"strings"
 
+	luca "git.bytestone.uk/hum3/go-luca"
 	gbp "git.bytestone.uk/hum3/gobank-products"
 )
 
@@ -48,7 +49,7 @@ func (ds *DemoState) BuildProductsHTML(family gbp.ProductFamily) string {
 		}
 		// Count accounts and total balance
 		count := 0
-		totalBal := 0.0
+		var totalBal luca.Amount
 		for _, c := range customers {
 			for _, a := range c.Accounts {
 				if a.ProductID == p.ID {

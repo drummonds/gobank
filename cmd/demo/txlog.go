@@ -1,6 +1,10 @@
 package main
 
-import "time"
+import (
+	"time"
+
+	luca "git.bytestone.uk/hum3/go-luca"
+)
 
 // TxType classifies transaction log entries.
 type TxType int
@@ -41,13 +45,13 @@ type TxEntry struct {
 	AccountIdx  int    // index into customer's Accounts slice
 	ProductName string // snapshot at time of entry
 	Type        TxType
-	Amount      float64 // always positive; direction implied by Type
-	Balance     float64 // running balance after this entry
+	Amount      luca.Amount // minor units, always positive; direction implied by Type
+	Balance     luca.Amount // minor units; running balance after this entry
 	Reference   string
 }
 
 // emitTx appends a transaction log entry. Must be called with ds.mu held.
-func (ds *DemoState) emitTx(date time.Time, custID string, accIdx int, productName string, txType TxType, amount, balance float64, ref string) {
+func (ds *DemoState) emitTx(date time.Time, custID string, accIdx int, productName string, txType TxType, amount, balance luca.Amount, ref string) {
 	ds.nextTxID++
 	ds.txLog = append(ds.txLog, TxEntry{
 		ID:          ds.nextTxID,

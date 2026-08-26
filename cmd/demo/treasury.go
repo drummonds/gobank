@@ -6,6 +6,7 @@ import (
 	"strings"
 	"time"
 
+	luca "git.bytestone.uk/hum3/go-luca"
 	gbp "git.bytestone.uk/hum3/gobank-products"
 )
 
@@ -13,14 +14,14 @@ import (
 type TreasurySnapshot struct {
 	Day              time.Time
 	DayCount         int
-	Savings          float64
-	Lending          float64
-	Cash             float64
-	RequiredReserves float64
-	ExcessCash       float64
+	Savings          luca.Amount
+	Lending          luca.Amount
+	Cash             luca.Amount
+	RequiredReserves luca.Amount
+	ExcessCash       luca.Amount
 	ReserveRatio     float64
 	BoeRate          float64
-	BoeInterest      float64
+	BoeInterest      luca.Amount
 	BalanceHistory   []BalancePoint
 }
 
@@ -29,7 +30,7 @@ func (ds *DemoState) TreasuryData() TreasurySnapshot {
 	ds.mu.Lock()
 	defer ds.mu.Unlock()
 
-	var savings, lending float64
+	var savings, lending luca.Amount
 	for _, c := range ds.customers {
 		for _, a := range c.Accounts {
 			if a.Family == gbp.FamilySavings {
@@ -41,7 +42,7 @@ func (ds *DemoState) TreasuryData() TreasurySnapshot {
 	}
 
 	cash := savings - lending
-	required := savings * ds.settings.CapitalReserveRatio
+	required := luca.Amount(float64(savings) * ds.settings.CapitalReserveRatio)
 	excess := cash - required
 
 	balHist := make([]BalancePoint, len(ds.balanceHistory))
@@ -57,7 +58,7 @@ func (ds *DemoState) TreasuryData() TreasurySnapshot {
 		ExcessCash:       excess,
 		ReserveRatio:     ds.settings.CapitalReserveRatio,
 		BoeRate:          ds.settings.BoEBaseRate,
-		BoeInterest:      ds.boeInterestAccum,
+		BoeInterest:      luca.Amount(ds.boeAccruedNumerator / gbp.AccrualDenominator),
 		BalanceHistory:   balHist,
 	}
 }
@@ -72,7 +73,7 @@ type GiltYield struct {
 type GiltHolding struct {
 	ID           int
 	Tenor        string
-	FaceValue    float64
+	FaceValue    luca.Amount // minor units
 	PurchaseDate time.Time
 	Yield        float64
 }
@@ -120,7 +121,7 @@ func (ds *DemoState) getGiltHoldings() []GiltHolding {
 }
 
 // BuyGilt purchases a gilt and records it in the DB.
-func (ds *DemoState) BuyGilt(tenor string, faceValue float64) error {
+func (ds *DemoState) BuyGilt(tenor string, faceValue luca.Amount) error {
 	db := ds.DB()
 	if db == nil {
 		return fmt.Errorf("database not available")
@@ -191,15 +192,15 @@ func (ds *DemoState) BuildCapitalHTML() string {
 
 	actualRatio := 0.0
 	if t.Savings > 0 {
-		actualRatio = t.Cash / t.Savings
+		actualRatio = float64(t.Cash) / float64(t.Savings)
 	}
 	compliant := actualRatio >= t.ReserveRatio
 
-	maxLoans := t.Savings * (1 - t.ReserveRatio)
+	maxLoans := luca.Amount(float64(t.Savings) * (1 - t.ReserveRatio))
 	headroom := maxLoans - t.Lending
 	utilisationPct := 0.0
 	if maxLoans > 0 {
-		utilisationPct = t.Lending / maxLoans * 100
+		utilisationPct = float64(t.Lending) / float64(maxLoans) * 100
 	}
 
 	var s strings.Builder
@@ -325,15 +326,15 @@ func (ds *DemoState) BuildGiltsHTML() string {
 	if len(holdings) == 0 {
 		s.WriteString(`<p class="has-text-grey">No gilt holdings yet.</p>`)
 	} else {
-		totalFace := 0.0
+		var totalFace luca.Amount
 		weightedTenor := 0.0
 		for _, h := range holdings {
 			totalFace += h.FaceValue
-			weightedTenor += h.FaceValue * tenorYears(h.Tenor)
+			weightedTenor += float64(h.FaceValue) * tenorYears(h.Tenor)
 		}
 		avgTenor := 0.0
 		if totalFace > 0 {
-			avgTenor = weightedTenor / totalFace
+			avgTenor = weightedTenor / float64(totalFace)
 		}
 		s.WriteString(fmt.Sprintf(`<p class="mb-2"><strong>Total Face Value:</strong> %s | <strong>Avg Tenor:</strong> %.1f years</p>`, fmtMoney(totalFace), avgTenor))
 		s.WriteString(`<table class="table is-fullwidth is-striped">`)

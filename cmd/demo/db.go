@@ -65,7 +65,7 @@ func (ds *DemoState) createGiltTables() {
 	_, err = db.Exec(`CREATE TABLE IF NOT EXISTS gilt_holdings (
 		id SERIAL PRIMARY KEY,
 		tenor VARCHAR(10) NOT NULL,
-		face_value REAL NOT NULL,
+		face_value BIGINT NOT NULL, -- minor units (pence)
 		purchase_date TIMESTAMP NOT NULL,
 		yield REAL NOT NULL
 	)`)
