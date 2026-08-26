@@ -88,8 +88,8 @@ type DemoState struct {
 	boeReservesID       string
 	boePostedPence      int64       // whole pence of BoE accrual posted to the ledger, not yet applied (mu)
 	boeInterestApplied  luca.Amount // cumulative BoE interest applied into Asset:BoEReserves (mu)
-	simMu               sync.Mutex // serializes mutations of ds.sim in-memory state (engine sweeps vs payments)
-	memoryExceeded      bool       // true when heap > 800MB (WASM safety)
+	simMu               sync.Mutex  // serializes mutations of ds.sim in-memory state (engine sweeps vs payments)
+	memoryExceeded      bool        // true when heap > 800MB (WASM safety)
 }
 
 const (

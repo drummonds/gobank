@@ -231,7 +231,7 @@ func TestPoundsE7(t *testing.T) {
 	if got := accrualPoundsE7(-gbp.AccrualDenominator); got != -poundsE7PerPenny {
 		t.Errorf("negative penny = %d e7-units, want %d", got, -poundsE7PerPenny)
 	}
-	if got := poundsE7(poundsE7PerPenny/2).Pence(); got != 0 {
+	if got := poundsE7(poundsE7PerPenny / 2).Pence(); got != 0 {
 		t.Errorf("half penny should truncate to 0 pence, got %d", got)
 	}
 	if got := poundsE7(poundsE7PerPenny).Pence(); got != 1 {
