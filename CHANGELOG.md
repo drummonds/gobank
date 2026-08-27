@@ -2,6 +2,24 @@
 
 ## [Unreleased]
 
+ - Bulk database writes now stream in small transactions targeting ~10ms
+   each (adaptive chunk sizing), designed for an ultimate load of one real
+   day per simulated day: writes trickle continuously instead of arriving
+   as monolithic bursts that hold locks and demand oversized hardware.
+   Daily accrual postings are collected in memory under the sim lock and
+   written to the ledger lock-free (collectAccrualMovements +
+   writeMovementsChunked); accrual_state persistence commits in the same
+   ~10ms chunks.
+ - This removes the 26–37s dashboard stalls seen on PostgreSQL while the
+   simulation ran (a lock convoy: dashboard → state lock → customer adder
+   → sim lock → day sweep doing one fsync'd transaction per account).
+   Measured with the sim running and a 30,000-customer add concurrently:
+   dashboard polls hold 51–68ms with no stalls, and customers add at ~190/s
+   while simulated days tick ~10s/day at 30k customers.
+ - Known remaining spike: month-end interest application movements are
+   still written per account inside the products engine under the sim
+   lock; streaming those needs a gobank-products change.
+
 ## [0.3.43] - 2026-08-27
 
  - Hetzner cloud deployment for performance testing: `deploy/hetzner/` plus

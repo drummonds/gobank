@@ -323,9 +323,10 @@ func (ds *DemoState) lendingHeadroom() luca.Amount {
 // gobank-products engine: exact daily accrual in memory, applied to accounts
 // as ledger movements at month end. The demo additionally posts each day's
 // whole accrued pence into AccruedInterest holding accounts (see
-// postAccrualMovements) and persists the exact numerators to accrual_state.
-// The engine sweep runs without holding ds.mu so dashboard reads stay
-// responsive throughout.
+// collectAccrualMovements) and persists the exact numerators to
+// accrual_state. The engine sweep runs without holding ds.mu, and all bulk
+// database writes stream in ~targetTxTime transactions with no locks held,
+// so dashboard reads stay responsive throughout.
 // Must be called WITHOUT ds.mu held.
 func (ds *DemoState) advanceDay() {
 	ds.mu.Lock()
@@ -339,11 +340,16 @@ func (ds *DemoState) advanceDay() {
 
 	// Phase 1: products engine end-of-day (and month-end application) —
 	// no ds.mu held; simMu serializes against payments touching sim state.
+	// Only in-memory work happens under simMu; the day's accrual movements
+	// are collected here and streamed to the ledger below with no locks
+	// held, so customer adds and dashboard reads are never stuck behind a
+	// day's worth of database writes.
 	var accrualRows []accrualRow
+	var accrualBatches []accrualBatch
 	if sim != nil {
 		ds.simMu.Lock()
 		updates, err := sim.AdvanceToDate(day)
-		ds.postAccrualMovements(updates)
+		accrualBatches = ds.collectAccrualMovements(updates)
 		// Snapshot each swept account's numerator while simMu still guards
 		// engine state: on month-end days the update's recorded numerator is
 		// pre-application, so read the live post-application value instead.
@@ -360,6 +366,9 @@ func (ds *DemoState) advanceDay() {
 		ds.simMu.Unlock()
 		if err != nil {
 			log.Printf("advanceDay: products engine: %v", err)
+		}
+		for _, b := range accrualBatches {
+			ds.writeMovementsChunked(b)
 		}
 	}
 
@@ -506,26 +515,73 @@ func (ds *DemoState) ensureAccrualAccounts() bool {
 	return true
 }
 
-// postAccrualMovements writes each day's interest accrual into the ledger:
+// accrualBatch is one day's accrual movements: collected in memory under
+// ds.simMu, then written to the ledger with no locks held.
+type accrualBatch struct {
+	valueTime time.Time
+	inputs    []luca.MovementInput
+}
+
+// targetTxTime is the wall-clock budget for one streamed write transaction.
+// The design goal is smooth streaming under load: at the ultimate capacity of
+// one real day per simulated day, writes should trickle continuously in small
+// transactions that other writers can interleave with, instead of arriving as
+// one monolithic burst that holds locks and demands oversized hardware.
+const targetTxTime = 10 * time.Millisecond
+
+// writeMovementsChunked writes a batch of movements to the ledger in
+// transactions sized to roughly targetTxTime each, adapting the chunk length
+// to the measured cost. No locks are held, so customer creation, payments and
+// dashboard reads interleave between chunks.
+func (ds *DemoState) writeMovementsChunked(b accrualBatch) {
+	if ds.ledger == nil {
+		return
+	}
+	n := 64
+	for i := 0; i < len(b.inputs); {
+		j := min(i+n, len(b.inputs))
+		start := time.Now()
+		if _, err := ds.ledger.RecordLinkedMovements(b.inputs[i:j], b.valueTime); err != nil {
+			log.Printf("writeMovementsChunked: %v", err)
+			return
+		}
+		if el := time.Since(start); el > 0 {
+			n = min(max(int(float64(j-i)*float64(targetTxTime)/float64(el)), 16), 8192)
+		}
+		i = j
+		if runtime.GOOS == "js" {
+			time.Sleep(time.Millisecond) // yield to the browser event loop
+		}
+	}
+}
+
+// collectAccrualMovements builds each day's interest accrual movements:
 // newly accrued whole pence move from the P&L interest account into an
 // AccruedInterest holding account daily, and on month-end days the holding
 // account is emptied back to P&L, because the engine's application movement
 // posts the full month's interest from the same P&L account to the customer
 // account. Net P&L and customer balances therefore stay exactly the engine's;
 // the holding accounts expose the intra-month accrual. Sub-penny remainders
-// live in accrual_state, not the ledger. Must be called with ds.simMu held.
-func (ds *DemoState) postAccrualMovements(updates []gbp.DailyUpdate) {
+// live in accrual_state, not the ledger.
+//
+// Only ds.accrualPosted and in-memory batches are touched here — the caller
+// writes the returned batches via writeMovementsChunked after releasing the
+// locks. A later write failure leaves accrualPosted ahead of the ledger; the
+// demo logs and carries on (startup begins from an empty database, and import
+// rebuilds state from the file). Must be called with ds.simMu held.
+func (ds *DemoState) collectAccrualMovements(updates []gbp.DailyUpdate) []accrualBatch {
 	if ds.sim == nil || len(updates) == 0 || !ds.ensureAccrualAccounts() {
-		return
+		return nil
 	}
 	if ds.accrualPosted == nil {
 		ds.accrualPosted = make(map[string]int64)
 	}
-	moved, nextYield := 0, 64
+	var batches []accrualBatch
 	for _, du := range updates {
 		monthEnd := du.Date.Month() != du.Date.AddDate(0, 0, 1).Month()
 		// Just before the engine's application movements at 23:59:59.
 		valueTime := time.Date(du.Date.Year(), du.Date.Month(), du.Date.Day(), 23, 59, 58, 0, du.Date.Location())
+		var inputs []luca.MovementInput
 		for _, au := range du.Accounts {
 			id := au.Account.Account.ID
 			pnlID, holdID := ds.expenseInterestID, ds.accrSavingsID
@@ -536,32 +592,26 @@ func (ds *DemoState) postAccrualMovements(updates []gbp.DailyUpdate) {
 			// au.AccruedNumerator is this day's post-accrual, pre-application
 			// value, so the difference is the account's unposted whole pence.
 			if newPence := au.AccruedNumerator/gbp.AccrualDenominator - posted; newPence > 0 {
-				if _, err := ds.sim.RecordMovement(pnlID, holdID, luca.Amount(newPence),
-					codeDailyAccrual, valueTime, "Daily interest accrual"); err != nil {
-					log.Printf("postAccrualMovements: accrue %s: %v", id, err)
-					return
-				}
+				inputs = append(inputs, luca.MovementInput{
+					FromAccountID: pnlID, ToAccountID: holdID, Amount: luca.Amount(newPence),
+					Code: codeDailyAccrual, Description: "Daily interest accrual",
+				})
 				posted += newPence
-				moved++
 			}
 			if monthEnd && posted > 0 {
-				desc := fmt.Sprintf("Accrual reversal on application %s", du.Date.Format("2006-01-02"))
-				if _, err := ds.sim.RecordMovement(holdID, pnlID, luca.Amount(posted),
-					codeDailyAccrual, valueTime, desc); err != nil {
-					log.Printf("postAccrualMovements: reverse %s: %v", id, err)
-					return
-				}
+				inputs = append(inputs, luca.MovementInput{
+					FromAccountID: holdID, ToAccountID: pnlID, Amount: luca.Amount(posted),
+					Code: codeDailyAccrual, Description: fmt.Sprintf("Accrual reversal on application %s", du.Date.Format("2006-01-02")),
+				})
 				posted = 0
-				moved++
 			}
 			ds.accrualPosted[id] = posted
-			// Yield to the browser event loop during large sweeps (WASM).
-			if runtime.GOOS == "js" && moved >= nextYield {
-				nextYield += 64
-				time.Sleep(time.Millisecond)
-			}
+		}
+		if len(inputs) > 0 {
+			batches = append(batches, accrualBatch{valueTime: valueTime, inputs: inputs})
 		}
 	}
+	return batches
 }
 
 // postBoEInterest models BoE reserve interest in the ledger: newly accrued
@@ -618,37 +668,44 @@ type accrualRow struct {
 
 // persistAccrualState upserts the day's accrued-interest numerators (per
 // account, plus the BoE row) into accrual_state. Runs without ds.mu or
-// ds.simMu held so dashboard reads and payments stay responsive.
+// ds.simMu held, in transactions sized to roughly targetTxTime each (the
+// upserts are idempotent, so chunked commits are safe), so other writers
+// interleave and no single transaction grows with the account count.
 func persistAccrualState(db *sql.DB, day time.Time, rows []accrualRow, boeNumerator int64) {
 	if db == nil {
 		return
 	}
-	tx, err := db.Begin()
-	if err != nil {
-		log.Printf("persistAccrualState: begin: %v", err)
-		return
-	}
+	rows = append(rows, accrualRow{id: boeAccrualKey, numerator: boeNumerator})
 	const upsert = `INSERT INTO accrual_state (account_id, numerator, accrued_pounds_e7, as_of) VALUES ($1, $2, $3, $4)
 		ON CONFLICT (account_id) DO UPDATE SET numerator = EXCLUDED.numerator,
 			accrued_pounds_e7 = EXCLUDED.accrued_pounds_e7, as_of = EXCLUDED.as_of`
-	for i, r := range rows {
-		if _, err := tx.Exec(upsert, r.id, r.numerator, int64(accrualPoundsE7(r.numerator)), day); err != nil {
-			log.Printf("persistAccrualState: %s: %v", r.id, err)
-			tx.Rollback()
+	n := 64
+	for i := 0; i < len(rows); {
+		j := min(i+n, len(rows))
+		start := time.Now()
+		tx, err := db.Begin()
+		if err != nil {
+			log.Printf("persistAccrualState: begin: %v", err)
 			return
 		}
-		// Yield to the browser event loop during large sweeps (WASM).
-		if runtime.GOOS == "js" && i%64 == 63 {
-			time.Sleep(time.Millisecond)
+		for _, r := range rows[i:j] {
+			if _, err := tx.Exec(upsert, r.id, r.numerator, int64(accrualPoundsE7(r.numerator)), day); err != nil {
+				log.Printf("persistAccrualState: %s: %v", r.id, err)
+				tx.Rollback()
+				return
+			}
 		}
-	}
-	if _, err := tx.Exec(upsert, boeAccrualKey, boeNumerator, int64(accrualPoundsE7(boeNumerator)), day); err != nil {
-		log.Printf("persistAccrualState: boe: %v", err)
-		tx.Rollback()
-		return
-	}
-	if err := tx.Commit(); err != nil {
-		log.Printf("persistAccrualState: commit: %v", err)
+		if err := tx.Commit(); err != nil {
+			log.Printf("persistAccrualState: commit: %v", err)
+			return
+		}
+		if el := time.Since(start); el > 0 {
+			n = min(max(int(float64(j-i)*float64(targetTxTime)/float64(el)), 16), 8192)
+		}
+		i = j
+		if runtime.GOOS == "js" {
+			time.Sleep(time.Millisecond) // yield to the browser event loop
+		}
 	}
 }
 
