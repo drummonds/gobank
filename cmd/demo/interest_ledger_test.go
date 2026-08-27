@@ -10,12 +10,7 @@ import (
 // addFundedCustomer adds one customer through the real pipeline.
 func addFundedCustomer(ds *DemoState) {
 	ds.mu.Lock()
-	cust, pii := generateCustomer(ds.rng, ds.nextCustSeq, ds.products, ds.currentDay)
-	ds.nextCustSeq++
-	ds.persistCustomer(&cust, pii)
-	ds.customers = append(ds.customers, cust)
-	ds.addCustomerToLedger(&ds.customers[len(ds.customers)-1])
-	ds.fundCustomer(len(ds.customers) - 1)
+	ds.createCustomerLocked()
 	ds.mu.Unlock()
 }
 

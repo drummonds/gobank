@@ -3,10 +3,10 @@ module git.bytestone.uk/hum3/gobank/cmd/demo
 go 1.26.0
 
 require (
-	git.bytestone.uk/hum3/go-luca v0.2.31
+	git.bytestone.uk/hum3/go-luca v0.2.32
 	git.bytestone.uk/hum3/go-postgres v0.5.10
 	git.bytestone.uk/hum3/gobank-products v0.1.10
-	git.bytestone.uk/hum3/gobanks-customers v0.2.0
+	git.bytestone.uk/hum3/gobanks-customers v0.2.1
 	git.bytestone.uk/hum3/lofigui v0.17.40
 	github.com/go-analyze/charts v0.5.25
 	github.com/jackc/pgx/v5 v5.9.2

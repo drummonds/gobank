@@ -178,6 +178,27 @@ tasks:
     cmds:
       - go run .
 
+  cloud:up:
+    desc: "Provision/redeploy Hetzner demo with Postgres (tp secrets task cloud:up SCALE=small|medium|large|xl|<type>)"
+    cmds:
+      - deploy/hetzner/up.sh {{.SCALE | default "small"}}
+
+  cloud:down:
+    desc: Delete the Hetzner demo server — this is what stops billing (run via tp secrets)
+    cmds:
+      - deploy/hetzner/down.sh {{.CLI_ARGS}}
+
+  cloud:status:
+    desc: Show Hetzner demo server state and URL (run via tp secrets)
+    cmds:
+      - deploy/hetzner/status.sh
+
+  cloud:ssh:
+    desc: SSH into the Hetzner demo server (run via tp secrets)
+    interactive: true
+    cmds:
+      - ssh -o UserKnownHostsFile=deploy/hetzner/build/known_hosts -o StrictHostKeyChecking=accept-new root@$(hcloud server ip ${GOBANK_SERVER_NAME:-gobank-demo})
+
   clean:
     desc: Remove build artifacts (preserves docs/research/)
     cmds:

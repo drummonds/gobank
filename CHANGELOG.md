@@ -1,4 +1,33 @@
-# Changelog## [0.3.42] - 2026-08-26
+# Changelog
+
+## [Unreleased]
+
+ - Hetzner cloud deployment for performance testing: `deploy/hetzner/` plus
+   Taskfile targets `cloud:up` / `cloud:down` / `cloud:status` / `cloud:ssh`
+   (run via `tp secrets`). `cloud:up SCALE=small|medium|large|xl` (or any
+   hcloud server type) provisions a firewalled server via cloud-init with
+   PostgreSQL sized to the machine's RAM, cross-compiles the demo (arm64
+   for cax types), and deploys it as a systemd service on port 1347.
+   Deleting the server (`cloud:down`) is what stops billing.
+ - The demo server honours `GOBANK_PG_DSN` (real PostgreSQL backend via
+   pgx) and `GOBANK_ADDR` (fixed listen address). A configured DSN is
+   pinged at startup so an unreachable database fails fast, and in
+   Postgres mode startup drops all public tables — in-memory simulation
+   state is authoritative and stale rows from a previous run would
+   collide; export .goluca to keep a run's ledger.
+ - The About → Runtime page reports the actual data store (previously
+   hardcoded "In-memory (pglike/SQLite)") with the DSN password redacted.
+ - The DB explorer now works on real PostgreSQL: catalog access goes
+   through backend-aware helpers (sqlite_master/PRAGMA on pglike,
+   pg_tables/information_schema/pg_indexes on PostgreSQL).
+ - Customer creation is transactional: each customer's writes (customer +
+   PII rows, ledger accounts, funding movements) share one transaction via
+   go-luca v0.2.32 `SQLLedger.WithTx` and gobanks-customers v0.2.1
+   `SQLCustomerStore.WithTx` — 333 customers/s vs 178 on a cx33 against
+   PostgreSQL. A customer whose persist fails is rolled back and skipped
+   instead of surviving in memory only.
+ - The 1ms per-customer yield in batch adds now only runs on WASM builds
+   (`runtime.GOOS == "js"`); server builds add customers at full speed.
 
 ## [0.3.42] - 2026-08-26
 

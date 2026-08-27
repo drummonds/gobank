@@ -22,6 +22,10 @@ func (ds *DemoState) BuildRuntimeHTML() string {
 	paymentCount := len(ds.payments)
 	boeRate := ds.settings.BoEBaseRate * 100
 	piiCount := ds.custStoreCount()
+	dbBackend := ds.dbBackend
+	if dbBackend == "" {
+		dbBackend = "none (open failed)"
+	}
 	var dbStats sql.DBStats
 	if ds.db != nil {
 		dbStats = ds.db.Stats()
@@ -75,7 +79,7 @@ func (ds *DemoState) BuildRuntimeHTML() string {
 	s.WriteString(`<div class="box">`)
 	s.WriteString(`<h3 class="title is-5">Data Store</h3>`)
 	s.WriteString(`<table class="table is-fullwidth">`)
-	s.WriteString(`<tr><th>Type</th><td>In-memory (pglike/SQLite)</td></tr>`)
+	s.WriteString(fmt.Sprintf(`<tr><th>Type</th><td>%s</td></tr>`, dbBackend))
 	s.WriteString(fmt.Sprintf(`<tr><th>PII records (encrypted)</th><td>%d</td></tr>`, piiCount))
 	s.WriteString(fmt.Sprintf(`<tr><th>Max open connections</th><td>%d</td></tr>`, dbStats.MaxOpenConnections))
 	s.WriteString(fmt.Sprintf(`<tr><th>Open connections</th><td>%d</td><td class="has-text-grey">In use: %d, Idle: %d</td></tr>`, dbStats.OpenConnections, dbStats.InUse, dbStats.Idle))

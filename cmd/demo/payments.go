@@ -219,7 +219,7 @@ func (ds *DemoState) makePayment(ptype PaymentType, fromID, toID string, amount 
 
 // fundCustomer creates deposit and loan disbursement payments for a newly
 // created customer's accounts. Must be called with ds.mu held.
-func (ds *DemoState) fundCustomer(custIdx int) {
+func (ds *DemoState) fundCustomer(sim *gbp.Simulation, custIdx int) {
 	cust := &ds.customers[custIdx]
 	for i := range cust.Accounts {
 		a := &cust.Accounts[i]
@@ -228,8 +228,8 @@ func (ds *DemoState) fundCustomer(custIdx int) {
 			a.Balance = amount
 			ds.makePayment(PayDeposit, "EXTERNAL", cust.ID, amount)
 			ds.emitTx(ds.currentDay, cust.ID, i, a.ProductName, TxDepositIn, amount, a.Balance, fmt.Sprintf("PAY-%06d", ds.nextPaymentID-1))
-			if ds.sim != nil && a.LedgerAccountID != "" {
-				ds.recordSimMovement(ds.equityAccountID, a.LedgerAccountID, amount, luca.CodeBookTransfer, "Initial deposit")
+			if sim != nil && a.LedgerAccountID != "" {
+				ds.recordSimMovementOn(sim, ds.equityAccountID, a.LedgerAccountID, amount, luca.CodeBookTransfer, "Initial deposit")
 			}
 		} else {
 			headroom := ds.lendingHeadroom()
@@ -240,8 +240,8 @@ func (ds *DemoState) fundCustomer(custIdx int) {
 			a.Balance = amount
 			ds.makePayment(PayLoanDisbursement, "BANK", cust.ID, amount)
 			ds.emitTx(ds.currentDay, cust.ID, i, a.ProductName, TxLoanDisbursement, amount, a.Balance, fmt.Sprintf("PAY-%06d", ds.nextPaymentID-1))
-			if ds.sim != nil && a.LedgerAccountID != "" {
-				ds.recordSimMovement(ds.equityAccountID, a.LedgerAccountID, amount, luca.CodeBookTransfer, "Loan disbursement")
+			if sim != nil && a.LedgerAccountID != "" {
+				ds.recordSimMovementOn(sim, ds.equityAccountID, a.LedgerAccountID, amount, luca.CodeBookTransfer, "Loan disbursement")
 			}
 		}
 	}

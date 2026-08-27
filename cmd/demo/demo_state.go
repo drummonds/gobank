@@ -72,6 +72,9 @@ type DemoState struct {
 	nimHistory          []NIMPoint
 	boeAccruedNumerator int64 // BoE interest on excess reserves, numerator units over gbp.AccrualDenominator
 	db                  *sql.DB
+	dbBackend           string // human-readable data store description, set by initDBWithDSN
+	dbIsPostgres        bool   // real PostgreSQL (pgx) rather than in-memory pglike
+	ledger              *luca.SQLLedger
 	custStore           *customers.SQLCustomerStore
 	txLog               []TxEntry
 	nextTxID            int
@@ -162,6 +165,7 @@ func (ds *DemoState) initLedger() {
 		log.Printf("initLedger: open ledger: %v", err)
 		return
 	}
+	ds.ledger = ledger
 	ds.simClock = gbp.NewSimClock(ds.currentDay)
 	sim, err := gbp.NewSimulation(ledger, ds.simClock)
 	if err != nil {
@@ -206,9 +210,9 @@ func ensureLedgerAccount(ledger luca.Ledger, path string) (*luca.Account, error)
 
 // persistCustomer writes a customer record and PII to the SQL customer store.
 // Must be called with ds.mu held.
-func (ds *DemoState) persistCustomer(cust *CustomerRecord, pii PIIInput) {
-	if ds.custStore == nil {
-		return
+func (ds *DemoState) persistCustomer(store *customers.SQLCustomerStore, cust *CustomerRecord, pii PIIInput) error {
+	if store == nil {
+		return nil
 	}
 	rec := customers.CustomerRecord{
 		ID:            cust.ID,
@@ -226,15 +230,13 @@ func (ds *DemoState) persistCustomer(cust *CustomerRecord, pii PIIInput) {
 		Email:   pii.Email,
 		Phone:   pii.Phone,
 	}
-	if err := ds.custStore.Create(context.Background(), rec, cpii); err != nil {
-		log.Printf("persistCustomer: %v", err)
-	}
+	return store.Create(context.Background(), rec, cpii)
 }
 
 // addCustomerToLedger registers a customer's accounts in the go-luca ledger.
 // Must be called with ds.mu held.
-func (ds *DemoState) addCustomerToLedger(cust *CustomerRecord) {
-	if ds.sim == nil {
+func (ds *DemoState) addCustomerToLedger(sim *gbp.Simulation, cust *CustomerRecord) {
+	if sim == nil {
 		return
 	}
 	for i := range cust.Accounts {
@@ -248,7 +250,7 @@ func (ds *DemoState) addCustomerToLedger(cust *CustomerRecord) {
 			"annual_rate": fmt.Sprintf("%f", a.Rate),
 		}
 		ds.simMu.Lock()
-		ma, err := ds.sim.OpenAccount(a.ProductID, fullPath, "GBP", -2, params)
+		ma, err := sim.OpenAccount(a.ProductID, fullPath, "GBP", -2, params)
 		if err != nil {
 			ds.simMu.Unlock()
 			log.Printf("ledger: open account %s: %v", fullPath, err)
@@ -432,12 +434,7 @@ func (ds *DemoState) advanceDay() {
 		dailyProb := 0.10 + attractiveness*0.20
 
 		if ds.rng.Float64() < dailyProb {
-			cust, pii := generateCustomer(ds.rng, ds.nextCustSeq, ds.products, ds.currentDay)
-			ds.nextCustSeq++
-			ds.persistCustomer(&cust, pii)
-			ds.customers = append(ds.customers, cust)
-			ds.addCustomerToLedger(&ds.customers[len(ds.customers)-1])
-			ds.fundCustomer(len(ds.customers) - 1)
+			ds.createCustomerLocked()
 		}
 	}
 
@@ -740,12 +737,18 @@ func (ds *DemoState) refreshFromLedger() {
 // cached balances stay in sync, serialized against the daily engine sweep.
 // Must be called with ds.mu held.
 func (ds *DemoState) recordSimMovement(fromID, toID string, amount luca.Amount, code, description string) {
-	if ds.sim == nil || fromID == "" || toID == "" {
+	ds.recordSimMovementOn(ds.sim, fromID, toID, amount, code, description)
+}
+
+// recordSimMovementOn is recordSimMovement against an explicit simulation —
+// used with a tx-bound sim during transactional customer creation.
+func (ds *DemoState) recordSimMovementOn(sim *gbp.Simulation, fromID, toID string, amount luca.Amount, code, description string) {
+	if sim == nil || fromID == "" || toID == "" {
 		return
 	}
 	ds.simMu.Lock()
 	defer ds.simMu.Unlock()
-	if _, err := ds.sim.RecordMovement(fromID, toID, amount, code, ds.currentDay, description); err != nil {
+	if _, err := sim.RecordMovement(fromID, toID, amount, code, ds.currentDay, description); err != nil {
 		log.Printf("recordSimMovement: %v", err)
 	}
 }
@@ -798,6 +801,57 @@ func (ds *DemoState) IsRunning() bool {
 	return ds.running
 }
 
+// createCustomerLocked generates, persists, registers and funds one customer.
+// All database writes share a single transaction so each customer is one
+// atomic commit (one WAL flush on PostgreSQL instead of one per statement).
+// In-memory state (customer list, sim account registry, payments) is updated
+// as it goes and is not rolled back on error, matching the previous
+// log-and-continue behaviour. Must be called with ds.mu held.
+func (ds *DemoState) createCustomerLocked() {
+	cust, pii := generateCustomer(ds.rng, ds.nextCustSeq, ds.products, ds.currentDay)
+	ds.nextCustSeq++
+
+	store, sim := ds.custStore, ds.sim
+	var tx *sql.Tx
+	if ds.db != nil && ds.ledger != nil {
+		var err error
+		if tx, err = ds.db.Begin(); err != nil {
+			log.Printf("createCustomer: begin: %v", err)
+			tx = nil // fall back to autocommit writes
+		}
+	}
+	if tx != nil {
+		if store != nil {
+			store = store.WithTx(tx)
+		}
+		if sim != nil {
+			txSim := *sim // shallow copy: shares account/product maps, swaps only the ledger
+			txSim.Ledger = ds.ledger.WithTx(tx)
+			sim = &txSim
+		}
+	}
+
+	if err := ds.persistCustomer(store, &cust, pii); err != nil {
+		// Skip the customer entirely rather than keeping an in-memory ghost
+		// the database refused.
+		log.Printf("createCustomer: persist %s: %v", cust.ID, err)
+		if tx != nil {
+			_ = tx.Rollback()
+		}
+		return
+	}
+	ds.customers = append(ds.customers, cust)
+	ds.addCustomerToLedger(sim, &ds.customers[len(ds.customers)-1])
+	ds.fundCustomer(sim, len(ds.customers)-1)
+
+	if tx != nil {
+		if err := tx.Commit(); err != nil {
+			log.Printf("createCustomer: commit: %v", err)
+			_ = tx.Rollback()
+		}
+	}
+}
+
 // AddCustomersBatch starts a background goroutine that generates n customers,
 // yielding the lock per customer so other operations can proceed.
 func (ds *DemoState) AddCustomersBatch(n int) {
@@ -836,15 +890,12 @@ func (ds *DemoState) AddCustomersBatch(n int) {
 				cancel()
 				return
 			}
-			cust, pii := generateCustomer(ds.rng, ds.nextCustSeq, ds.products, ds.currentDay)
-			ds.nextCustSeq++
-			ds.persistCustomer(&cust, pii)
-			ds.customers = append(ds.customers, cust)
-			ds.addCustomerToLedger(&ds.customers[len(ds.customers)-1])
-			ds.fundCustomer(len(ds.customers) - 1)
+			ds.createCustomerLocked()
 			ds.addingCustProgress = i + 1
 			ds.mu.Unlock()
-			time.Sleep(time.Millisecond) // yield to JS event loop in WASM
+			if runtime.GOOS == "js" {
+				time.Sleep(time.Millisecond) // yield to the browser event loop
+			}
 		}
 		ds.mu.Lock()
 		ds.addingCustRunning = false

@@ -8,6 +8,7 @@ import (
 	"log"
 	"net"
 	"net/http"
+	"os"
 	"strconv"
 	"strings"
 	"sync"
@@ -161,7 +162,9 @@ func simStatus(ds *DemoState) string {
 }
 
 func main() {
-	state := NewDemoState()
+	// GOBANK_PG_DSN selects a real PostgreSQL backend (postgres://...);
+	// unset means in-memory pglike, as before.
+	state := NewDemoStateWithDSN(os.Getenv("GOBANK_PG_DSN"))
 
 	app := lofigui.NewApp()
 	app.Version = "Model Bank " + version
@@ -791,6 +794,17 @@ func main() {
 		w.Header().Set("Content-Type", "image/svg+xml")
 		w.Write(faviconSVG)
 	})
+
+	// GOBANK_ADDR pins the listen address (e.g. ":1347" under systemd on a
+	// cloud host) instead of scanning for a free port.
+	if addr := os.Getenv("GOBANK_ADDR"); addr != "" {
+		ln, err := net.Listen("tcp", addr)
+		if err != nil {
+			log.Fatalf("listen %s: %v", addr, err)
+		}
+		log.Printf("Starting Model Bank Demo on %s", addr)
+		log.Fatal(http.Serve(ln, nil))
+	}
 
 	// Try ports starting from 1347, auto-increment if in use
 	for port := 1347; port < 1357; port++ {

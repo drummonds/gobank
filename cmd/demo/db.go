@@ -2,17 +2,51 @@ package main
 
 import (
 	"database/sql"
+	"fmt"
 	"log"
+	"net/url"
+	"strings"
 
 	_ "git.bytestone.uk/hum3/go-postgres"
 	customers "git.bytestone.uk/hum3/gobanks-customers"
 	_ "github.com/jackc/pgx/v5/stdlib"
 )
 
+// describeBackend returns a display string for the data store backing the
+// given DSN, with any password redacted.
+func describeBackend(dsn string) string {
+	if dsn == "" {
+		return "In-memory (pglike/SQLite)"
+	}
+	if u, err := url.Parse(dsn); err == nil && u.Host != "" {
+		return fmt.Sprintf("PostgreSQL (pgx) — %s/%s", u.Host, strings.TrimPrefix(u.Path, "/"))
+	}
+	return "PostgreSQL (pgx)"
+}
+
 // piiKeyProvider is the default key for PII encryption in the demo.
 // WASM uses this hardcoded key; server mode could use EnvKeyProvider.
 var piiKeyProvider customers.KeyProvider = customers.FixedKeyProvider{
 	Key: []byte("gobank-demo-pii-key-32bytes!!!!!"),
+}
+
+// dropAllPublicTables removes all tables from a postgres database.
+func dropAllPublicTables(db *sql.DB) {
+	rows, err := db.Query("SELECT tablename FROM pg_tables WHERE schemaname = 'public'")
+	if err != nil {
+		log.Printf("dropAllPublicTables: %v", err)
+		return
+	}
+	var tables []string
+	for rows.Next() {
+		var t string
+		rows.Scan(&t)
+		tables = append(tables, t)
+	}
+	rows.Close()
+	for _, t := range tables {
+		db.Exec(fmt.Sprintf("DROP TABLE IF EXISTS %q CASCADE", t))
+	}
 }
 
 // initDB opens an in-memory pglike database and creates the gilt tables.
@@ -37,7 +71,22 @@ func (ds *DemoState) initDBWithDSN(dsn string) {
 		log.Printf("initDB: open failed: %v", err)
 		return
 	}
+	// sql.Open is lazy: verify a requested PostgreSQL backend is actually
+	// reachable rather than silently failing on first use.
+	if dsn != "" {
+		if err := db.Ping(); err != nil {
+			log.Fatalf("initDB: cannot reach %s: %v", describeBackend(dsn), err)
+		}
+		// The demo cannot resume from persisted rows — in-memory sim state
+		// is authoritative and starts fresh, so leftover tables from a
+		// previous run would only collide (duplicate customer IDs etc.).
+		// Start every run with an empty database; export .goluca to keep a
+		// run's ledger.
+		dropAllPublicTables(db)
+	}
 	ds.db = db
+	ds.dbBackend = describeBackend(dsn)
+	ds.dbIsPostgres = dsn != ""
 	ds.createGiltTables()
 	ds.createAccrualTable()
 

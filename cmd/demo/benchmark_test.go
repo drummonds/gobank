@@ -26,12 +26,7 @@ func benchAddCustomers(ds *DemoState, n int) {
 	ds.mu.Lock()
 	defer ds.mu.Unlock()
 	for range n {
-		cust, pii := generateCustomer(ds.rng, ds.nextCustSeq, ds.products, ds.currentDay)
-		ds.nextCustSeq++
-		ds.persistCustomer(&cust, pii)
-		ds.customers = append(ds.customers, cust)
-		ds.addCustomerToLedger(&ds.customers[len(ds.customers)-1])
-		ds.fundCustomer(len(ds.customers) - 1)
+		ds.createCustomerLocked()
 	}
 }
 
@@ -71,24 +66,6 @@ func newBenchStateWithDSN(maxCust int, dsn string) *DemoState {
 	ds := NewDemoStateWithDSN(dsn)
 	ds.settings.MaxCustomers = maxCust
 	return ds
-}
-
-// dropAllPublicTables removes all tables from a postgres database.
-func dropAllPublicTables(db *sql.DB) {
-	rows, err := db.Query("SELECT tablename FROM pg_tables WHERE schemaname = 'public'")
-	if err != nil {
-		return
-	}
-	var tables []string
-	for rows.Next() {
-		var t string
-		rows.Scan(&t)
-		tables = append(tables, t)
-	}
-	rows.Close()
-	for _, t := range tables {
-		db.Exec(fmt.Sprintf("DROP TABLE IF EXISTS %q CASCADE", t))
-	}
 }
 
 // pgDSN returns the postgres DSN from env, or empty string if unavailable.

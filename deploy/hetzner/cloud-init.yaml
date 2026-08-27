@@ -1,0 +1,48 @@
+#cloud-config
+# First-boot setup for the gobank demo server (see up.sh, which passes this
+# verbatim to `hcloud server create`). Installs PostgreSQL, creates the
+# gobank role/db with a password generated on the box, sizes PostgreSQL to
+# the machine's RAM, and installs the systemd unit for the demo binary
+# (which up.sh copies in afterwards).
+package_update: true
+packages:
+  - postgresql
+
+write_files:
+  - path: /etc/systemd/system/gobank-demo.service
+    content: |
+      [Unit]
+      Description=gobank Model Bank demo
+      After=network-online.target postgresql.service
+      Wants=postgresql.service
+
+      [Service]
+      User=gobank
+      Environment=GOBANK_PG_DSN=postgres://gobank:__PGPASS__@127.0.0.1:5432/gobank?sslmode=disable
+      Environment=GOBANK_ADDR=:1347
+      ExecStart=/opt/gobank/demo
+      Restart=on-failure
+      RestartSec=2
+
+      [Install]
+      WantedBy=multi-user.target
+
+runcmd:
+  - useradd --system --home-dir /opt/gobank --create-home --shell /usr/sbin/nologin gobank
+  - systemctl enable --now postgresql
+  - |
+    set -e
+    PGPASS=$(openssl rand -hex 16)
+    sudo -u postgres psql -v ON_ERROR_STOP=1 -c "CREATE ROLE gobank LOGIN PASSWORD '${PGPASS}'"
+    sudo -u postgres createdb -O gobank gobank
+    sed -i "s|__PGPASS__|${PGPASS}|" /etc/systemd/system/gobank-demo.service
+    systemctl daemon-reload
+  - |
+    # Size PostgreSQL to the machine: 25% RAM shared_buffers, 50% cache hint.
+    set -e
+    mem_mb=$(( $(awk '/MemTotal/{print $2}' /proc/meminfo) / 1024 ))
+    sudo -u postgres psql -c "ALTER SYSTEM SET shared_buffers = '$((mem_mb / 4))MB'"
+    sudo -u postgres psql -c "ALTER SYSTEM SET effective_cache_size = '$((mem_mb / 2))MB'"
+    sudo -u postgres psql -c "ALTER SYSTEM SET maintenance_work_mem = '$((mem_mb / 16))MB'"
+    sudo -u postgres psql -c "ALTER SYSTEM SET work_mem = '16MB'"
+    systemctl restart postgresql
