@@ -2,6 +2,8 @@
 
 ## [Unreleased]
 
+## [0.3.43] - 2026-08-27
+
  - Hetzner cloud deployment for performance testing: `deploy/hetzner/` plus
    Taskfile targets `cloud:up` / `cloud:down` / `cloud:status` / `cloud:ssh`
    (run via `tp secrets`). `cloud:up SCALE=small|medium|large|xl` (or any
