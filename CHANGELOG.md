@@ -2,6 +2,8 @@
 
 ## [Unreleased]
 
+## [0.3.44] - 2026-08-27
+
  - Bulk database writes now stream in small transactions targeting ~10ms
    each (adaptive chunk sizing), designed for an ultimate load of one real
    day per simulated day: writes trickle continuously instead of arriving
