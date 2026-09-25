@@ -65,7 +65,7 @@ func (ds *DemoState) BuildRuntimeHTML() string {
 	if gcLimit > 0 && gcLimit < math.MaxInt64 {
 		s.WriteString(fmt.Sprintf(`<tr><th>GC memory limit</th><td>%s</td><td class="has-text-grey">Advisory limit from <code>debug.SetMemoryLimit</code></td></tr>`, formatBytes(uint64(gcLimit))))
 	}
-	s.WriteString(fmt.Sprintf(`<tr><th>Auto-stop threshold</th><td>%s</td><td class="has-text-grey">Simulation pauses when heap exceeds this</td></tr>`, formatBytes(memoryLimitBytes)))
+	s.WriteString(fmt.Sprintf(`<tr><th>Auto-stop threshold</th><td>%s</td><td class="has-text-grey">Simulation pauses when heap exceeds this</td></tr>`, formatBytes(ds.MemoryLimit())))
 	ds.mu.Lock()
 	exceeded := ds.memoryExceeded
 	ds.mu.Unlock()

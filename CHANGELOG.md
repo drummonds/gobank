@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+### Added
+- `GOBANK_MEMORY_LIMIT` sets the demo's auto-stop threshold (e.g. `6GB`), replacing the fixed 800MB; the GC advisory limit follows it with 12.5% headroom on both server and WASM builds. Unset keeps 800MB, the browser-tab size. The runtime page shows the configured value.
+- Dashboard throughput readouts: interest movements per 12h (the engine's measured accrual rate against an overnight batch window, averaged over the last 10 simulated days) and customers added per second during and after a batch add.
+
 ## [0.3.44] - 2026-08-27
 
  - Bulk database writes now stream in small transactions targeting ~10ms

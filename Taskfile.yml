@@ -193,6 +193,11 @@ tasks:
     cmds:
       - deploy/hetzner/status.sh
 
+  cloud:ui:
+    desc: Environment states with create/redeploy/down controls, served by gobank-deploy (run via tp secrets)
+    cmds:
+      - task -d ../gobank-deploy ui ENVS={{.ENVS | default "prod,preprod"}}
+
   cloud:ssh:
     desc: SSH into the Hetzner demo server (run via tp secrets)
     interactive: true

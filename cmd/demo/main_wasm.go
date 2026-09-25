@@ -4,7 +4,6 @@ package main
 
 import (
 	"bytes"
-	"runtime/debug"
 	"syscall/js"
 
 	luca "git.bytestone.uk/hum3/go-luca"
@@ -12,11 +11,14 @@ import (
 	"git.bytestone.uk/hum3/lofigui"
 )
 
-func init() {
-	debug.SetMemoryLimit(900 * 1024 * 1024) // 900 MB advisory GC limit
-}
+var state = newWASMState()
 
-var state = NewDemoState()
+// newWASMState keeps the browser-sized default limit (and its GC headroom).
+func newWASMState() *DemoState {
+	ds := NewDemoState()
+	ds.SetMemoryLimit(defaultMemoryLimit)
+	return ds
+}
 
 // --- Export/Import ---
 

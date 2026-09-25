@@ -165,6 +165,13 @@ func main() {
 	// GOBANK_PG_DSN selects a real PostgreSQL backend (postgres://...);
 	// unset means in-memory pglike, as before.
 	state := NewDemoStateWithDSN(os.Getenv("GOBANK_PG_DSN"))
+	// GOBANK_MEMORY_LIMIT sizes the auto-stop threshold to the box (the
+	// deployer sets it); unset keeps the browser-sized default.
+	limit, err := memoryLimitFromEnv()
+	if err != nil {
+		log.Fatalf("GOBANK_MEMORY_LIMIT: %v", err)
+	}
+	state.SetMemoryLimit(limit)
 
 	app := lofigui.NewApp()
 	app.Version = "Model Bank " + version

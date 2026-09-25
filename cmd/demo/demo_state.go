@@ -69,6 +69,10 @@ type DemoState struct {
 	addingCustCancel    context.CancelFunc
 	addingCustProgress  int
 	addingCustTarget    int
+	addingCustStart     time.Time
+	lastAddRate         float64 // customers/s of the last finished batch
+	interestRate        interestThroughput
+	now                 func() time.Time // wall clock, injectable for tests
 	nimHistory          []NIMPoint
 	boeAccruedNumerator int64 // BoE interest on excess reserves, numerator units over gbp.AccrualDenominator
 	db                  *sql.DB
@@ -92,15 +96,15 @@ type DemoState struct {
 	boePostedPence      int64       // whole pence of BoE accrual posted to the ledger, not yet applied (mu)
 	boeInterestApplied  luca.Amount // cumulative BoE interest applied into Asset:BoEReserves (mu)
 	simMu               sync.Mutex  // serializes mutations of ds.sim in-memory state (engine sweeps vs payments)
-	memoryExceeded      bool        // true when heap > 800MB (WASM safety)
+	memoryExceeded      bool        // true when heap > memoryLimit; simulation pauses
+	memoryLimit         uint64      // auto-stop threshold, see SetMemoryLimit
 }
 
 const (
-	maxTxLogEntries  = 100_000           // B3: cap txLog size
-	txLogTrimPercent = 10                // trim oldest 10% when exceeded
-	maxHistoryPoints = 7_300             // B4: ~20 years of daily data
-	memoryLimitBytes = 800 * 1024 * 1024 // B2: auto-stop threshold
-	memCheckInterval = 10                // check every N sim-days
+	maxTxLogEntries  = 100_000 // B3: cap txLog size
+	txLogTrimPercent = 10      // trim oldest 10% when exceeded
+	maxHistoryPoints = 7_300   // B4: ~20 years of daily data
+	memCheckInterval = 10      // check every N sim-days
 )
 
 // capSlice returns a slice trimmed to maxLen by dropping the oldest entries.
@@ -111,13 +115,6 @@ func capSlice[T any](s []T, maxLen int) []T {
 	drop := len(s) - maxLen
 	copy(s, s[drop:])
 	return s[:maxLen]
-}
-
-// checkMemory reads heap stats and returns true if memory is exceeded.
-func checkMemory() bool {
-	var m runtime.MemStats
-	runtime.ReadMemStats(&m)
-	return m.Alloc > memoryLimitBytes
 }
 
 func NewDemoState() *DemoState {
@@ -141,6 +138,8 @@ func NewDemoStateWithDSN(dsn string) *DemoState {
 		settings:      settings,
 		nextCustSeq:   1,
 		boeHistory:    []RatePoint{{Date: startDay, Rate: settings.BoEBaseRate}},
+		now:           time.Now,
+		memoryLimit:   defaultMemoryLimit,
 	}
 	ds.initDBWithDSN(dsn)
 	ds.initLedger()
@@ -346,6 +345,8 @@ func (ds *DemoState) advanceDay() {
 	// day's worth of database writes.
 	var accrualRows []accrualRow
 	var accrualBatches []accrualBatch
+	accrualStart := ds.now()
+	movements := 0
 	if sim != nil {
 		ds.simMu.Lock()
 		updates, err := sim.AdvanceToDate(day)
@@ -368,13 +369,16 @@ func (ds *DemoState) advanceDay() {
 			log.Printf("advanceDay: products engine: %v", err)
 		}
 		for _, b := range accrualBatches {
+			movements += len(b.inputs)
 			ds.writeMovementsChunked(b)
 		}
 	}
+	accrualElapsed := ds.now().Sub(accrualStart)
 
 	// Phase 2: sync account mirrors from the engine and do day bookkeeping
 	// under a single short lock hold.
 	ds.mu.Lock()
+	ds.interestRate.record(movements, accrualElapsed)
 
 	var totalDeposits, totalLoans luca.Amount
 	for ci := range ds.customers {
@@ -463,7 +467,7 @@ func (ds *DemoState) advanceDay() {
 	ds.nimHistory = capSlice(ds.nimHistory, maxHistoryPoints)
 
 	// B2: Periodic memory check
-	if ds.dayCount%memCheckInterval == 0 && checkMemory() {
+	if ds.dayCount%memCheckInterval == 0 && heapExceeds(ds.memoryLimit) {
 		ds.memoryExceeded = true
 		ds.running = false
 		if ds.cancel != nil {
@@ -922,6 +926,7 @@ func (ds *DemoState) AddCustomersBatch(n int) {
 	ds.addingCustCancel = cancel
 	ds.addingCustProgress = 0
 	ds.addingCustTarget = n
+	ds.addingCustStart = ds.now()
 	ds.mu.Unlock()
 
 	go func() {
@@ -929,20 +934,14 @@ func (ds *DemoState) AddCustomersBatch(n int) {
 			select {
 			case <-ctx.Done():
 				ds.mu.Lock()
-				ds.addingCustRunning = false
-				ds.addingCustCancel = nil
-				ds.addingCustProgress = 0
-				ds.addingCustTarget = 0
+				ds.finishAddingLocked()
 				ds.mu.Unlock()
 				return
 			default:
 			}
 			ds.mu.Lock()
 			if len(ds.customers) >= ds.settings.MaxCustomers {
-				ds.addingCustRunning = false
-				ds.addingCustCancel = nil
-				ds.addingCustProgress = 0
-				ds.addingCustTarget = 0
+				ds.finishAddingLocked()
 				ds.mu.Unlock()
 				cancel()
 				return
@@ -955,12 +954,21 @@ func (ds *DemoState) AddCustomersBatch(n int) {
 			}
 		}
 		ds.mu.Lock()
-		ds.addingCustRunning = false
-		ds.addingCustCancel = nil
-		ds.addingCustProgress = 0
-		ds.addingCustTarget = 0
+		ds.finishAddingLocked()
 		ds.mu.Unlock()
 	}()
+}
+
+// finishAddingLocked ends a batch add, keeping its customers/s for the
+// dashboard. Must be called with ds.mu held.
+func (ds *DemoState) finishAddingLocked() {
+	if ds.addingCustProgress > 0 {
+		ds.lastAddRate = perSecond(ds.addingCustProgress, ds.now().Sub(ds.addingCustStart))
+	}
+	ds.addingCustRunning = false
+	ds.addingCustCancel = nil
+	ds.addingCustProgress = 0
+	ds.addingCustTarget = 0
 }
 
 // IsAddingCustomers returns true if a batch add is in progress.
@@ -988,14 +996,13 @@ func (ds *DemoState) Reset() {
 		}
 	}
 	if ds.addingCustRunning {
-		ds.addingCustRunning = false
 		if ds.addingCustCancel != nil {
 			ds.addingCustCancel()
-			ds.addingCustCancel = nil
 		}
-		ds.addingCustProgress = 0
-		ds.addingCustTarget = 0
+		ds.finishAddingLocked()
 	}
+	ds.lastAddRate = 0
+	ds.interestRate = interestThroughput{}
 	ds.currentDay = time.Date(2020, 1, 1, 0, 0, 0, 0, time.UTC)
 	ds.dayCount = 0
 	ds.payments = nil
@@ -1046,6 +1053,9 @@ type DashData struct {
 	AddingCust          bool
 	AddingProgress      int
 	AddingTarget        int
+	CustomersPerSec     float64 // live rate of the running batch add
+	LastCustomersPerSec float64 // rate of the last finished batch add
+	InterestPer12h      int64   // interest movements the engine posts per 12h at its measured rate
 	MemoryExceeded      bool
 	BalanceHistory      []BalancePoint
 	CustomerHistory     []CustomerPoint
@@ -1079,6 +1089,10 @@ func (ds *DemoState) DashboardData() DashData {
 	if len(nimHist) > 0 {
 		nimBps = nimHist[len(nimHist)-1].NIM
 	}
+	addRate := 0.0
+	if ds.addingCustRunning {
+		addRate = perSecond(ds.addingCustProgress, ds.now().Sub(ds.addingCustStart))
+	}
 
 	return DashData{
 		Day:                 ds.currentDay,
@@ -1096,6 +1110,9 @@ func (ds *DemoState) DashboardData() DashData {
 		AddingCust:          ds.addingCustRunning,
 		AddingProgress:      ds.addingCustProgress,
 		AddingTarget:        ds.addingCustTarget,
+		CustomersPerSec:     addRate,
+		LastCustomersPerSec: ds.lastAddRate,
+		InterestPer12h:      ds.interestRate.per(interestWindow),
 		MemoryExceeded:      ds.memoryExceeded,
 		BalanceHistory:      balHist,
 		CustomerHistory:     custHist,
@@ -1122,8 +1139,13 @@ func renderDashContent(d DashData) string {
 	s.WriteString(fmt.Sprintf(`<div class="level-item has-text-centered"><div><p class="heading">Day</p><p class="title is-5">%d &mdash; %s</p></div></div>`, d.DayCount, dateStr))
 	s.WriteString(fmt.Sprintf(`<div class="level-item has-text-centered"><div><p class="heading">Customers</p><p class="title is-5">%d</p></div></div>`, d.CustomerCount))
 	s.WriteString(fmt.Sprintf(`<div class="level-item has-text-centered"><div><p class="heading">NIM</p><p class="title is-5">%s</p></div></div>`, nimStr))
+	if d.InterestPer12h > 0 {
+		s.WriteString(fmt.Sprintf(`<div class="level-item has-text-centered"><div><p class="heading">Interest movements / 12h</p><p class="title is-5">%s</p></div></div>`, groupThousands(strconv.FormatInt(d.InterestPer12h, 10))))
+	}
 	if d.AddingCust {
-		s.WriteString(fmt.Sprintf(`<div class="level-item has-text-centered"><div><p class="heading">Adding</p><p class="title is-6">%d / %d</p></div></div>`, d.AddingProgress, d.AddingTarget))
+		s.WriteString(fmt.Sprintf(`<div class="level-item has-text-centered"><div><p class="heading">Adding</p><p class="title is-6">%d / %d</p><p class="heading">%.0f /s</p></div></div>`, d.AddingProgress, d.AddingTarget, d.CustomersPerSec))
+	} else if d.LastCustomersPerSec > 0 {
+		s.WriteString(fmt.Sprintf(`<div class="level-item has-text-centered"><div><p class="heading">Last add</p><p class="title is-6">%.0f /s</p></div></div>`, d.LastCustomersPerSec))
 	}
 	s.WriteString(`</nav>`)
 
