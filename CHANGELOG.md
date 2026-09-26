@@ -2,6 +2,12 @@
 
 ## [Unreleased]
 
+### Fixed
+- The DB explorer listed no tables on PostgreSQL: the backend flag was
+  dropped when the explorer moved to go-dbexplorer, so it queried the
+  SQLite catalog. Covered by a test that runs against `GOBANK_PG_DSN` when
+  set.
+
 ## [0.3.46] - 2026-09-27
 
 ### Changed
