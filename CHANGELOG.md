@@ -2,6 +2,8 @@
 
 ## [Unreleased]
 
+## [0.3.47] - 2026-09-27
+
 ### Fixed
 - The DB explorer listed no tables on PostgreSQL: the backend flag was
   dropped when the explorer moved to go-dbexplorer, so it queried the
