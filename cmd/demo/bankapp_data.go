@@ -66,21 +66,12 @@ const txPerPage = 20
 
 // customerExists reports whether a customer with the given ID exists.
 func (ds *DemoState) customerExists(id string) bool {
-	ds.mu.Lock()
-	defer ds.mu.Unlock()
-	for i := range ds.customers {
-		if ds.customers[i].ID == id {
-			return true
-		}
-	}
-	return false
+	_, ok := ds.customerByID(id)
+	return ok
 }
 
 func (ds *DemoState) bankAppCustomerList() []apiCustomer {
-	ds.mu.Lock()
-	customers := make([]CustomerRecord, len(ds.customers))
-	copy(customers, ds.customers)
-	ds.mu.Unlock()
+	customers, _ := ds.customerPage(1)
 
 	result := make([]apiCustomer, len(customers))
 	for i, c := range customers {
@@ -93,18 +84,8 @@ func (ds *DemoState) bankAppCustomerList() []apiCustomer {
 }
 
 func (ds *DemoState) bankAppAccounts(custID string) *apiAccountsResponse {
-	ds.mu.Lock()
-	var cust *CustomerRecord
-	for i := range ds.customers {
-		if ds.customers[i].ID == custID {
-			c := ds.customers[i]
-			cust = &c
-			break
-		}
-	}
-	ds.mu.Unlock()
-
-	if cust == nil {
+	cust, ok := ds.customerByID(custID)
+	if !ok {
 		return nil
 	}
 
@@ -153,18 +134,8 @@ func (ds *DemoState) bankAppTransactions(custID string, page int) apiTransaction
 }
 
 func (ds *DemoState) bankAppProductDetail(custID string, accountIdx int) *apiProductDetail {
-	ds.mu.Lock()
-	var cust *CustomerRecord
-	for i := range ds.customers {
-		if ds.customers[i].ID == custID {
-			c := ds.customers[i]
-			cust = &c
-			break
-		}
-	}
-	ds.mu.Unlock()
-
-	if cust == nil || accountIdx < 0 || accountIdx >= len(cust.Accounts) {
+	cust, ok := ds.customerByID(custID)
+	if !ok || accountIdx < 0 || accountIdx >= len(cust.Accounts) {
 		return nil
 	}
 

@@ -796,6 +796,36 @@ func main() {
 		fullPage(w, r, content)
 	})
 
+	http.HandleFunc("/about/docs", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != "GET" {
+			http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+			return
+		}
+		content := renderAndCapture(func() { lofigui.HTML(BuildDocsHTML()) })
+		if serveHTMX(w, r, content) {
+			return
+		}
+		fullPage(w, r, content)
+	})
+
+	http.HandleFunc("/about/docs/adr/", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != "GET" {
+			http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+			return
+		}
+		slug := strings.TrimPrefix(r.URL.Path, "/about/docs/adr/")
+		page, ok := BuildADRHTML(slug)
+		if !ok {
+			http.NotFound(w, r)
+			return
+		}
+		content := renderAndCapture(func() { lofigui.HTML(page) })
+		if serveHTMX(w, r, content) {
+			return
+		}
+		fullPage(w, r, content)
+	})
+
 	http.HandleFunc("/favicon.ico", lofigui.ServeFavicon)
 	http.HandleFunc("/favicon.svg", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "image/svg+xml")

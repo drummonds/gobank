@@ -14,6 +14,27 @@ func addFundedCustomer(ds *DemoState) {
 	ds.mu.Unlock()
 }
 
+// firstCustomerAccounts reads cust-001's accounts through the read model.
+func firstCustomerAccounts(t *testing.T, ds *DemoState) []CustomerAccount {
+	t.Helper()
+	cust, ok := ds.customerByID("cust-001")
+	if !ok {
+		t.Fatal("cust-001 not found")
+	}
+	return cust.Accounts
+}
+
+// allCustomers reads every customer through the read model (tests keep to
+// one page).
+func allCustomers(t *testing.T, ds *DemoState) []CustomerRecord {
+	t.Helper()
+	page, total := ds.customerPage(1)
+	if total != len(page) {
+		t.Fatalf("allCustomers: %d of %d on the first page", len(page), total)
+	}
+	return page
+}
+
 // TestInterestAccruesDaily verifies the products engine accrues interest every
 // day with visible accrued amounts, and that no application movements (the
 // engine's month-end code) appear before month end. Daily accruals do post
@@ -29,7 +50,7 @@ func TestInterestAccruesDaily(t *testing.T) {
 	ds.mu.Lock()
 	defer ds.mu.Unlock()
 	var accrued, applied luca.Amount
-	for _, a := range ds.customers[0].Accounts {
+	for _, a := range firstCustomerAccounts(t, ds) {
 		accrued += a.Accrued
 		applied += a.Interest
 	}
@@ -52,7 +73,7 @@ func TestInterestAccruesDaily(t *testing.T) {
 // every customer per family (the holding accounts are bank-wide). Caller holds ds.mu.
 func accruedPenceByFamily(t *testing.T, ds *DemoState) (savings, lending luca.Amount) {
 	t.Helper()
-	for _, c := range ds.customers {
+	for _, c := range allCustomers(t, ds) {
 		for _, a := range c.Accounts {
 			ma, ok := ds.sim.GetManagedAccount(a.LedgerAccountID)
 			if !ok {
@@ -127,7 +148,7 @@ func TestDailyAccrualMovements(t *testing.T) {
 	// application, February's still stand. Expense:Interest pays out both
 	// (balance = in - out, so it goes negative).
 	var appliedSavings, appliedLending luca.Amount
-	for _, c := range ds.customers {
+	for _, c := range allCustomers(t, ds) {
 		for _, a := range c.Accounts {
 			if a.Family == gbp.FamilySavings {
 				appliedSavings += a.Interest
@@ -166,7 +187,7 @@ func TestInterestAppliedMonthly(t *testing.T) {
 	ds.mu.Lock()
 	defer ds.mu.Unlock()
 	var applied luca.Amount
-	for _, a := range ds.customers[0].Accounts {
+	for _, a := range firstCustomerAccounts(t, ds) {
 		applied += a.Interest
 		if ma, ok := ds.sim.GetManagedAccount(a.LedgerAccountID); ok {
 			if ma.CachedBalance != a.Balance {
@@ -250,7 +271,7 @@ func ManagedAccountAccruedNumerator() int64 {
 // engine, and the BoE row matches ds.boeAccruedNumerator. Caller holds ds.mu.
 func assertAccrualPersisted(t *testing.T, ds *DemoState) {
 	t.Helper()
-	for _, a := range ds.customers[0].Accounts {
+	for _, a := range firstCustomerAccounts(t, ds) {
 		ma, ok := ds.sim.GetManagedAccount(a.LedgerAccountID)
 		if !ok {
 			t.Fatalf("%s: managed account missing", a.ProductName)
@@ -313,8 +334,9 @@ func TestAccrualStateRestored(t *testing.T) {
 	wantBoe := ds.boeAccruedNumerator
 	want := make(map[string]int64)
 	var total int64
+	accounts := firstCustomerAccounts(t, ds)
 	ds.simMu.Lock()
-	for _, a := range ds.customers[0].Accounts {
+	for _, a := range accounts {
 		ma, ok := ds.sim.GetManagedAccount(a.LedgerAccountID)
 		if !ok {
 			ds.simMu.Unlock()
@@ -335,7 +357,7 @@ func TestAccrualStateRestored(t *testing.T) {
 	if ds.boeAccruedNumerator != wantBoe {
 		t.Errorf("BoE numerator not restored: got %d, want %d", ds.boeAccruedNumerator, wantBoe)
 	}
-	for _, a := range ds.customers[0].Accounts {
+	for _, a := range firstCustomerAccounts(t, ds) {
 		ma, _ := ds.sim.GetManagedAccount(a.LedgerAccountID)
 		if ma.AccruedNumerator != want[a.LedgerAccountID] {
 			t.Errorf("%s: numerator not restored: got %d, want %d", a.ProductName, ma.AccruedNumerator, want[a.LedgerAccountID])

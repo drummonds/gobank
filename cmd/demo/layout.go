@@ -72,6 +72,7 @@ const LayoutModelBank = `<!DOCTYPE html>
             <a class="navbar-item" href="/about">Project</a>
             <a class="navbar-item" href="/about/runtime">Runtime</a>
             <a class="navbar-item" href="/about/models">Models</a>
+            <a class="navbar-item" href="/about/docs">Documentation</a>
           </div>
         </div>
       </div>

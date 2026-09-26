@@ -5,7 +5,6 @@ import (
 	"strings"
 
 	luca "git.bytestone.uk/hum3/go-luca"
-	gbp "git.bytestone.uk/hum3/gobank-products"
 )
 
 // BuildPnLHTML renders a Profit & Loss statement derived from current state.
@@ -14,19 +13,11 @@ func (ds *DemoState) BuildPnLHTML() string {
 	dayCount := ds.dayCount
 	opCostPerDay := ds.opCostPerDay
 
-	// Accrual accounting: income/expense includes accrued-but-unapplied interest.
-	var loanInterestIncome, depositInterestExpense luca.Amount
-	for _, c := range ds.customers {
-		for _, a := range c.Accounts {
-			if a.Family == gbp.FamilyLending {
-				loanInterestIncome += a.Interest + a.Accrued
-			} else {
-				depositInterestExpense += a.Interest + a.Accrued
-			}
-		}
-	}
 	boeInterestIncome := ds.boeInterestTotal()
 	ds.mu.Unlock()
+
+	// Accrual accounting: income/expense includes accrued-but-unapplied interest.
+	loanInterestIncome, depositInterestExpense := ds.interestTotals()
 
 	opCosts := opCostPerDay * luca.Amount(dayCount)
 	netInterest := loanInterestIncome + boeInterestIncome - depositInterestExpense
@@ -64,20 +55,11 @@ func (ds *DemoState) BuildBalanceSheetHTML() string {
 	dayCount := ds.dayCount
 	opCostPerDay := ds.opCostPerDay
 
-	var totalLoans, totalDeposits, loanInterest, depositInterest luca.Amount
-	for _, c := range ds.customers {
-		for _, a := range c.Accounts {
-			if a.Family == gbp.FamilyLending {
-				totalLoans += a.Balance
-				loanInterest += a.Interest + a.Accrued
-			} else {
-				totalDeposits += a.Balance
-				depositInterest += a.Interest + a.Accrued
-			}
-		}
-	}
+	book := ds.bookTotals()
 	boeInterest := ds.boeInterestTotal()
 	ds.mu.Unlock()
+	totalDeposits, totalLoans := book.Savings, book.Lending
+	loanInterest, depositInterest := ds.interestTotals()
 
 	// Gilt holdings (DB query, outside lock)
 	holdings := ds.getGiltHoldings()

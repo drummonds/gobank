@@ -2,9 +2,57 @@
 
 ## [Unreleased]
 
+### Removed
+- `deploy/hetzner/` scripts and the `cloud:up` / `cloud:down` / `cloud:status`
+  / `cloud:ssh` tasks. Hetzner deployment now lives in the separate
+  [gobank-deploy](https://git.bytestone.uk/hum3/gobank-deploy) repository
+  (`up`, `down`, `status` per named environment, plus the environments
+  console); `task cloud:ui` still opens that console from here.
+
 ### Added
+- Contract views (ADR-0001): every table belongs to one component, declared
+  in a registry (`cmd/demo/components.go`); other code reads a component's
+  data only through its `contract_*` views or its API. A source-scanning
+  test enforces the rule, with the pre-rule cross-reads held in a baseline
+  that can only shrink. The About menu gains a Documentation page generated
+  from the registry: components, tables, views, the rule, the debt list and
+  the architecture decision records, which live as markdown in `adr/` and
+  are compiled into the build. The DB explorer badges each table with its
+  owning component and lists contract views.
 - `GOBANK_MEMORY_LIMIT` sets the demo's auto-stop threshold (e.g. `6GB`), replacing the fixed 800MB; the GC advisory limit follows it with 12.5% headroom on both server and WASM builds. Unset keeps 800MB, the browser-tab size. The runtime page shows the configured value.
 - Dashboard throughput readouts: interest movements per 12h (the engine's measured accrual rate against an overnight batch window, averaged over the last 10 simulated days) and customers added per second during and after a batch add.
+ - Phase 2 groundwork for the mobile apps, all inside this repository:
+   `screen/` (versioned server-driven screen tree with JSON and HTML
+   renderers), `bff/` and `cmd/bff` (hardened backend-for-frontend: session
+   tokens, credential login with rate limiting and lockout, audit log, and
+   screen endpoints that answer nothing without a session; runs on the
+   in-memory `bff/stubbank` until the banking core is extracted from
+   `cmd/demo`), and `app/` (Flutter thin shell that renders BFF screens).
+   ROADMAP Phase 2 reordered so authentication comes first.
+
+### Changed
+- Payments are read from the database, not from a list held in memory: a
+  `payments` table owned by the payments component, written in the same
+  transaction as the customer a funding payment belongs to, with status
+  transitions recorded on the row. Other code reads them through the
+  `contract_payments` view or the payments API (`paymentByID`,
+  `paymentPage`, `paymentsOf`, `paymentCount`), the first component built
+  under ADR-0001.
+- Customers are read from the database, not from a list held in memory.
+  Identity and KYC come from gobanks-customers, the accounts a customer
+  holds from a new `customer_accounts` register (product, sort code,
+  account number, ledger account), balances and accrual from the products
+  engine, applied interest from the ledger's application movements. Bank-wide
+  savings/lending totals, per-product totals and the interest P&L are derived
+  from the ledger (`book.go`) instead of summed over every customer on each
+  page render. The customer-facing transaction log keys entries by ledger
+  account rather than account index. On PostgreSQL this takes the customer
+  mirror (~590 bytes and 6 heap objects per customer, ~175 MiB at 300k
+  customers) off the Go heap; the products engine's in-memory account
+  registry (~1.5 KiB per customer) and the payments list remain and are the
+  next targets.
+- The bank app's customer list endpoint returns the first page of customers
+  (50) rather than every customer.
 
 ## [0.3.44] - 2026-08-27
 

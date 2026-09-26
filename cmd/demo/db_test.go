@@ -70,7 +70,7 @@ func TestLedgerSurvivesConnectionPool(t *testing.T) {
 		ds.createCustomerLocked()
 	}
 
-	if len(ds.customers) != 200 {
-		t.Fatalf("expected 200 customers, got %d", len(ds.customers))
+	if n := ds.customerCount(); n != 200 {
+		t.Fatalf("expected 200 customers, got %d", n)
 	}
 }

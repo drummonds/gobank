@@ -2,7 +2,9 @@ package main
 
 import (
 	"context"
+	"database/sql"
 	"fmt"
+	"log"
 	"math"
 	"strings"
 	"time"
@@ -98,43 +100,190 @@ type Payment struct {
 	SettledAt time.Time
 }
 
+// The payments component owns the payments table. Other code reads
+// payments through the contract_payments view or the API below (ADR-0001).
+
+func (ds *DemoState) createPaymentsTable() {
+	stmts := []string{
+		`CREATE TABLE IF NOT EXISTS payments (
+			id INTEGER PRIMARY KEY,
+			type SMALLINT NOT NULL,
+			from_id VARCHAR(20) NOT NULL,
+			to_id VARCHAR(20) NOT NULL,
+			amount BIGINT NOT NULL,
+			status SMALLINT NOT NULL,
+			reference VARCHAR(20) NOT NULL UNIQUE,
+			created_at TIMESTAMP NOT NULL,
+			settled_at TIMESTAMP
+		)`,
+		`CREATE INDEX IF NOT EXISTS payments_from_id ON payments (from_id)`,
+		`CREATE INDEX IF NOT EXISTS payments_to_id ON payments (to_id)`,
+		// The contract view: what other components may read. Recreated so
+		// a durable database picks up a changed definition.
+		`DROP VIEW IF EXISTS contract_payments`,
+		`CREATE VIEW contract_payments AS
+			SELECT id, reference, type, from_id, to_id, amount, status, created_at, settled_at FROM payments`,
+	}
+	for _, stmt := range stmts {
+		if _, err := ds.db.Exec(stmt); err != nil {
+			log.Printf("initDB: payments: %v", err)
+		}
+	}
+}
+
+// insertPayment writes a payment row. q is the database or the transaction
+// the payment shares with the customer it funds; nil (no database) drops
+// the payment.
+func insertPayment(q execer, p Payment) error {
+	if q == nil {
+		return nil
+	}
+	_, err := q.Exec(`INSERT INTO payments (id, type, from_id, to_id, amount, status, reference, created_at, settled_at)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)`,
+		p.ID, int(p.Type), p.FromID, p.ToID, p.Amount, int(p.Status), p.Reference, p.CreatedAt.UTC(), nullTime(p.SettledAt))
+	if err != nil {
+		return fmt.Errorf("insert payment %s: %w", p.Reference, err)
+	}
+	return nil
+}
+
+func nullTime(t time.Time) sql.NullTime {
+	return sql.NullTime{Time: t.UTC(), Valid: !t.IsZero()}
+}
+
+// setPaymentStatus records a lifecycle transition on the payment's row;
+// settledAt is written when non-zero.
+func (ds *DemoState) setPaymentStatus(id int, status PaymentStatus, settledAt time.Time) {
+	if ds.db == nil {
+		return
+	}
+	_, err := ds.db.Exec(`UPDATE payments SET status = $1, settled_at = COALESCE($2, settled_at) WHERE id = $3`,
+		int(status), nullTime(settledAt), id)
+	if err != nil {
+		log.Printf("setPaymentStatus %d: %v", id, err)
+	}
+}
+
+const paymentColumns = `id, type, from_id, to_id, amount, status, reference, created_at, settled_at`
+
+func scanPayments(rows *sql.Rows) []Payment {
+	defer rows.Close()
+	var out []Payment
+	for rows.Next() {
+		var p Payment
+		var settled sql.NullTime
+		if err := rows.Scan(&p.ID, &p.Type, &p.FromID, &p.ToID, &p.Amount, &p.Status, &p.Reference, &p.CreatedAt, &settled); err != nil {
+			log.Printf("scan payment: %v", err)
+			return out
+		}
+		if settled.Valid {
+			p.SettledAt = settled.Time
+		}
+		out = append(out, p)
+	}
+	return out
+}
+
+// paymentByID reads one payment.
+func (ds *DemoState) paymentByID(id int) (Payment, bool) {
+	if ds.db == nil {
+		return Payment{}, false
+	}
+	rows, err := ds.db.Query(`SELECT `+paymentColumns+` FROM payments WHERE id = $1`, id)
+	if err != nil {
+		log.Printf("paymentByID %d: %v", id, err)
+		return Payment{}, false
+	}
+	ps := scanPayments(rows)
+	if len(ps) == 0 {
+		return Payment{}, false
+	}
+	return ps[0], true
+}
+
+// paymentPage returns one page of payments, newest first, and the total.
+func (ds *DemoState) paymentPage(page int) ([]Payment, int) {
+	if ds.db == nil {
+		return nil, 0
+	}
+	if page < 1 {
+		page = 1
+	}
+	rows, err := ds.db.Query(`SELECT `+paymentColumns+` FROM payments ORDER BY id DESC LIMIT $1 OFFSET $2`,
+		paymentsPerPage, (page-1)*paymentsPerPage)
+	if err != nil {
+		log.Printf("paymentPage %d: %v", page, err)
+		return nil, 0
+	}
+	return scanPayments(rows), ds.paymentCount()
+}
+
+// paymentsOf lists every payment a customer sent or received, oldest first.
+func (ds *DemoState) paymentsOf(customerID string) []Payment {
+	if ds.db == nil {
+		return nil
+	}
+	rows, err := ds.db.Query(`SELECT `+paymentColumns+` FROM payments WHERE from_id = $1 OR to_id = $1 ORDER BY id`, customerID)
+	if err != nil {
+		log.Printf("paymentsOf %s: %v", customerID, err)
+		return nil
+	}
+	return scanPayments(rows)
+}
+
+// paymentCount is the number of payments on record.
+func (ds *DemoState) paymentCount() int {
+	if ds.db == nil {
+		return 0
+	}
+	var n int
+	if err := ds.db.QueryRow(`SELECT COUNT(*) FROM payments`).Scan(&n); err != nil {
+		log.Printf("paymentCount: %v", err)
+	}
+	return n
+}
+
+// clearPaymentsLocked removes every payment and restarts the numbering.
+// Must be called with ds.mu held.
+func (ds *DemoState) clearPaymentsLocked() {
+	if ds.db != nil {
+		if _, err := ds.db.Exec(`DELETE FROM payments`); err != nil {
+			log.Printf("clearPayments: %v", err)
+		}
+	}
+	ds.nextPaymentID = 1
+}
+
 // SendPayment creates a random payment between customers, debiting sender's
 // savings account and crediting recipient's savings account.
 func (ds *DemoState) SendPayment() {
 	ds.mu.Lock()
 
-	if len(ds.customers) < 2 {
+	if ds.nCustomers < 2 {
 		ds.mu.Unlock()
 		return
 	}
 
-	fromIdx := ds.rng.Intn(len(ds.customers))
-	toIdx := ds.rng.Intn(len(ds.customers))
-	for toIdx == fromIdx {
-		toIdx = ds.rng.Intn(len(ds.customers))
+	fromID := ds.randomCustomerID()
+	toID := ds.randomCustomerID()
+	for toID == fromID {
+		toID = ds.randomCustomerID()
 	}
-
-	// Find first savings account on each
-	fromAccIdx := -1
-	for i, a := range ds.customers[fromIdx].Accounts {
-		if a.Family == gbp.FamilySavings {
-			fromAccIdx = i
-			break
-		}
-	}
-	toAccIdx := -1
-	for i, a := range ds.customers[toIdx].Accounts {
-		if a.Family == gbp.FamilySavings {
-			toAccIdx = i
-			break
-		}
-	}
-	if fromAccIdx < 0 || toAccIdx < 0 {
+	from, ok := ds.customerByID(fromID)
+	to, ok2 := ds.customerByID(toID)
+	if !ok || !ok2 {
 		ds.mu.Unlock()
 		return
 	}
 
-	senderBal := ds.customers[fromIdx].Accounts[fromAccIdx].Balance
+	// Pay from and into each customer's first savings account.
+	fromAcc, toAcc := firstSavingsAccount(from.Accounts), firstSavingsAccount(to.Accounts)
+	if fromAcc == nil || toAcc == nil {
+		ds.mu.Unlock()
+		return
+	}
+
+	senderBal := fromAcc.Balance
 	amount := min(
 		// 100..100000 pence
 		luca.Amount(ds.rng.Intn(99901)+100), senderBal)
@@ -143,25 +292,13 @@ func (ds *DemoState) SendPayment() {
 		return
 	}
 
-	// Debit sender, credit recipient
-	ds.customers[fromIdx].Accounts[fromAccIdx].Balance -= amount
-	ds.customers[toIdx].Accounts[toAccIdx].Balance += amount
-
-	// Dual-write to ledger
-	fromLedgerID := ds.customers[fromIdx].Accounts[fromAccIdx].LedgerAccountID
-	toLedgerID := ds.customers[toIdx].Accounts[toAccIdx].LedgerAccountID
-	if ds.sim != nil && fromLedgerID != "" && toLedgerID != "" {
-		ds.recordSimMovement(fromLedgerID, toLedgerID, amount, luca.CodeBookTransfer, fmt.Sprintf("PAY-%06d", ds.nextPaymentID))
-	}
-
-	fromID := ds.customers[fromIdx].ID
-	toID := ds.customers[toIdx].ID
 	ref := fmt.Sprintf("PAY-%06d", ds.nextPaymentID)
+	ds.recordSimMovement(fromAcc.LedgerAccountID, toAcc.LedgerAccountID, amount, luca.CodeBookTransfer, ref)
 
-	ds.emitTx(ds.currentDay, fromID, fromAccIdx, ds.customers[fromIdx].Accounts[fromAccIdx].ProductName,
-		TxTransferOut, amount, ds.customers[fromIdx].Accounts[fromAccIdx].Balance, ref)
-	ds.emitTx(ds.currentDay, toID, toAccIdx, ds.customers[toIdx].Accounts[toAccIdx].ProductName,
-		TxTransferIn, amount, ds.customers[toIdx].Accounts[toAccIdx].Balance, ref)
+	ds.emitTx(ds.currentDay, fromID, fromAcc.LedgerAccountID, fromAcc.ProductName,
+		TxTransferOut, amount, fromAcc.Balance-amount, ref)
+	ds.emitTx(ds.currentDay, toID, toAcc.LedgerAccountID, toAcc.ProductName,
+		TxTransferIn, amount, toAcc.Balance+amount, ref)
 
 	p := Payment{
 		ID:        ds.nextPaymentID,
@@ -174,34 +311,29 @@ func (ds *DemoState) SendPayment() {
 		CreatedAt: time.Now(),
 	}
 	ds.nextPaymentID++
-	ds.payments = append(ds.payments, p)
-
-	idx := len(ds.payments) - 1
+	var q execer
+	if ds.db != nil {
+		q = ds.db
+	}
+	if err := insertPayment(q, p); err != nil {
+		log.Printf("SendPayment: %v", err)
+	}
 	ds.mu.Unlock()
 
 	// Async status transitions
 	go func() {
 		time.Sleep(500 * time.Millisecond)
-		ds.mu.Lock()
-		if idx < len(ds.payments) && ds.payments[idx].ID == p.ID {
-			ds.payments[idx].Status = PaymentProcessing
-		}
-		ds.mu.Unlock()
-
+		ds.setPaymentStatus(p.ID, PaymentProcessing, time.Time{})
 		time.Sleep(1 * time.Second)
-		ds.mu.Lock()
-		if idx < len(ds.payments) && ds.payments[idx].ID == p.ID {
-			ds.payments[idx].Status = PaymentCompleted
-			ds.payments[idx].SettledAt = time.Now()
-		}
-		ds.mu.Unlock()
+		ds.setPaymentStatus(p.ID, PaymentCompleted, time.Now())
 	}()
 }
 
-// makePayment creates and records a payment, settling it immediately.
-// Must be called with ds.mu held. Directly modifies the target account balance.
-func (ds *DemoState) makePayment(ptype PaymentType, fromID, toID string, amount luca.Amount) {
+// makePayment records a payment that settles immediately, in the same
+// transaction as the customer it funds. Must be called with ds.mu held.
+func (ds *DemoState) makePayment(q execer, ptype PaymentType, fromID, toID string, amount luca.Amount) {
 	ref := fmt.Sprintf("PAY-%06d", ds.nextPaymentID)
+	now := time.Now()
 	p := Payment{
 		ID:        ds.nextPaymentID,
 		Type:      ptype,
@@ -210,24 +342,43 @@ func (ds *DemoState) makePayment(ptype PaymentType, fromID, toID string, amount 
 		Amount:    amount,
 		Status:    PaymentCompleted,
 		Reference: ref,
-		CreatedAt: time.Now(),
-		SettledAt: time.Now(),
+		CreatedAt: now,
+		SettledAt: now,
 	}
 	ds.nextPaymentID++
-	ds.payments = append(ds.payments, p)
+	if err := insertPayment(q, p); err != nil {
+		log.Printf("makePayment: %v", err)
+	}
+}
+
+// randomCustomerID picks a customer ID uniformly from those generated so
+// far. The ID may be missing (its persist failed); callers skip those.
+// Must be called with ds.mu held.
+func (ds *DemoState) randomCustomerID() string {
+	return fmt.Sprintf("cust-%03d", 1+ds.rng.Intn(ds.nextCustSeq-1))
+}
+
+// firstSavingsAccount returns the customer's first savings account, or nil.
+func firstSavingsAccount(accounts []CustomerAccount) *CustomerAccount {
+	for i := range accounts {
+		if accounts[i].Family == gbp.FamilySavings {
+			return &accounts[i]
+		}
+	}
+	return nil
 }
 
 // fundCustomer creates deposit and loan disbursement payments for a newly
 // created customer's accounts. Must be called with ds.mu held.
-func (ds *DemoState) fundCustomer(sim *gbp.Simulation, custIdx int) {
-	cust := &ds.customers[custIdx]
+func (ds *DemoState) fundCustomer(q execer, sim *gbp.Simulation, cust *CustomerRecord) {
 	for i := range cust.Accounts {
 		a := &cust.Accounts[i]
 		if a.Family == gbp.FamilySavings {
 			amount := luca.Amount(500+ds.rng.Intn(9500)) * 100
 			a.Balance = amount
-			ds.makePayment(PayDeposit, "EXTERNAL", cust.ID, amount)
-			ds.emitTx(ds.currentDay, cust.ID, i, a.ProductName, TxDepositIn, amount, a.Balance, fmt.Sprintf("PAY-%06d", ds.nextPaymentID-1))
+			ds.addToBook(a.Family, amount)
+			ds.makePayment(q, PayDeposit, "EXTERNAL", cust.ID, amount)
+			ds.emitTx(ds.currentDay, cust.ID, a.LedgerAccountID, a.ProductName, TxDepositIn, amount, a.Balance, fmt.Sprintf("PAY-%06d", ds.nextPaymentID-1))
 			if sim != nil && a.LedgerAccountID != "" {
 				ds.recordSimMovementOn(sim, ds.equityAccountID, a.LedgerAccountID, amount, luca.CodeBookTransfer, "Initial deposit")
 			}
@@ -238,8 +389,9 @@ func (ds *DemoState) fundCustomer(sim *gbp.Simulation, custIdx int) {
 			}
 			amount := min(luca.Amount(1000+ds.rng.Intn(49000))*100, headroom)
 			a.Balance = amount
-			ds.makePayment(PayLoanDisbursement, "BANK", cust.ID, amount)
-			ds.emitTx(ds.currentDay, cust.ID, i, a.ProductName, TxLoanDisbursement, amount, a.Balance, fmt.Sprintf("PAY-%06d", ds.nextPaymentID-1))
+			ds.addToBook(a.Family, amount)
+			ds.makePayment(q, PayLoanDisbursement, "BANK", cust.ID, amount)
+			ds.emitTx(ds.currentDay, cust.ID, a.LedgerAccountID, a.ProductName, TxLoanDisbursement, amount, a.Balance, fmt.Sprintf("PAY-%06d", ds.nextPaymentID-1))
 			if sim != nil && a.LedgerAccountID != "" {
 				ds.recordSimMovementOn(sim, ds.equityAccountID, a.LedgerAccountID, amount, luca.CodeBookTransfer, "Loan disbursement")
 			}
@@ -301,8 +453,7 @@ func (ds *DemoState) ResetPayments() {
 	ds.StopPayments()
 	ds.mu.Lock()
 	defer ds.mu.Unlock()
-	ds.payments = nil
-	ds.nextPaymentID = 1
+	ds.clearPaymentsLocked()
 }
 
 const paymentsPerPage = 20
@@ -310,29 +461,16 @@ const paymentsPerPage = 20
 // BuildPaymentsHTML renders the payments list as a Bulma HTML table.
 // Shows customer IDs; names shown only when piiAuth is true.
 func (ds *DemoState) BuildPaymentsHTML(piiAuth bool, page int) string {
-	ds.mu.Lock()
-	payments := make([]Payment, len(ds.payments))
-	copy(payments, ds.payments)
-	running := ds.payRunning
-	ds.mu.Unlock()
-
-	total := len(payments)
+	running := ds.IsPaymentsRunning()
+	pagePayments, total := ds.paymentPage(page)
 	if page < 1 {
 		page = 1
 	}
 	totalPages := max((total+paymentsPerPage-1)/paymentsPerPage, 1)
 	if page > totalPages {
 		page = totalPages
+		pagePayments, _ = ds.paymentPage(page)
 	}
-
-	// Reverse order (newest first)
-	for i, j := 0, len(payments)-1; i < j; i, j = i+1, j-1 {
-		payments[i], payments[j] = payments[j], payments[i]
-	}
-
-	start := (page - 1) * paymentsPerPage
-	end := min(start+paymentsPerPage, total)
-	pagePayments := payments[start:end]
 
 	var s strings.Builder
 	s.WriteString(`<h2 class="title is-4">Payments</h2>`)
@@ -399,22 +537,12 @@ func (ds *DemoState) BuildPaymentsHTML(piiAuth bool, page int) string {
 // BuildPaymentDetailHTML renders a single payment detail with settlement timeline.
 // Shows customer IDs; names shown only when piiAuth is true.
 func (ds *DemoState) BuildPaymentDetailHTML(id int, piiAuth bool) string {
-	ds.mu.Lock()
-	var found *Payment
-	for i := range ds.payments {
-		if ds.payments[i].ID == id {
-			p := ds.payments[i]
-			found = &p
-			break
-		}
-	}
-	ds.mu.Unlock()
-
-	if found == nil {
+	found, ok := ds.paymentByID(id)
+	if !ok {
 		return `<div class="notification is-warning">Payment not found.</div>`
 	}
 
-	p := found
+	p := &found
 	from := p.FromID
 	to := p.ToID
 	if piiAuth {

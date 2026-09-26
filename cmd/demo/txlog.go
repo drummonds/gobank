@@ -1,9 +1,11 @@
 package main
 
 import (
+	"strings"
 	"time"
 
 	luca "git.bytestone.uk/hum3/go-luca"
+	gbp "git.bytestone.uk/hum3/gobank-products"
 )
 
 // TxType classifies transaction log entries.
@@ -42,7 +44,7 @@ type TxEntry struct {
 	ID          int
 	Date        time.Time
 	CustomerID  string
-	AccountIdx  int    // index into customer's Accounts slice
+	AccountID   string // ledger account the entry is for
 	ProductName string // snapshot at time of entry
 	Type        TxType
 	Amount      luca.Amount // minor units, always positive; direction implied by Type
@@ -51,13 +53,11 @@ type TxEntry struct {
 }
 
 // emitTx appends a transaction log entry. Must be called with ds.mu held.
-func (ds *DemoState) emitTx(date time.Time, custID string, accIdx int, productName string, txType TxType, amount, balance luca.Amount, ref string) {
-	ds.nextTxID++
-	ds.txLog = append(ds.txLog, TxEntry{
-		ID:          ds.nextTxID,
+func (ds *DemoState) emitTx(date time.Time, custID, accountID, productName string, txType TxType, amount, balance luca.Amount, ref string) {
+	ds.appendTx(TxEntry{
 		Date:        date,
 		CustomerID:  custID,
-		AccountIdx:  accIdx,
+		AccountID:   accountID,
 		ProductName: productName,
 		Type:        txType,
 		Amount:      amount,
@@ -66,15 +66,56 @@ func (ds *DemoState) emitTx(date time.Time, custID string, accIdx int, productNa
 	})
 }
 
+// appendTx assigns the next ID to an entry and appends it. Must be called
+// with ds.mu held.
+func (ds *DemoState) appendTx(tx TxEntry) {
+	ds.nextTxID++
+	tx.ID = ds.nextTxID
+	ds.txLog = append(ds.txLog, tx)
+}
+
+// interestTx is the customer-facing entry for interest the engine applied
+// to a customer account. The customer and product are read from the
+// account's ledger path (see addCustomerToLedger).
+func (ds *DemoState) interestTx(date time.Time, ma *gbp.ManagedAccount, applied luca.Amount) TxEntry {
+	txType := TxInterestCredit
+	if ma.Family == gbp.FamilyLending {
+		txType = TxInterestDebit
+	}
+	if applied < 0 {
+		applied = -applied
+	}
+	custID, productID := customerAndProductFromPath(ma.Account.FullPath)
+	productName := productID
+	if p, ok := ds.productByID(productID); ok {
+		productName = p.Name
+	}
+	return TxEntry{
+		Date:        date,
+		CustomerID:  custID,
+		AccountID:   ma.Account.ID,
+		ProductName: productName,
+		Type:        txType,
+		Amount:      applied,
+		Balance:     ma.CachedBalance,
+		Reference:   "INT",
+	}
+}
+
 // ProductTransactions returns transaction entries for a specific customer account,
 // newest first. page is 1-based; perPage entries per page.
 func (ds *DemoState) ProductTransactions(custID string, accountIdx, page, perPage int) (entries []TxEntry, totalCount int) {
 	ds.mu.Lock()
 	defer ds.mu.Unlock()
 
+	accounts := ds.accountsOf(custID)
+	if accountIdx < 0 || accountIdx >= len(accounts) {
+		return nil, 0
+	}
+	accountID := accounts[accountIdx].LedgerAccountID
 	var matches []TxEntry
 	for _, tx := range ds.txLog {
-		if tx.CustomerID == custID && tx.AccountIdx == accountIdx {
+		if tx.CustomerID == custID && tx.AccountID == accountID {
 			matches = append(matches, tx)
 		}
 	}
@@ -127,4 +168,14 @@ func (ds *DemoState) CustomerTransactions(custID string, page, perPage int) (ent
 	}
 	end := min(start+perPage, len(matches))
 	return matches[start:end], totalCount
+}
+
+// customerAndProductFromPath splits a customer account path of the form
+// <type>:<family>:<customer>:<product> as written by addCustomerToLedger.
+func customerAndProductFromPath(fullPath string) (customerID, productID string) {
+	parts := strings.Split(fullPath, ":")
+	if len(parts) < 4 {
+		return "", ""
+	}
+	return parts[2], parts[3]
 }

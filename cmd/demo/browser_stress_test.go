@@ -63,9 +63,7 @@ func TestBrowserScenarioAddCustomersDuringSim(t *testing.T) {
 	default:
 	}
 
-	ds.mu.Lock()
-	customers := len(ds.customers)
-	ds.mu.Unlock()
+	customers := ds.customerCount()
 	if customers < 100 {
 		t.Errorf("only %d customers added, want >= 100", customers)
 	}

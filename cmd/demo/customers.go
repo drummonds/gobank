@@ -87,34 +87,19 @@ const customersPerPage = 50
 // Names are shown only when piiAuth is true; otherwise only the customer ID is displayed.
 func (ds *DemoState) BuildCustomersHTML(page int, piiAuth bool) string {
 	ds.mu.Lock()
-	customers := make([]CustomerRecord, len(ds.customers))
-	copy(customers, ds.customers)
+	book := ds.bookTotals()
 	ds.mu.Unlock()
+	aggSavings, aggLending := book.Savings, book.Lending
 
-	// Compute aggregate totals
-	var aggSavings, aggLending luca.Amount
-	for _, c := range customers {
-		for _, a := range c.Accounts {
-			if a.Family == gbp.FamilySavings {
-				aggSavings += a.Balance
-			} else {
-				aggLending += a.Balance
-			}
-		}
-	}
-
-	total := len(customers)
 	if page < 1 {
 		page = 1
 	}
+	pageCustomers, total := ds.customerPage(page)
 	totalPages := max((total+customersPerPage-1)/customersPerPage, 1)
 	if page > totalPages {
 		page = totalPages
+		pageCustomers, total = ds.customerPage(page)
 	}
-
-	start := (page - 1) * customersPerPage
-	end := min(start+customersPerPage, total)
-	pageCustomers := customers[start:end]
 
 	var s strings.Builder
 	s.WriteString(`<h2 class="title is-4">Customers</h2>`)
@@ -184,18 +169,8 @@ var phonePreviewFunc func(ds *DemoState, custID string, accountIdx int) string
 // BuildCustomerDetailHTML renders a single customer's detail page with two-column layout.
 // Left column: summary, PII, KYC, accounts table. Right column: phone preview.
 func (ds *DemoState) BuildCustomerDetailHTML(id string, piiAuthorized bool, txPage int) string {
-	ds.mu.Lock()
-	var cust *CustomerRecord
-	for i := range ds.customers {
-		if ds.customers[i].ID == id {
-			c := ds.customers[i]
-			cust = &c
-			break
-		}
-	}
-	ds.mu.Unlock()
-
-	if cust == nil {
+	cust, ok := ds.customerByID(id)
+	if !ok {
 		return `<div class="notification is-warning">Customer not found.</div>`
 	}
 
@@ -318,18 +293,8 @@ func (ds *DemoState) BuildCustomerDetailHTML(id string, piiAuthorized bool, txPa
 
 // BuildCustomerAccountHTML renders a per-account detail page with transactions and phone preview.
 func (ds *DemoState) BuildCustomerAccountHTML(custID string, accountIdx int, piiAuthorized bool, txPage int) string {
-	ds.mu.Lock()
-	var cust *CustomerRecord
-	for i := range ds.customers {
-		if ds.customers[i].ID == custID {
-			c := ds.customers[i]
-			cust = &c
-			break
-		}
-	}
-	ds.mu.Unlock()
-
-	if cust == nil {
+	cust, ok := ds.customerByID(custID)
+	if !ok {
 		return `<div class="notification is-warning">Customer not found.</div>`
 	}
 	if accountIdx < 0 || accountIdx >= len(cust.Accounts) {

@@ -7,7 +7,6 @@ import (
 	"time"
 
 	luca "git.bytestone.uk/hum3/go-luca"
-	gbp "git.bytestone.uk/hum3/gobank-products"
 )
 
 // TreasurySnapshot holds data for treasury pages, grabbed under one lock.
@@ -30,16 +29,7 @@ func (ds *DemoState) TreasuryData() TreasurySnapshot {
 	ds.mu.Lock()
 	defer ds.mu.Unlock()
 
-	var savings, lending luca.Amount
-	for _, c := range ds.customers {
-		for _, a := range c.Accounts {
-			if a.Family == gbp.FamilySavings {
-				savings += a.Balance
-			} else {
-				lending += a.Balance
-			}
-		}
-	}
+	savings, lending := ds.book.Savings, ds.book.Lending
 
 	cash := savings - lending
 	required := luca.Amount(float64(savings) * ds.settings.CapitalReserveRatio)

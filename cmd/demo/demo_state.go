@@ -50,8 +50,7 @@ type DemoState struct {
 	running             bool
 	cancel              context.CancelFunc
 	products            []Product
-	customers           []CustomerRecord
-	payments            []Payment
+	nCustomers          int // customers on the books (mu)
 	currentDay          time.Time
 	dayCount            int
 	nextPaymentID       int
@@ -98,6 +97,9 @@ type DemoState struct {
 	simMu               sync.Mutex  // serializes mutations of ds.sim in-memory state (engine sweeps vs payments)
 	memoryExceeded      bool        // true when heap > memoryLimit; simulation pauses
 	memoryLimit         uint64      // auto-stop threshold, see SetMemoryLimit
+	book                bookTotals  // running customer savings/lending totals, see book.go (mu)
+	dayAccrualSavings   int64       // interest accrued today on savings, numerator units over gbp.AccrualDenominator (mu)
+	dayAccrualLending   int64       // same for lending (mu)
 }
 
 const (
@@ -267,21 +269,12 @@ func (ds *DemoState) addCustomerToLedger(sim *gbp.Simulation, cust *CustomerReco
 // recordHistory appends current balance/customer/NIM totals to history slices.
 // Must be called with ds.mu held.
 func (ds *DemoState) recordHistory() {
-	var savings, lending luca.Amount
-	var totalLoanInt, totalDepInt float64 // daily interest estimates in minor units (rate math, not storage)
-	for _, c := range ds.customers {
-		for _, a := range c.Accounts {
-			if a.Family == gbp.FamilySavings {
-				savings += a.Balance
-				totalDepInt += float64(a.Balance) * a.Rate / 365.0
-			} else {
-				lending += a.Balance
-				totalLoanInt += float64(a.Balance) * a.Rate / 365.0
-			}
-		}
-	}
+	savings, lending := ds.book.Savings, ds.book.Lending
+	// Today's interest in minor units, from the engine's exact accrual (rate math for the NIM ratio, not storage).
+	totalDepInt := float64(ds.dayAccrualSavings) / gbp.AccrualDenominator
+	totalLoanInt := float64(ds.dayAccrualLending) / gbp.AccrualDenominator
 	ds.balanceHistory = append(ds.balanceHistory, BalancePoint{Date: ds.currentDay, Savings: savings, Lending: lending})
-	ds.customerHistory = append(ds.customerHistory, CustomerPoint{Date: ds.currentDay, Count: len(ds.customers)})
+	ds.customerHistory = append(ds.customerHistory, CustomerPoint{Date: ds.currentDay, Count: ds.nCustomers})
 
 	// NIM in bps: (loan interest income + BoE interest - deposit interest expense) / total deposits * 365 * 10000
 	cash := savings - lending
@@ -303,16 +296,7 @@ func (ds *DemoState) recordHistory() {
 // lendingHeadroom returns how much additional lending the bank can take on
 // while maintaining the capital reserve ratio. Must be called with ds.mu held.
 func (ds *DemoState) lendingHeadroom() luca.Amount {
-	var deposits, loans luca.Amount
-	for _, c := range ds.customers {
-		for _, a := range c.Accounts {
-			if a.Family == gbp.FamilySavings {
-				deposits += a.Balance
-			} else {
-				loans += a.Balance
-			}
-		}
-	}
+	deposits, loans := ds.book.Savings, ds.book.Lending
 	// Required reserves = ratio * deposits. Max loans = deposits - required reserves.
 	maxLoans := luca.Amount(float64(deposits) * (1 - ds.settings.CapitalReserveRatio))
 	return maxLoans - loans
@@ -345,6 +329,9 @@ func (ds *DemoState) advanceDay() {
 	// day's worth of database writes.
 	var accrualRows []accrualRow
 	var accrualBatches []accrualBatch
+	var appliedSavings, appliedLending luca.Amount // month-end interest applied to customer balances
+	var accrualSavings, accrualLending int64       // today's accrual, numerator units
+	var interestTxs []TxEntry                      // customer-facing entries for applied interest
 	accrualStart := ds.now()
 	movements := 0
 	if sim != nil {
@@ -352,11 +339,26 @@ func (ds *DemoState) advanceDay() {
 		updates, err := sim.AdvanceToDate(day)
 		accrualBatches = ds.collectAccrualMovements(updates)
 		// Snapshot each swept account's numerator while simMu still guards
-		// engine state: on month-end days the update's recorded numerator is
-		// pre-application, so read the live post-application value instead.
+		// engine state: on month-end days the update's recorded numerator and
+		// closing balance are pre-application, so read the live
+		// post-application values instead; the balance difference is the
+		// interest applied to the account.
 		seen := make(map[string]bool)
 		for _, du := range updates {
 			for _, au := range du.Accounts {
+				if au.Account.Family == gbp.FamilySavings {
+					accrualSavings += au.AccruedDelta
+				} else {
+					accrualLending += au.AccruedDelta
+				}
+				if applied := au.Account.CachedBalance - au.ClosingBalance; applied != 0 {
+					if au.Account.Family == gbp.FamilySavings {
+						appliedSavings += applied
+					} else {
+						appliedLending += applied
+					}
+					interestTxs = append(interestTxs, ds.interestTx(day, au.Account, applied))
+				}
 				id := au.Account.Account.ID
 				if !seen[id] {
 					seen[id] = true
@@ -379,40 +381,13 @@ func (ds *DemoState) advanceDay() {
 	// under a single short lock hold.
 	ds.mu.Lock()
 	ds.interestRate.record(movements, accrualElapsed)
-
-	var totalDeposits, totalLoans luca.Amount
-	for ci := range ds.customers {
-		cust := &ds.customers[ci]
-		for ai := range cust.Accounts {
-			a := &cust.Accounts[ai]
-			if sim != nil && a.LedgerAccountID != "" {
-				if ma, ok := sim.GetManagedAccount(a.LedgerAccountID); ok {
-					// Any drift between mirror and engine balance is interest
-					// applied at month end (payments update both in lockstep).
-					if applied := ma.CachedBalance - a.Balance; applied != 0 {
-						a.Balance = ma.CachedBalance
-						a.Interest += applied
-						txType := TxInterestCredit
-						if a.Family == gbp.FamilyLending {
-							txType = TxInterestDebit
-						}
-						amt := applied
-						if amt < 0 {
-							amt = -amt
-						}
-						ds.emitTx(day, cust.ID, ai, a.ProductName, txType, amt, a.Balance, "INT")
-					}
-					a.Accrued = ma.AccruedInterest()
-					a.AccruedE7 = accrualPoundsE7(ma.AccruedNumerator)
-				}
-			}
-			if a.Family == gbp.FamilySavings {
-				totalDeposits += a.Balance
-			} else {
-				totalLoans += a.Balance
-			}
-		}
+	ds.book.Savings += appliedSavings
+	ds.book.Lending += appliedLending
+	ds.dayAccrualSavings, ds.dayAccrualLending = accrualSavings, accrualLending
+	for _, tx := range interestTxs {
+		ds.appendTx(tx)
 	}
+	totalDeposits, totalLoans := ds.book.Savings, ds.book.Lending
 
 	requiredReserves := luca.Amount(float64(totalDeposits) * ds.settings.CapitalReserveRatio)
 	cash := totalDeposits - totalLoans
@@ -432,7 +407,7 @@ func (ds *DemoState) advanceDay() {
 	ds.settings.BoEBaseRate = lookupBoERate(ds.currentDay)
 	ds.boeHistory = append(ds.boeHistory, RatePoint{Date: ds.currentDay, Rate: ds.settings.BoEBaseRate})
 
-	if len(ds.customers) < ds.settings.MaxCustomers {
+	if ds.nCustomers < ds.settings.MaxCustomers {
 		boeRate := ds.settings.BoEBaseRate
 		avgSavings := averageRate(ds.products, gbp.FamilySavings)
 		avgLending := averageRate(ds.products, gbp.FamilyLending)
@@ -771,25 +746,13 @@ func (ds *DemoState) refreshFromLedger() {
 		return
 	}
 	ds.loadAccrualState()
+	ds.refreshBookTotals()
 	// Applied BoE interest is derivable from its ledger account balance.
 	if ds.ensureAccrualAccounts() {
 		if bal, err := ds.sim.Ledger.Balance(ds.boeReservesID); err == nil {
 			ds.boeInterestApplied = bal
 		} else {
 			log.Printf("refreshFromLedger: BoE reserves balance: %v", err)
-		}
-	}
-	for ci := range ds.customers {
-		for ai := range ds.customers[ci].Accounts {
-			a := &ds.customers[ci].Accounts[ai]
-			if a.LedgerAccountID == "" {
-				continue
-			}
-			if ma, ok := ds.sim.GetManagedAccount(a.LedgerAccountID); ok {
-				a.Balance = ma.CachedBalance
-				a.Accrued = ma.AccruedInterest()
-				a.AccruedE7 = accrualPoundsE7(ma.AccruedNumerator)
-			}
 		}
 	}
 }
@@ -901,9 +864,18 @@ func (ds *DemoState) createCustomerLocked() {
 		}
 		return
 	}
-	ds.customers = append(ds.customers, cust)
-	ds.addCustomerToLedger(sim, &ds.customers[len(ds.customers)-1])
-	ds.fundCustomer(sim, len(ds.customers)-1)
+	ds.nCustomers++
+	ds.addCustomerToLedger(sim, &cust)
+	var q execer = ds.db
+	if tx != nil {
+		q = tx
+	}
+	if q != nil {
+		if err := registerAccounts(q, &cust); err != nil {
+			log.Printf("createCustomer: %v", err)
+		}
+	}
+	ds.fundCustomer(q, sim, &cust)
 
 	if tx != nil {
 		if err := tx.Commit(); err != nil {
@@ -940,7 +912,7 @@ func (ds *DemoState) AddCustomersBatch(n int) {
 			default:
 			}
 			ds.mu.Lock()
-			if len(ds.customers) >= ds.settings.MaxCustomers {
+			if ds.nCustomers >= ds.settings.MaxCustomers {
 				ds.finishAddingLocked()
 				ds.mu.Unlock()
 				cancel()
@@ -1005,8 +977,7 @@ func (ds *DemoState) Reset() {
 	ds.interestRate = interestThroughput{}
 	ds.currentDay = time.Date(2020, 1, 1, 0, 0, 0, 0, time.UTC)
 	ds.dayCount = 0
-	ds.payments = nil
-	ds.nextPaymentID = 1
+	ds.clearPaymentsLocked()
 	ds.rng = rand.New(rand.NewSource(42))
 	if ds.custStore != nil {
 		ds.custStore.Reset(context.Background())
@@ -1014,7 +985,9 @@ func (ds *DemoState) Reset() {
 	ds.settings = DefaultSettings()
 	ds.settings.BoEBaseRate = lookupBoERate(ds.currentDay)
 	ds.nextCustSeq = 1
-	ds.customers = nil
+	ds.nCustomers = 0
+	ds.book = bookTotals{}
+	ds.dayAccrualSavings, ds.dayAccrualLending = 0, 0
 	ds.piiAuthorized = false
 	ds.memoryExceeded = false
 	ds.boeHistory = []RatePoint{{Date: ds.currentDay, Rate: ds.settings.BoEBaseRate}}
@@ -1027,6 +1000,9 @@ func (ds *DemoState) Reset() {
 	// Clear persisted numerators so a durable (postgres) DB doesn't carry
 	// accrual rows from before the reset.
 	if ds.db != nil {
+		if _, err := ds.db.Exec(`DELETE FROM customer_accounts`); err != nil {
+			log.Printf("reset: clear customer_accounts: %v", err)
+		}
 		if _, err := ds.db.Exec(`DELETE FROM accrual_state`); err != nil {
 			log.Printf("reset: clear accrual_state: %v", err)
 		}
@@ -1067,16 +1043,7 @@ func (ds *DemoState) DashboardData() DashData {
 	ds.mu.Lock()
 	defer ds.mu.Unlock()
 
-	var savings, lending luca.Amount
-	for _, c := range ds.customers {
-		for _, a := range c.Accounts {
-			if a.Family == gbp.FamilySavings {
-				savings += a.Balance
-			} else {
-				lending += a.Balance
-			}
-		}
-	}
+	savings, lending := ds.book.Savings, ds.book.Lending
 
 	balHist := make([]BalancePoint, len(ds.balanceHistory))
 	copy(balHist, ds.balanceHistory)
@@ -1105,7 +1072,7 @@ func (ds *DemoState) DashboardData() DashData {
 		BoeRate:             ds.settings.BoEBaseRate,
 		BoeInterest:         ds.boeInterestTotal(),
 		NIMBps:              nimBps,
-		CustomerCount:       len(ds.customers),
+		CustomerCount:       ds.nCustomers,
 		Running:             ds.running,
 		AddingCust:          ds.addingCustRunning,
 		AddingProgress:      ds.addingCustProgress,

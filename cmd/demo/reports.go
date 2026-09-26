@@ -52,8 +52,6 @@ func (ds *DemoState) BuildChartsHTML() string {
 // BuildBBSIHTML renders the BBSI annual report. Shows auth gate when not authorized.
 func (ds *DemoState) BuildBBSIHTML(piiAuthorized bool) string {
 	ds.mu.Lock()
-	customers := make([]CustomerRecord, len(ds.customers))
-	copy(customers, ds.customers)
 	currentDay := ds.currentDay
 	ds.mu.Unlock()
 
@@ -81,22 +79,12 @@ func (ds *DemoState) BuildBBSIHTML(piiAuthorized bool) string {
 
 	// BBSI reports gross interest paid: applied plus accrued-but-unapplied.
 	var totalInterest luca.Amount
-	for _, c := range customers {
-		var interest luca.Amount
-		for _, a := range c.Accounts {
-			if a.Family == gbp.FamilySavings {
-				interest += a.Interest + a.Accrued
-			}
-		}
-		if interest > 0 {
-			totalInterest += interest
-			piiData := ds.lookupPII(c.ID)
-			name := piiData.Name
-			ni := piiData.NI
-			s.WriteString(fmt.Sprintf(`<tr>
+	for _, row := range ds.savingsInterestByCustomer() {
+		totalInterest += row.Interest
+		piiData := ds.lookupPII(row.CustomerID)
+		s.WriteString(fmt.Sprintf(`<tr>
   <td>%s</td><td><code>%s</code></td><td>%s</td><td>%s</td>
-</tr>`, name, ni, fmtMoney(interest), fmtMoney(0)))
-		}
+</tr>`, piiData.Name, piiData.NI, fmtMoney(row.Interest), fmtMoney(0)))
 	}
 
 	s.WriteString(`</tbody>`)
@@ -115,29 +103,15 @@ func (ds *DemoState) BuildBBSIHTML(piiAuthorized bool) string {
 
 // BuildCustomerViewHTML renders a comprehensive single-customer report.
 func (ds *DemoState) BuildCustomerViewHTML(id string, piiAuthorized bool) string {
+	cust, _ := ds.customerByID(id)
 	ds.mu.Lock()
-	var cust *CustomerRecord
-	for i := range ds.customers {
-		if ds.customers[i].ID == id {
-			c := ds.customers[i]
-			cust = &c
-			break
-		}
-	}
-	var custPayments []Payment
-	if cust != nil {
-		for _, p := range ds.payments {
-			if p.FromID == cust.ID || p.ToID == cust.ID {
-				custPayments = append(custPayments, p)
-			}
-		}
-	}
 	currentDay := ds.currentDay
 	ds.mu.Unlock()
 
 	if cust == nil {
 		return `<div class="notification is-warning">Customer not found.</div>`
 	}
+	custPayments := ds.paymentsOf(cust.ID)
 
 	name := ds.lookupName(cust.ID)
 

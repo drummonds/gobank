@@ -24,7 +24,7 @@ func DefaultSettings() Settings {
 func (ds *DemoState) BuildSettingsHTML() string {
 	ds.mu.Lock()
 	settings := ds.settings
-	customerCount := len(ds.customers)
+	customerCount := ds.nCustomers
 	currentDay := ds.currentDay
 	ds.mu.Unlock()
 

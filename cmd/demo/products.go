@@ -5,7 +5,6 @@ import (
 	"math"
 	"strings"
 
-	luca "git.bytestone.uk/hum3/go-luca"
 	gbp "git.bytestone.uk/hum3/gobank-products"
 )
 
@@ -33,12 +32,11 @@ func AllProducts() []Product {
 func (ds *DemoState) BuildProductsHTML(family gbp.ProductFamily) string {
 	ds.mu.Lock()
 	products := ds.products
-	customers := make([]CustomerRecord, len(ds.customers))
-	copy(customers, ds.customers)
 	boeHistory := make([]RatePoint, len(ds.boeHistory))
 	copy(boeHistory, ds.boeHistory)
 	boeRate := ds.settings.BoEBaseRate
 	ds.mu.Unlock()
+	totals := ds.productTotals()
 
 	var s strings.Builder
 	s.WriteString(fmt.Sprintf(`<h2 class="title is-4">%s Products</h2>`, family))
@@ -47,17 +45,7 @@ func (ds *DemoState) BuildProductsHTML(family gbp.ProductFamily) string {
 		if p.Family != family {
 			continue
 		}
-		// Count accounts and total balance
-		count := 0
-		var totalBal luca.Amount
-		for _, c := range customers {
-			for _, a := range c.Accounts {
-				if a.ProductID == p.ID {
-					count++
-					totalBal += a.Balance
-				}
-			}
-		}
+		count, totalBal := totals[p.ID].Accounts, totals[p.ID].Balance
 
 		s.WriteString(`<div class="box">`)
 		s.WriteString(fmt.Sprintf(`<h3 class="title is-5">%s</h3>`, p.Name))

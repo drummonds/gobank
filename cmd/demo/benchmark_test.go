@@ -32,11 +32,9 @@ func benchAddCustomers(ds *DemoState, n int) {
 
 // benchCountAccounts returns total accounts across all customers.
 func benchCountAccounts(ds *DemoState) int {
-	ds.mu.Lock()
-	defer ds.mu.Unlock()
-	n := 0
-	for _, c := range ds.customers {
-		n += len(c.Accounts)
+	var n int
+	if err := ds.db.QueryRow(`SELECT COUNT(*) FROM customer_accounts`).Scan(&n); err != nil {
+		panic(err)
 	}
 	return n
 }
@@ -355,12 +353,11 @@ func benchBuildMux(ds *DemoState) *http.ServeMux {
 
 // benchFirstCustomerID returns the ID of the first customer (for API calls).
 func benchFirstCustomerID(ds *DemoState) string {
-	ds.mu.Lock()
-	defer ds.mu.Unlock()
-	if len(ds.customers) == 0 {
+	page, _ := ds.customerPage(1)
+	if len(page) == 0 {
 		return ""
 	}
-	return ds.customers[0].ID
+	return page[0].ID
 }
 
 // benchLoadEndpoints returns endpoint lists for load testing.

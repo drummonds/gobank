@@ -3,6 +3,7 @@ package main
 import (
 	"database/sql"
 	"fmt"
+	"html"
 	"math"
 	"runtime"
 	"runtime/debug"
@@ -17,9 +18,8 @@ func (ds *DemoState) BuildRuntimeHTML() string {
 	ds.mu.Lock()
 	currentDay := ds.currentDay.Format("2 Jan 2006")
 	dayCount := ds.dayCount
-	customerCount := len(ds.customers)
+	customerCount := ds.nCustomers
 	productCount := len(ds.products)
-	paymentCount := len(ds.payments)
 	boeRate := ds.settings.BoEBaseRate * 100
 	piiCount := ds.custStoreCount()
 	dbBackend := ds.dbBackend
@@ -31,6 +31,11 @@ func (ds *DemoState) BuildRuntimeHTML() string {
 		dbStats = ds.db.Stats()
 	}
 	ds.mu.Unlock()
+
+	// Live database queries — after the unlock so a slow database can
+	// never stall other pages on ds.mu.
+	dbConfig := ds.dbConfigRows()
+	paymentCount := ds.paymentCount()
 
 	var s strings.Builder
 
@@ -59,6 +64,7 @@ func (ds *DemoState) BuildRuntimeHTML() string {
 	s.WriteString(fmt.Sprintf(`<tr><th>HeapObjects</th><td>%d</td><td class="has-text-grey">Number of allocated heap objects</td></tr>`, m.HeapObjects))
 	s.WriteString(fmt.Sprintf(`<tr><th>NumGC</th><td>%d</td><td class="has-text-grey">Completed garbage collection cycles</td></tr>`, m.NumGC))
 	s.WriteString(fmt.Sprintf(`<tr><th>Goroutines</th><td>%d</td><td class="has-text-grey">Active goroutines</td></tr>`, runtime.NumGoroutine()))
+	s.WriteString(fmt.Sprintf(`<tr><th>CPU cores</th><td>%d</td><td class="has-text-grey">Host cores (shared with the database); GOMAXPROCS %d</td></tr>`, runtime.NumCPU(), runtime.GOMAXPROCS(0)))
 
 	// Memory limits
 	gcLimit := debug.SetMemoryLimit(-1) // read without changing
@@ -80,6 +86,9 @@ func (ds *DemoState) BuildRuntimeHTML() string {
 	s.WriteString(`<h3 class="title is-5">Data Store</h3>`)
 	s.WriteString(`<table class="table is-fullwidth">`)
 	s.WriteString(fmt.Sprintf(`<tr><th>Type</th><td>%s</td></tr>`, dbBackend))
+	for _, r := range dbConfig {
+		s.WriteString(fmt.Sprintf(`<tr><th>%s</th><td>%s</td></tr>`, html.EscapeString(r[0]), html.EscapeString(r[1])))
+	}
 	s.WriteString(fmt.Sprintf(`<tr><th>PII records (encrypted)</th><td>%d</td></tr>`, piiCount))
 	s.WriteString(fmt.Sprintf(`<tr><th>Max open connections</th><td>%d</td></tr>`, dbStats.MaxOpenConnections))
 	s.WriteString(fmt.Sprintf(`<tr><th>Open connections</th><td>%d</td><td class="has-text-grey">In use: %d, Idle: %d</td></tr>`, dbStats.OpenConnections, dbStats.InUse, dbStats.Idle))

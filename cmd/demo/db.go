@@ -49,6 +49,34 @@ func dropAllPublicTables(db *sql.DB) {
 	}
 }
 
+// dbConfigRows returns label/value pairs describing the live database
+// configuration (version, size on disk, key tuning, connections) for the
+// runtime page. PostgreSQL only — pglike is in-memory and shows up in the
+// heap stats instead. Call without ds.mu held: these are live queries.
+func (ds *DemoState) dbConfigRows() [][2]string {
+	if !ds.dbIsPostgres || ds.db == nil {
+		return nil
+	}
+	var rows [][2]string
+	var v string
+	if err := ds.db.QueryRow(`SELECT current_setting('server_version')`).Scan(&v); err == nil {
+		rows = append(rows, [2]string{"PostgreSQL version", v})
+	}
+	if err := ds.db.QueryRow(`SELECT pg_size_pretty(pg_database_size(current_database()))`).Scan(&v); err == nil {
+		rows = append(rows, [2]string{"Size on disk", v})
+	}
+	for _, setting := range []string{"shared_buffers", "effective_cache_size", "work_mem", "max_connections", "max_parallel_workers"} {
+		if err := ds.db.QueryRow(`SELECT current_setting($1)`, setting).Scan(&v); err == nil {
+			rows = append(rows, [2]string{setting, v})
+		}
+	}
+	var n int
+	if err := ds.db.QueryRow(`SELECT count(*) FROM pg_stat_activity WHERE datname = current_database()`).Scan(&n); err == nil {
+		rows = append(rows, [2]string{"Server connections", fmt.Sprintf("%d", n)})
+	}
+	return rows
+}
+
 // initDB opens an in-memory pglike database and creates the gilt tables.
 func (ds *DemoState) initDB() {
 	ds.initDBWithDSN("")
@@ -89,6 +117,8 @@ func (ds *DemoState) initDBWithDSN(dsn string) {
 	ds.dbIsPostgres = dsn != ""
 	ds.createGiltTables()
 	ds.createAccrualTable()
+	ds.createCustomerAccountsTable()
+	ds.createPaymentsTable()
 
 	// Create customer store (shares same DB)
 	custStore, err := customers.NewSQLCustomerStore(db, piiKeyProvider)
