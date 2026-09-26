@@ -2,6 +2,8 @@
 
 ## [Unreleased]
 
+## [0.3.45] - 2026-09-27
+
 ### Removed
 - `deploy/hetzner/` scripts and the `cloud:up` / `cloud:down` / `cloud:status`
   / `cloud:ssh` tasks. Hetzner deployment now lives in the separate
