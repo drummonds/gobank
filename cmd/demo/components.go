@@ -5,6 +5,8 @@ package main
 // documentation page (docs.go), the contract-view rule (ADR-0001, enforced
 // by TestContractViewRule) and the explorer's ownership badges.
 
+import "slices"
+
 // Component is one function of the bank.
 type Component struct {
 	Name    string   // domain name, e.g. "payments"
@@ -76,10 +78,8 @@ var contractDebt = []crossRead{
 // componentOf returns the component owning a table, or "" if none does.
 func componentOf(table string) string {
 	for _, c := range components {
-		for _, t := range c.Tables {
-			if t == table {
-				return c.Name
-			}
+		if slices.Contains(c.Tables, table) {
+			return c.Name
 		}
 	}
 	return ""
