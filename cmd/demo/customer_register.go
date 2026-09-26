@@ -32,6 +32,27 @@ func (ds *DemoState) createCustomerAccountsTable() {
 	if err != nil {
 		log.Printf("initDB: create customer_accounts: %v", err)
 	}
+	// The contract view: the register as other components read it.
+	for _, stmt := range []string{
+		`DROP VIEW IF EXISTS contract_customer_accounts`,
+		`CREATE VIEW contract_customer_accounts AS
+			SELECT customer_id, idx, ledger_account_id, product_id, sort_code, account_num, opened FROM customer_accounts`,
+	} {
+		if _, err := ds.db.Exec(stmt); err != nil {
+			log.Printf("initDB: contract_customer_accounts: %v", err)
+		}
+	}
+}
+
+// clearRegisterLocked empties the account register, e.g. on reset of a
+// durable database. Must be called with ds.mu held.
+func (ds *DemoState) clearRegisterLocked() {
+	if ds.db == nil {
+		return
+	}
+	if _, err := ds.db.Exec(`DELETE FROM customer_accounts`); err != nil {
+		log.Printf("clearRegister: %v", err)
+	}
 }
 
 // execer is *sql.DB or *sql.Tx.
@@ -175,7 +196,7 @@ func (ds *DemoState) fillAccountFigures(a *CustomerAccount) {
 // the sum of its month-end application movements.
 func (ds *DemoState) appliedInterest(ledgerAccountID string) luca.Amount {
 	var applied luca.Amount
-	err := ds.db.QueryRow(`SELECT COALESCE(SUM(amount), 0) FROM movements WHERE to_account_id = $1 AND code = $2`,
+	err := ds.db.QueryRow(`SELECT COALESCE(SUM(amount), 0) FROM contract_ledger_movements WHERE to_account_id = $1 AND code = $2`,
 		ledgerAccountID, luca.CodeInterestAccrual).Scan(&applied)
 	if err != nil {
 		log.Printf("appliedInterest %s: %v", ledgerAccountID, err)

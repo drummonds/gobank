@@ -183,3 +183,11 @@ func TestSQLTableMatching(t *testing.T) {
 		}
 	}
 }
+
+// The baseline existed only for reads that predate ADR-0001. It is empty:
+// new cross-reads get a contract view or an API, never a baseline entry.
+func TestNoContractDebt(t *testing.T) {
+	if len(contractDebt) != 0 {
+		t.Errorf("contractDebt has %d entries, want none: %v", len(contractDebt), contractDebt)
+	}
+}

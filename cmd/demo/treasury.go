@@ -2,6 +2,7 @@ package main
 
 import (
 	"fmt"
+	"log"
 	"math"
 	"strings"
 	"time"
@@ -423,4 +424,48 @@ func buildYieldCurveSVG(yields []GiltYield) string {
 
 	s.WriteString(`</svg>`)
 	return s.String()
+}
+
+// createGiltTables creates gilt_yields and gilt_holdings tables and seeds yields.
+func (ds *DemoState) createGiltTables() {
+	db := ds.db
+
+	_, err := db.Exec(`CREATE TABLE IF NOT EXISTS gilt_yields (
+		tenor VARCHAR(10) PRIMARY KEY,
+		rate REAL NOT NULL,
+		effective_date TIMESTAMP DEFAULT NOW()
+	)`)
+	if err != nil {
+		log.Printf("initDB: create gilt_yields: %v", err)
+	}
+
+	_, err = db.Exec(`CREATE TABLE IF NOT EXISTS gilt_holdings (
+		id SERIAL PRIMARY KEY,
+		tenor VARCHAR(10) NOT NULL,
+		face_value BIGINT NOT NULL, -- minor units (pence)
+		purchase_date TIMESTAMP NOT NULL,
+		yield REAL NOT NULL
+	)`)
+	if err != nil {
+		log.Printf("initDB: create gilt_holdings: %v", err)
+	}
+
+	// Seed gilt yields
+	yields := []struct {
+		tenor string
+		rate  float64
+	}{
+		{"1Y", 0.0435},
+		{"2Y", 0.0410},
+		{"5Y", 0.0395},
+		{"10Y", 0.0405},
+		{"30Y", 0.0445},
+	}
+	for _, y := range yields {
+		_, err = db.Exec(`INSERT INTO gilt_yields (tenor, rate) VALUES ($1, $2)
+			ON CONFLICT (tenor) DO UPDATE SET rate = EXCLUDED.rate`, y.tenor, y.rate)
+		if err != nil {
+			log.Printf("initDB: seed %s: %v", y.tenor, err)
+		}
+	}
 }

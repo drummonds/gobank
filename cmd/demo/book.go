@@ -88,14 +88,14 @@ type productTotal struct {
 	Balance  luca.Amount
 }
 
-// productTotals reads account counts and balances per product from the
-// account register and the ledger.
+// productTotals reads account counts and balances per product through the
+// customers and ledger contract views.
 func (ds *DemoState) productTotals() map[string]productTotal {
 	totals := map[string]productTotal{}
 	if ds.db == nil {
 		return totals
 	}
-	rows, err := ds.db.Query(`SELECT product_id, COUNT(*) FROM customer_accounts GROUP BY product_id`)
+	rows, err := ds.db.Query(`SELECT product_id, COUNT(*) FROM contract_customer_accounts GROUP BY product_id`)
 	if err != nil {
 		log.Printf("productTotals: count: %v", err)
 		return totals
@@ -113,10 +113,10 @@ func (ds *DemoState) productTotals() map[string]productTotal {
 
 	rows, err = ds.db.Query(`SELECT product_id, COALESCE(SUM(delta), 0) FROM (
 			SELECT ca.product_id, m.amount AS delta
-			  FROM customer_accounts ca JOIN movements m ON m.to_account_id = ca.ledger_account_id
+			  FROM contract_customer_accounts ca JOIN contract_ledger_movements m ON m.to_account_id = ca.ledger_account_id
 			UNION ALL
 			SELECT ca.product_id, -m.amount AS delta
-			  FROM customer_accounts ca JOIN movements m ON m.from_account_id = ca.ledger_account_id
+			  FROM contract_customer_accounts ca JOIN contract_ledger_movements m ON m.from_account_id = ca.ledger_account_id
 		) d GROUP BY product_id`)
 	if err != nil {
 		log.Printf("productTotals: balances: %v", err)

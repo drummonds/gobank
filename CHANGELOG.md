@@ -2,6 +2,15 @@
 
 ## [Unreleased]
 
+### Changed
+- The contract-view baseline is empty: customers publish
+  `contract_customer_accounts` and the ledger `contract_ledger_movements`,
+  which the book and the applied-interest figures now read; gilt and
+  accrual table creation and the accrual persistence code moved into the
+  files of the components that own those tables (`treasury.go`,
+  `accrual.go`); reset clears the register and accrual state through their
+  components' APIs.
+
 ## [0.3.45] - 2026-09-27
 
 ### Removed

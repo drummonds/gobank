@@ -22,6 +22,8 @@ var components = []Component{
 		Name:    "ledger",
 		Purpose: "Double-entry books of account: every balance is the sum of its movements.",
 		Library: "go-luca",
+		Files:   []string{"ledger.go"},
+		Views:   []string{"contract_ledger_movements"},
 		Tables: []string{"accounts", "movements", "balances_live", "aliases", "data_points",
 			"movement_metadata", "commodities", "commodity_metadata", "customers",
 			"customer_metadata", "options"},
@@ -32,12 +34,13 @@ var components = []Component{
 		Library: "gobanks-customers",
 		Files:   []string{"customers.go", "customers_http.go", "customer_register.go", "customer_gen.go", "pii_store.go"},
 		Tables:  []string{"cust_customers", "cust_pii", "customer_accounts"},
+		Views:   []string{"contract_customer_accounts"},
 	},
 	{
 		Name:    "products",
 		Purpose: "The product catalogue and the interest engine: exact daily accrual, monthly application.",
 		Library: "gobank-products",
-		Files:   []string{"products.go"},
+		Files:   []string{"products.go", "accrual.go"},
 		Tables:  []string{"accrual_state"},
 	},
 	{
@@ -61,19 +64,10 @@ type crossRead struct {
 	Table string
 }
 
-// contractDebt is the pre-rule baseline: cross-reads that predate ADR-0001.
-// Each stays allowed until it is replaced by a contract view or an API
-// call, at which point its entry must be removed. The list only shrinks.
-var contractDebt = []crossRead{
-	{"book.go", "customer_accounts"},
-	{"book.go", "movements"},
-	{"customer_register.go", "movements"},
-	{"db.go", "accrual_state"},
-	{"db.go", "gilt_holdings"},
-	{"db.go", "gilt_yields"},
-	{"demo_state.go", "accrual_state"},
-	{"demo_state.go", "customer_accounts"},
-}
+// contractDebt is the pre-rule baseline: cross-reads that predated
+// ADR-0001. It was burnt down to nothing and stays empty; a new cross-read
+// gets a contract view or an API, not an entry here.
+var contractDebt = []crossRead{}
 
 // componentOf returns the component owning a table, or "" if none does.
 func componentOf(table string) string {

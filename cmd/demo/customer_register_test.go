@@ -88,3 +88,38 @@ func TestCustomerInterestReadFromLedger(t *testing.T) {
 		}
 	}
 }
+
+// contract_customer_accounts is the register as other components read it:
+// one row per account, matching what the customers API reports.
+func TestContractCustomerAccountsView(t *testing.T) {
+	ds := NewDemoState()
+	addFundedCustomer(ds)
+	cust, _ := ds.customerByID("cust-001")
+	rows, err := ds.db.Query(`SELECT customer_id, idx, ledger_account_id, product_id, sort_code, account_num, opened
+		FROM contract_customer_accounts WHERE customer_id = $1 ORDER BY idx`, "cust-001")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer rows.Close()
+	n := 0
+	for rows.Next() {
+		var a CustomerAccount
+		var id string
+		var idx int
+		if err := rows.Scan(&id, &idx, &a.LedgerAccountID, &a.ProductID, &a.SortCode, &a.AccountNum, &a.OpenDate); err != nil {
+			t.Fatal(err)
+		}
+		if idx != n || id != "cust-001" {
+			t.Errorf("view row %d: customer %s idx %d", n, id, idx)
+		}
+		want := cust.Accounts[n]
+		if a.LedgerAccountID != want.LedgerAccountID || a.ProductID != want.ProductID ||
+			a.SortCode != want.SortCode || a.AccountNum != want.AccountNum || !a.OpenDate.Equal(want.OpenDate) {
+			t.Errorf("view row %d = %+v, want %+v", n, a, want)
+		}
+		n++
+	}
+	if n != len(cust.Accounts) {
+		t.Errorf("view has %d rows for cust-001, API has %d accounts", n, len(cust.Accounts))
+	}
+}
