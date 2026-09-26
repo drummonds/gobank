@@ -10,4 +10,3 @@ docs/*
 cmd/chartcompare/chartcompare
 task-plus.local.yaml
 
-deploy/hetzner/build/

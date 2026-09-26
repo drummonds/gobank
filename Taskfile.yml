@@ -138,6 +138,9 @@ tasks:
     cmds:
       - d2 cmd/demo/diagrams/system_context.d2 cmd/demo/diagrams/system_context.svg
       - d2 cmd/demo/diagrams/container.d2 cmd/demo/diagrams/container.svg
+      - mkdir -p docs
+      - go run ./cmd/bff -journeys docs/journeys.d2
+      - d2 docs/journeys.d2 docs/journeys.svg
 
   docs:build:
     desc: Build WASM demo and all pages into docs/
@@ -178,31 +181,10 @@ tasks:
     cmds:
       - go run .
 
-  cloud:up:
-    desc: "Provision/redeploy Hetzner demo with Postgres (tp secrets task cloud:up SCALE=small|medium|large|xl|<type>)"
-    cmds:
-      - deploy/hetzner/up.sh {{.SCALE | default "small"}}
-
-  cloud:down:
-    desc: Delete the Hetzner demo server — this is what stops billing (run via tp secrets)
-    cmds:
-      - deploy/hetzner/down.sh {{.CLI_ARGS}}
-
-  cloud:status:
-    desc: Show Hetzner demo server state and URL (run via tp secrets)
-    cmds:
-      - deploy/hetzner/status.sh
-
   cloud:ui:
-    desc: Environment states with create/redeploy/down controls, served by gobank-deploy (run via tp secrets)
+    desc: "Environments console (states, create/redeploy/down) served by ../gobank-deploy, which owns all Hetzner deployment (run via tp secrets)"
     cmds:
       - task -d ../gobank-deploy ui ENVS={{.ENVS | default "prod,preprod"}}
-
-  cloud:ssh:
-    desc: SSH into the Hetzner demo server (run via tp secrets)
-    interactive: true
-    cmds:
-      - ssh -o UserKnownHostsFile=deploy/hetzner/build/known_hosts -o StrictHostKeyChecking=accept-new root@$(hcloud server ip ${GOBANK_SERVER_NAME:-gobank-demo})
 
   clean:
     desc: Remove build artifacts (preserves docs/research/)

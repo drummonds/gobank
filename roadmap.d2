@@ -19,7 +19,7 @@ legend: {
 }
 
 phases: {
-  grid-columns: 3
+  grid-columns: 4
   grid-gap: 16
 
   phase1: Phase 1 — WASM Model Bank {
@@ -87,7 +87,60 @@ phases: {
     }
   }
 
-  phase2: Phase 2 — Kubernetes + AlloyDB {
+  phase2: Phase 2 — Mobile: Go BFF + Flutter {
+    grid-columns: 1
+    style.fill: "#e0f2f1"
+    style.stroke: "#009688"
+    style.font-size: 18
+    style.bold: true
+
+    screen: Screen layer (JSON + HTML) {
+      style.fill: "#fff3e0"
+      style.stroke: "#ff9800"
+    }
+    bff: Hardened Go BFF (auth first) {
+      style.fill: "#fff3e0"
+      style.stroke: "#ff9800"
+    }
+    flutter: Flutter thin shell (iOS + Android) {
+      style.fill: "#fff3e0"
+      style.stroke: "#ff9800"
+    }
+    core_extract: Extract banking core from cmd/demo {
+      style.fill: "#fff3e0"
+      style.stroke: "#ff9800"
+    }
+    demo_screens: Demo phone frame on screen layer {
+      style.fill: "#fff3e0"
+      style.stroke: "#ff9800"
+    }
+    sec_plugin: Native security plugin (Swift + Kotlin) {
+      style.fill: "#fff3e0"
+      style.stroke: "#ff9800"
+    }
+    attest: Biometric keys, passkeys, attestation {
+      style.fill: "#fff3e0"
+      style.stroke: "#ff9800"
+    }
+    stepup: Device-bound signing + step-up auth (SCA) {
+      style.fill: "#fff3e0"
+      style.stroke: "#ff9800"
+    }
+    web_bff: Web client on the same BFF {
+      style.fill: "#fff3e0"
+      style.stroke: "#ff9800"
+    }
+    shield: App-shielding SDK before pilot {
+      style.fill: "#fff3e0"
+      style.stroke: "#ff9800"
+    }
+    native_check: Native checkpoint after pilot {
+      style.fill: "#fff3e0"
+      style.stroke: "#ff9800"
+    }
+  }
+
+  phase3: Phase 3 — Kubernetes + AlloyDB {
     grid-columns: 1
     style.fill: "#f3e5f5"
     style.stroke: "#9c27b0"
@@ -116,7 +169,7 @@ phases: {
     }
   }
 
-  phase3: Phase 3 — CockroachDB + Scale {
+  phase4: Phase 4 — CockroachDB + Scale {
     grid-columns: 1
     style.fill: "#fce4ec"
     style.stroke: "#e91e63"
@@ -138,5 +191,6 @@ phases: {
   }
 }
 
-phases.phase1 -> phases.phase2: Same code, different deployment
-phases.phase2 -> phases.phase3: Scale out
+phases.phase1 -> phases.phase2: Logic moves server-side, thin clients
+phases.phase2 -> phases.phase3: Same code, different deployment
+phases.phase3 -> phases.phase4: Scale out
