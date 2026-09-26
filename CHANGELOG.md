@@ -2,6 +2,8 @@
 
 ## [Unreleased]
 
+## [0.3.46] - 2026-09-27
+
 ### Changed
 - The contract-view baseline is empty: customers publish
   `contract_customer_accounts` and the ledger `contract_ledger_movements`,
