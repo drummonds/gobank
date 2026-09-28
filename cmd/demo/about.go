@@ -104,6 +104,7 @@ func (ds *DemoState) BuildRuntimeHTML() string {
 	s.WriteString(`<table class="table is-fullwidth">`)
 	s.WriteString(fmt.Sprintf(`<tr><th>Current day</th><td>%s</td></tr>`, currentDay))
 	s.WriteString(fmt.Sprintf(`<tr><th>Days elapsed</th><td>%d</td></tr>`, dayCount))
+	s.WriteString(ds.progress.snapshot().runtimeRow())
 	s.WriteString(fmt.Sprintf(`<tr><th>Customers</th><td>%d</td></tr>`, customerCount))
 	s.WriteString(fmt.Sprintf(`<tr><th>Products</th><td>%d</td></tr>`, productCount))
 	s.WriteString(fmt.Sprintf(`<tr><th>Payments</th><td>%d</td></tr>`, paymentCount))

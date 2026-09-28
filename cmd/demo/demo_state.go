@@ -71,6 +71,7 @@ type DemoState struct {
 	addingCustStart     time.Time
 	lastAddRate         float64 // customers/s of the last finished batch
 	interestRate        interestThroughput
+	progress            dayProgress      // the day being processed, for the runtime page
 	now                 func() time.Time // wall clock, injectable for tests
 	nimHistory          []NIMPoint
 	boeAccruedNumerator int64 // BoE interest on excess reserves, numerator units over gbp.AccrualDenominator
@@ -321,6 +322,8 @@ func (ds *DemoState) advanceDay() {
 	sim := ds.sim
 	day := ds.currentDay
 	ds.mu.Unlock()
+	ds.progress.begin(day)
+	defer ds.progress.finish()
 
 	// Phase 1: products engine end-of-day (and month-end application) —
 	// no ds.mu held; simMu serializes against payments touching sim state.
@@ -336,6 +339,11 @@ func (ds *DemoState) advanceDay() {
 	accrualStart := ds.now()
 	movements := 0
 	if sim != nil {
+		engine := "products engine"
+		if day.Month() != day.AddDate(0, 0, 1).Month() {
+			engine += " (month-end interest application)"
+		}
+		ds.progress.phase(engine, 0)
 		ds.simMu.Lock()
 		updates, err := sim.AdvanceToDate(day)
 		accrualBatches = ds.collectAccrualMovements(updates)
@@ -373,6 +381,9 @@ func (ds *DemoState) advanceDay() {
 		}
 		for _, b := range accrualBatches {
 			movements += len(b.inputs)
+		}
+		ds.progress.phase("accrual postings", movements)
+		for _, b := range accrualBatches {
 			ds.writeMovementsChunked(b)
 		}
 	}
@@ -380,6 +391,7 @@ func (ds *DemoState) advanceDay() {
 
 	// Phase 2: sync account mirrors from the engine and do day bookkeeping
 	// under a single short lock hold.
+	ds.progress.phase("bookkeeping", 0)
 	ds.mu.Lock()
 	ds.interestRate.record(movements, accrualElapsed)
 	ds.book.Savings += appliedSavings
@@ -525,6 +537,7 @@ func (ds *DemoState) writeMovementsChunked(b accrualBatch) {
 			log.Printf("writeMovementsChunked: %v", err)
 			return
 		}
+		ds.progress.add(j - i)
 		if el := time.Since(start); el > 0 {
 			n = min(max(int(float64(j-i)*float64(targetTxTime)/float64(el)), 16), 8192)
 		}
@@ -887,6 +900,7 @@ func (ds *DemoState) Reset() {
 	}
 	ds.lastAddRate = 0
 	ds.interestRate = interestThroughput{}
+	ds.progress.reset()
 	ds.currentDay = time.Date(2020, 1, 1, 0, 0, 0, 0, time.UTC)
 	ds.dayCount = 0
 	ds.clearPaymentsLocked()
