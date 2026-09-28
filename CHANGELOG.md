@@ -5,6 +5,16 @@
 ### Changed
 - Daily accrual postings are written by one worker per CPU on PostgreSQL
   (one on pglike/WASM). Locally 8 workers post ~4.6x the movements/s of one.
+- Customer creation holds the state lock only to decide the customer (record,
+  funding, book); its database transaction runs unlocked. Adding customers
+  uses one worker per CPU on PostgreSQL, and the day loop is no longer
+  starved by a running batch add. A customer the database refuses is taken
+  back off the books.
+
+### Fixed
+- Data races between customer creation and the engine sweep: the tx-bound
+  simulation copy and the simulation clock are now read and set under the
+  engine lock.
 
 ## [0.3.48] - 2026-09-28
 

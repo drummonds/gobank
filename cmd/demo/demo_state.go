@@ -47,6 +47,7 @@ type NIMPoint struct {
 // DemoState holds all unified state for the model bank demo.
 type DemoState struct {
 	mu                  sync.Mutex
+	epoch               int // bumped by Reset; work planned before a reset is not applied after it (mu)
 	running             bool
 	cancel              context.CancelFunc
 	products            []Product
@@ -211,31 +212,6 @@ func ensureLedgerAccount(ledger luca.Ledger, path string) (*luca.Account, error)
 	return ledger.CreateAccount(path, "GBP", -2, 0)
 }
 
-// persistCustomer writes a customer record and PII to the SQL customer store.
-// Must be called with ds.mu held.
-func (ds *DemoState) persistCustomer(store *customers.SQLCustomerStore, cust *CustomerRecord, pii PIIInput) error {
-	if store == nil {
-		return nil
-	}
-	rec := customers.CustomerRecord{
-		ID:            cust.ID,
-		Ref:           cust.ID, // ref == id in demo (e.g. "cust-001")
-		JoinDate:      cust.JoinDate,
-		KYCVerified:   cust.KYCStatus.Verified,
-		KYCLastCheck:  cust.KYCStatus.LastCheckDate,
-		KYCRiskRating: cust.KYCStatus.RiskRating,
-	}
-	cpii := customers.PIIInput{
-		Name:    pii.Name,
-		NI:      pii.NI,
-		DOB:     pii.DOB,
-		Address: pii.Address,
-		Email:   pii.Email,
-		Phone:   pii.Phone,
-	}
-	return store.Create(context.Background(), rec, cpii)
-}
-
 // addCustomerToLedger registers a customer's accounts in the go-luca ledger.
 // Must be called with ds.mu held.
 func (ds *DemoState) addCustomerToLedger(sim *gbp.Simulation, cust *CustomerRecord) {
@@ -332,6 +308,7 @@ func (ds *DemoState) advanceDay() {
 	// held, so customer adds and dashboard reads are never stuck behind a
 	// day's worth of database writes.
 	var accrualRows []accrualRow
+	var newCustomer *customerPlan // today's new customer, persisted once ds.mu is released
 	var accrualBatches []accrualBatch
 	var appliedSavings, appliedLending luca.Amount // month-end interest applied to customer balances
 	var accrualSavings, accrualLending int64       // today's accrual, numerator units
@@ -414,7 +391,9 @@ func (ds *DemoState) advanceDay() {
 	ds.currentDay = ds.currentDay.AddDate(0, 0, 1)
 	ds.dayCount++
 	if ds.simClock != nil {
+		ds.simMu.Lock() // the engine reads the clock under simMu, e.g. opening accounts
 		ds.simClock.SetDate(ds.currentDay)
+		ds.simMu.Unlock()
 	}
 
 	ds.settings.BoEBaseRate = lookupBoERate(ds.currentDay)
@@ -435,7 +414,8 @@ func (ds *DemoState) advanceDay() {
 		dailyProb := 0.10 + attractiveness*0.20
 
 		if ds.rng.Float64() < dailyProb {
-			ds.createCustomerLocked()
+			p := ds.planCustomerLocked()
+			newCustomer = &p
 		}
 	}
 
@@ -471,6 +451,9 @@ func (ds *DemoState) advanceDay() {
 	// Phase 3: persist accrual numerators off both locks so the DB alone
 	// carries the accrued-but-unapplied interest state for the day.
 	persistAccrualState(db, day, accrualRows, boeNumerator)
+	if newCustomer != nil {
+		ds.persistCustomerPlan(*newCustomer)
+	}
 }
 
 // codeDailyAccrual marks daily interest accrual movements and their month-end
@@ -526,11 +509,11 @@ type movementRecorder interface {
 	RecordLinkedMovements(movements []luca.MovementInput, valueTime time.Time) (string, error)
 }
 
-// postingWorkers is how many connections post a day's accrual movements at
-// once. Each movement is an independent append to the ledger, so on
-// PostgreSQL the writes spread across cores; the in-memory pglike store (and
-// WASM) takes one writer at a time.
-func (ds *DemoState) postingWorkers() int {
+// dbWriters is how many connections write to the database at once — posting
+// a day's accrual movements or adding customers. On PostgreSQL the writes
+// spread across cores; the in-memory pglike store (and WASM) takes one
+// writer at a time.
+func (ds *DemoState) dbWriters() int {
 	if !ds.dbIsPostgres {
 		return 1
 	}
@@ -543,7 +526,7 @@ func (ds *DemoState) writeMovementsChunked(b accrualBatch) {
 	if ds.ledger == nil {
 		return
 	}
-	if err := postMovements(ds.ledger, b, ds.postingWorkers(), ds.progress.add); err != nil {
+	if err := postMovements(ds.ledger, b, ds.dbWriters(), ds.progress.add); err != nil {
 		log.Printf("writeMovementsChunked: %v", err)
 	}
 }
@@ -737,18 +720,18 @@ func (ds *DemoState) refreshFromLedger() {
 // cached balances stay in sync, serialized against the daily engine sweep.
 // Must be called with ds.mu held.
 func (ds *DemoState) recordSimMovement(fromID, toID string, amount luca.Amount, code, description string) {
-	ds.recordSimMovementOn(ds.sim, fromID, toID, amount, code, description)
+	ds.recordSimMovementOn(ds.sim, ds.currentDay, fromID, toID, amount, code, description)
 }
 
 // recordSimMovementOn is recordSimMovement against an explicit simulation —
 // used with a tx-bound sim during transactional customer creation.
-func (ds *DemoState) recordSimMovementOn(sim *gbp.Simulation, fromID, toID string, amount luca.Amount, code, description string) {
+func (ds *DemoState) recordSimMovementOn(sim *gbp.Simulation, day time.Time, fromID, toID string, amount luca.Amount, code, description string) {
 	if sim == nil || fromID == "" || toID == "" {
 		return
 	}
 	ds.simMu.Lock()
 	defer ds.simMu.Unlock()
-	if _, err := sim.RecordMovement(fromID, toID, amount, code, ds.currentDay, description); err != nil {
+	if _, err := sim.RecordMovement(fromID, toID, amount, code, day, description); err != nil {
 		log.Printf("recordSimMovement: %v", err)
 	}
 }
@@ -801,68 +784,9 @@ func (ds *DemoState) IsRunning() bool {
 	return ds.running
 }
 
-// createCustomerLocked generates, persists, registers and funds one customer.
-// All database writes share a single transaction so each customer is one
-// atomic commit (one WAL flush on PostgreSQL instead of one per statement).
-// In-memory state (customer list, sim account registry, payments) is updated
-// as it goes and is not rolled back on error, matching the previous
-// log-and-continue behaviour. Must be called with ds.mu held.
-func (ds *DemoState) createCustomerLocked() {
-	cust, pii := generateCustomer(ds.rng, ds.nextCustSeq, ds.products, ds.currentDay)
-	ds.nextCustSeq++
-
-	store, sim := ds.custStore, ds.sim
-	var tx *sql.Tx
-	if ds.db != nil && ds.ledger != nil {
-		var err error
-		if tx, err = ds.db.Begin(); err != nil {
-			log.Printf("createCustomer: begin: %v", err)
-			tx = nil // fall back to autocommit writes
-		}
-	}
-	if tx != nil {
-		if store != nil {
-			store = store.WithTx(tx)
-		}
-		if sim != nil {
-			txSim := *sim // shallow copy: shares account/product maps, swaps only the ledger
-			txSim.Ledger = ds.ledger.WithTx(tx)
-			sim = &txSim
-		}
-	}
-
-	if err := ds.persistCustomer(store, &cust, pii); err != nil {
-		// Skip the customer entirely rather than keeping an in-memory ghost
-		// the database refused.
-		log.Printf("createCustomer: persist %s: %v", cust.ID, err)
-		if tx != nil {
-			_ = tx.Rollback()
-		}
-		return
-	}
-	ds.nCustomers++
-	ds.addCustomerToLedger(sim, &cust)
-	var q execer = ds.db
-	if tx != nil {
-		q = tx
-	}
-	if q != nil {
-		if err := registerAccounts(q, &cust); err != nil {
-			log.Printf("createCustomer: %v", err)
-		}
-	}
-	ds.fundCustomer(q, sim, &cust)
-
-	if tx != nil {
-		if err := tx.Commit(); err != nil {
-			log.Printf("createCustomer: commit: %v", err)
-			_ = tx.Rollback()
-		}
-	}
-}
-
-// AddCustomersBatch starts a background goroutine that generates n customers,
-// yielding the lock per customer so other operations can proceed.
+// AddCustomersBatch starts adding n customers in the background, with one
+// worker per database writer. Each worker holds ds.mu only to plan a
+// customer, so other operations proceed while customers are persisted.
 func (ds *DemoState) AddCustomersBatch(n int) {
 	ds.mu.Lock()
 	if ds.addingCustRunning {
@@ -875,34 +799,43 @@ func (ds *DemoState) AddCustomersBatch(n int) {
 	ds.addingCustProgress = 0
 	ds.addingCustTarget = n
 	ds.addingCustStart = ds.now()
+	workers := ds.dbWriters()
 	ds.mu.Unlock()
 
+	claimed := 0 // customers planned by this batch (mu)
 	go func() {
-		for i := range n {
-			select {
-			case <-ctx.Done():
-				ds.mu.Lock()
-				ds.finishAddingLocked()
-				ds.mu.Unlock()
-				return
-			default:
-			}
-			ds.mu.Lock()
-			if ds.nCustomers >= ds.settings.MaxCustomers {
-				ds.finishAddingLocked()
-				ds.mu.Unlock()
-				cancel()
-				return
-			}
-			ds.createCustomerLocked()
-			ds.addingCustProgress = i + 1
-			ds.mu.Unlock()
-			if runtime.GOOS == "js" {
-				time.Sleep(time.Millisecond) // yield to the browser event loop
-			}
+		defer cancel()
+		var wg sync.WaitGroup
+		for range workers {
+			wg.Go(func() {
+				for ctx.Err() == nil {
+					ds.mu.Lock()
+					if claimed >= n || ds.nCustomers >= ds.settings.MaxCustomers {
+						ds.mu.Unlock()
+						return
+					}
+					claimed++
+					p := ds.planCustomerLocked()
+					ds.mu.Unlock()
+
+					ds.persistCustomerPlan(p)
+
+					ds.mu.Lock()
+					if ctx.Err() == nil {
+						ds.addingCustProgress++
+					}
+					ds.mu.Unlock()
+					if runtime.GOOS == "js" {
+						time.Sleep(time.Millisecond) // yield to the browser event loop
+					}
+				}
+			})
 		}
+		wg.Wait()
 		ds.mu.Lock()
-		ds.finishAddingLocked()
+		if ctx.Err() == nil { // a Reset has already finished a cancelled batch
+			ds.finishAddingLocked()
+		}
 		ds.mu.Unlock()
 	}()
 }
@@ -929,6 +862,7 @@ func (ds *DemoState) IsAddingCustomers() bool {
 func (ds *DemoState) Reset() {
 	ds.mu.Lock()
 	defer ds.mu.Unlock()
+	ds.epoch++
 	if ds.running {
 		ds.running = false
 		if ds.cancel != nil {

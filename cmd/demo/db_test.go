@@ -64,10 +64,8 @@ func TestLedgerSurvivesConnectionPool(t *testing.T) {
 	defer ds.db.Close()
 
 	// Add 200 customers — must not hit "no such table: accounts".
-	ds.mu.Lock()
-	defer ds.mu.Unlock()
 	for range 200 {
-		ds.createCustomerLocked()
+		ds.createCustomer()
 	}
 
 	if n := ds.customerCount(); n != 200 {

@@ -9,9 +9,7 @@ import (
 
 // addFundedCustomer adds one customer through the real pipeline.
 func addFundedCustomer(ds *DemoState) {
-	ds.mu.Lock()
-	ds.createCustomerLocked()
-	ds.mu.Unlock()
+	ds.createCustomer()
 }
 
 // firstCustomerAccounts reads cust-001's accounts through the read model.

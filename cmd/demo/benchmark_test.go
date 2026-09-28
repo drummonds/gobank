@@ -23,10 +23,8 @@ var benchAccountCounts = []int{1_000, 10_000, 100_000, 1_000_000}
 // benchAddCustomers adds n customers via the real generateCustomer pipeline.
 // Must not hold ds.mu.
 func benchAddCustomers(ds *DemoState, n int) {
-	ds.mu.Lock()
-	defer ds.mu.Unlock()
 	for range n {
-		ds.createCustomerLocked()
+		ds.createCustomer()
 	}
 }
 

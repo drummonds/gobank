@@ -329,28 +329,6 @@ func (ds *DemoState) SendPayment() {
 	}()
 }
 
-// makePayment records a payment that settles immediately, in the same
-// transaction as the customer it funds. Must be called with ds.mu held.
-func (ds *DemoState) makePayment(q execer, ptype PaymentType, fromID, toID string, amount luca.Amount) {
-	ref := fmt.Sprintf("PAY-%06d", ds.nextPaymentID)
-	now := time.Now()
-	p := Payment{
-		ID:        ds.nextPaymentID,
-		Type:      ptype,
-		FromID:    fromID,
-		ToID:      toID,
-		Amount:    amount,
-		Status:    PaymentCompleted,
-		Reference: ref,
-		CreatedAt: now,
-		SettledAt: now,
-	}
-	ds.nextPaymentID++
-	if err := insertPayment(q, p); err != nil {
-		log.Printf("makePayment: %v", err)
-	}
-}
-
 // randomCustomerID picks a customer ID uniformly from those generated so
 // far. The ID may be missing (its persist failed); callers skip those.
 // Must be called with ds.mu held.
@@ -366,37 +344,6 @@ func firstSavingsAccount(accounts []CustomerAccount) *CustomerAccount {
 		}
 	}
 	return nil
-}
-
-// fundCustomer creates deposit and loan disbursement payments for a newly
-// created customer's accounts. Must be called with ds.mu held.
-func (ds *DemoState) fundCustomer(q execer, sim *gbp.Simulation, cust *CustomerRecord) {
-	for i := range cust.Accounts {
-		a := &cust.Accounts[i]
-		if a.Family == gbp.FamilySavings {
-			amount := luca.Amount(500+ds.rng.Intn(9500)) * 100
-			a.Balance = amount
-			ds.addToBook(a.Family, amount)
-			ds.makePayment(q, PayDeposit, "EXTERNAL", cust.ID, amount)
-			ds.emitTx(ds.currentDay, cust.ID, a.LedgerAccountID, a.ProductName, TxDepositIn, amount, a.Balance, fmt.Sprintf("PAY-%06d", ds.nextPaymentID-1))
-			if sim != nil && a.LedgerAccountID != "" {
-				ds.recordSimMovementOn(sim, ds.equityAccountID, a.LedgerAccountID, amount, luca.CodeBookTransfer, "Initial deposit")
-			}
-		} else {
-			headroom := ds.lendingHeadroom()
-			if headroom <= 0 {
-				continue
-			}
-			amount := min(luca.Amount(1000+ds.rng.Intn(49000))*100, headroom)
-			a.Balance = amount
-			ds.addToBook(a.Family, amount)
-			ds.makePayment(q, PayLoanDisbursement, "BANK", cust.ID, amount)
-			ds.emitTx(ds.currentDay, cust.ID, a.LedgerAccountID, a.ProductName, TxLoanDisbursement, amount, a.Balance, fmt.Sprintf("PAY-%06d", ds.nextPaymentID-1))
-			if sim != nil && a.LedgerAccountID != "" {
-				ds.recordSimMovementOn(sim, ds.equityAccountID, a.LedgerAccountID, amount, luca.CodeBookTransfer, "Loan disbursement")
-			}
-		}
-	}
 }
 
 // StartPayments begins auto-generating payments.
