@@ -59,7 +59,7 @@ const tmpl = `<!DOCTYPE html>
             </ul>
             <p class="menu-label">Research Notes</p>
             <ul class="menu-list">
-              <li><a href="https://h3-lofigui.statichost.page/research-charts.html">Chart Renderer Comparison</a></li>
+              <li><a href="https://lofigui.docs.bytestone.uk/research-charts.html">Chart Renderer Comparison</a></li>
               <li><a href="https://gobank-db.docs.bytestone.uk/contract-views.html">Contract Views (gobank-db)</a></li>
               <li><a href="https://gobank-db.docs.bytestone.uk/blue-green-schemas.html">Blue-Green Schemas (gobank-db)</a></li>
               <li><a href="https://gobank-db.docs.bytestone.uk/expand-contract.html">Expand/Contract Migrations (gobank-db)</a></li>
