@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+## [0.3.48] - 2026-09-28
+
+ - Runtime page shows the day in progress: phase, movements done / expected, rate and elapsed
+
 ## [0.3.47] - 2026-09-27
 
 ### Fixed
