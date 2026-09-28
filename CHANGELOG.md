@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+### Changed
+- Daily accrual postings are written by one worker per CPU on PostgreSQL
+  (one on pglike/WASM). Locally 8 workers post ~4.6x the movements/s of one.
+
 ## [0.3.48] - 2026-09-28
 
  - Runtime page shows the day in progress: phase, movements done / expected, rate and elapsed

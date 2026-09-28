@@ -521,31 +521,82 @@ type accrualBatch struct {
 // one monolithic burst that holds locks and demands oversized hardware.
 const targetTxTime = 10 * time.Millisecond
 
-// writeMovementsChunked writes a batch of movements to the ledger in
-// transactions sized to roughly targetTxTime each, adapting the chunk length
-// to the measured cost. No locks are held, so customer creation, payments and
-// dashboard reads interleave between chunks.
+// movementRecorder is the ledger write postMovements needs.
+type movementRecorder interface {
+	RecordLinkedMovements(movements []luca.MovementInput, valueTime time.Time) (string, error)
+}
+
+// postingWorkers is how many connections post a day's accrual movements at
+// once. Each movement is an independent append to the ledger, so on
+// PostgreSQL the writes spread across cores; the in-memory pglike store (and
+// WASM) takes one writer at a time.
+func (ds *DemoState) postingWorkers() int {
+	if !ds.dbIsPostgres {
+		return 1
+	}
+	return runtime.NumCPU()
+}
+
+// writeMovementsChunked posts one day's accrual batch with no locks held, so
+// customer creation, payments and dashboard reads interleave between chunks.
 func (ds *DemoState) writeMovementsChunked(b accrualBatch) {
 	if ds.ledger == nil {
 		return
 	}
-	n := 64
-	for i := 0; i < len(b.inputs); {
-		j := min(i+n, len(b.inputs))
-		start := time.Now()
-		if _, err := ds.ledger.RecordLinkedMovements(b.inputs[i:j], b.valueTime); err != nil {
-			log.Printf("writeMovementsChunked: %v", err)
-			return
-		}
-		ds.progress.add(j - i)
-		if el := time.Since(start); el > 0 {
-			n = min(max(int(float64(j-i)*float64(targetTxTime)/float64(el)), 16), 8192)
-		}
-		i = j
-		if runtime.GOOS == "js" {
-			time.Sleep(time.Millisecond) // yield to the browser event loop
-		}
+	if err := postMovements(ds.ledger, b, ds.postingWorkers(), ds.progress.add); err != nil {
+		log.Printf("writeMovementsChunked: %v", err)
 	}
+}
+
+// postMovements writes b's movements with up to workers concurrent writers,
+// each in transactions sized to roughly targetTxTime, adapting its chunk
+// length to its own measured cost. Every movement is posted at most once;
+// after the first error no further chunks start and that error is returned.
+// posted is called with the size of each chunk written.
+func postMovements(rec movementRecorder, b accrualBatch, workers int, posted func(int)) error {
+	var (
+		mu       sync.Mutex
+		next     int
+		firstErr error
+	)
+	// take claims the next n unposted movements, or none once done or failed.
+	take := func(n int) []luca.MovementInput {
+		mu.Lock()
+		defer mu.Unlock()
+		if firstErr != nil || next >= len(b.inputs) {
+			return nil
+		}
+		j := min(next+n, len(b.inputs))
+		chunk := b.inputs[next:j]
+		next = j
+		return chunk
+	}
+	var wg sync.WaitGroup
+	for range max(workers, 1) {
+		wg.Go(func() {
+			n := 64
+			for chunk := take(n); chunk != nil; chunk = take(n) {
+				start := time.Now()
+				if _, err := rec.RecordLinkedMovements(chunk, b.valueTime); err != nil {
+					mu.Lock()
+					if firstErr == nil {
+						firstErr = err
+					}
+					mu.Unlock()
+					return
+				}
+				posted(len(chunk))
+				if el := time.Since(start); el > 0 {
+					n = min(max(int(float64(len(chunk))*float64(targetTxTime)/float64(el)), 16), 8192)
+				}
+				if runtime.GOOS == "js" {
+					time.Sleep(time.Millisecond) // yield to the browser event loop
+				}
+			}
+		})
+	}
+	wg.Wait()
+	return firstErr
 }
 
 // collectAccrualMovements builds each day's interest accrual movements:
