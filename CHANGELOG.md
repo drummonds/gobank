@@ -12,6 +12,13 @@
   back off the books.
 
 ### Fixed
+- Lock-order deadlock between the day loop and customer creation on the
+  pglike store: the day loop wrote to the database under the engine lock
+  (lazy accrual-account creation, BoE interest) while a customer
+  transaction held the write lock and waited for the engine lock, stalling
+  both for SQLite's 10s busy timeout (a permanent hang on the WASM shared
+  connection). Accrual accounts are now created with the ledger, and BoE
+  interest is written after the locks are released.
 - Data races between customer creation and the engine sweep: the tx-bound
   simulation copy and the simulation clock are now read and set under the
   engine lock.

@@ -186,6 +186,12 @@ func (ds *DemoState) initLedger() {
 	}
 	ds.sim = sim
 	ds.equityAccountID = equityAcct.ID
+	// Create the accrual accounts now, not lazily in the day sweep: that
+	// runs under simMu, and a database write there can deadlock against a
+	// customer transaction waiting for simMu.
+	ds.simMu.Lock()
+	ds.ensureAccrualAccounts()
+	ds.simMu.Unlock()
 
 	// Pace large account sweeps so the single-threaded WASM host can yield
 	// to the browser event loop during month-end interest application.
@@ -386,7 +392,7 @@ func (ds *DemoState) advanceDay() {
 		// Exact BoE interest accrual: numerator over gbp.AccrualDenominator.
 		ds.boeAccruedNumerator += int64(excessCash) * int64(math.Round(ds.settings.BoEBaseRate*10_000))
 	}
-	ds.postBoEInterest(day)
+	boeMovements := ds.collectBoEInterest(day)
 
 	ds.currentDay = ds.currentDay.AddDate(0, 0, 1)
 	ds.dayCount++
@@ -445,8 +451,16 @@ func (ds *DemoState) advanceDay() {
 	}
 
 	boeNumerator := ds.boeAccruedNumerator
-	db := ds.db
+	db, ledger := ds.db, ds.ledger
 	ds.mu.Unlock()
+
+	if ledger != nil {
+		for _, m := range boeMovements {
+			if _, err := ledger.RecordMovement(m.from, m.to, m.amount, m.code, m.at, m.description); err != nil {
+				log.Printf("advanceDay: BoE interest: %v", err)
+			}
+		}
+	}
 
 	// Phase 3: persist accrual numerators off both locks so the DB alone
 	// carries the accrued-but-unapplied interest state for the day.
@@ -641,43 +655,53 @@ func (ds *DemoState) collectAccrualMovements(updates []gbp.DailyUpdate) []accrua
 	return batches
 }
 
-// postBoEInterest models BoE reserve interest in the ledger: newly accrued
+// ledgerMovement is a movement decided under the locks and written to the
+// ledger after they are released.
+type ledgerMovement struct {
+	from, to    string
+	amount      luca.Amount
+	code        string
+	at          time.Time
+	description string
+}
+
+// collectBoEInterest models BoE reserve interest in the ledger: newly accrued
 // whole pence post daily as Income:Interest:BoE -> Asset:AccruedInterest:BoE
 // (income recognised as it accrues, receivable builds up), and at month end
 // the receivable moves into Asset:BoEReserves as the interest is received.
 // Unlike customer interest there is no reversal — the engine is not involved,
 // so income is never double-posted. Sub-penny remainders carry forward in
-// boeAccruedNumerator. Must be called with ds.mu held.
-func (ds *DemoState) postBoEInterest(day time.Time) {
+// boeAccruedNumerator. The movements are returned for the caller to write
+// with no locks held; as with customer accruals, a later write failure is
+// logged and the counters stay ahead of the ledger. Must be called with
+// ds.mu held.
+func (ds *DemoState) collectBoEInterest(day time.Time) []ledgerMovement {
 	if ds.sim == nil {
-		return
+		return nil
 	}
 	ds.simMu.Lock()
-	defer ds.simMu.Unlock()
-	if !ds.ensureAccrualAccounts() {
-		return
+	ok := ds.ensureAccrualAccounts()
+	ds.simMu.Unlock()
+	if !ok {
+		return nil
 	}
+	var out []ledgerMovement
 	valueTime := time.Date(day.Year(), day.Month(), day.Day(), 23, 59, 58, 0, day.Location())
 	if newPence := ds.boeAccruedNumerator/gbp.AccrualDenominator - ds.boePostedPence; newPence > 0 {
-		if _, err := ds.sim.RecordMovement(ds.incomeBoEID, ds.accrBoEID, luca.Amount(newPence),
-			codeDailyAccrual, valueTime, "Daily BoE reserve interest accrual"); err != nil {
-			log.Printf("postBoEInterest: accrue: %v", err)
-			return
-		}
+		out = append(out, ledgerMovement{ds.incomeBoEID, ds.accrBoEID, luca.Amount(newPence),
+			codeDailyAccrual, valueTime, "Daily BoE reserve interest accrual"})
 		ds.boePostedPence += newPence
 	}
 	if monthEnd := day.Month() != day.AddDate(0, 0, 1).Month(); monthEnd && ds.boePostedPence > 0 {
 		desc := fmt.Sprintf("BoE reserve interest received for month ending %s", day.Format("2006-01-02"))
 		applyTime := time.Date(day.Year(), day.Month(), day.Day(), 23, 59, 59, 0, day.Location())
-		if _, err := ds.sim.RecordMovement(ds.accrBoEID, ds.boeReservesID, luca.Amount(ds.boePostedPence),
-			luca.CodeInterestAccrual, applyTime, desc); err != nil {
-			log.Printf("postBoEInterest: apply: %v", err)
-			return
-		}
+		out = append(out, ledgerMovement{ds.accrBoEID, ds.boeReservesID, luca.Amount(ds.boePostedPence),
+			luca.CodeInterestAccrual, applyTime, desc})
 		ds.boeAccruedNumerator -= ds.boePostedPence * gbp.AccrualDenominator
 		ds.boeInterestApplied += luca.Amount(ds.boePostedPence)
 		ds.boePostedPence = 0
 	}
+	return out
 }
 
 // boeInterestTotal returns cumulative BoE reserve interest earned: applied
