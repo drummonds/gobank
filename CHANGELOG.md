@@ -2,6 +2,16 @@
 
 ## [Unreleased]
 
+ - Releases carry the demo binaries: the build stage gobank-deploy fetches from
+
+### Added
+- `.goreleaser.yaml`: `tp release` builds `cmd/demo` for linux amd64 and
+  arm64 (CGO off, version from the tag) and attaches `demo-linux-amd64`,
+  `demo-linux-arm64` and `checksums.txt` to the Forgejo release. This is
+  the build stage gobank-deploy's store fetches, so a new version reaches
+  an environment without touching gobank-deploy or the appliance. Built on
+  the laptop because `cmd/demo/go.mod` replaces the charts fork locally.
+
 ## [0.3.49] - 2026-09-29
 
  - Version update

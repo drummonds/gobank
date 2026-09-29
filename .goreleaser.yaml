@@ -1,0 +1,45 @@
+# The build stage for gobank-deploy: tp release runs this, and the demo
+# binaries it attaches to the Forgejo release are what the appliance
+# fetches and deploys (gobank-deploy -store). Built here on the laptop
+# rather than from the module proxy because cmd/demo's go.mod replaces
+# the charts fork and gobank itself with local checkouts.
+version: 2
+project_name: gobank
+
+builds:
+  - id: demo
+    dir: cmd/demo
+    main: .
+    binary: demo
+    env:
+      - CGO_ENABLED=0
+    goos:
+      - linux
+    goarch:
+      - amd64
+      - arm64
+    ldflags:
+      - -s -w -X main.version={{ .Tag }}
+
+# Raw binaries, named as the release store lays them out.
+archives:
+  - formats:
+      - binary
+    name_template: "demo-linux-{{ .Arch }}"
+
+checksum:
+  name_template: checksums.txt
+
+gitea_urls:
+  api: https://git.bytestone.uk/api/v1
+  download: https://git.bytestone.uk
+
+release:
+  gitea:
+    owner: hum3
+    name: gobank
+  # tp release writes the release notes; keep them.
+  mode: keep-existing
+
+changelog:
+  disable: true
