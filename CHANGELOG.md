@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+## [0.3.49] - 2026-09-29
+
+ - Version update
+
 ### Changed
 - The DB explorer uses the PostgreSQL catalog queries on both backends
   (go-dbexplorer v0.2.0, go-postgres v0.6.0), so the demo no longer tells it
