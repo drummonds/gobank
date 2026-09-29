@@ -3,6 +3,10 @@
 ## [Unreleased]
 
 ### Changed
+- The DB explorer uses the PostgreSQL catalog queries on both backends
+  (go-dbexplorer v0.2.0, go-postgres v0.6.0), so the demo no longer tells it
+  which backend it's on. On pglike, the schema section now shows PG type
+  names, the `<table>_pkey` index and view columns.
 - Daily accrual postings are written by one worker per CPU on PostgreSQL
   (one on pglike/WASM). Locally 8 workers post ~4.6x the movements/s of one.
 - Customer creation holds the state lock only to decide the customer (record,

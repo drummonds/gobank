@@ -4,7 +4,7 @@ go 1.26.0
 
 require (
 	git.bytestone.uk/hum3/go-luca v0.2.32
-	git.bytestone.uk/hum3/go-postgres v0.5.13
+	git.bytestone.uk/hum3/go-postgres v0.6.0
 	git.bytestone.uk/hum3/gobank v0.3.44
 	git.bytestone.uk/hum3/gobank-products v0.1.10
 	git.bytestone.uk/hum3/gobanks-customers v0.2.1
@@ -17,7 +17,7 @@ require (
 require github.com/ncruces/go-sqlite3-wasm/v3 v3.2.35304 // indirect
 
 require (
-	git.bytestone.uk/hum3/go-dbexplorer v0.1.2
+	git.bytestone.uk/hum3/go-dbexplorer v0.2.0
 	git.bytestone.uk/hum3/gobank-db v0.1.3 // indirect
 	git.bytestone.uk/hum3/gotreesitter v0.6.8 // indirect
 	github.com/dustin/go-humanize v1.0.1 // indirect

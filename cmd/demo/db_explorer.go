@@ -11,7 +11,6 @@ import (
 func (ds *DemoState) explorer() *dbexplorer.Explorer {
 	return &dbexplorer.Explorer{
 		DB:       ds.DB(),
-		Postgres: ds.dbIsPostgres,
 		BasePath: "/internal/explorer",
 		Annotate: ownershipBadge,
 	}
