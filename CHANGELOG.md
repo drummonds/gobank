@@ -2,6 +2,15 @@
 
 ## [Unreleased]
 
+### Changed
+- The customer chart renders through gogal v0.2.0; go-analyze/charts and
+  the local fork's `replace` are gone from `cmd/demo`.
+
+### Fixed
+- Release binaries: v0.3.50's goreleaser run failed because `tp release`
+  exports both `GITHUB_TOKEN` and `GITEA_TOKEN`; `.goreleaser.yaml` now sets
+  `force_token: gitea`. v0.3.50 has no binaries attached — use v0.3.51.
+
 ## [0.3.50] - 2026-09-30
 
  - Releases carry the demo binaries: the build stage gobank-deploy fetches from

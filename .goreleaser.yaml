@@ -2,9 +2,13 @@
 # binaries it attaches to the Forgejo release are what the appliance
 # fetches and deploys (gobank-deploy -store). Built here on the laptop
 # rather than from the module proxy because cmd/demo's go.mod replaces
-# the charts fork and gobank itself with local checkouts.
+# gobank itself with the local checkout.
 version: 2
 project_name: gobank
+
+# tp release pushes to GitHub too, so GITHUB_TOKEN is set alongside
+# GITEA_TOKEN; the release itself goes only to Forgejo.
+force_token: gitea
 
 builds:
   - id: demo
