@@ -10,8 +10,8 @@ git.bytestone.uk/hum3/gobank-products v0.1.10 h1:y6MmGkXfZqPMSdT4x0/SgaL4QfNjcwC
 git.bytestone.uk/hum3/gobank-products v0.1.10/go.mod h1:szlHyCmqdAtdA22/qkQOcJXOQI0VoyY3ygGLmyzOjYM=
 git.bytestone.uk/hum3/gobanks-customers v0.2.1 h1:zbZe3kSlcUeJJx/la1vcEIAX49fOhBj6daYw+HKd5F4=
 git.bytestone.uk/hum3/gobanks-customers v0.2.1/go.mod h1:yMxA+b9Lu/FoAivvycwsoAHvQgy8SgaYitO5peIDlEk=
-git.bytestone.uk/hum3/gogal v0.1.8 h1:Psyu90UUDv9CBnLmXEeydS2bZFAVE1slZJ1vO5YQU+I=
-git.bytestone.uk/hum3/gogal v0.1.8/go.mod h1:7RStOykDIMr/Cz1Lf6Dp6oiZrWihwgPzgcG6bjB6H7w=
+git.bytestone.uk/hum3/gogal v0.2.0 h1:ZV/8PRYhzfqOLpN9YVh+QtS3TDe0P9UJPvTMuyasTBw=
+git.bytestone.uk/hum3/gogal v0.2.0/go.mod h1:7RStOykDIMr/Cz1Lf6Dp6oiZrWihwgPzgcG6bjB6H7w=
 git.bytestone.uk/hum3/gotreesitter v0.6.8 h1:9q2V0stkzhrWDY39EoMhrQmkHqHFydI5iW8xOFVDvwE=
 git.bytestone.uk/hum3/gotreesitter v0.6.8/go.mod h1:Wypi8nYsGD8zsHzKvZoU6Cy/aSW3Z3v8E9BCvKzR1wM=
 git.bytestone.uk/hum3/lofigui v0.17.40 h1:RqHNJvf3fE/7iJ9QGKZU54c6NumxTE3gUEW9sPNgCQQ=
