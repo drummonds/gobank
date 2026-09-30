@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+## [0.3.51] - 2026-09-30
+
+ - Release binaries fixed (force gitea token); customer chart on gogal v0.2.0
+
 ### Changed
 - The customer chart renders through gogal v0.2.0; go-analyze/charts and
   the local fork's `replace` are gone from `cmd/demo`.
