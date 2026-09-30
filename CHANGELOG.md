@@ -2,6 +2,8 @@
 
 ## [Unreleased]
 
+## [0.3.50] - 2026-09-30
+
  - Releases carry the demo binaries: the build stage gobank-deploy fetches from
 
 ### Added
