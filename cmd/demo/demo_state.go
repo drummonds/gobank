@@ -16,7 +16,7 @@ import (
 	luca "git.bytestone.uk/hum3/go-luca"
 	gbp "git.bytestone.uk/hum3/gobank-products"
 	customers "git.bytestone.uk/hum3/gobanks-customers"
-	"github.com/go-analyze/charts"
+	"git.bytestone.uk/hum3/gogal"
 )
 
 // RatePoint records a BoE base rate at a point in simulated time.
@@ -1251,54 +1251,32 @@ func buildBalanceChartSVG(history []BalancePoint) string {
 	return s.String()
 }
 
-// buildCustomerChartSVG renders a standalone SVG customer count chart using go-analyze/charts
-// (local fork adding XAxisOption.CustomTicks for calendar-aware tick marks).
+// buildCustomerChartSVG renders a standalone SVG customer count chart with
+// gogal: whole-number counts, the first and last day labelled at the ends of
+// the time axis, calendar dates between.
 func buildCustomerChartSVG(history []CustomerPoint) string {
 	if len(history) == 0 {
 		return ""
 	}
-
+	times := make([]time.Time, len(history))
 	values := make([]float64, len(history))
-	minCount, maxCount := history[0].Count, history[0].Count
 	for i, cp := range history {
-		values[i] = float64(cp.Count)
-		if cp.Count < minCount {
-			minCount = cp.Count
-		}
-		if cp.Count > maxCount {
-			maxCount = cp.Count
-		}
+		times[i], values[i] = cp.Date, float64(cp.Count)
 	}
-	yMin, yMax, yLabels := integerYAxis(minCount, maxCount)
-	xTicks := timeAxisTicks(history[0].Date, history[len(history)-1].Date)
-
-	p, err := charts.LineRender(
-		[][]float64{values},
-		charts.SVGOutputOptionFunc(),
-		charts.DimensionsOptionFunc(660, 180),
-		charts.LegendOptionFunc(charts.LegendOption{Show: new(false)}),
-		charts.PaddingOptionFunc(charts.Box{Left: 60, Right: 40, Top: 10, Bottom: 5, IsSet: true}),
-		func(opt *charts.ChartOption) {
-			opt.Symbol = charts.SymbolNone
-			opt.LineStrokeWidth = 2
-			opt.XAxis.BoundaryGap = new(false)
-			opt.XAxis.CustomTicks = xTicks
-			opt.YAxis = []charts.YAxisOption{{
-				Min:        new(yMin),
-				Max:        new(yMax),
-				LabelCount: yLabels,
-				ValueFormatter: func(f float64) string {
-					return strconv.Itoa(int(math.Round(f)))
-				},
-			}}
-		},
-	)
+	svg, err := gogal.NewLineChart(
+		gogal.WithSize(660, 180),
+		gogal.WithMargins(10, 40, 24, 60),
+		gogal.WithLegend(false),
+		gogal.WithPoints(false),
+		gogal.WithTooltips(false),
+		gogal.WithAccessibility(false),
+		gogal.WithTimeFormat(chartDateFormat),
+		gogal.WithYFormat("%.0f"),
+		gogal.WithIntegerY(true),
+		gogal.WithEndLabels(true),
+	).AddTimeSeries("customers", times, values).RenderString()
 	if err != nil {
 		return fmt.Sprintf(`<p class="has-text-danger">Chart error: %v</p>`, err)
 	}
-	svgBytes, err := p.Bytes()
-	if err != nil {
-		return fmt.Sprintf(`<p class="has-text-danger">Chart render error: %v</p>`, err)
-	}
-	return string(svgBytes)
+	return svg
 }

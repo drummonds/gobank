@@ -10,7 +10,6 @@ require (
 	git.bytestone.uk/hum3/gobanks-customers v0.2.1
 	git.bytestone.uk/hum3/gogal v0.1.8
 	git.bytestone.uk/hum3/lofigui v0.17.40
-	github.com/go-analyze/charts v0.5.25
 	github.com/jackc/pgx/v5 v5.11.0
 	github.com/yuin/goldmark v1.8.6
 )
@@ -21,9 +20,6 @@ require (
 	git.bytestone.uk/hum3/go-dbexplorer v0.2.0
 	git.bytestone.uk/hum3/gobank-db v0.2.0 // indirect
 	git.bytestone.uk/hum3/gotreesitter v0.6.8 // indirect
-	github.com/dustin/go-humanize v1.0.1 // indirect
-	github.com/go-analyze/bulk v0.1.3 // indirect
-	github.com/golang/freetype v0.0.0-20170609003504-e2365dfdc4a0 // indirect
 	github.com/google/uuid v1.6.0 // indirect
 	github.com/hack-pad/safejs v0.1.1 // indirect
 	github.com/jackc/pgpassfile v1.0.0 // indirect
@@ -35,12 +31,9 @@ require (
 	github.com/nlepage/go-wasm-http-server/v2 v2.2.1 // indirect
 	github.com/russross/blackfriday/v2 v2.1.0 // indirect
 	github.com/shopspring/decimal v1.4.0 // indirect
-	golang.org/x/image v0.24.0 // indirect
 	golang.org/x/sync v0.23.0 // indirect
 	golang.org/x/sys v0.48.0 // indirect
 	golang.org/x/text v0.42.0 // indirect
 )
-
-replace github.com/go-analyze/charts => ../../../go-analyze-charts
 
 replace git.bytestone.uk/hum3/gobank => ../..
