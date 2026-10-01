@@ -9,3 +9,5 @@ pages_deploy:
   - type: rsync
     site: gobank
     rc_site: gobank-rc
+post_release:
+  - task cloud:fetch

@@ -186,6 +186,11 @@ tasks:
     cmds:
       - task -d ../gobank-deploy ui ENVS={{.ENVS | default "prod,preprod"}}
 
+  cloud:fetch:
+    desc: Have the gobank-deploy appliance fetch this release's binaries into its store (tp release runs it as post_release; needs the LAN)
+    cmds:
+      - curl -fsS --max-time 300 -X POST {{.DEPLOY_URL | default "https://gobank-deploy.lan.drummonds.net"}}/fetch
+
   clean:
     desc: Remove build artifacts (preserves docs/research/)
     cmds:

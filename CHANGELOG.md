@@ -2,6 +2,12 @@
 
 ## [Unreleased]
 
+### Added
+- `tp release` ends by asking the gobank-deploy appliance to fetch the new
+  release's binaries into its store (`post_release: task cloud:fetch`), so
+  the environments page offers it at once. Needs task-plus with
+  `post_release` support and the LAN; a failure is only a warning.
+
 ## [0.3.51] - 2026-09-30
 
  - Release binaries fixed (force gitea token); customer chart on gogal v0.2.0
