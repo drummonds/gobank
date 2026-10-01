@@ -16,17 +16,12 @@ func (ds *DemoState) explorer() *dbexplorer.Explorer {
 	}
 }
 
-// BuildExplorerHTML renders the DB explorer overview: all tables with
-// row/column counts and FK relationships.
-func (ds *DemoState) BuildExplorerHTML() string {
-	return ds.explorer().IndexHTML()
-}
-
-// BuildExplorerTableHTML renders the detail view for a single table:
-// schema, FKs, indexes, and paginated data. trunc shortens ID/text cells
-// and is carried through sort/pagination links as ?trunc=1.
-func (ds *DemoState) BuildExplorerTableHTML(name string, page int, sort string, dir string, trunc bool) string {
-	return ds.explorer().TableHTML(name, page, sort, dir, trunc)
+// BuildExplorerPage renders the explorer page for an explorer URL — the
+// index for /internal/explorer, a table for /internal/explorer/<table> —
+// honouring every query parameter the explorer's own links carry (page,
+// sort, dir, trunc, filter, value). Server and WASM both route through it.
+func (ds *DemoState) BuildExplorerPage(rawURL string) string {
+	return ds.explorer().Render(rawURL)
 }
 
 // ownershipBadge labels a table with its owning component, or a view as a

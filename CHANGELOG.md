@@ -2,6 +2,12 @@
 
 ## [Unreleased]
 
+### Fixed
+- DB explorer foreign-key links now open the referenced rows instead of the
+  whole table. The server route and the WASM bridge parsed the explorer's
+  query string themselves and dropped `filter`/`value`; both now hand the
+  link's URL to go-dbexplorer's `Render`.
+
 ## [0.3.52] - 2026-10-01
 
 ### Added

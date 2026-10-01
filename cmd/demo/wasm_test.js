@@ -120,6 +120,11 @@ function testShortRun(nCustomers, nDays) {
     assertHTML(goRenderTreasuryCash(), 'treasury cash after ' + nDays + ' days');
     assertHTML(goRenderBBSI(), 'BBSI report after ' + nDays + ' days');
 
+    // The explorer bridge takes a link's href whole, so an FK link's filter
+    // reaches the explorer.
+    const filtered = goRenderExplorerTable('/internal/explorer/customer_accounts?filter=customer_id&value=cust-001');
+    assert(filtered.includes('Filter: customer_id = cust-001'), 'explorer FK filter honoured in WASM');
+
     console.log('  ' + nDays + ' days advanced OK');
 }
 

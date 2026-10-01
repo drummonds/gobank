@@ -46,11 +46,8 @@ const allNavItems = [navDashboard, navPnl, navBalanceSheet, navSavings, navLendi
 let currentPage = 'dashboard';
 let renderInterval = null;
 let detailId = null; // for customer/payment/table detail pages
-let detailTxPage = 1; // transaction page for customer detail, or explorer page
+let detailTxPage = 1; // transaction page for customer detail
 let detailAccountIdx = -1; // account index for customer-account page
-let detailSort = ''; // explorer sort column
-let detailDir = 'asc'; // explorer sort direction
-let detailTrunc = false; // explorer: truncate ID/text cells to 10 chars
 
 // --- Page rendering ---
 
@@ -106,7 +103,7 @@ function renderPage() {
             break;
         case 'explorer-table':
             if (typeof goRenderExplorerTable === 'function' && detailId)
-                outputDiv.innerHTML = goRenderExplorerTable(detailId, detailTxPage, detailSort, detailDir, detailTrunc);
+                outputDiv.innerHTML = goRenderExplorerTable(detailId);
             break;
         case 'charts':
             if (typeof goRenderCharts === 'function') outputDiv.innerHTML = goRenderCharts();
@@ -219,15 +216,7 @@ function attachDetailLinks() {
     outputDiv.querySelectorAll('a[href^="/internal/explorer/"]').forEach(function(a) {
         a.addEventListener('click', function(e) {
             e.preventDefault();
-            var href = a.getAttribute('href');
-            var path = href.split('?')[0];
-            var name = path.replace('/internal/explorer/', '');
-            var params = new URLSearchParams(href.split('?')[1] || '');
-            detailId = name;
-            detailTxPage = parseInt(params.get('page')) || 1;
-            detailSort = params.get('sort') || '';
-            detailDir = params.get('dir') || 'asc';
-            detailTrunc = params.get('trunc') === '1';
+            detailId = a.getAttribute('href'); // the explorer renders the href itself
             showPage('explorer-table');
         });
     });
@@ -331,9 +320,6 @@ function showPage(page) {
         detailId = null;
         detailTxPage = 1;
         detailAccountIdx = -1;
-        detailSort = '';
-        detailDir = 'asc';
-        detailTrunc = false;
     }
 
     // Update active nav

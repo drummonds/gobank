@@ -317,33 +317,19 @@ func goRenderCustomerViewReport(this js.Value, args []js.Value) any {
 
 func goRenderExplorer(this js.Value, args []js.Value) any {
 	lofigui.Reset()
-	lofigui.HTML(state.BuildExplorerHTML())
+	lofigui.HTML(state.BuildExplorerPage("/internal/explorer"))
 	return js.ValueOf(lofigui.Buffer())
 }
 
+// goRenderExplorerTable renders an explorer link's href as-is, so its query
+// parameters (page, sort, dir, trunc, filter, value) all reach the explorer.
 func goRenderExplorerTable(this js.Value, args []js.Value) any {
-	name := ""
-	page := 1
-	sort := ""
-	dir := "asc"
+	href := "/internal/explorer"
 	if len(args) > 0 {
-		name = args[0].String()
-	}
-	if len(args) > 1 {
-		page = args[1].Int()
-	}
-	if len(args) > 2 {
-		sort = args[2].String()
-	}
-	if len(args) > 3 {
-		dir = args[3].String()
-	}
-	trunc := false
-	if len(args) > 4 {
-		trunc = args[4].Truthy()
+		href = args[0].String()
 	}
 	lofigui.Reset()
-	lofigui.HTML(state.BuildExplorerTableHTML(name, page, sort, dir, trunc))
+	lofigui.HTML(state.BuildExplorerPage(href))
 	return js.ValueOf(lofigui.Buffer())
 }
 

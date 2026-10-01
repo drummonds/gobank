@@ -19,6 +19,10 @@ The browser-based model proves the banking core works end-to-end.
 
 ### To Do
 
+- **DB explorer on the pluggable go-dbexplorer** — fix FK filter links
+  (route through `Explorer.Render`); then a `Catalog` adapter over
+  `components.go` and an `Authoriser` wired to `Role`, closing the gap where
+  every role can browse every table
 - **Working savings accounts** — full lifecycle: open, deposit, withdraw, accrue interest, close
 - **Import/export via luca files** — load and save simulation state as plain-text accounting files
 - **Export single savings account** — extract one account's history as a luca file
@@ -87,7 +91,10 @@ root module, `cmd/bff` is the service binary, and `app/` is the Flutter shell.
    the customer web client; passkeys via WebAuthn in the browser
 6. **App-shielding SDK evaluation** — Promon, Guardsquare, Appdome, Zimperium;
    chosen and integrated before any external pilot
-7. **Native checkpoint** — after the first external pilot, a written list of what
+7. **Standalone RBAC module** — extract `Role`/`Can` from `cmd/demo` into its
+   own repo (not gobank-db) once the BFF is the second consumer; it then
+   implements go-dbexplorer's `Authoriser`
+8. **Native checkpoint** — after the first external pilot, a written list of what
    Flutter cannot do; move to SwiftUI and Jetpack Compose only if the list is
    non-empty
 

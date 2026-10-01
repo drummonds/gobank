@@ -723,7 +723,7 @@ func main() {
 			http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 			return
 		}
-		content := state.BuildExplorerHTML()
+		content := state.BuildExplorerPage(r.URL.RequestURI())
 		if serveHTMX(w, r, content) {
 			return
 		}
@@ -740,14 +740,7 @@ func main() {
 			http.Redirect(w, r, "/internal/explorer", http.StatusSeeOther)
 			return
 		}
-		page, _ := strconv.Atoi(r.URL.Query().Get("page"))
-		if page < 1 {
-			page = 1
-		}
-		sort := r.URL.Query().Get("sort")
-		dir := r.URL.Query().Get("dir")
-		trunc := r.URL.Query().Get("trunc") == "1"
-		content := state.BuildExplorerTableHTML(name, page, sort, dir, trunc)
+		content := state.BuildExplorerPage(r.URL.RequestURI())
 		if serveHTMX(w, r, content) {
 			return
 		}

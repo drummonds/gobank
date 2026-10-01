@@ -57,7 +57,7 @@ func TestADRPage(t *testing.T) {
 // contract views, so an at-risk query knows whose table it is reading.
 func TestExplorerShowsOwnership(t *testing.T) {
 	ds := NewDemoState()
-	page := ds.BuildExplorerHTML()
+	page := ds.BuildExplorerPage("/internal/explorer")
 	if !strings.Contains(page, `>customer_accounts</a> <span class="tag is-light">customers</span>`) {
 		t.Errorf("explorer index does not badge customer_accounts with its owner: %.300s", page)
 	}

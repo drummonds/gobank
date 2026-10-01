@@ -11,7 +11,7 @@ import (
 func TestExplorerListsTablesOnPglike(t *testing.T) {
 	ds := NewDemoState()
 	addFundedCustomer(ds)
-	page := ds.BuildExplorerHTML()
+	page := ds.BuildExplorerPage("/internal/explorer")
 	for _, want := range []string{"customer_accounts", "movements", "contract_payments", `<span class="tag is-light">customers</span>`} {
 		if !strings.Contains(page, want) {
 			t.Errorf("explorer index on pglike missing %q", want)
@@ -28,7 +28,7 @@ func TestExplorerListsTablesOnPostgres(t *testing.T) {
 	}
 	ds := NewDemoStateWithDSN(dsn)
 	addFundedCustomer(ds)
-	page := ds.BuildExplorerHTML()
+	page := ds.BuildExplorerPage("/internal/explorer")
 	for _, want := range []string{"customer_accounts", "movements", "contract_payments", `<span class="tag is-light">customers</span>`} {
 		if !strings.Contains(page, want) {
 			t.Errorf("explorer index on PostgreSQL missing %q", want)
@@ -36,5 +36,23 @@ func TestExplorerListsTablesOnPostgres(t *testing.T) {
 	}
 	if strings.Contains(page, "No tables found") {
 		t.Error("explorer index on PostgreSQL reports no tables")
+	}
+}
+
+// An explorer URL — as the explorer's own links emit it — renders with every
+// query parameter honoured, including the filter a foreign-key link sets.
+func TestExplorerPageHonoursFilter(t *testing.T) {
+	ds := NewDemoState()
+	addFundedCustomer(ds)
+	addFundedCustomer(ds)
+	page := ds.BuildExplorerPage("/internal/explorer/customer_accounts?filter=customer_id&value=cust-002")
+	if !strings.Contains(page, "Filter: customer_id = cust-002") {
+		t.Errorf("filtered page does not show the filter: %.300s", page)
+	}
+	if strings.Contains(page, ">cust-001<") {
+		t.Error("filtered page still lists cust-001's accounts")
+	}
+	if !strings.Contains(page, ">cust-002<") {
+		t.Error("filtered page does not list cust-002's accounts")
 	}
 }
