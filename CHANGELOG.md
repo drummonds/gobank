@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+## [0.3.53] - 2026-10-01
+
+ - DB explorer: FK links fixed; browse per component
+
 ### Added
 - The DB explorer is divided into the bank's components (go-dbexplorer
   v0.3.0, catalog built from `components.go`): `/internal/explorer/c/payments`
