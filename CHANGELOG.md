@@ -2,6 +2,13 @@
 
 ## [Unreleased]
 
+### Added
+- The DB explorer is divided into the bank's components (go-dbexplorer
+  v0.3.0, catalog built from `components.go`): `/internal/explorer/c/payments`
+  shows only the tables payments owns and the contract views it publishes,
+  and every table in the full view is tagged with its owner, linked to that
+  scope. Foreign keys into another component open that component's scope.
+
 ### Fixed
 - DB explorer foreign-key links now open the referenced rows instead of the
   whole table. The server route and the WASM bridge parsed the explorer's

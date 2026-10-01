@@ -12,7 +12,7 @@ func TestExplorerListsTablesOnPglike(t *testing.T) {
 	ds := NewDemoState()
 	addFundedCustomer(ds)
 	page := ds.BuildExplorerPage("/internal/explorer")
-	for _, want := range []string{"customer_accounts", "movements", "contract_payments", `<span class="tag is-light">customers</span>`} {
+	for _, want := range []string{"customer_accounts", "movements", "contract_payments", `href="/internal/explorer/c/customers">customers</a>`} {
 		if !strings.Contains(page, want) {
 			t.Errorf("explorer index on pglike missing %q", want)
 		}
@@ -29,7 +29,7 @@ func TestExplorerListsTablesOnPostgres(t *testing.T) {
 	ds := NewDemoStateWithDSN(dsn)
 	addFundedCustomer(ds)
 	page := ds.BuildExplorerPage("/internal/explorer")
-	for _, want := range []string{"customer_accounts", "movements", "contract_payments", `<span class="tag is-light">customers</span>`} {
+	for _, want := range []string{"customer_accounts", "movements", "contract_payments", `href="/internal/explorer/c/customers">customers</a>`} {
 		if !strings.Contains(page, want) {
 			t.Errorf("explorer index on PostgreSQL missing %q", want)
 		}

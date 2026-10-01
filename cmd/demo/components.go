@@ -3,7 +3,7 @@ package main
 // The component registry: which function of the bank owns which source
 // files and tables, and what it publishes. It is the single source for the
 // documentation page (docs.go), the contract-view rule (ADR-0001, enforced
-// by TestContractViewRule) and the explorer's ownership badges.
+// by TestContractViewRule) and the explorer's component catalog.
 
 import "slices"
 

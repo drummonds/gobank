@@ -53,12 +53,31 @@ func TestADRPage(t *testing.T) {
 	}
 }
 
-// The DB explorer labels every table with its owning component and marks
-// contract views, so an at-risk query knows whose table it is reading.
+// The DB explorer labels every table with its owning component, linking
+// that component's scope, and marks contract views, so an at-risk query
+// knows whose table it is reading.
 func TestExplorerShowsOwnership(t *testing.T) {
 	ds := NewDemoState()
 	page := ds.BuildExplorerPage("/internal/explorer")
-	if !strings.Contains(page, `>customer_accounts</a> <span class="tag is-light">customers</span>`) {
-		t.Errorf("explorer index does not badge customer_accounts with its owner: %.300s", page)
+	if !strings.Contains(page, `>customer_accounts</a> <a class="tag is-light" href="/internal/explorer/c/customers">customers</a>`) {
+		t.Errorf("explorer index does not tag customer_accounts with its owner: %.300s", page)
+	}
+	if !strings.Contains(page, `>contract_payments</a> <a class="tag is-light" href="/internal/explorer/c/payments">payments</a> <span class="tag is-success is-light">contract view</span>`) {
+		t.Error("explorer index does not tag contract_payments as payments' contract view")
+	}
+}
+
+// Scoped to one component, the explorer shows only the tables it owns and
+// the contract views it publishes (ADR-0001).
+func TestExplorerComponentScope(t *testing.T) {
+	ds := NewDemoState()
+	page := ds.BuildExplorerPage("/internal/explorer/c/payments")
+	for _, want := range []string{`href="/internal/explorer/c/payments/payments"`, `href="/internal/explorer/c/payments/contract_payments"`} {
+		if !strings.Contains(page, want) {
+			t.Errorf("payments scope missing %q", want)
+		}
+	}
+	if strings.Contains(page, ">customer_accounts</a>") {
+		t.Error("payments scope lists the customers component's table")
 	}
 }
