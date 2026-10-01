@@ -49,3 +49,14 @@ puts it on the documentation page: the registry is the single source for
 the docs, the rule and the explorer. Views cost nothing in-browser (pglike
 supports them) and map to a `contract` schema on PostgreSQL later. The
 baseline is visible technical debt with a named owner per entry.
+
+## Prior art
+
+The closest precedents are private-tables-per-service
+([microservices.io](https://microservices.io/patterns/data/database-per-service.html)),
+Ambler and Sadalage's
+[Encapsulate Table With View](https://databaserefactoring.com/EncapsulateTableWithView.html),
+Shopify's [Packwerk](https://github.com/Shopify/packwerk) for boundary
+checks run as tests, and a [ratchet](https://qntm.org/ratchet) for the
+baseline. The full annotated list lives with the mechanism in gobank-db:
+[Contract Views — Prior art](https://gobank-db.docs.bytestone.uk/contract-views.html#prior-art).

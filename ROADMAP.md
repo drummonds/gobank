@@ -19,6 +19,16 @@ The browser-based model proves the banking core works end-to-end.
 
 ### To Do
 
+- **Key and emerging risk register** — a register component (own tables,
+  ADR-0001) listing the bank's key risks (credit, liquidity, interest-rate
+  risk in the banking book, operational, conduct) with owner, inherent and
+  residual rating and controls; each key risk carries KRIs computed from the
+  simulation through contract views, with amber/red thresholds, so a
+  simulated run moves the register. Emerging risks (horizon scanning: cyber,
+  climate, payment-scheme change) are recorded without KRIs until one is
+  measurable. Out of scope: capital modelling (ICAAP/ILAAP numbers).
+  Open: which KRIs the simulation can already support versus which need new
+  metrics (e.g. liquidity coverage needs a treasury cash view)
 - **DB explorer on the pluggable go-dbexplorer** — fix FK filter links
   (route through `Explorer.Render`); then a `Catalog` adapter over
   `components.go` and an `Authoriser` wired to `Role`, closing the gap where
