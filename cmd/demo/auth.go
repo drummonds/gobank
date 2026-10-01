@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"sync"
 	"time"
 )
@@ -49,6 +50,33 @@ func (r Role) Can(action string) bool {
 	default:
 		return false
 	}
+}
+
+// CanViewComponent reports whether the role may browse a component's tables
+// in the DB explorer. The customers component holds PII, so it needs
+// view_pii; the rest, and unowned tables (""), are open to every role.
+func (r Role) CanViewComponent(component string) bool {
+	if component == "customers" {
+		return r.Can("view_pii")
+	}
+	return true
+}
+
+// roleKey carries the viewer's role in a context.
+type roleKey struct{}
+
+// withRole returns ctx carrying the viewer's role.
+func withRole(ctx context.Context, r Role) context.Context {
+	return context.WithValue(ctx, roleKey{}, r)
+}
+
+// roleFrom is the viewer's role in ctx; admin when none is set, as for a
+// session AuthStore has not seen and for the single-user WASM simulator.
+func roleFrom(ctx context.Context) Role {
+	if r, ok := ctx.Value(roleKey{}).(Role); ok {
+		return r
+	}
+	return RoleAdmin
 }
 
 // ValidRole returns true if the string is a known role.

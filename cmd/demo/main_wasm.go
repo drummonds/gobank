@@ -4,6 +4,7 @@ package main
 
 import (
 	"bytes"
+	"context"
 	"syscall/js"
 
 	luca "git.bytestone.uk/hum3/go-luca"
@@ -317,7 +318,7 @@ func goRenderCustomerViewReport(this js.Value, args []js.Value) any {
 
 func goRenderExplorer(this js.Value, args []js.Value) any {
 	lofigui.Reset()
-	lofigui.HTML(state.BuildExplorerPage("/internal/explorer"))
+	lofigui.HTML(state.BuildExplorerPage(context.Background(), "/internal/explorer"))
 	return js.ValueOf(lofigui.Buffer())
 }
 
@@ -329,7 +330,7 @@ func goRenderExplorerTable(this js.Value, args []js.Value) any {
 		href = args[0].String()
 	}
 	lofigui.Reset()
-	lofigui.HTML(state.BuildExplorerPage(href))
+	lofigui.HTML(state.BuildExplorerPage(context.Background(), href))
 	return js.ValueOf(lofigui.Buffer())
 }
 

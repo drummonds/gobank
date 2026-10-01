@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"strings"
 
 	dbexplorer "git.bytestone.uk/hum3/go-dbexplorer"
@@ -15,6 +16,9 @@ func (ds *DemoState) explorer() *dbexplorer.Explorer {
 		BasePath: "/internal/explorer",
 		Catalog:  explorerCatalog,
 		Annotate: contractBadge,
+		Authoriser: dbexplorer.AuthoriserFunc(func(ctx context.Context, component string) bool {
+			return roleFrom(ctx).CanViewComponent(component)
+		}),
 	}
 }
 
@@ -30,9 +34,11 @@ var explorerCatalog = func() dbexplorer.StaticCatalog {
 // BuildExplorerPage renders the explorer page for an explorer URL — the
 // index for /internal/explorer, a table for /internal/explorer/<table> —
 // honouring every query parameter the explorer's own links carry (page,
-// sort, dir, trunc, filter, value). Server and WASM both route through it.
-func (ds *DemoState) BuildExplorerPage(rawURL string) string {
-	return ds.explorer().Render(rawURL)
+// sort, dir, trunc, filter, value). ctx carries the viewer's role (see
+// withRole), which decides the components shown. Server and WASM both route
+// through it.
+func (ds *DemoState) BuildExplorerPage(ctx context.Context, rawURL string) string {
+	return ds.explorer().Render(ctx, rawURL)
 }
 
 // contractBadge marks a contract view (ADR-0001); the explorer itself tags

@@ -723,7 +723,7 @@ func main() {
 			http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 			return
 		}
-		content := state.BuildExplorerPage(r.URL.RequestURI())
+		content := state.BuildExplorerPage(withRole(r.Context(), authStore.GetRole(getSessionID(w, r))), r.URL.RequestURI())
 		if serveHTMX(w, r, content) {
 			return
 		}
@@ -740,7 +740,7 @@ func main() {
 			http.Redirect(w, r, "/internal/explorer", http.StatusSeeOther)
 			return
 		}
-		content := state.BuildExplorerPage(r.URL.RequestURI())
+		content := state.BuildExplorerPage(withRole(r.Context(), authStore.GetRole(getSessionID(w, r))), r.URL.RequestURI())
 		if serveHTMX(w, r, content) {
 			return
 		}

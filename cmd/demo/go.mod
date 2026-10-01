@@ -17,7 +17,7 @@ require (
 require github.com/ncruces/go-sqlite3-wasm/v6 v6.3.35304 // indirect
 
 require (
-	git.bytestone.uk/hum3/go-dbexplorer v0.3.0
+	git.bytestone.uk/hum3/go-dbexplorer v0.4.0
 	git.bytestone.uk/hum3/gobank-db v0.2.0 // indirect
 	git.bytestone.uk/hum3/gotreesitter v0.6.8 // indirect
 	github.com/google/uuid v1.6.0 // indirect

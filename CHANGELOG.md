@@ -12,6 +12,10 @@
   shows only the tables payments owns and the contract views it publishes,
   and every table in the full view is tagged with its owner, linked to that
   scope. Foreign keys into another component open that component's scope.
+- The DB explorer applies the viewer's role (go-dbexplorer v0.4.0): the
+  customers component, which holds PII, needs `view_pii`, so the read-only
+  role no longer sees `cust_pii` or the other customer tables; foreign keys
+  into it show the value and owner without a link.
 
 ### Fixed
 - DB explorer foreign-key links now open the referenced rows instead of the
