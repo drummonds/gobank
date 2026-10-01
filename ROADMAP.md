@@ -19,6 +19,19 @@ The browser-based model proves the banking core works end-to-end.
 
 ### To Do
 
+- **Daily accrual cost scales with every account** — each account gets a
+  ledger posting every day (`collectAccrualMovements`: a "Daily interest
+  accrual" movement whenever a new whole penny has accrued, plus a reversal
+  per account at month end), and `persistAccrualState` upserts one
+  `accrual_state` row per account per day, one statement each. On the
+  Hetzner demo (2026-10-01: 300k customers, ~477k postings a day at
+  ~1.2k/s) a simulated day takes over ten minutes, and the progress label
+  stays on "bookkeeping" through the off-lock write, so the run looks hung.
+  Options: post accruals in aggregate (one movement per family per day,
+  per-account detail kept in `accrual_state`) or per account only at
+  application; batch the upserts (multi-row `VALUES` or `COPY`); label the
+  persist phase. Open: whether the per-account luca export needs
+  per-account daily postings in the ledger
 - **Key and emerging risk register** — a register component (own tables,
   ADR-0001) listing the bank's key risks (credit, liquidity, interest-rate
   risk in the banking book, operational, conduct) with owner, inherent and
