@@ -2,6 +2,8 @@
 
 ## [Unreleased]
 
+## [0.3.52] - 2026-10-01
+
 ### Added
 - `tp release` ends by asking the gobank-deploy appliance to fetch the new
   release's binaries into its store (`post_release: task cloud:fetch`), so
