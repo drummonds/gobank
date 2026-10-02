@@ -13,12 +13,15 @@ lib/renderer.dart  JSON screen tree -> widgets; unknown components render a plac
 
 ## Setup
 
-The platform folders (`android/`, `ios/`) are generated, not committed.
-With the Flutter SDK installed:
+The platform folders (`android/`, `ios/`) are committed, as Flutter
+projects usually are; they were generated with
+`flutter create --org uk.bytestone --project-name model_bank_app --platforms=android,ios .`.
+The Android debug manifest allows cleartext traffic, because debug builds
+talk to the demo over plain HTTP; the release manifest does not. With the
+Flutter SDK installed:
 
 ```sh
 cd app
-flutter create --org uk.bytestone --project-name model_bank_app --platforms=android,ios .
 flutter pub get
 ```
 
