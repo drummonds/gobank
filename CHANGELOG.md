@@ -2,6 +2,22 @@
 
 ## [Unreleased]
 
+### Added
+- ADR-0002 stage 1, story 1: the core's customer-side contracts
+  (`core.CustomerQueries`, `core.Authenticator`) move from `bff` into a
+  new root-module package `core`, with a contract test suite
+  (`core/coretest`) that every implementation runs. The demo implements
+  them through an adapter, and mounts the customer BFF on its own port
+  under `/v1/`, so the Flutter app can log in to the running demo and see
+  real customers: `GOBANK_APP_PASSWORD` is the one password every customer
+  logs in with (unset = app login off). Transactions still come from the
+  demo's in-memory log until stage 2.
+
+### Fixed
+- `bff/stubbank` returned transactions grouped by account, oldest first,
+  although `TransactionPage` promises newest first; caught by the new
+  contract suite.
+
 ## [0.3.53] - 2026-10-01
 
  - DB explorer: FK links fixed; browse per component

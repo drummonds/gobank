@@ -1,3 +1,13 @@
+// Package bff is the backend-for-frontend for the Model Bank apps.
+//
+// It is the only server the thin clients talk to. It owns sessions and login,
+// and turns banking data into screen-ready trees (package screen). Apart from
+// health, the public login screen and login itself, every endpoint requires a
+// session; the customer identity always comes from the session, never from
+// the request.
+//
+// The banking core is reached through the core package's CustomerQueries and
+// Authenticator contracts (ADR-0002).
 package bff
 
 import (
@@ -5,6 +15,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"git.bytestone.uk/hum3/gobank/core"
 	"log/slog"
 	"net"
 	"net/http"
@@ -17,8 +28,8 @@ import (
 
 // Config configures a Server. Zero values take the defaults noted.
 type Config struct {
-	Bank Bank
-	Auth Authenticator
+	Bank core.CustomerQueries
+	Auth core.Authenticator
 
 	SessionTTL  time.Duration // absolute session lifetime; default 8h
 	SessionIdle time.Duration // idle timeout; default 15m
@@ -219,7 +230,7 @@ func (s *Server) login(w http.ResponseWriter, r *http.Request) {
 		s.limiter.fail("cust:" + req.CustomerID)
 		s.limiter.fail("ip:" + ip)
 		s.log.Info("bff.login", "customer", req.CustomerID, "ip", ip, "ok", false)
-		if !errors.Is(err, ErrBadCredentials) {
+		if !errors.Is(err, core.ErrBadCredentials) {
 			s.log.Error("bff.login.error", "err", err)
 		}
 		const msg = "Unknown customer ID or wrong password."
@@ -371,7 +382,7 @@ func (s *Server) writeError(w http.ResponseWriter, r *http.Request, status int, 
 }
 
 func (s *Server) bankError(w http.ResponseWriter, r *http.Request, err error) {
-	if errors.Is(err, ErrNotFound) {
+	if errors.Is(err, core.ErrNotFound) {
 		s.writeError(w, r, http.StatusNotFound, "not_found", "Not found", nil)
 		return
 	}
@@ -381,7 +392,7 @@ func (s *Server) bankError(w http.ResponseWriter, r *http.Request, err error) {
 
 // Journeys walks every screen the BFF can serve for one customer of bank and
 // returns them for diagramming. It is used by `cmd/bff -journeys`.
-func Journeys(ctx context.Context, bank Bank, customerID string) (screen.Journeys, error) {
+func Journeys(ctx context.Context, bank core.CustomerQueries, customerID string) (screen.Journeys, error) {
 	cust, err := bank.Customer(ctx, customerID)
 	if err != nil {
 		return screen.Journeys{}, err

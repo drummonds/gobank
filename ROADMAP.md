@@ -92,7 +92,8 @@ root module, `cmd/bff` is the service binary, and `app/` is the Flutter shell.
 - **Screen layer** — `screen/`: schema v1, JSON and HTML renderers
 - **Hardened BFF** — `bff/` and `cmd/bff`: sessions, credential login, login
   rate limiting, audit log, authenticated screen endpoints only; runs against
-  the in-memory `bff/stubbank` until the core is extracted
+  `bff/stubbank` standalone, and inside the demo over the `core` adapter
+  (ADR-0002 stage 1) at `/v1/` on the demo's port
 - **Flutter shell** — `app/`: login, screen renderer, navigation; session token
   held in memory until the native plugin exists
 

@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"html/template"
 	"log"
+	"log/slog"
 	"net"
 	"net/http"
 	"os"
@@ -175,6 +176,19 @@ func main() {
 
 	app := lofigui.NewApp()
 	app.Version = "Model Bank " + version
+
+	// The customer BFF (ADR-0002 stage 1), on this port under /v1/.
+	appPassword := os.Getenv("GOBANK_APP_PASSWORD")
+	appBFF := newAppBFF(state, appPassword, slog.Default())
+	http.Handle("/v1/", appBFF)
+	go func() {
+		for range time.Tick(time.Minute) {
+			appBFF.Sessions().Sweep()
+		}
+	}()
+	if appPassword == "" {
+		log.Printf("app BFF mounted at /v1/ with GOBANK_APP_PASSWORD unset: app login is off")
+	}
 	app.SetDisplayURL("/")
 
 	ctrl, err := lofigui.NewController(lofigui.ControllerConfig{

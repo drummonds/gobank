@@ -1,14 +1,9 @@
-// Package bff is the backend-for-frontend for the Model Bank apps.
-//
-// It is the only server the thin clients talk to. It owns sessions and login,
-// and turns banking data into screen-ready trees (package screen). Apart from
-// health, the public login screen and login itself, every endpoint requires a
-// session; the customer identity always comes from the session, never from
-// the request.
-//
-// The banking core is reached through the narrow Bank and Authenticator
-// interfaces, the first cut of the internal API between the BFF and the core.
-package bff
+// Package core holds the contracts of the banking core: the commands and
+// queries through which everything outside the core — the BFF, the staff
+// UI, the simulation's generators — reaches it (ADR-0002). The core's
+// implementation lives behind these interfaces; today that is cmd/demo's
+// DemoState through an adapter, and the stub in bff/stubbank.
+package core
 
 import (
 	"context"
@@ -17,10 +12,10 @@ import (
 	luca "git.bytestone.uk/hum3/go-luca"
 )
 
-// Errors returned by Bank and Authenticator implementations.
+// Errors returned by the contracts.
 var (
-	ErrNotFound       = errors.New("bff: not found")
-	ErrBadCredentials = errors.New("bff: bad credentials")
+	ErrNotFound       = errors.New("core: not found")
+	ErrBadCredentials = errors.New("core: bad credentials")
 )
 
 // Customer identifies a logged-in customer.
@@ -66,10 +61,12 @@ func (p TransactionPage) HasMore() bool {
 	return p.PerPage > 0 && p.Page*p.PerPage < p.Total
 }
 
-// Bank is the read side of the internal API to the banking core. Every method
-// is scoped to one customer; a customer can never see another's data because
-// no method takes anything but their own ID.
-type Bank interface {
+// CustomerQueries is the read side of the core as one customer sees it.
+// Every method is scoped to one customer; a customer can never see
+// another's data because no method takes anything but their own ID. An
+// unknown customer, or an account index the customer does not hold, is
+// ErrNotFound.
+type CustomerQueries interface {
 	Customer(ctx context.Context, customerID string) (Customer, error)
 	Accounts(ctx context.Context, customerID string) ([]Account, error)
 	Transactions(ctx context.Context, customerID string, page int) (TransactionPage, error)

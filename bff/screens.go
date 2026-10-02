@@ -2,6 +2,7 @@ package bff
 
 import (
 	"fmt"
+	"git.bytestone.uk/hum3/gobank/core"
 	"strconv"
 
 	luca "git.bytestone.uk/hum3/go-luca"
@@ -47,7 +48,7 @@ func LoginScreen(notice string) screen.Screen {
 }
 
 // AccountsScreen is the home screen after login.
-func AccountsScreen(c Customer, accounts []Account) screen.Screen {
+func AccountsScreen(c core.Customer, accounts []core.Account) screen.Screen {
 	s := screen.New("accounts", PathScreenHome, c.Name)
 	s.Subtitle = c.ID
 	var savings, lending luca.Amount
@@ -76,7 +77,7 @@ func AccountsScreen(c Customer, accounts []Account) screen.Screen {
 }
 
 // ActivityScreen lists transactions across all of a customer's accounts.
-func ActivityScreen(c Customer, page TransactionPage) screen.Screen {
+func ActivityScreen(c core.Customer, page core.TransactionPage) screen.Screen {
 	s := screen.New("activity", PathScreenTx, "Activity")
 	s.Subtitle = c.Name
 	addTransactions(&s, page, true)
@@ -88,7 +89,7 @@ func ActivityScreen(c Customer, page TransactionPage) screen.Screen {
 }
 
 // ProductScreen shows one account with its details and recent activity.
-func ProductScreen(c Customer, a Account, page TransactionPage) screen.Screen {
+func ProductScreen(c core.Customer, a core.Account, page core.TransactionPage) screen.Screen {
 	s := screen.New("product", productPath(a.Index), a.ProductName)
 	s.Subtitle = a.Family
 	s.Back = screen.Go(PathScreenHome)
@@ -119,7 +120,7 @@ func ProductScreen(c Customer, a Account, page TransactionPage) screen.Screen {
 
 // addTransactions appends transaction rows grouped under date headings. The
 // sign, colour and icon of each entry are decided here, not on the device.
-func addTransactions(s *screen.Screen, page TransactionPage, showProduct bool) {
+func addTransactions(s *screen.Screen, page core.TransactionPage, showProduct bool) {
 	if len(page.Entries) == 0 {
 		s.Add(screen.Text("No transactions yet.", screen.ToneMuted))
 		return

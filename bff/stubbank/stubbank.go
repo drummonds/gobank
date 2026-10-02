@@ -7,23 +7,25 @@ import (
 	"context"
 	"crypto/subtle"
 	"fmt"
+	"slices"
+	"strings"
 	"time"
 
 	luca "git.bytestone.uk/hum3/go-luca"
-	"git.bytestone.uk/hum3/gobank/bff"
+	"git.bytestone.uk/hum3/gobank/core"
 )
 
 // PerPage is the transaction page size.
 const PerPage = 20
 
 type customer struct {
-	bff.Customer
+	core.Customer
 	password string
-	accounts []bff.Account
-	txs      []bff.Transaction // newest first
+	accounts []core.Account
+	txs      []core.Transaction // newest first
 }
 
-// Bank is the stub. It implements bff.Bank and bff.Authenticator.
+// Bank is the stub. It implements core.CustomerQueries and core.Authenticator.
 type Bank struct {
 	customers map[string]*customer
 }
@@ -33,21 +35,21 @@ type Bank struct {
 // "password".
 func New() *Bank {
 	b := &Bank{customers: map[string]*customer{}}
-	b.add("cust-001", "Alice Example", []bff.Account{
+	b.add("cust-001", "Alice Example", []core.Account{
 		{ProductName: "Easy Saver", Family: "Savings", Rate: 0.035, SortCode: "04-00-04", AccountNum: "10000001", OpenDate: "2025-01-06"},
 		{ProductName: "Fixed Rate Bond", Family: "Savings", Rate: 0.0425, SortCode: "04-00-04", AccountNum: "10000002", OpenDate: "2025-03-03"},
 		{ProductName: "Personal Loan", Family: "Lending", Rate: 0.069, SortCode: "04-00-04", AccountNum: "20000001", OpenDate: "2025-05-12"},
 	})
-	b.add("cust-002", "Bob Example", []bff.Account{
+	b.add("cust-002", "Bob Example", []core.Account{
 		{ProductName: "Easy Saver", Family: "Savings", Rate: 0.035, SortCode: "04-00-04", AccountNum: "10000003", OpenDate: "2025-07-01"},
 	})
 	return b
 }
 
-func (b *Bank) add(id, name string, accts []bff.Account) {
-	c := &customer{Customer: bff.Customer{ID: id, Name: name}, password: "password"}
+func (b *Bank) add(id, name string, accts []core.Account) {
+	c := &customer{Customer: core.Customer{ID: id, Name: name}, password: "password"}
 	start := time.Date(2026, 1, 5, 0, 0, 0, 0, time.UTC)
-	var all []bff.Transaction
+	var all []core.Transaction
 	txID := 1
 	for i := range accts {
 		a := &accts[i]
@@ -58,7 +60,7 @@ func (b *Bank) add(id, name string, accts []bff.Account) {
 			if typ == "Transfer Out" || typ == "Loan Interest" {
 				amt = -amt
 			}
-			all = append(all, bff.Transaction{ID: txID, Date: start.AddDate(0, 0, day).Format("2006-01-02"),
+			all = append(all, core.Transaction{ID: txID, Date: start.AddDate(0, 0, day).Format("2006-01-02"),
 				ProductName: a.ProductName, Type: typ, Reference: ref, Amount: abs(amt), Balance: bal})
 			txID++
 		}
@@ -85,6 +87,14 @@ func (b *Bank) add(id, name string, accts []bff.Account) {
 		all[i], all[j] = all[j], all[i]
 	}
 	c.accounts = accts
+	// Newest first, as TransactionPage promises; IDs break ties so the
+	// order is stable across calls.
+	slices.SortStableFunc(all, func(a, b core.Transaction) int {
+		if a.Date != b.Date {
+			return strings.Compare(b.Date, a.Date)
+		}
+		return b.ID - a.ID
+	})
 	c.txs = all
 	b.customers[id] = c
 }
@@ -96,55 +106,55 @@ func abs(a luca.Amount) luca.Amount {
 	return a
 }
 
-// Authenticate implements bff.Authenticator.
-func (b *Bank) Authenticate(_ context.Context, customerID, password string) (bff.Customer, error) {
+// Authenticate implements core.Authenticator.
+func (b *Bank) Authenticate(_ context.Context, customerID, password string) (core.Customer, error) {
 	c, ok := b.customers[customerID]
 	if !ok {
 		// Compare anyway so timing does not reveal whether the ID exists.
 		subtle.ConstantTimeCompare([]byte(password), []byte("password"))
-		return bff.Customer{}, bff.ErrBadCredentials
+		return core.Customer{}, core.ErrBadCredentials
 	}
 	if subtle.ConstantTimeCompare([]byte(password), []byte(c.password)) != 1 {
-		return bff.Customer{}, bff.ErrBadCredentials
+		return core.Customer{}, core.ErrBadCredentials
 	}
 	return c.Customer, nil
 }
 
-// Customer implements bff.Bank.
-func (b *Bank) Customer(_ context.Context, id string) (bff.Customer, error) {
+// Customer implements core.CustomerQueries.
+func (b *Bank) Customer(_ context.Context, id string) (core.Customer, error) {
 	c, ok := b.customers[id]
 	if !ok {
-		return bff.Customer{}, bff.ErrNotFound
+		return core.Customer{}, core.ErrNotFound
 	}
 	return c.Customer, nil
 }
 
-// Accounts implements bff.Bank.
-func (b *Bank) Accounts(_ context.Context, id string) ([]bff.Account, error) {
+// Accounts implements core.CustomerQueries.
+func (b *Bank) Accounts(_ context.Context, id string) ([]core.Account, error) {
 	c, ok := b.customers[id]
 	if !ok {
-		return nil, bff.ErrNotFound
+		return nil, core.ErrNotFound
 	}
-	return append([]bff.Account(nil), c.accounts...), nil
+	return append([]core.Account(nil), c.accounts...), nil
 }
 
-// Transactions implements bff.Bank.
-func (b *Bank) Transactions(_ context.Context, id string, page int) (bff.TransactionPage, error) {
+// Transactions implements core.CustomerQueries.
+func (b *Bank) Transactions(_ context.Context, id string, page int) (core.TransactionPage, error) {
 	c, ok := b.customers[id]
 	if !ok {
-		return bff.TransactionPage{}, bff.ErrNotFound
+		return core.TransactionPage{}, core.ErrNotFound
 	}
 	return paginate(c.txs, page), nil
 }
 
-// AccountTransactions implements bff.Bank.
-func (b *Bank) AccountTransactions(_ context.Context, id string, index, page int) (bff.TransactionPage, error) {
+// AccountTransactions implements core.CustomerQueries.
+func (b *Bank) AccountTransactions(_ context.Context, id string, index, page int) (core.TransactionPage, error) {
 	c, ok := b.customers[id]
 	if !ok || index < 0 || index >= len(c.accounts) {
-		return bff.TransactionPage{}, bff.ErrNotFound
+		return core.TransactionPage{}, core.ErrNotFound
 	}
 	name := c.accounts[index].ProductName
-	var txs []bff.Transaction
+	var txs []core.Transaction
 	for _, t := range c.txs {
 		if t.ProductName == name {
 			txs = append(txs, t)
@@ -153,21 +163,21 @@ func (b *Bank) AccountTransactions(_ context.Context, id string, index, page int
 	return paginate(txs, page), nil
 }
 
-func paginate(txs []bff.Transaction, page int) bff.TransactionPage {
+func paginate(txs []core.Transaction, page int) core.TransactionPage {
 	if page < 1 {
 		page = 1
 	}
 	from := (page - 1) * PerPage
 	to := min(from+PerPage, len(txs))
-	p := bff.TransactionPage{Page: page, PerPage: PerPage, Total: len(txs)}
+	p := core.TransactionPage{Page: page, PerPage: PerPage, Total: len(txs)}
 	if from < len(txs) {
-		p.Entries = append([]bff.Transaction(nil), txs[from:to]...)
+		p.Entries = append([]core.Transaction(nil), txs[from:to]...)
 	}
 	return p
 }
 
-var _ bff.Bank = (*Bank)(nil)
-var _ bff.Authenticator = (*Bank)(nil)
+var _ core.CustomerQueries = (*Bank)(nil)
+var _ core.Authenticator = (*Bank)(nil)
 
 // String describes the stub for the startup log.
 func (b *Bank) String() string { return fmt.Sprintf("stubbank (%d customers)", len(b.customers)) }

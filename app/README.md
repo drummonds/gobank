@@ -36,6 +36,23 @@ flutter run --dart-define=BFF_URL=http://192.168.1.10:8090   # a real device on 
 
 Stub credentials: customer `cust-001` or `cust-002`, password `password`.
 
+## Run against the demo
+
+The demo mounts the BFF on its own port under `/v1/`, over its real
+customers (ADR-0002 stage 1). Set the one app password when starting the
+demo, then point the app at it; any customer ID from the demo's Customers
+page logs in with that password:
+
+```sh
+GOBANK_APP_PASSWORD=letmein task demo        # repo root; demo on :1347
+cd app && flutter run --dart-define=BFF_URL=http://192.168.1.10:1347
+```
+
+Against the Hetzner deployment use its address on port 1347 (the server
+needs `GOBANK_APP_PASSWORD` in its environment). It is plain HTTP, so an
+Android debug build needs cleartext traffic allowed in its manifest; HTTPS
+comes with the deployment work in ADR-0002 stage 8.
+
 ## What is deliberately missing
 
 - **Token persistence.** The session token is held in memory and lost when
