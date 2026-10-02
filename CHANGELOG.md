@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+## [0.3.54] - 2026-10-02
+
+ - Core contracts package; the app logs in to the running demo
+
 ### Added
 - ADR-0002 stage 1, story 1: the core's customer-side contracts
   (`core.CustomerQueries`, `core.Authenticator`) move from `bff` into a
