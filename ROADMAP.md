@@ -104,9 +104,20 @@ root module, `cmd/bff` is the service binary, and `app/` is the Flutter shell.
    that holds every fact, accruals pipelined one day ahead by a start-of-day
    workflow, and a simulation that differs from production only in event
    sources and the clock. Nine stages, each leaving the demo running in
-   WASM, on a server and on Hetzner:
+   WASM, on a server and on Hetzner. Every story ends with a release
+   deployed to the Hetzner demo and sense-checked there before the next
+   starts:
    1. Seams — core commands/queries as interfaces; `DemoState` adapts to
-      them; the BFF runs in the demo process and the app shows real data
+      them; the BFF runs in the demo process and the app shows real data.
+      Stories: (a) [x] (unreleased) customer contracts in `core`, contract
+      suite, demo adapter, BFF at `/v1/`; (b) [ ] gobank-deploy sets
+      `GOBANK_APP_PASSWORD` per environment and shows it (its story 1g);
+      (c) [ ] Android debug build — install Flutter, `flutter create`,
+      commit `app/android` and `app/ios` (the Flutter convention; the
+      README's "generated, not committed" dates from having no SDK), allow
+      cleartext traffic in the debug manifest only — then (a) is
+      sense-checked from a phone against Hetzner; (d) [ ] staff queries;
+      (e) [ ] commands
    2. Stored truth — transactions as a ledger projection, stored chart
       snapshots, sessions in the database
    3. Pipelined accruals — start-of-day workflow writes next-day

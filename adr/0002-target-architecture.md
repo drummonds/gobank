@@ -131,7 +131,9 @@ can simply be dropped. Not part of this transition.
 Each stage ends with the demo running as it does today, in the browser
 (WASM), on a single server and on the Hetzner deployment, with nothing
 deleted that the demo still needs. Stages are in order; the work within a
-stage is broken into stories when it starts.
+stage is broken into stories when it starts, and every story ends with a
+release deployed to the Hetzner demo and sense-checked there before the
+next starts.
 
 | Stage | What changes | Done when |
 |---|---|---|
