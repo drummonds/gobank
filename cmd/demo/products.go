@@ -1,11 +1,13 @@
 package main
 
 import (
+	"context"
 	"fmt"
 	"math"
 	"strings"
 
 	gbp "git.bytestone.uk/hum3/gobank-products"
+	"git.bytestone.uk/hum3/gobank/core"
 )
 
 // Product wraps a gbp.Product with demo-specific UI fields.
@@ -27,25 +29,24 @@ func AllProducts() []Product {
 	}
 }
 
-// BuildProductsHTML renders product cards for a given family, with account counts from state.
-// For savings family, appends BoE base rate history graph.
-func (ds *DemoState) BuildProductsHTML(family gbp.ProductFamily) string {
-	ds.mu.Lock()
-	products := ds.products
-	boeHistory := make([]RatePoint, len(ds.boeHistory))
-	copy(boeHistory, ds.boeHistory)
-	boeRate := ds.settings.BoEBaseRate
-	ds.mu.Unlock()
-	totals := ds.productTotals()
+// buildProductsHTML renders product cards for a given family, with each
+// product's book from the core. For savings, appends the BoE base rate
+// history graph.
+func buildProductsHTML(q core.StaffQueries, family gbp.ProductFamily) string {
+	ctx := context.Background()
+	products, _ := q.Products(ctx)
+	pos, _ := q.Position(ctx)
+	hist, _ := q.History(ctx)
+	boeHistory, boeRate := hist.BoERate, pos.BoERate
 
 	var s strings.Builder
 	s.WriteString(fmt.Sprintf(`<h2 class="title is-4">%s Products</h2>`, family))
 
 	for _, p := range products {
-		if p.Family != family {
+		if p.Family != string(family) {
 			continue
 		}
-		count, totalBal := totals[p.ID].Accounts, totals[p.ID].Balance
+		count, totalBal := p.Accounts, p.Balance
 
 		s.WriteString(`<div class="box">`)
 		s.WriteString(fmt.Sprintf(`<h3 class="title is-5">%s</h3>`, p.Name))

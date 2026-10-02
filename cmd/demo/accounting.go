@@ -1,27 +1,21 @@
 package main
 
 import (
+	"context"
 	"fmt"
 	"strings"
 
-	luca "git.bytestone.uk/hum3/go-luca"
+	"git.bytestone.uk/hum3/gobank/core"
 )
 
-// BuildPnLHTML renders a Profit & Loss statement derived from current state.
-func (ds *DemoState) BuildPnLHTML() string {
-	ds.mu.Lock()
-	dayCount := ds.dayCount
-	opCostPerDay := ds.opCostPerDay
-
-	boeInterestIncome := ds.boeInterestTotal()
-	ds.mu.Unlock()
-
-	// Accrual accounting: income/expense includes accrued-but-unapplied interest.
-	loanInterestIncome, depositInterestExpense := ds.interestTotals()
-
-	opCosts := opCostPerDay * luca.Amount(dayCount)
-	netInterest := loanInterestIncome + boeInterestIncome - depositInterestExpense
-	profit := netInterest - opCosts
+// buildPnLHTML renders a Profit & Loss statement from the core's figures.
+func buildPnLHTML(q core.BookQueries) string {
+	pl, _ := q.ProfitAndLoss(context.Background())
+	dayCount := pl.DayCount
+	loanInterestIncome, boeInterestIncome, depositInterestExpense := pl.LoanInterestIncome, pl.BoEInterestIncome, pl.DepositInterestExpense
+	opCosts := pl.OperatingCosts
+	netInterest := pl.NetInterest()
+	profit := pl.NetProfit()
 
 	var s strings.Builder
 	s.WriteString(`<h2 class="title is-4">Profit &amp; Loss</h2>`)
@@ -48,43 +42,17 @@ func (ds *DemoState) BuildPnLHTML() string {
 	return s.String()
 }
 
-// BuildBalanceSheetHTML renders a balance sheet derived from current state,
+// buildBalanceSheetHTML renders the balance sheet from the core's figures,
 // including gilt holdings and a regulatory capital (Tier 1) section.
-func (ds *DemoState) BuildBalanceSheetHTML() string {
-	ds.mu.Lock()
-	dayCount := ds.dayCount
-	opCostPerDay := ds.opCostPerDay
-
-	book := ds.bookTotals()
-	boeInterest := ds.boeInterestTotal()
-	ds.mu.Unlock()
-	totalDeposits, totalLoans := book.Savings, book.Lending
-	loanInterest, depositInterest := ds.interestTotals()
-
-	// Gilt holdings (DB query, outside lock)
-	holdings := ds.getGiltHoldings()
-	var totalGilts luca.Amount
-	for _, h := range holdings {
-		totalGilts += h.FaceValue
-	}
-
-	opCosts := opCostPerDay * luca.Amount(dayCount)
-	retainedEarnings := (loanInterest + boeInterest - depositInterest) - opCosts
-	cashTotal := totalDeposits - totalLoans + retainedEarnings
-	cashAtBoE := max(
-		// gilts purchased from cash
-		cashTotal-totalGilts, 0)
-	totalAssets := totalLoans + totalGilts + cashAtBoE
-	totalLiabilities := totalDeposits
-	equity := retainedEarnings
-
-	// Risk-weighted assets (Basel simplified):
-	//   Loans = 100% risk weight, Gilts (sovereign) = 0%, Cash at BoE = 0%
-	rwa := totalLoans
-	cet1Ratio := 0.0
-	if rwa > 0 {
-		cet1Ratio = float64(equity) / float64(rwa)
-	}
+func buildBalanceSheetHTML(q core.BookQueries) string {
+	bs, _ := q.BalanceSheet(context.Background())
+	dayCount := bs.DayCount
+	totalLoans, totalGilts, cashAtBoE := bs.Loans, bs.Gilts, bs.CashAtBoE
+	totalAssets := bs.TotalAssets()
+	totalLiabilities := bs.Deposits
+	equity := bs.RetainedEarnings
+	rwa := bs.RiskWeightedAssets
+	cet1Ratio := bs.CET1Ratio()
 
 	var s strings.Builder
 	s.WriteString(`<h2 class="title is-4">Balance Sheet</h2>`)
@@ -126,7 +94,7 @@ func (ds *DemoState) BuildBalanceSheetHTML() string {
 	s.WriteString(`<h3 class="title is-5">Regulatory Capital</h3>`)
 
 	// CET1 compliance tag
-	const minCET1Ratio = 0.045 // Basel III minimum 4.5%
+	const minCET1Ratio = core.MinCET1Ratio
 	if cet1Ratio >= minCET1Ratio {
 		s.WriteString(`<span class="tag is-success is-medium mb-3">CET1 Compliant</span>`)
 	} else {

@@ -1,26 +1,22 @@
 package main
 
 import (
+	"context"
 	"fmt"
 	"strings"
 
 	luca "git.bytestone.uk/hum3/go-luca"
 	gbp "git.bytestone.uk/hum3/gobank-products"
+	"git.bytestone.uk/hum3/gobank/core"
 )
 
-// BuildChartsHTML renders historical charts: NIM, balances, customer count, BoE rate.
-func (ds *DemoState) BuildChartsHTML() string {
-	ds.mu.Lock()
-	nimHist := make([]NIMPoint, len(ds.nimHistory))
-	copy(nimHist, ds.nimHistory)
-	balHist := make([]BalancePoint, len(ds.balanceHistory))
-	copy(balHist, ds.balanceHistory)
-	custHist := make([]CustomerPoint, len(ds.customerHistory))
-	copy(custHist, ds.customerHistory)
-	boeHist := make([]RatePoint, len(ds.boeHistory))
-	copy(boeHist, ds.boeHistory)
-	dayCount := ds.dayCount
-	ds.mu.Unlock()
+// buildChartsHTML renders historical charts: NIM, balances, customer count, BoE rate.
+func buildChartsHTML(q core.BookQueries) string {
+	ctx := context.Background()
+	hist, _ := q.History(ctx)
+	pos, _ := q.Position(ctx)
+	nimHist, balHist, custHist, boeHist := hist.NIM, hist.Balances, hist.Customers, hist.BoERate
+	dayCount := pos.DayCount
 
 	var s strings.Builder
 	s.WriteString(`<h2 class="title is-4">Charts</h2>`)
@@ -49,11 +45,11 @@ func (ds *DemoState) BuildChartsHTML() string {
 	return s.String()
 }
 
-// BuildBBSIHTML renders the BBSI annual report. Shows auth gate when not authorized.
-func (ds *DemoState) BuildBBSIHTML(piiAuthorized bool) string {
-	ds.mu.Lock()
-	currentDay := ds.currentDay
-	ds.mu.Unlock()
+// buildBBSIHTML renders the BBSI annual report. Shows auth gate when not authorized.
+func buildBBSIHTML(q core.StaffQueries, piiAuthorized bool) string {
+	ctx := context.Background()
+	pos, _ := q.Position(ctx)
+	currentDay := pos.Day
 
 	var s strings.Builder
 	s.WriteString(`<h2 class="title is-4">BBSI Report</h2>`)
@@ -79,9 +75,10 @@ func (ds *DemoState) BuildBBSIHTML(piiAuthorized bool) string {
 
 	// BBSI reports gross interest paid: applied plus accrued-but-unapplied.
 	var totalInterest luca.Amount
-	for _, row := range ds.savingsInterestByCustomer() {
+	rows, _ := q.SavingsInterestByCustomer(ctx)
+	for _, row := range rows {
 		totalInterest += row.Interest
-		piiData := ds.lookupPII(row.CustomerID)
+		piiData, _ := q.CustomerPII(ctx, row.CustomerID)
 		s.WriteString(fmt.Sprintf(`<tr>
   <td>%s</td><td><code>%s</code></td><td>%s</td><td>%s</td>
 </tr>`, piiData.Name, piiData.NI, fmtMoney(row.Interest), fmtMoney(0)))
@@ -101,19 +98,18 @@ func (ds *DemoState) BuildBBSIHTML(piiAuthorized bool) string {
 	return s.String()
 }
 
-// BuildCustomerViewHTML renders a comprehensive single-customer report.
-func (ds *DemoState) BuildCustomerViewHTML(id string, piiAuthorized bool) string {
-	cust, _ := ds.customerByID(id)
-	ds.mu.Lock()
-	currentDay := ds.currentDay
-	ds.mu.Unlock()
-
-	if cust == nil {
+// buildCustomerViewHTML renders a comprehensive single-customer report.
+func buildCustomerViewHTML(q core.StaffQueries, id string, piiAuthorized bool) string {
+	ctx := context.Background()
+	cust, err := q.CustomerRecord(ctx, id)
+	if err != nil {
 		return `<div class="notification is-warning">Customer not found.</div>`
 	}
-	custPayments := ds.paymentsOf(cust.ID)
+	pos, _ := q.Position(ctx)
+	currentDay := pos.Day
+	custPayments, _ := q.PaymentsOf(ctx, cust.ID)
 
-	name := ds.lookupName(cust.ID)
+	name, _ := q.CustomerName(ctx, cust.ID)
 
 	var s strings.Builder
 	s.WriteString(`<h2 class="title is-4">Customer Report</h2>`)
@@ -130,7 +126,7 @@ func (ds *DemoState) BuildCustomerViewHTML(id string, piiAuthorized bool) string
 		return s.String()
 	}
 
-	piiData := ds.lookupPII(cust.ID)
+	piiData, _ := q.CustomerPII(ctx, cust.ID)
 	ni := piiData.NI
 
 	// Customer summary box
@@ -145,12 +141,12 @@ func (ds *DemoState) BuildCustomerViewHTML(id string, piiAuthorized bool) string
 	s.WriteString(`<h3 class="title is-5 mt-5">Account Summary</h3>`)
 	var totalSavings, totalLending, totalInterest luca.Amount
 	for _, a := range cust.Accounts {
-		if a.Family == gbp.FamilySavings {
+		if a.Family == string(gbp.FamilySavings) {
 			totalSavings += a.Balance
 		} else {
 			totalLending += a.Balance
 		}
-		totalInterest += a.Interest + a.Accrued
+		totalInterest += a.Interest + accrualPoundsE7(a.AccruedNumerator).Pence()
 	}
 
 	s.WriteString(`<div class="columns mb-4">`)
@@ -163,19 +159,15 @@ func (ds *DemoState) BuildCustomerViewHTML(id string, piiAuthorized bool) string
 	s.WriteString(`<div class="table-container"><table class="table is-fullwidth is-striped">`)
 	s.WriteString(`<thead><tr><th>Product</th><th>Type</th><th>Rate</th><th>Balance</th><th>Interest Accrued</th><th>Opened</th></tr></thead><tbody>`)
 	for _, a := range cust.Accounts {
-		familyTag := `<span class="tag is-success is-light">Savings</span>`
-		if a.Family == gbp.FamilyLending {
-			familyTag = `<span class="tag is-info is-light">Lending</span>`
-		}
 		interestCell := fmtMoney(a.Interest)
-		if a.AccruedE7 != 0 {
+		if accrued := accrualPoundsE7(a.AccruedNumerator); accrued != 0 {
 			// Accrued-but-unapplied interest modelled as 7dp pounds; it
 			// converts to whole pence on application.
-			interestCell += fmt.Sprintf(` <span class="has-text-grey is-size-7">+%s accruing</span>`, a.AccruedE7)
+			interestCell += fmt.Sprintf(` <span class="has-text-grey is-size-7">+%s accruing</span>`, accrued)
 		}
 		s.WriteString(fmt.Sprintf(`<tr>
   <td>%s</td><td>%s</td><td>%.1f%%</td><td>%s</td><td>%s</td><td>%s</td>
-</tr>`, a.ProductName, familyTag, a.Rate*100, fmtMoney(a.Balance), interestCell, a.OpenDate.Format("2 Jan 2006")))
+</tr>`, a.ProductName, familyTag(a.Family), a.Rate*100, fmtMoney(a.Balance), interestCell, fmtISODate(a.OpenDate)))
 	}
 	s.WriteString(`</tbody></table></div>`)
 
@@ -187,12 +179,15 @@ func (ds *DemoState) BuildCustomerViewHTML(id string, piiAuthorized bool) string
 		for i := len(custPayments) - 1; i >= 0; i-- {
 			p := custPayments[i]
 			direction := "Sent"
-			counterpartyID := p.ToID
-			if p.ToID == cust.ID {
+			counterpartyID := p.To
+			if p.To == cust.ID {
 				direction = "Received"
-				counterpartyID = p.FromID
+				counterpartyID = p.From
 			}
-			counterparty := ds.lookupName(counterpartyID)
+			counterparty := counterpartyID
+			if n, err := q.CustomerName(ctx, counterpartyID); err == nil {
+				counterparty = n
+			}
 			dirTag := `<span class="tag is-danger is-light">Sent</span>`
 			if direction == "Received" {
 				dirTag = `<span class="tag is-success is-light">Received</span>`
@@ -200,7 +195,7 @@ func (ds *DemoState) BuildCustomerViewHTML(id string, piiAuthorized bool) string
 			s.WriteString(fmt.Sprintf(`<tr>
   <td>%d</td><td>%s</td><td>%s</td><td>%s</td>
   <td><span class="tag %s">%s</span></td><td>%s</td><td>%s</td>
-</tr>`, p.ID, dirTag, counterparty, fmtMoney(p.Amount), p.Status.BulmaTag(), p.Status, p.Reference, p.CreatedAt.Format("15:04:05")))
+</tr>`, p.ID, dirTag, counterparty, fmtMoney(p.Amount), paymentStatusTag(p.Status), p.Status, p.Reference, p.CreatedAt.Format("15:04:05")))
 		}
 		s.WriteString(`</tbody></table></div>`)
 	}

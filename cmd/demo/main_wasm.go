@@ -14,6 +14,10 @@ import (
 
 var state = newWASMState()
 
+// bank is the core as the demo implements it (ADR-0002 stage 1); the
+// pages read through it. The in-page bank has no app login.
+var bank = newCoreAdapter(state, "")
+
 // newWASMState keeps the browser-sized default limit (and its GC headroom).
 func newWASMState() *DemoState {
 	ds := NewDemoState()
@@ -68,7 +72,7 @@ func goImport(this js.Value, args []js.Value) any {
 
 func goRender(this js.Value, args []js.Value) any {
 	lofigui.Reset()
-	lofigui.HTML(state.BuildDashboardHTML())
+	lofigui.HTML(buildDashboardHTML(bank, state))
 	return js.ValueOf(lofigui.Buffer())
 }
 
@@ -120,7 +124,7 @@ func goRenderPayments(this js.Value, args []js.Value) any {
 	piiAuth := state.piiAuthorized
 	state.mu.Unlock()
 	lofigui.Reset()
-	lofigui.HTML(state.BuildPaymentsHTML(piiAuth, page))
+	lofigui.HTML(buildPaymentsHTML(bank, piiAuth, page, state.IsPaymentsRunning()))
 	return js.ValueOf(lofigui.Buffer())
 }
 
@@ -166,19 +170,19 @@ func goRenderRuntime(this js.Value, args []js.Value) any {
 
 func goRenderTreasuryCash(this js.Value, args []js.Value) any {
 	lofigui.Reset()
-	lofigui.HTML(state.BuildCashPositionHTML())
+	lofigui.HTML(buildCashPositionHTML(bank))
 	return js.ValueOf(lofigui.Buffer())
 }
 
 func goRenderTreasuryCapital(this js.Value, args []js.Value) any {
 	lofigui.Reset()
-	lofigui.HTML(state.BuildCapitalHTML())
+	lofigui.HTML(buildCapitalHTML(bank))
 	return js.ValueOf(lofigui.Buffer())
 }
 
 func goRenderTreasuryGilts(this js.Value, args []js.Value) any {
 	lofigui.Reset()
-	lofigui.HTML(state.BuildGiltsHTML())
+	lofigui.HTML(buildGiltsHTML(bank))
 	return js.ValueOf(lofigui.Buffer())
 }
 
@@ -194,13 +198,13 @@ func goRenderModels(this js.Value, args []js.Value) any {
 
 func goRenderPnL(this js.Value, args []js.Value) any {
 	lofigui.Reset()
-	lofigui.HTML(state.BuildPnLHTML())
+	lofigui.HTML(buildPnLHTML(bank))
 	return js.ValueOf(lofigui.Buffer())
 }
 
 func goRenderBalanceSheet(this js.Value, args []js.Value) any {
 	lofigui.Reset()
-	lofigui.HTML(state.BuildBalanceSheetHTML())
+	lofigui.HTML(buildBalanceSheetHTML(bank))
 	return js.ValueOf(lofigui.Buffer())
 }
 
@@ -212,7 +216,7 @@ func goRenderProducts(this js.Value, args []js.Value) any {
 		family = gbp.FamilyLending
 	}
 	lofigui.Reset()
-	lofigui.HTML(state.BuildProductsHTML(family))
+	lofigui.HTML(buildProductsHTML(bank, family))
 	return js.ValueOf(lofigui.Buffer())
 }
 
@@ -227,7 +231,7 @@ func goRenderCustomers(this js.Value, args []js.Value) any {
 	piiAuth := state.piiAuthorized
 	state.mu.Unlock()
 	lofigui.Reset()
-	lofigui.HTML(state.BuildCustomersHTML(page, piiAuth))
+	lofigui.HTML(buildCustomersHTML(bank, page, piiAuth))
 	return js.ValueOf(lofigui.Buffer())
 }
 
@@ -244,7 +248,7 @@ func goRenderCustomerDetail(this js.Value, args []js.Value) any {
 	piiAuth := state.piiAuthorized
 	state.mu.Unlock()
 	lofigui.Reset()
-	lofigui.HTML(state.BuildCustomerDetailHTML(id, piiAuth, txPage))
+	lofigui.HTML(buildCustomerDetailHTML(bank, id, piiAuth, txPage))
 	return js.ValueOf(lofigui.Buffer())
 }
 
@@ -265,7 +269,7 @@ func goRenderCustomerAccount(this js.Value, args []js.Value) any {
 	piiAuth := state.piiAuthorized
 	state.mu.Unlock()
 	lofigui.Reset()
-	lofigui.HTML(state.BuildCustomerAccountHTML(id, accountIdx, piiAuth, txPage))
+	lofigui.HTML(buildCustomerAccountHTML(bank, id, accountIdx, piiAuth, txPage))
 	return js.ValueOf(lofigui.Buffer())
 }
 
@@ -280,7 +284,7 @@ func goRenderPaymentDetail(this js.Value, args []js.Value) any {
 	piiAuth := state.piiAuthorized
 	state.mu.Unlock()
 	lofigui.Reset()
-	lofigui.HTML(state.BuildPaymentDetailHTML(id, piiAuth))
+	lofigui.HTML(buildPaymentDetailHTML(bank, id, piiAuth))
 	return js.ValueOf(lofigui.Buffer())
 }
 
@@ -288,7 +292,7 @@ func goRenderPaymentDetail(this js.Value, args []js.Value) any {
 
 func goRenderCharts(this js.Value, args []js.Value) any {
 	lofigui.Reset()
-	lofigui.HTML(state.BuildChartsHTML())
+	lofigui.HTML(buildChartsHTML(bank))
 	return js.ValueOf(lofigui.Buffer())
 }
 
@@ -297,7 +301,7 @@ func goRenderBBSI(this js.Value, args []js.Value) any {
 	piiAuth := state.piiAuthorized
 	state.mu.Unlock()
 	lofigui.Reset()
-	lofigui.HTML(state.BuildBBSIHTML(piiAuth))
+	lofigui.HTML(buildBBSIHTML(bank, piiAuth))
 	return js.ValueOf(lofigui.Buffer())
 }
 
@@ -310,7 +314,7 @@ func goRenderCustomerViewReport(this js.Value, args []js.Value) any {
 	piiAuth := state.piiAuthorized
 	state.mu.Unlock()
 	lofigui.Reset()
-	lofigui.HTML(state.BuildCustomerViewHTML(id, piiAuth))
+	lofigui.HTML(buildCustomerViewHTML(bank, id, piiAuth))
 	return js.ValueOf(lofigui.Buffer())
 }
 
@@ -338,7 +342,7 @@ func goRenderExplorerTable(this js.Value, args []js.Value) any {
 
 func goRenderSettings(this js.Value, args []js.Value) any {
 	lofigui.Reset()
-	lofigui.HTML(state.BuildSettingsHTML())
+	lofigui.HTML(buildSettingsHTML(bank, state.MaxCustomers()))
 	return js.ValueOf(lofigui.Buffer())
 }
 

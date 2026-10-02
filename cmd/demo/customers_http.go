@@ -4,10 +4,6 @@ package main
 
 import "strings"
 
-func init() {
-	phonePreviewFunc = renderPhonePreview
-}
-
 // phoneFrameCSS contains scoped CSS for the inline phone preview.
 const phoneFrameCSS = `
 .phone-preview .phone-frame {

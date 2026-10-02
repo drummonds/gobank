@@ -5,6 +5,7 @@ import (
 
 	luca "git.bytestone.uk/hum3/go-luca"
 	gbp "git.bytestone.uk/hum3/gobank-products"
+	"git.bytestone.uk/hum3/gobank/core"
 )
 
 // addFundedCustomer adds one customer through the real pipeline.
@@ -224,8 +225,13 @@ func TestNoFloatMoneyStorage(t *testing.T) {
 		_ luca.Amount = BalancePoint{}.Savings
 		_ luca.Amount = BalancePoint{}.Lending
 		_ luca.Amount = GiltHolding{}.FaceValue
-		_ poundsE7    = CustomerAccount{}.AccruedE7
+		_ int64       = CustomerAccount{}.AccruedNumerator
 		_ int64       = ManagedAccountAccruedNumerator()
+		_ luca.Amount = core.Account{}.Balance
+		_ luca.Amount = core.Account{}.Interest
+		_ int64       = core.Account{}.AccruedNumerator
+		_ luca.Amount = core.Payment{}.Amount
+		_ luca.Amount = core.Position{}.Savings
 	)
 	var ds DemoState
 	var _ int64 = ds.boePostedPence

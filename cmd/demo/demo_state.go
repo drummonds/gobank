@@ -15,34 +15,19 @@ import (
 
 	luca "git.bytestone.uk/hum3/go-luca"
 	gbp "git.bytestone.uk/hum3/gobank-products"
+	"git.bytestone.uk/hum3/gobank/core"
 	customers "git.bytestone.uk/hum3/gobanks-customers"
 	"git.bytestone.uk/hum3/gogal"
 )
 
-// RatePoint records a BoE base rate at a point in simulated time.
-type RatePoint struct {
-	Date time.Time
-	Rate float64
-}
-
-// BalancePoint records aggregate savings/lending balances at a point in simulated time.
-type BalancePoint struct {
-	Date    time.Time
-	Savings luca.Amount // minor units
-	Lending luca.Amount // minor units
-}
-
-// CustomerPoint records the customer count at a point in simulated time.
-type CustomerPoint struct {
-	Date  time.Time
-	Count int
-}
-
-// NIMPoint records the Net Interest Margin in basis points at a point in simulated time.
-type NIMPoint struct {
-	Date time.Time
-	NIM  float64 // annualized basis points
-}
+// The daily series are the core's history types (ADR-0002 stage 1); the
+// demo still keeps them in memory until stage 2 stores them.
+type (
+	RatePoint     = core.RatePoint
+	BalancePoint  = core.BalancePoint
+	CustomerPoint = core.CustomerPoint
+	NIMPoint      = core.NIMPoint
+)
 
 // DemoState holds all unified state for the model bank demo.
 type DemoState struct {
@@ -941,19 +926,69 @@ func (ds *DemoState) Reset() {
 	ds.recordHistory()
 }
 
-// DashData holds a snapshot of all dashboard state, grabbed under one lock.
-type DashData struct {
-	Day                 time.Time
-	DayCount            int
-	Savings             luca.Amount
-	Lending             luca.Amount
-	Cash                luca.Amount
-	RequiredReserves    luca.Amount
-	CapitalReserveRatio float64
-	BoeRate             float64
-	BoeInterest         luca.Amount
-	NIMBps              float64
-	CustomerCount       int
+// position is the bank's position (core.Position) read under one lock.
+func (ds *DemoState) position() core.Position {
+	ds.mu.Lock()
+	defer ds.mu.Unlock()
+	return ds.positionLocked()
+}
+
+// positionLocked is position with ds.mu held.
+func (ds *DemoState) positionLocked() core.Position {
+	savings, lending := ds.book.Savings, ds.book.Lending
+	nimBps := 0.0
+	if n := len(ds.nimHistory); n > 0 {
+		nimBps = ds.nimHistory[n-1].NIM
+	}
+	return core.Position{
+		Day:              ds.currentDay,
+		DayCount:         ds.dayCount,
+		Customers:        ds.nCustomers,
+		Savings:          savings,
+		Lending:          lending,
+		Cash:             savings - lending,
+		RequiredReserves: luca.Amount(float64(savings) * ds.settings.CapitalReserveRatio),
+		ReserveRatio:     ds.settings.CapitalReserveRatio,
+		BoERate:          ds.settings.BoEBaseRate,
+		BoEInterest:      ds.boeInterestTotal(),
+		NIMBps:           nimBps,
+	}
+}
+
+// profitAndLoss is the bank's P&L to date (core.ProfitAndLoss). Customer
+// interest is read from the ledger P&L accounts with no lock held.
+func (ds *DemoState) profitAndLoss() core.ProfitAndLoss {
+	ds.mu.Lock()
+	dayCount := ds.dayCount
+	opCosts := ds.opCostPerDay * luca.Amount(ds.dayCount)
+	boeInterest := ds.boeInterestTotal()
+	ds.mu.Unlock()
+	loanIncome, depositExpense := ds.interestTotals()
+	return core.ProfitAndLoss{
+		DayCount:               dayCount,
+		LoanInterestIncome:     loanIncome,
+		BoEInterestIncome:      boeInterest,
+		DepositInterestExpense: depositExpense,
+		OperatingCosts:         opCosts,
+	}
+}
+
+// history copies the daily series (core.History) under one lock.
+func (ds *DemoState) history() core.History {
+	ds.mu.Lock()
+	defer ds.mu.Unlock()
+	return core.History{
+		Balances:  append([]BalancePoint(nil), ds.balanceHistory...),
+		Customers: append([]CustomerPoint(nil), ds.customerHistory...),
+		NIM:       append([]NIMPoint(nil), ds.nimHistory...),
+		BoERate:   append([]RatePoint(nil), ds.boeHistory...),
+	}
+}
+
+// SimStatus is the simulation console's own state: what is running and
+// how fast. It is not part of the bank (ADR-0002: the console drives the
+// generators) and so not a core query.
+type SimStatus struct {
 	Running             bool
 	AddingCust          bool
 	AddingProgress      int
@@ -962,46 +997,17 @@ type DashData struct {
 	LastCustomersPerSec float64 // rate of the last finished batch add
 	InterestPer12h      int64   // interest movements the engine posts per 12h at its measured rate
 	MemoryExceeded      bool
-	BalanceHistory      []BalancePoint
-	CustomerHistory     []CustomerPoint
-	NIMHistory          []NIMPoint
 }
 
-// DashboardData returns a snapshot of all dashboard-relevant state.
-func (ds *DemoState) DashboardData() DashData {
+// SimStatus returns the console state under one lock.
+func (ds *DemoState) SimStatus() SimStatus {
 	ds.mu.Lock()
 	defer ds.mu.Unlock()
-
-	savings, lending := ds.book.Savings, ds.book.Lending
-
-	balHist := make([]BalancePoint, len(ds.balanceHistory))
-	copy(balHist, ds.balanceHistory)
-	custHist := make([]CustomerPoint, len(ds.customerHistory))
-	copy(custHist, ds.customerHistory)
-	nimHist := make([]NIMPoint, len(ds.nimHistory))
-	copy(nimHist, ds.nimHistory)
-
-	nimBps := 0.0
-	if len(nimHist) > 0 {
-		nimBps = nimHist[len(nimHist)-1].NIM
-	}
 	addRate := 0.0
 	if ds.addingCustRunning {
 		addRate = perSecond(ds.addingCustProgress, ds.now().Sub(ds.addingCustStart))
 	}
-
-	return DashData{
-		Day:                 ds.currentDay,
-		DayCount:            ds.dayCount,
-		Savings:             savings,
-		Lending:             lending,
-		Cash:                savings - lending,
-		RequiredReserves:    luca.Amount(float64(savings) * ds.settings.CapitalReserveRatio),
-		CapitalReserveRatio: ds.settings.CapitalReserveRatio,
-		BoeRate:             ds.settings.BoEBaseRate,
-		BoeInterest:         ds.boeInterestTotal(),
-		NIMBps:              nimBps,
-		CustomerCount:       ds.nCustomers,
+	return SimStatus{
 		Running:             ds.running,
 		AddingCust:          ds.addingCustRunning,
 		AddingProgress:      ds.addingCustProgress,
@@ -1010,10 +1016,30 @@ func (ds *DemoState) DashboardData() DashData {
 		LastCustomersPerSec: ds.lastAddRate,
 		InterestPer12h:      ds.interestRate.per(interestWindow),
 		MemoryExceeded:      ds.memoryExceeded,
-		BalanceHistory:      balHist,
-		CustomerHistory:     custHist,
-		NIMHistory:          nimHist,
 	}
+}
+
+// MaxCustomers is the simulation's customer ceiling.
+func (ds *DemoState) MaxCustomers() int {
+	ds.mu.Lock()
+	defer ds.mu.Unlock()
+	return ds.settings.MaxCustomers
+}
+
+// DashData is what the dashboard shows: the bank's position and history
+// through the core, and the console's own state.
+type DashData struct {
+	Sim     SimStatus
+	Bank    core.Position
+	History core.History
+}
+
+// dashboardData gathers the dashboard's data: the bank through the core
+// queries, the console from the simulation.
+func dashboardData(q core.BookQueries, ds *DemoState) DashData {
+	pos, _ := q.Position(context.Background())
+	hist, _ := q.History(context.Background())
+	return DashData{Sim: ds.SimStatus(), Bank: pos, History: hist}
 }
 
 // --- Dashboard HTML (shared by server + WASM) ---
@@ -1024,54 +1050,54 @@ func renderDashContent(d DashData) string {
 	var s strings.Builder
 
 	// B5: Memory warning banner
-	if d.MemoryExceeded {
+	if d.Sim.MemoryExceeded {
 		s.WriteString(`<div class="notification is-danger"><strong>Memory limit approaching.</strong> Simulation paused. Export data or reset to continue.</div>`)
 	}
 
 	// Summary stats level
-	dateStr := d.Day.Format("2 Jan 2006")
-	nimStr := fmt.Sprintf("%.0f bps", d.NIMBps)
+	dateStr := d.Bank.Day.Format("2 Jan 2006")
+	nimStr := fmt.Sprintf("%.0f bps", d.Bank.NIMBps)
 	s.WriteString(`<nav class="level mb-4">`)
-	s.WriteString(fmt.Sprintf(`<div class="level-item has-text-centered"><div><p class="heading">Day</p><p class="title is-5">%d &mdash; %s</p></div></div>`, d.DayCount, dateStr))
-	s.WriteString(fmt.Sprintf(`<div class="level-item has-text-centered"><div><p class="heading">Customers</p><p class="title is-5">%d</p></div></div>`, d.CustomerCount))
+	s.WriteString(fmt.Sprintf(`<div class="level-item has-text-centered"><div><p class="heading">Day</p><p class="title is-5">%d &mdash; %s</p></div></div>`, d.Bank.DayCount, dateStr))
+	s.WriteString(fmt.Sprintf(`<div class="level-item has-text-centered"><div><p class="heading">Customers</p><p class="title is-5">%d</p></div></div>`, d.Bank.Customers))
 	s.WriteString(fmt.Sprintf(`<div class="level-item has-text-centered"><div><p class="heading">NIM</p><p class="title is-5">%s</p></div></div>`, nimStr))
-	if d.InterestPer12h > 0 {
-		s.WriteString(fmt.Sprintf(`<div class="level-item has-text-centered"><div><p class="heading">Interest movements / 12h</p><p class="title is-5">%s</p></div></div>`, groupThousands(strconv.FormatInt(d.InterestPer12h, 10))))
+	if d.Sim.InterestPer12h > 0 {
+		s.WriteString(fmt.Sprintf(`<div class="level-item has-text-centered"><div><p class="heading">Interest movements / 12h</p><p class="title is-5">%s</p></div></div>`, groupThousands(strconv.FormatInt(d.Sim.InterestPer12h, 10))))
 	}
-	if d.AddingCust {
-		s.WriteString(fmt.Sprintf(`<div class="level-item has-text-centered"><div><p class="heading">Adding</p><p class="title is-6">%d / %d</p><p class="heading">%.0f /s</p></div></div>`, d.AddingProgress, d.AddingTarget, d.CustomersPerSec))
-	} else if d.LastCustomersPerSec > 0 {
-		s.WriteString(fmt.Sprintf(`<div class="level-item has-text-centered"><div><p class="heading">Last add</p><p class="title is-6">%.0f /s</p></div></div>`, d.LastCustomersPerSec))
+	if d.Sim.AddingCust {
+		s.WriteString(fmt.Sprintf(`<div class="level-item has-text-centered"><div><p class="heading">Adding</p><p class="title is-6">%d / %d</p><p class="heading">%.0f /s</p></div></div>`, d.Sim.AddingProgress, d.Sim.AddingTarget, d.Sim.CustomersPerSec))
+	} else if d.Sim.LastCustomersPerSec > 0 {
+		s.WriteString(fmt.Sprintf(`<div class="level-item has-text-centered"><div><p class="heading">Last add</p><p class="title is-6">%.0f /s</p></div></div>`, d.Sim.LastCustomersPerSec))
 	}
 	s.WriteString(`</nav>`)
 
 	// Balance boxes
 	s.WriteString(`<div class="columns">`)
-	s.WriteString(fmt.Sprintf(`<div class="column"><div class="box dash-box has-background-success-light"><p class="heading">Savings (deposits)</p><p class="title is-5">%s</p></div></div>`, fmtMoney(d.Savings)))
-	s.WriteString(fmt.Sprintf(`<div class="column"><div class="box dash-box has-background-info-light"><p class="heading">Lending (loans)</p><p class="title is-5">%s</p></div></div>`, fmtMoney(d.Lending)))
+	s.WriteString(fmt.Sprintf(`<div class="column"><div class="box dash-box has-background-success-light"><p class="heading">Savings (deposits)</p><p class="title is-5">%s</p></div></div>`, fmtMoney(d.Bank.Savings)))
+	s.WriteString(fmt.Sprintf(`<div class="column"><div class="box dash-box has-background-info-light"><p class="heading">Lending (loans)</p><p class="title is-5">%s</p></div></div>`, fmtMoney(d.Bank.Lending)))
 	reserveClass := "has-background-warning-light"
-	if d.Cash < d.RequiredReserves {
+	if d.Bank.Cash < d.Bank.RequiredReserves {
 		reserveClass = "has-background-danger-light"
 	}
 	s.WriteString(fmt.Sprintf(`<div class="column"><div class="box dash-box %s"><p class="heading">BoE Cash Reserve</p><p class="title is-5">%s</p><p class="subtitle is-7 mb-0">Required: %s (%.0f%%) | BoE: %.2f%%</p></div></div>`,
-		reserveClass, fmtMoney(d.Cash), fmtMoney(d.RequiredReserves), d.CapitalReserveRatio*100, d.BoeRate*100))
+		reserveClass, fmtMoney(d.Bank.Cash), fmtMoney(d.Bank.RequiredReserves), d.Bank.ReserveRatio*100, d.Bank.BoERate*100))
 	s.WriteString(`</div>`)
 
 	// Balance chart
 	s.WriteString(`<h3 class="title is-6 has-text-grey mt-4 mb-2">Balance History</h3>`)
-	s.WriteString(buildBalanceChartSVG(d.BalanceHistory))
+	s.WriteString(buildBalanceChartSVG(d.History.Balances))
 
 	// Customer chart
 	s.WriteString(`<h3 class="title is-6 has-text-grey mt-4 mb-2">Customer Count</h3>`)
-	s.WriteString(buildCustomerChartSVG(d.CustomerHistory))
+	s.WriteString(buildCustomerChartSVG(d.History.Customers))
 
 	return s.String()
 }
 
-// BuildDashboardHTML renders the dashboard data sections as Bulma-styled HTML.
-// Shared by HTTP server and WASM modes. Does not include controls.
-func (ds *DemoState) BuildDashboardHTML() string {
-	return renderDashContent(ds.DashboardData())
+// buildDashboardHTML renders the dashboard data sections as Bulma-styled
+// HTML. Shared by HTTP server and WASM modes. Does not include controls.
+func buildDashboardHTML(q core.BookQueries, ds *DemoState) string {
+	return renderDashContent(dashboardData(q, ds))
 }
 
 // buildNIMChart renders a single-line chart of NIM in basis points as an SVG fragment.

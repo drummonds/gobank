@@ -31,10 +31,13 @@ type Account struct {
 	Family      string // "Savings" or "Lending"
 	Rate        float64
 	Balance     luca.Amount
-	Interest    luca.Amount
-	SortCode    string
-	AccountNum  string
-	OpenDate    string
+	Interest    luca.Amount // applied to the balance to date
+	// AccruedNumerator is interest accrued but not yet applied, exact, in
+	// units of one penny over gobank-products' AccrualDenominator.
+	AccruedNumerator int64
+	SortCode         string
+	AccountNum       string
+	OpenDate         string
 }
 
 // Transaction is one ledger entry as shown to the customer.

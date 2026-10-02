@@ -1,73 +1,21 @@
 package main
 
 import (
+	"context"
 	"fmt"
 	"log"
 	"math"
 	"strings"
-	"time"
 
 	luca "git.bytestone.uk/hum3/go-luca"
+	"git.bytestone.uk/hum3/gobank/core"
 )
 
-// TreasurySnapshot holds data for treasury pages, grabbed under one lock.
-type TreasurySnapshot struct {
-	Day              time.Time
-	DayCount         int
-	Savings          luca.Amount
-	Lending          luca.Amount
-	Cash             luca.Amount
-	RequiredReserves luca.Amount
-	ExcessCash       luca.Amount
-	ReserveRatio     float64
-	BoeRate          float64
-	BoeInterest      luca.Amount
-	BalanceHistory   []BalancePoint
-}
-
-// TreasuryData returns a snapshot for treasury pages.
-func (ds *DemoState) TreasuryData() TreasurySnapshot {
-	ds.mu.Lock()
-	defer ds.mu.Unlock()
-
-	savings, lending := ds.book.Savings, ds.book.Lending
-
-	cash := savings - lending
-	required := luca.Amount(float64(savings) * ds.settings.CapitalReserveRatio)
-	excess := cash - required
-
-	balHist := make([]BalancePoint, len(ds.balanceHistory))
-	copy(balHist, ds.balanceHistory)
-
-	return TreasurySnapshot{
-		Day:              ds.currentDay,
-		DayCount:         ds.dayCount,
-		Savings:          savings,
-		Lending:          lending,
-		Cash:             cash,
-		RequiredReserves: required,
-		ExcessCash:       excess,
-		ReserveRatio:     ds.settings.CapitalReserveRatio,
-		BoeRate:          ds.settings.BoEBaseRate,
-		BoeInterest:      ds.boeInterestTotal(),
-		BalanceHistory:   balHist,
-	}
-}
-
-// GiltYield represents a row from the gilt_yields table.
-type GiltYield struct {
-	Tenor string
-	Rate  float64
-}
-
-// GiltHolding represents a row from the gilt_holdings table.
-type GiltHolding struct {
-	ID           int
-	Tenor        string
-	FaceValue    luca.Amount // minor units
-	PurchaseDate time.Time
-	Yield        float64
-}
+// The treasury's rows are the core's types (ADR-0002 stage 1).
+type (
+	GiltYield   = core.GiltYield
+	GiltHolding = core.GiltHolding
+)
 
 // getGiltYields reads current gilt yields from the DB.
 func (ds *DemoState) getGiltYields() []GiltYield {
@@ -111,8 +59,13 @@ func (ds *DemoState) getGiltHoldings() []GiltHolding {
 	return holdings
 }
 
-// BuyGilt purchases a gilt and records it in the DB.
+// BuyGilt is the core's BuyGilt command (ADR-0002 stage 1): it buys
+// faceValue of gilts of the given tenor at today's yield and records the
+// holding.
 func (ds *DemoState) BuyGilt(tenor string, faceValue luca.Amount) error {
+	if faceValue < core.MinGiltPurchase {
+		return core.ErrInvalidAmount
+	}
 	db := ds.DB()
 	if db == nil {
 		return fmt.Errorf("database not available")
@@ -120,24 +73,24 @@ func (ds *DemoState) BuyGilt(tenor string, faceValue luca.Amount) error {
 
 	// Look up current yield
 	var rate float64
-	err := db.QueryRow(`SELECT rate FROM gilt_yields WHERE tenor = $1`, tenor).Scan(&rate)
-	if err != nil {
-		return fmt.Errorf("unknown tenor %q", tenor)
+	if err := db.QueryRow(`SELECT rate FROM gilt_yields WHERE tenor = $1`, tenor).Scan(&rate); err != nil {
+		return fmt.Errorf("tenor %q: %w", tenor, core.ErrNotFound)
 	}
 
 	ds.mu.Lock()
 	purchaseDate := ds.currentDay
 	ds.mu.Unlock()
 
-	_, err = db.Exec(`INSERT INTO gilt_holdings (tenor, face_value, purchase_date, yield) VALUES ($1, $2, $3, $4)`,
+	_, err := db.Exec(`INSERT INTO gilt_holdings (tenor, face_value, purchase_date, yield) VALUES ($1, $2, $3, $4)`,
 		tenor, faceValue, purchaseDate, rate)
 	return err
 }
 
 // --- Cash Position Page ---
 
-func (ds *DemoState) BuildCashPositionHTML() string {
-	t := ds.TreasuryData()
+func buildCashPositionHTML(q core.BookQueries) string {
+	t, _ := q.Position(context.Background())
+	hist, _ := q.History(context.Background())
 
 	var s strings.Builder
 	s.WriteString(`<h2 class="title is-4">Cash Position</h2>`)
@@ -149,10 +102,10 @@ func (ds *DemoState) BuildCashPositionHTML() string {
 	s.WriteString(fmt.Sprintf(`<div class="level-item has-text-centered"><div><p class="heading">Cash at BoE</p><p class="title is-5">%s</p></div></div>`, fmtMoney(t.Cash)))
 	s.WriteString(fmt.Sprintf(`<div class="level-item has-text-centered"><div><p class="heading">Required Reserves</p><p class="title is-5">%s</p></div></div>`, fmtMoney(t.RequiredReserves)))
 	excessClass := "has-text-success"
-	if t.ExcessCash < 0 {
+	if t.ExcessCash() < 0 {
 		excessClass = "has-text-danger"
 	}
-	s.WriteString(fmt.Sprintf(`<div class="level-item has-text-centered"><div><p class="heading">Excess Cash</p><p class="title is-5 %s">%s</p></div></div>`, excessClass, fmtMoney(t.ExcessCash)))
+	s.WriteString(fmt.Sprintf(`<div class="level-item has-text-centered"><div><p class="heading">Excess Cash</p><p class="title is-5 %s">%s</p></div></div>`, excessClass, fmtMoney(t.ExcessCash())))
 	s.WriteString(`</nav>`)
 
 	// Detail table
@@ -160,8 +113,8 @@ func (ds *DemoState) BuildCashPositionHTML() string {
 	s.WriteString(`<h3 class="title is-5">Cash Detail</h3>`)
 	s.WriteString(`<table class="table is-fullwidth is-striped">`)
 	s.WriteString(`<tbody>`)
-	s.WriteString(fmt.Sprintf(`<tr><td>BoE Base Rate</td><td class="has-text-right"><strong>%.2f%%</strong></td></tr>`, t.BoeRate*100))
-	s.WriteString(fmt.Sprintf(`<tr><td>BoE Interest Earned (cumulative)</td><td class="has-text-right"><strong>%s</strong></td></tr>`, fmtMoney(t.BoeInterest)))
+	s.WriteString(fmt.Sprintf(`<tr><td>BoE Base Rate</td><td class="has-text-right"><strong>%.2f%%</strong></td></tr>`, t.BoERate*100))
+	s.WriteString(fmt.Sprintf(`<tr><td>BoE Interest Earned (cumulative)</td><td class="has-text-right"><strong>%s</strong></td></tr>`, fmtMoney(t.BoEInterest)))
 	s.WriteString(fmt.Sprintf(`<tr><td>Reserve Ratio</td><td class="has-text-right"><strong>%.0f%%</strong></td></tr>`, t.ReserveRatio*100))
 	s.WriteString(fmt.Sprintf(`<tr><td>Simulation Day</td><td class="has-text-right"><strong>%d &mdash; %s</strong></td></tr>`, t.DayCount, t.Day.Format("2 Jan 2006")))
 	s.WriteString(`</tbody></table>`)
@@ -170,7 +123,7 @@ func (ds *DemoState) BuildCashPositionHTML() string {
 	// Balance history chart
 	s.WriteString(`<div class="box">`)
 	s.WriteString(`<h3 class="title is-5">Balance History</h3>`)
-	s.WriteString(buildBalanceChartSVG(t.BalanceHistory))
+	s.WriteString(buildBalanceChartSVG(hist.Balances))
 	s.WriteString(`</div>`)
 
 	return s.String()
@@ -178,8 +131,8 @@ func (ds *DemoState) BuildCashPositionHTML() string {
 
 // --- Capital Requirements Page ---
 
-func (ds *DemoState) BuildCapitalHTML() string {
-	t := ds.TreasuryData()
+func buildCapitalHTML(q core.BookQueries) string {
+	t, _ := q.Position(context.Background())
 
 	actualRatio := 0.0
 	if t.Savings > 0 {
@@ -266,9 +219,9 @@ func buildUtilisationBar(pct float64) string {
 
 // --- Gilt Purchases Page ---
 
-func (ds *DemoState) BuildGiltsHTML() string {
-	yields := ds.getGiltYields()
-	holdings := ds.getGiltHoldings()
+func buildGiltsHTML(q core.TreasuryQueries) string {
+	yields, _ := q.GiltYields(context.Background())
+	holdings, _ := q.GiltHoldings(context.Background())
 
 	var s strings.Builder
 	s.WriteString(`<h2 class="title is-4">Gilt Purchases</h2>`)

@@ -37,7 +37,7 @@ func TestMemoryLimitStopsSimulation(t *testing.T) {
 	for range memCheckInterval {
 		ds.AdvanceDay()
 	}
-	if ds.DashboardData().MemoryExceeded {
+	if ds.SimStatus().MemoryExceeded {
 		t.Fatal("default limit should not trip on a tiny simulation")
 	}
 
@@ -45,7 +45,7 @@ func TestMemoryLimitStopsSimulation(t *testing.T) {
 	for range memCheckInterval {
 		ds.AdvanceDay()
 	}
-	if !ds.DashboardData().MemoryExceeded {
+	if !ds.SimStatus().MemoryExceeded {
 		t.Fatal("a 1-byte limit must pause the simulation at the next check")
 	}
 }

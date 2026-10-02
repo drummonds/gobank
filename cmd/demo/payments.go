@@ -11,6 +11,7 @@ import (
 
 	luca "git.bytestone.uk/hum3/go-luca"
 	gbp "git.bytestone.uk/hum3/gobank-products"
+	"git.bytestone.uk/hum3/gobank/core"
 )
 
 func poundsToPence(pounds float64) luca.Amount {
@@ -39,19 +40,6 @@ func (t PaymentType) String() string {
 	}
 }
 
-func (t PaymentType) BulmaTag() string {
-	switch t {
-	case PayTransfer:
-		return "is-link is-light"
-	case PayDeposit:
-		return "is-success is-light"
-	case PayLoanDisbursement:
-		return "is-info is-light"
-	default:
-		return "is-light"
-	}
-}
-
 // PaymentStatus represents the lifecycle of a payment.
 type PaymentStatus int
 
@@ -71,19 +59,6 @@ func (s PaymentStatus) String() string {
 		return "Completed"
 	default:
 		return "Unknown"
-	}
-}
-
-func (s PaymentStatus) BulmaTag() string {
-	switch s {
-	case PaymentPending:
-		return "is-warning"
-	case PaymentProcessing:
-		return "is-info"
-	case PaymentCompleted:
-		return "is-success"
-	default:
-		return "is-light"
 	}
 }
 
@@ -254,58 +229,82 @@ func (ds *DemoState) clearPaymentsLocked() {
 	ds.nextPaymentID = 1
 }
 
-// SendPayment creates a random payment between customers, debiting sender's
-// savings account and crediting recipient's savings account.
+// SendPayment is the payments generator: it picks two customers and an
+// amount at random and asks the bank to transfer it. Picking is the
+// simulation's; the transfer itself is the core's command.
 func (ds *DemoState) SendPayment() {
 	ds.mu.Lock()
-
 	if ds.nCustomers < 2 {
 		ds.mu.Unlock()
 		return
 	}
-
 	fromID := ds.randomCustomerID()
 	toID := ds.randomCustomerID()
 	for toID == fromID {
 		toID = ds.randomCustomerID()
 	}
+	amount := luca.Amount(ds.rng.Intn(99901) + 100) // 100..100000 pence
+	ds.mu.Unlock()
+
+	// Pay from the sender's first savings account, within its balance.
 	from, ok := ds.customerByID(fromID)
-	to, ok2 := ds.customerByID(toID)
-	if !ok || !ok2 {
-		ds.mu.Unlock()
+	if !ok {
 		return
 	}
+	fromAcc := firstSavingsAccount(from.Accounts)
+	if fromAcc == nil {
+		return
+	}
+	amount = min(amount, fromAcc.Balance)
+	if amount < 100 {
+		return
+	}
+	// The recipient may be missing (its persist failed) or hold no savings
+	// account; the generator just moves on.
+	ds.transfer(core.Transfer{From: fromID, To: toID, Amount: amount})
+}
 
-	// Pay from and into each customer's first savings account.
+// transfer is the core's Transfer command (ADR-0002 stage 1): it moves
+// amount between the two customers' first savings accounts, records the
+// movement in the ledger and the engine, the customer-facing entries, and
+// the payment, whose status then settles asynchronously.
+func (ds *DemoState) transfer(t core.Transfer) (Payment, error) {
+	if t.Amount <= 0 {
+		return Payment{}, core.ErrInvalidAmount
+	}
+	if t.From == t.To {
+		return Payment{}, core.ErrSameCustomer
+	}
+	ds.mu.Lock()
+	defer ds.mu.Unlock()
+
+	from, ok := ds.customerByID(t.From)
+	to, ok2 := ds.customerByID(t.To)
+	if !ok || !ok2 {
+		return Payment{}, core.ErrNotFound
+	}
 	fromAcc, toAcc := firstSavingsAccount(from.Accounts), firstSavingsAccount(to.Accounts)
 	if fromAcc == nil || toAcc == nil {
-		ds.mu.Unlock()
-		return
+		return Payment{}, core.ErrNotFound
 	}
-
-	senderBal := fromAcc.Balance
-	amount := min(
-		// 100..100000 pence
-		luca.Amount(ds.rng.Intn(99901)+100), senderBal)
-	if amount < 100 {
-		ds.mu.Unlock()
-		return
+	if fromAcc.Balance < t.Amount {
+		return Payment{}, core.ErrInsufficientFunds
 	}
 
 	ref := fmt.Sprintf("PAY-%06d", ds.nextPaymentID)
-	ds.recordSimMovement(fromAcc.LedgerAccountID, toAcc.LedgerAccountID, amount, luca.CodeBookTransfer, ref)
+	ds.recordSimMovement(fromAcc.LedgerAccountID, toAcc.LedgerAccountID, t.Amount, luca.CodeBookTransfer, ref)
 
-	ds.emitTx(ds.currentDay, fromID, fromAcc.LedgerAccountID, fromAcc.ProductName,
-		TxTransferOut, amount, fromAcc.Balance-amount, ref)
-	ds.emitTx(ds.currentDay, toID, toAcc.LedgerAccountID, toAcc.ProductName,
-		TxTransferIn, amount, toAcc.Balance+amount, ref)
+	ds.emitTx(ds.currentDay, t.From, fromAcc.LedgerAccountID, fromAcc.ProductName,
+		TxTransferOut, t.Amount, fromAcc.Balance-t.Amount, ref)
+	ds.emitTx(ds.currentDay, t.To, toAcc.LedgerAccountID, toAcc.ProductName,
+		TxTransferIn, t.Amount, toAcc.Balance+t.Amount, ref)
 
 	p := Payment{
 		ID:        ds.nextPaymentID,
 		Type:      PayTransfer,
-		FromID:    fromID,
-		ToID:      toID,
-		Amount:    amount,
+		FromID:    t.From,
+		ToID:      t.To,
+		Amount:    t.Amount,
 		Status:    PaymentPending,
 		Reference: ref,
 		CreatedAt: time.Now(),
@@ -316,9 +315,8 @@ func (ds *DemoState) SendPayment() {
 		q = ds.db
 	}
 	if err := insertPayment(q, p); err != nil {
-		log.Printf("SendPayment: %v", err)
+		log.Printf("transfer: %v", err)
 	}
-	ds.mu.Unlock()
 
 	// Async status transitions
 	go func() {
@@ -327,6 +325,7 @@ func (ds *DemoState) SendPayment() {
 		time.Sleep(1 * time.Second)
 		ds.setPaymentStatus(p.ID, PaymentCompleted, time.Now())
 	}()
+	return p, nil
 }
 
 // randomCustomerID picks a customer ID uniformly from those generated so
@@ -405,19 +404,61 @@ func (ds *DemoState) ResetPayments() {
 
 const paymentsPerPage = 20
 
-// BuildPaymentsHTML renders the payments list as a Bulma HTML table.
-// Shows customer IDs; names shown only when piiAuth is true.
-func (ds *DemoState) BuildPaymentsHTML(piiAuth bool, page int) string {
-	running := ds.IsPaymentsRunning()
-	pagePayments, total := ds.paymentPage(page)
-	if page < 1 {
-		page = 1
+// paymentTypeTag is the Bulma tag class for a payment type.
+func paymentTypeTag(t core.PaymentType) string {
+	switch t {
+	case core.PaymentTransfer:
+		return "is-link is-light"
+	case core.PaymentDeposit:
+		return "is-success is-light"
+	case core.PaymentLoan:
+		return "is-info is-light"
+	default:
+		return "is-light"
 	}
-	totalPages := max((total+paymentsPerPage-1)/paymentsPerPage, 1)
-	if page > totalPages {
-		page = totalPages
-		pagePayments, _ = ds.paymentPage(page)
+}
+
+// paymentStatusTag is the Bulma tag class for a payment status.
+func paymentStatusTag(s core.PaymentStatus) string {
+	switch s {
+	case core.PaymentPending:
+		return "is-warning"
+	case core.PaymentProcessing:
+		return "is-info"
+	case core.PaymentCompleted:
+		return "is-success"
+	default:
+		return "is-light"
 	}
+}
+
+// paymentStatusReached reports whether a payment has reached a status in
+// its lifecycle: pending, then processing, then completed.
+func paymentStatusReached(have, want core.PaymentStatus) bool {
+	rank := map[core.PaymentStatus]int{core.PaymentPending: 0, core.PaymentProcessing: 1, core.PaymentCompleted: 2}
+	return rank[have] >= rank[want]
+}
+
+// partyLabel shows a customer ID, with the name when PII is authorised.
+func partyLabel(q core.CustomerRegister, id string, piiAuth bool) string {
+	if piiAuth {
+		if name, err := q.CustomerName(context.Background(), id); err == nil && name != id {
+			return fmt.Sprintf("%s (%s)", id, name)
+		}
+	}
+	return id
+}
+
+// buildPaymentsHTML renders the payments list as a Bulma HTML table.
+// Shows customer IDs; names shown only when piiAuth is true. running is
+// the generator's state, shown as a tag.
+func buildPaymentsHTML(q core.StaffQueries, piiAuth bool, page int, running bool) string {
+	ctx := context.Background()
+	pp, _ := q.PaymentPage(ctx, page)
+	if pp.Page > pp.TotalPages() {
+		pp, _ = q.PaymentPage(ctx, pp.TotalPages())
+	}
+	page, totalPages, total := pp.Page, pp.TotalPages(), pp.Total
 
 	var s strings.Builder
 	s.WriteString(`<h2 class="title is-4">Payments</h2>`)
@@ -439,23 +480,15 @@ func (ds *DemoState) BuildPaymentsHTML(piiAuth bool, page int) string {
   <th>ID</th><th>Type</th><th>From</th><th>To</th><th>Amount</th><th>Reference</th><th>Status</th><th>Time</th><th></th>
 </tr></thead><tbody>`)
 
-		for _, p := range pagePayments {
-			from := p.FromID
-			to := p.ToID
-			if piiAuth {
-				if name := ds.lookupName(p.FromID); name != p.FromID {
-					from = fmt.Sprintf("%s (%s)", p.FromID, name)
-				}
-				if name := ds.lookupName(p.ToID); name != p.ToID {
-					to = fmt.Sprintf("%s (%s)", p.ToID, name)
-				}
-			}
+		for _, p := range pp.Payments {
+			from := partyLabel(q, p.From, piiAuth)
+			to := partyLabel(q, p.To, piiAuth)
 			s.WriteString(fmt.Sprintf(`<tr>
   <td>%d</td><td><span class="tag %s">%s</span></td><td>%s</td><td>%s</td><td>%s</td><td><code>%s</code></td>
   <td><span class="tag %s">%s</span></td>
   <td>%s</td>
   <td><a href="/payments/%d" class="button is-small is-link is-light">Detail</a></td>
-</tr>`, p.ID, p.Type.BulmaTag(), p.Type, from, to, fmtMoney(p.Amount), p.Reference, p.Status.BulmaTag(), p.Status, p.CreatedAt.Format("15:04:05"), p.ID))
+</tr>`, p.ID, paymentTypeTag(p.Type), p.Type, from, to, fmtMoney(p.Amount), p.Reference, paymentStatusTag(p.Status), p.Status, p.CreatedAt.Format("15:04:05"), p.ID))
 		}
 
 		s.WriteString(`</tbody></table></div>`)
@@ -481,25 +514,15 @@ func (ds *DemoState) BuildPaymentsHTML(piiAuth bool, page int) string {
 	return s.String()
 }
 
-// BuildPaymentDetailHTML renders a single payment detail with settlement timeline.
+// buildPaymentDetailHTML renders a single payment detail with settlement timeline.
 // Shows customer IDs; names shown only when piiAuth is true.
-func (ds *DemoState) BuildPaymentDetailHTML(id int, piiAuth bool) string {
-	found, ok := ds.paymentByID(id)
-	if !ok {
+func buildPaymentDetailHTML(q core.StaffQueries, id int, piiAuth bool) string {
+	p, err := q.Payment(context.Background(), id)
+	if err != nil {
 		return `<div class="notification is-warning">Payment not found.</div>`
 	}
-
-	p := &found
-	from := p.FromID
-	to := p.ToID
-	if piiAuth {
-		if name := ds.lookupName(p.FromID); name != p.FromID {
-			from = fmt.Sprintf("%s (%s)", p.FromID, name)
-		}
-		if name := ds.lookupName(p.ToID); name != p.ToID {
-			to = fmt.Sprintf("%s (%s)", p.ToID, name)
-		}
-	}
+	from := partyLabel(q, p.From, piiAuth)
+	to := partyLabel(q, p.To, piiAuth)
 
 	var s strings.Builder
 	s.WriteString(fmt.Sprintf(`<h2 class="title is-4">Payment %s</h2>`, p.Reference))
@@ -507,13 +530,13 @@ func (ds *DemoState) BuildPaymentDetailHTML(id int, piiAuth bool) string {
 	// Details box
 	s.WriteString(`<div class="box">`)
 	s.WriteString(`<div class="columns">`)
-	s.WriteString(fmt.Sprintf(`<div class="column"><strong>Type:</strong> <span class="tag %s">%s</span></div>`, p.Type.BulmaTag(), p.Type))
+	s.WriteString(fmt.Sprintf(`<div class="column"><strong>Type:</strong> <span class="tag %s">%s</span></div>`, paymentTypeTag(p.Type), p.Type))
 	s.WriteString(fmt.Sprintf(`<div class="column"><strong>From:</strong> %s</div>`, from))
 	s.WriteString(fmt.Sprintf(`<div class="column"><strong>To:</strong> %s</div>`, to))
 	s.WriteString(fmt.Sprintf(`<div class="column"><strong>Amount:</strong> %s</div>`, fmtMoney(p.Amount)))
 	s.WriteString(`</div>`)
 	s.WriteString(`<div class="columns">`)
-	s.WriteString(fmt.Sprintf(`<div class="column"><strong>Status:</strong> <span class="tag %s">%s</span></div>`, p.Status.BulmaTag(), p.Status))
+	s.WriteString(fmt.Sprintf(`<div class="column"><strong>Status:</strong> <span class="tag %s">%s</span></div>`, paymentStatusTag(p.Status), p.Status))
 	s.WriteString(fmt.Sprintf(`<div class="column"><strong>Created:</strong> %s</div>`, p.CreatedAt.Format("15:04:05")))
 	settled := "—"
 	if !p.SettledAt.IsZero() {
@@ -528,7 +551,7 @@ func (ds *DemoState) BuildPaymentDetailHTML(id int, piiAuth bool) string {
 	return s.String()
 }
 
-func buildTimelineSVG(p *Payment) string {
+func buildTimelineSVG(p core.Payment) string {
 	var s strings.Builder
 
 	s.WriteString(`<div class="box mt-4"><h3 class="title is-5">Settlement Timeline</h3>`)
@@ -544,9 +567,9 @@ func buildTimelineSVG(p *Payment) string {
 		Time  string
 		Done  bool
 	}{
-		{50, "Pending", p.CreatedAt.Format("15:04:05"), p.Status >= PaymentPending},
-		{250, "Processing", "", p.Status >= PaymentProcessing},
-		{450, "Completed", "", p.Status >= PaymentCompleted},
+		{50, "Pending", p.CreatedAt.Format("15:04:05"), paymentStatusReached(p.Status, core.PaymentPending)},
+		{250, "Processing", "", paymentStatusReached(p.Status, core.PaymentProcessing)},
+		{450, "Completed", "", paymentStatusReached(p.Status, core.PaymentCompleted)},
 	}
 
 	if !p.SettledAt.IsZero() {

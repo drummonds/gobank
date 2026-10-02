@@ -109,14 +109,20 @@ root module, `cmd/bff` is the service binary, and `app/` is the Flutter shell.
    starts:
    1. Seams — core commands/queries as interfaces; `DemoState` adapts to
       them; the BFF runs in the demo process and the app shows real data.
-      Stories: (a) [x] (unreleased) customer contracts in `core`, contract
-      suite, demo adapter, BFF at `/v1/`; (b) [ ] gobank-deploy sets
-      `GOBANK_APP_PASSWORD` per environment and shows it (its story 1g);
-      (c) [x] (unreleased) Android debug build — `app/android` and
-      `app/ios` generated and committed, cleartext traffic allowed in the
-      debug manifest only — then (a) is sense-checked from a phone against
-      Hetzner; (d) [ ] staff queries;
-      (e) [ ] commands
+      Stories: (a) [x] (v0.3.54) customer contracts in `core`, contract
+      suite, demo adapter, BFF at `/v1/`; (b) [x] gobank-deploy sets
+      `GOBANK_APP_PASSWORD` per environment and shows it (its story 1g,
+      gobank-deploy v0.3.0); (c) [x] (unreleased) Android debug build —
+      `app/android` and `app/ios` generated and committed, cleartext
+      traffic allowed in the debug manifest only — then (a) is
+      sense-checked from a phone against Hetzner (still to do);
+      (d) [x] (unreleased) staff queries — `core.StaffQueries`, one
+      interface per component (book, customer register, payments,
+      products, treasury), every staff page rendering from them;
+      (e) [x] (unreleased) commands — `core.Commands`: `Transfer` (the
+      payments generator calls it) and `BuyGilt` (the treasury page calls
+      it). Opening a customer stays inside the generator until stage 4
+      splits generators from the bank
    2. Stored truth — transactions as a ledger projection, stored chart
       snapshots, sessions in the database
    3. Pipelined accruals — start-of-day workflow writes next-day

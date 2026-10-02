@@ -185,7 +185,7 @@ func (ds *DemoState) fillAccountFigures(a *CustomerAccount) {
 		if ma, ok := ds.sim.GetManagedAccount(a.LedgerAccountID); ok {
 			a.Balance = ma.CachedBalance
 			a.Accrued = ma.AccruedInterest()
-			a.AccruedE7 = accrualPoundsE7(ma.AccruedNumerator)
+			a.AccruedNumerator = ma.AccruedNumerator
 		}
 		ds.simMu.Unlock()
 	}

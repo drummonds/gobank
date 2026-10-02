@@ -30,7 +30,7 @@ func TestBrowserScenarioAddCustomersDuringSim(t *testing.T) {
 					return
 				default:
 				}
-				_ = ds.BuildDashboardHTML()
+				_ = buildDashboardHTML(newCoreAdapter(ds, ""), ds)
 				var count int
 				if err := ds.db.QueryRow(`SELECT COUNT(*) FROM movements`).Scan(&count); err != nil {
 					select {

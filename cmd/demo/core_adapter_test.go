@@ -9,12 +9,16 @@ import (
 	"git.bytestone.uk/hum3/gobank/core/coretest"
 )
 
-// The demo honours the core contract the BFF is written against.
+// The demo honours the core contracts the BFF and the staff UI are written
+// against: customer queries, staff queries and commands.
 func TestCoreAdapterContract(t *testing.T) {
 	ds := NewDemoState()
-	addFundedCustomer(ds)
+	twoFundedCustomers(ds)
 	a := newCoreAdapter(ds, "secret")
-	coretest.Run(t, coretest.Fixture{Queries: a, Auth: a, CustomerID: "cust-001", Password: "secret"})
+	coretest.Run(t, coretest.Fixture{
+		Queries: a, Auth: a, Staff: a, Commands: a,
+		CustomerID: "cust-001", OtherCustomerID: "cust-002", Password: "secret",
+	})
 }
 
 // With no app password configured, nobody can log in.

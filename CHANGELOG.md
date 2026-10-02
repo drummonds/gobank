@@ -2,7 +2,32 @@
 
 ## [Unreleased]
 
+ - Stage 1 seams complete: staff queries and commands through `core`
+
 ### Added
+- ADR-0002 stage 1, story (d): the staff side of the core. `core.StaffQueries`
+  is one query interface per component — `BookQueries` (position, P&L,
+  balance sheet, daily history), `CustomerRegister` (register pages and
+  records without PII; name and PII as separate calls so a page fetches
+  them only once authorised), `PaymentQueries`, `ProductQueries` and
+  `TreasuryQueries` — and every staff page (dashboard, customers,
+  accounting, products, payments, reports, treasury, settings) now renders
+  from them rather than from `DemoState`. The simulation console's own
+  state (running, adding, rates, memory) is `SimStatus`, not a core query.
+- ADR-0002 stage 1, story (e): `core.Commands`. `Transfer` moves money
+  between two customers' savings accounts and refuses what the bank
+  cannot do (`ErrInvalidAmount`, `ErrSameCustomer`, `ErrNotFound`,
+  `ErrInsufficientFunds`); the payments generator now picks the customers
+  and amount and calls it. `BuyGilt` buys at today's yield and refuses an
+  unknown tenor or a face value under `core.MinGiltPurchase`; the treasury
+  page calls it.
+- The contract suite (`core/coretest`) covers the staff queries and the
+  commands: the register sums to the position, the products carry the
+  book, the statements balance, a transfer moves exactly what the
+  queries then show. The demo adapter runs all of it.
+- `core.Account` carries `AccruedNumerator`, the exact accrued-but-unapplied
+  interest, so the customer report's sub-penny "accruing" figure comes
+  through the contract.
 - The Flutter app's `android/` and `ios/` platform folders are generated
   and committed; the Android debug manifest allows cleartext traffic so a
   debug build can reach the demo over plain HTTP (release builds cannot).

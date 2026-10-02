@@ -47,7 +47,7 @@ func TestDashboardReportsInterestMovementsPer12h(t *testing.T) {
 	ds.now = steppingClock(time.Date(2026, 1, 1, 9, 0, 0, 0, time.UTC))
 	addFundedCustomer(ds)
 
-	if got := ds.DashboardData().InterestPer12h; got != 0 {
+	if got := ds.SimStatus().InterestPer12h; got != 0 {
 		t.Fatalf("before any day: %d", got)
 	}
 	ds.AdvanceDay()
@@ -63,7 +63,7 @@ func TestDashboardReportsInterestMovementsPer12h(t *testing.T) {
 	}
 	// The day's accrual phase took exactly 1s on the stepping clock.
 	want := int64(movements) * int64(interestWindow/time.Second)
-	if got := ds.DashboardData().InterestPer12h; got != want {
+	if got := ds.SimStatus().InterestPer12h; got != want {
 		t.Errorf("InterestPer12h = %d, want %d (%d movements in 1s)", got, want, movements)
 	}
 }
@@ -77,10 +77,10 @@ func TestDashboardReportsCustomersAddedPerSecond(t *testing.T) {
 	for ds.IsAddingCustomers() && time.Now().Before(deadline) {
 		time.Sleep(5 * time.Millisecond)
 	}
-	d := ds.DashboardData()
-	if d.CustomerCount != 5 {
-		t.Fatalf("customers = %d", d.CustomerCount)
+	if n := ds.position().Customers; n != 5 {
+		t.Fatalf("customers = %d", n)
 	}
+	d := ds.SimStatus()
 	// Batch start and end are the only clock readings: 5 customers in 1s.
 	if d.LastCustomersPerSec != 5 {
 		t.Errorf("LastCustomersPerSec = %v, want 5", d.LastCustomersPerSec)
@@ -91,13 +91,13 @@ func TestDashboardReportsCustomersAddedPerSecond(t *testing.T) {
 }
 
 func TestDashboardShowsRates(t *testing.T) {
-	html := renderDashContent(DashData{InterestPer12h: 4320000, AddingCust: true, AddingProgress: 250, AddingTarget: 1000, CustomersPerSec: 83.4})
+	html := renderDashContent(DashData{Sim: SimStatus{InterestPer12h: 4320000, AddingCust: true, AddingProgress: 250, AddingTarget: 1000, CustomersPerSec: 83.4}})
 	for _, want := range []string{"Interest movements / 12h", "4,320,000", "250 / 1000", "83 /s"} {
 		if !contains(html, want) {
 			t.Errorf("dashboard missing %q", want)
 		}
 	}
-	html = renderDashContent(DashData{LastCustomersPerSec: 83.4})
+	html = renderDashContent(DashData{Sim: SimStatus{LastCustomersPerSec: 83.4}})
 	if !contains(html, "Last add") || !contains(html, "83 /s") {
 		t.Errorf("finished batch should keep its rate on show:\n%s", html)
 	}

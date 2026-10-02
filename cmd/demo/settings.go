@@ -1,8 +1,11 @@
 package main
 
 import (
+	"context"
 	"fmt"
 	"strings"
+
+	"git.bytestone.uk/hum3/gobank/core"
 )
 
 // Settings holds configurable parameters for the simulation.
@@ -20,13 +23,13 @@ func DefaultSettings() Settings {
 	}
 }
 
-// BuildSettingsHTML renders the settings form.
-func (ds *DemoState) BuildSettingsHTML() string {
-	ds.mu.Lock()
-	settings := ds.settings
-	customerCount := ds.nCustomers
-	currentDay := ds.currentDay
-	ds.mu.Unlock()
+// buildSettingsHTML renders the settings form: the bank's parameters from
+// the core, the simulation's customer ceiling from the console.
+func buildSettingsHTML(q core.BookQueries, maxCustomers int) string {
+	pos, _ := q.Position(context.Background())
+	settings := Settings{MaxCustomers: maxCustomers, BoEBaseRate: pos.BoERate, CapitalReserveRatio: pos.ReserveRatio}
+	customerCount := pos.Customers
+	currentDay := pos.Day
 
 	var s strings.Builder
 	s.WriteString(`<h2 class="title is-4">Settings</h2>`)

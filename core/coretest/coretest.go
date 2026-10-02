@@ -19,20 +19,31 @@ const UnknownCustomerID = "no-such-customer"
 // Fixture is an implementation under test and a customer it knows about,
 // who holds at least one account with at least one transaction. Auth may be
 // nil when the implementation has no Authenticator; Password is that
-// customer's password when it has.
+// customer's password when it has. Staff and Commands may be nil when the
+// implementation has no staff side; with Commands, OtherCustomerID names a
+// second customer, and both hold a savings account with a positive balance.
 type Fixture struct {
-	Queries    core.CustomerQueries
-	Auth       core.Authenticator
-	CustomerID string
-	Password   string
+	Queries         core.CustomerQueries
+	Auth            core.Authenticator
+	Staff           core.StaffQueries
+	Commands        core.Commands
+	CustomerID      string
+	OtherCustomerID string
+	Password        string
 }
 
 // Run checks the implementation against the CustomerQueries contract and,
-// when Auth is set, the Authenticator contract.
+// for each of Auth, Staff and Commands that is set, against that contract.
 func Run(t *testing.T, f Fixture) {
 	t.Helper()
 	ctx := context.Background()
 	q := f.Queries
+	if f.Staff != nil {
+		t.Run("staff", func(t *testing.T) { runStaff(t, f) })
+	}
+	if f.Commands != nil {
+		t.Run("commands", func(t *testing.T) { runCommands(t, f) })
+	}
 
 	t.Run("customer", func(t *testing.T) {
 		c, err := q.Customer(ctx, f.CustomerID)

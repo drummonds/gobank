@@ -201,7 +201,7 @@ func BenchmarkBaselineDashboardRender(b *testing.B) {
 
 	b.ResetTimer()
 	for b.Loop() {
-		_ = ds.BuildDashboardHTML()
+		_ = buildDashboardHTML(newCoreAdapter(ds, ""), ds)
 	}
 	b.StopTimer()
 	ds.db.Close()
@@ -318,21 +318,21 @@ func benchBuildMux(ds *DemoState) *http.ServeMux {
 	// HTML renders — heavier, hold renderMu
 	mux.HandleFunc("GET /dashboard", func(w http.ResponseWriter, r *http.Request) {
 		renderMu.Lock()
-		html := ds.BuildDashboardHTML()
+		html := buildDashboardHTML(newCoreAdapter(ds, ""), ds)
 		renderMu.Unlock()
 		w.Header().Set("Content-Type", "text/html")
 		io.WriteString(w, html)
 	})
 	mux.HandleFunc("GET /accounting/pnl", func(w http.ResponseWriter, r *http.Request) {
 		renderMu.Lock()
-		html := ds.BuildPnLHTML()
+		html := buildPnLHTML(newCoreAdapter(ds, ""))
 		renderMu.Unlock()
 		w.Header().Set("Content-Type", "text/html")
 		io.WriteString(w, html)
 	})
 	mux.HandleFunc("GET /customers", func(w http.ResponseWriter, r *http.Request) {
 		renderMu.Lock()
-		html := ds.BuildCustomersHTML(1, false)
+		html := buildCustomersHTML(newCoreAdapter(ds, ""), 1, false)
 		renderMu.Unlock()
 		w.Header().Set("Content-Type", "text/html")
 		io.WriteString(w, html)

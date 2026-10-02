@@ -8,6 +8,7 @@ import (
 
 	luca "git.bytestone.uk/hum3/go-luca"
 	gbp "git.bytestone.uk/hum3/gobank-products"
+	"git.bytestone.uk/hum3/gobank/core"
 )
 
 // lookupName returns the decrypted customer name from the SQL store, falling back to id.
@@ -67,39 +68,51 @@ type CustomerRecord struct {
 }
 
 type CustomerAccount struct {
-	ProductID       string
-	ProductName     string
-	Family          gbp.ProductFamily
-	Balance         luca.Amount // minor units (pence); principal plus applied interest
-	Rate            float64     // annual rate (a rate, not money)
-	Interest        luca.Amount // minor units; lifetime interest applied to the balance
-	Accrued         luca.Amount // minor units; accrued-but-unapplied interest (from the products engine)
-	AccruedE7       poundsE7    // same accrual modelled as 7dp pounds, for sub-penny display
-	OpenDate        time.Time
-	SortCode        string
-	AccountNum      string
-	LedgerAccountID string // go-luca account ID for dual-write
+	ProductID        string
+	ProductName      string
+	Family           gbp.ProductFamily
+	Balance          luca.Amount // minor units (pence); principal plus applied interest
+	Rate             float64     // annual rate (a rate, not money)
+	Interest         luca.Amount // minor units; lifetime interest applied to the balance
+	Accrued          luca.Amount // minor units; accrued-but-unapplied interest (from the products engine)
+	AccruedNumerator int64       // the same accrual exact, in pence over gbp.AccrualDenominator
+	OpenDate         time.Time
+	SortCode         string
+	AccountNum       string
+	LedgerAccountID  string // go-luca account ID for dual-write
 }
 
 const customersPerPage = 50
 
-// BuildCustomersHTML renders the customer list table with pagination.
-// Names are shown only when piiAuth is true; otherwise only the customer ID is displayed.
-func (ds *DemoState) BuildCustomersHTML(page int, piiAuth bool) string {
-	ds.mu.Lock()
-	book := ds.bookTotals()
-	ds.mu.Unlock()
-	aggSavings, aggLending := book.Savings, book.Lending
+// fmtISODate shows a core date (2006-01-02) as the staff pages do.
+func fmtISODate(iso string) string {
+	t, err := time.Parse("2006-01-02", iso)
+	if err != nil {
+		return iso
+	}
+	return t.Format("2 Jan 2006")
+}
 
-	if page < 1 {
-		page = 1
+// familyTag is the Bulma tag for an account's product family.
+func familyTag(family string) string {
+	if family == string(gbp.FamilyLending) {
+		return `<span class="tag is-info is-light">Lending</span>`
 	}
-	pageCustomers, total := ds.customerPage(page)
-	totalPages := max((total+customersPerPage-1)/customersPerPage, 1)
-	if page > totalPages {
-		page = totalPages
-		pageCustomers, total = ds.customerPage(page)
+	return `<span class="tag is-success is-light">Savings</span>`
+}
+
+// buildCustomersHTML renders the customer list table with pagination.
+// Names are shown only when piiAuth is true; otherwise only the customer ID is displayed.
+func buildCustomersHTML(q core.StaffQueries, page int, piiAuth bool) string {
+	ctx := context.Background()
+	pos, _ := q.Position(ctx)
+	aggSavings, aggLending := pos.Savings, pos.Lending
+
+	cp, _ := q.CustomerPage(ctx, page)
+	if cp.Page > cp.TotalPages() {
+		cp, _ = q.CustomerPage(ctx, cp.TotalPages())
 	}
+	page, totalPages, total := cp.Page, cp.TotalPages(), cp.Total
 
 	var s strings.Builder
 	s.WriteString(`<h2 class="title is-4">Customers</h2>`)
@@ -115,26 +128,18 @@ func (ds *DemoState) BuildCustomersHTML(page int, piiAuth bool) string {
 		s.WriteString(`<thead><tr><th>ID</th><th>Accounts</th><th>Total Savings</th><th>Total Lending</th><th></th></tr></thead><tbody>`)
 	}
 
-	for _, c := range pageCustomers {
-		var savings, lending luca.Amount
-		for _, a := range c.Accounts {
-			if a.Family == gbp.FamilySavings {
-				savings += a.Balance
-			} else {
-				lending += a.Balance
-			}
-		}
+	for _, c := range cp.Customers {
 		if piiAuth {
-			name := ds.lookupName(c.ID)
+			name, _ := q.CustomerName(ctx, c.ID)
 			s.WriteString(fmt.Sprintf(`<tr>
   <td><code>%s</code></td><td>%s</td><td>%d</td><td>%s</td><td>%s</td>
   <td><a href="/customers/%s" class="button is-small is-link is-light">View</a></td>
-</tr>`, c.ID, name, len(c.Accounts), fmtMoney(savings), fmtMoney(lending), c.ID))
+</tr>`, c.ID, name, c.Accounts, fmtMoney(c.Savings), fmtMoney(c.Lending), c.ID))
 		} else {
 			s.WriteString(fmt.Sprintf(`<tr>
   <td><code>%s</code></td><td>%d</td><td>%s</td><td>%s</td>
   <td><a href="/customers/%s" class="button is-small is-link is-light">View</a></td>
-</tr>`, c.ID, len(c.Accounts), fmtMoney(savings), fmtMoney(lending), c.ID))
+</tr>`, c.ID, c.Accounts, fmtMoney(c.Savings), fmtMoney(c.Lending), c.ID))
 		}
 	}
 
@@ -160,26 +165,25 @@ func (ds *DemoState) BuildCustomersHTML(page int, piiAuth bool) string {
 	return s.String()
 }
 
-const txPerDetailPage = 20
-
 // phonePreviewFunc renders an inline phone preview for the admin customer pages.
-// Set by init() in customers_http.go (HTTP mode only); nil in WASM mode.
-var phonePreviewFunc func(ds *DemoState, custID string, accountIdx int) string
+// Set by main() in HTTP mode; nil in WASM mode.
+var phonePreviewFunc func(custID string, accountIdx int) string
 
-// BuildCustomerDetailHTML renders a single customer's detail page with two-column layout.
+// buildCustomerDetailHTML renders a single customer's detail page with two-column layout.
 // Left column: summary, PII, KYC, accounts table. Right column: phone preview.
-func (ds *DemoState) BuildCustomerDetailHTML(id string, piiAuthorized bool, txPage int) string {
-	cust, ok := ds.customerByID(id)
-	if !ok {
+func buildCustomerDetailHTML(q core.StaffQueries, id string, piiAuthorized bool, txPage int) string {
+	ctx := context.Background()
+	cust, err := q.CustomerRecord(ctx, id)
+	if err != nil {
 		return `<div class="notification is-warning">Customer not found.</div>`
 	}
 
-	name := ds.lookupName(cust.ID)
+	name, _ := q.CustomerName(ctx, cust.ID)
 
 	// Compute aggregate values
 	var totalSavings, totalLending luca.Amount
 	for _, a := range cust.Accounts {
-		if a.Family == gbp.FamilySavings {
+		if a.Family == string(gbp.FamilySavings) {
 			totalSavings += a.Balance
 		} else {
 			totalLending += a.Balance
@@ -212,12 +216,12 @@ func (ds *DemoState) BuildCustomerDetailHTML(id string, piiAuthorized bool, txPa
 	s.WriteString(fmt.Sprintf(`<div class="column"><strong>Customer since:</strong> %s (%s)</div>`, cust.JoinDate.Format("2 Jan 2006"), tenure))
 	s.WriteString(fmt.Sprintf(`<div class="column"><strong>Products:</strong> %d</div>`, len(cust.Accounts)))
 	s.WriteString(fmt.Sprintf(`<div class="column"><strong>Relationship value:</strong> %s</div>`, fmtMoney(relationshipValue)))
-	s.WriteString(fmt.Sprintf(`<div class="column"><span class="tag is-success">Active</span></div>`))
+	s.WriteString(`<div class="column"><span class="tag is-success">Active</span></div>`)
 	s.WriteString(`</div></div>`)
 
 	// B. PII section (behind auth gate)
 	if piiAuthorized {
-		piiData := ds.lookupPII(cust.ID)
+		piiData, _ := q.CustomerPII(ctx, cust.ID)
 
 		s.WriteString(`<div class="box">
 <h3 class="title is-5">Personal Information</h3>
@@ -243,11 +247,11 @@ func (ds *DemoState) BuildCustomerDetailHTML(id string, piiAuthorized bool, txPa
 
 	// C. KYC panel
 	kycTag := `<span class="tag is-success">Verified</span>`
-	if !cust.KYCStatus.Verified {
+	if !cust.KYC.Verified {
 		kycTag = `<span class="tag is-danger">Unverified</span>`
 	}
 	riskTag := `<span class="tag is-success is-light">Low</span>`
-	switch cust.KYCStatus.RiskRating {
+	switch cust.KYC.RiskRating {
 	case "Standard":
 		riskTag = `<span class="tag is-info is-light">Standard</span>`
 	case "Medium":
@@ -257,7 +261,7 @@ func (ds *DemoState) BuildCustomerDetailHTML(id string, piiAuthorized bool, txPa
 <h3 class="title is-5">KYC Status</h3>
 <div class="columns">`)
 	s.WriteString(fmt.Sprintf(`<div class="column"><strong>Status:</strong> %s</div>`, kycTag))
-	s.WriteString(fmt.Sprintf(`<div class="column"><strong>Last Check:</strong> %s</div>`, cust.KYCStatus.LastCheckDate.Format("2 Jan 2006")))
+	s.WriteString(fmt.Sprintf(`<div class="column"><strong>Last Check:</strong> %s</div>`, cust.KYC.LastCheck.Format("2 Jan 2006")))
 	s.WriteString(fmt.Sprintf(`<div class="column"><strong>Risk Rating:</strong> %s</div>`, riskTag))
 	s.WriteString(`</div></div>`)
 
@@ -266,14 +270,10 @@ func (ds *DemoState) BuildCustomerDetailHTML(id string, piiAuthorized bool, txPa
 	s.WriteString(`<div class="table-container"><table class="table is-fullwidth is-striped">`)
 	s.WriteString(`<thead><tr><th>Product</th><th>Type</th><th>Sort Code</th><th>Account No.</th><th>Rate</th><th>Balance</th><th>Interest</th><th>Opened</th><th></th></tr></thead><tbody>`)
 	for i, a := range cust.Accounts {
-		familyTag := `<span class="tag is-success is-light">Savings</span>`
-		if a.Family == gbp.FamilyLending {
-			familyTag = `<span class="tag is-info is-light">Lending</span>`
-		}
 		s.WriteString(fmt.Sprintf(`<tr>
   <td>%s</td><td>%s</td><td><code>%s</code></td><td><code>%s</code></td><td>%.1f%%</td><td>%s</td><td>%s</td><td>%s</td>
   <td><a href="/customers/%s/account/%d" class="button is-small is-link is-light">View</a></td>
-</tr>`, a.ProductName, familyTag, a.SortCode, a.AccountNum, a.Rate*100, fmtMoney(a.Balance), fmtMoney(a.Interest), a.OpenDate.Format("2 Jan 2006"), cust.ID, i))
+</tr>`, a.ProductName, familyTag(a.Family), a.SortCode, a.AccountNum, a.Rate*100, fmtMoney(a.Balance), fmtMoney(a.Interest), fmtISODate(a.OpenDate), cust.ID, i))
 	}
 	s.WriteString(`</tbody></table></div>`)
 
@@ -282,7 +282,7 @@ func (ds *DemoState) BuildCustomerDetailHTML(id string, piiAuthorized bool, txPa
 	// Right column: phone preview
 	s.WriteString(`<div class="column is-5">`)
 	if phonePreviewFunc != nil {
-		s.WriteString(phonePreviewFunc(ds, cust.ID, -1))
+		s.WriteString(phonePreviewFunc(cust.ID, -1))
 	}
 	s.WriteString(`</div>`)
 
@@ -291,17 +291,18 @@ func (ds *DemoState) BuildCustomerDetailHTML(id string, piiAuthorized bool, txPa
 	return s.String()
 }
 
-// BuildCustomerAccountHTML renders a per-account detail page with transactions and phone preview.
-func (ds *DemoState) BuildCustomerAccountHTML(custID string, accountIdx int, piiAuthorized bool, txPage int) string {
-	cust, ok := ds.customerByID(custID)
-	if !ok {
+// buildCustomerAccountHTML renders a per-account detail page with transactions and phone preview.
+func buildCustomerAccountHTML(q core.StaffQueries, custID string, accountIdx int, piiAuthorized bool, txPage int) string {
+	ctx := context.Background()
+	cust, err := q.CustomerRecord(ctx, custID)
+	if err != nil {
 		return `<div class="notification is-warning">Customer not found.</div>`
 	}
 	if accountIdx < 0 || accountIdx >= len(cust.Accounts) {
 		return `<div class="notification is-warning">Account not found.</div>`
 	}
 
-	name := ds.lookupName(cust.ID)
+	name, _ := q.CustomerName(ctx, cust.ID)
 	a := cust.Accounts[accountIdx]
 
 	var s strings.Builder
@@ -321,12 +322,8 @@ func (ds *DemoState) BuildCustomerAccountHTML(custID string, accountIdx int, pii
 	s.WriteString(`<div class="column is-7">`)
 
 	// Account detail card
-	familyTag := `<span class="tag is-success is-light">Savings</span>`
-	if a.Family == gbp.FamilyLending {
-		familyTag = `<span class="tag is-info is-light">Lending</span>`
-	}
 	s.WriteString(`<div class="box">`)
-	s.WriteString(fmt.Sprintf(`<h3 class="title is-5">%s %s</h3>`, a.ProductName, familyTag))
+	s.WriteString(fmt.Sprintf(`<h3 class="title is-5">%s %s</h3>`, a.ProductName, familyTag(a.Family)))
 	s.WriteString(`<div class="columns">`)
 	s.WriteString(fmt.Sprintf(`<div class="column"><strong>Sort Code:</strong> <code>%s</code></div>`, a.SortCode))
 	s.WriteString(fmt.Sprintf(`<div class="column"><strong>Account No.:</strong> <code>%s</code></div>`, a.AccountNum))
@@ -334,27 +331,25 @@ func (ds *DemoState) BuildCustomerAccountHTML(custID string, accountIdx int, pii
 	s.WriteString(`</div><div class="columns">`)
 	s.WriteString(fmt.Sprintf(`<div class="column"><strong>Balance:</strong> %s</div>`, fmtMoney(a.Balance)))
 	s.WriteString(fmt.Sprintf(`<div class="column"><strong>Interest:</strong> %s</div>`, fmtMoney(a.Interest)))
-	s.WriteString(fmt.Sprintf(`<div class="column"><strong>Opened:</strong> %s</div>`, a.OpenDate.Format("2 Jan 2006")))
+	s.WriteString(fmt.Sprintf(`<div class="column"><strong>Opened:</strong> %s</div>`, fmtISODate(a.OpenDate)))
 	s.WriteString(`</div></div>`)
 
 	// Per-account transaction history
-	if txPage < 1 {
-		txPage = 1
-	}
-	txEntries, txTotal := ds.ProductTransactions(cust.ID, accountIdx, txPage, txPerDetailPage)
-	txTotalPages := max((txTotal+txPerDetailPage-1)/txPerDetailPage, 1)
+	txs, _ := q.AccountTransactions(ctx, cust.ID, accountIdx, txPage)
+	txPage = txs.Page
+	txTotalPages := max((txs.Total+txs.PerPage-1)/max(txs.PerPage, 1), 1)
 
 	s.WriteString(`<h3 class="title is-5 mt-5">Transaction History</h3>`)
-	if txTotal == 0 {
+	if txs.Total == 0 {
 		s.WriteString(`<p class="has-text-grey">No transactions yet.</p>`)
 	} else {
-		s.WriteString(fmt.Sprintf(`<p class="mb-2 has-text-grey is-size-7">%d transactions</p>`, txTotal))
+		s.WriteString(fmt.Sprintf(`<p class="mb-2 has-text-grey is-size-7">%d transactions</p>`, txs.Total))
 		s.WriteString(`<div class="table-container"><table class="table is-fullwidth is-striped is-hoverable">`)
 		s.WriteString(`<thead><tr><th>Date</th><th>Type</th><th>Amount</th><th>Balance</th><th>Reference</th></tr></thead><tbody>`)
-		for _, tx := range txEntries {
+		for _, tx := range txs.Entries {
 			s.WriteString(fmt.Sprintf(`<tr>
   <td>%s</td><td>%s</td><td>%s</td><td>%s</td><td>%s</td>
-</tr>`, tx.Date.Format("2 Jan 2006"), tx.Type.String(), fmtMoney(tx.Amount), fmtMoney(tx.Balance), tx.Reference))
+</tr>`, fmtISODate(tx.Date), tx.Type, fmtMoney(tx.Amount), fmtMoney(tx.Balance), tx.Reference))
 		}
 		s.WriteString(`</tbody></table></div>`)
 
@@ -380,7 +375,7 @@ func (ds *DemoState) BuildCustomerAccountHTML(custID string, accountIdx int, pii
 	// Right column: phone preview
 	s.WriteString(`<div class="column is-5">`)
 	if phonePreviewFunc != nil {
-		s.WriteString(phonePreviewFunc(ds, cust.ID, accountIdx))
+		s.WriteString(phonePreviewFunc(cust.ID, accountIdx))
 	}
 	s.WriteString(`</div>`)
 

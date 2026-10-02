@@ -16,6 +16,7 @@ import (
 	"time"
 
 	gbp "git.bytestone.uk/hum3/gobank-products"
+	"git.bytestone.uk/hum3/gobank/core"
 	"git.bytestone.uk/hum3/lofigui"
 )
 
@@ -84,7 +85,7 @@ func renderDashControls(d DashData, oob bool, role Role) string {
 
 	if role.Can("sim_controls") {
 		var startStopBtn string
-		if d.Running {
+		if d.Sim.Running {
 			startStopBtn = `<form action="/stop" method="post" style="display:inline"><button class="button is-danger" type="submit">Stop</button></form>`
 		} else {
 			startStopBtn = `<form action="/start" method="post" style="display:inline"><button class="button is-success" type="submit">Run</button></form>`
@@ -136,11 +137,11 @@ func renderDashboardUpdate(d DashData, role Role) string {
 	return s.String()
 }
 
-func renderPaymentsPage(ds *DemoState, piiAuth bool, page int, role Role) {
-	lofigui.HTML(ds.BuildPaymentsHTML(piiAuth, page))
+func renderPaymentsPage(bank core.StaffQueries, ds *DemoState, piiAuth bool, page int, role Role) {
+	running := ds.IsPaymentsRunning()
+	lofigui.HTML(buildPaymentsHTML(bank, piiAuth, page, running))
 
 	if role.Can("send_payment") {
-		running := ds.IsPaymentsRunning()
 		var startStopBtn string
 		if running {
 			startStopBtn = `<form action="/payments/stop" method="post" style="display:inline"><button class="button is-danger" type="submit">Stop Auto</button></form>`
@@ -177,9 +178,14 @@ func main() {
 	app := lofigui.NewApp()
 	app.Version = "Model Bank " + version
 
-	// The customer BFF (ADR-0002 stage 1), on this port under /v1/.
+	// The core as the demo implements it (ADR-0002 stage 1): the BFF and
+	// every staff page read and write the bank through it.
 	appPassword := os.Getenv("GOBANK_APP_PASSWORD")
-	appBFF := newAppBFF(state, appPassword, slog.Default())
+	bank := newCoreAdapter(state, appPassword)
+	phonePreviewFunc = func(custID string, accountIdx int) string { return renderPhonePreview(state, custID, accountIdx) }
+
+	// The customer BFF, on this port under /v1/.
+	appBFF := newAppBFF(bank, slog.Default())
 	http.Handle("/v1/", appBFF)
 	go func() {
 		for range time.Tick(time.Minute) {
@@ -273,8 +279,8 @@ func main() {
 		}
 		sessID := getSessionID(w, r)
 		role := authStore.GetRole(sessID)
-		d := state.DashboardData()
-		content := renderDashboardFull(d, d.Running, role)
+		d := dashboardData(bank, state)
+		content := renderDashboardFull(d, d.Sim.Running, role)
 		if serveHTMX(w, r, content) {
 			return
 		}
@@ -296,7 +302,7 @@ func main() {
 		}
 		sessID := getSessionID(w, r)
 		role := authStore.GetRole(sessID)
-		d := state.DashboardData()
+		d := dashboardData(bank, state)
 		w.Header().Set("Content-Type", "text/html; charset=utf-8")
 		fmt.Fprint(w, renderDashboardUpdate(d, role))
 	})
@@ -387,7 +393,7 @@ func main() {
 			http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 			return
 		}
-		content := renderAndCapture(func() { lofigui.HTML(state.BuildPnLHTML()) })
+		content := renderAndCapture(func() { lofigui.HTML(buildPnLHTML(bank)) })
 		if serveHTMX(w, r, content) {
 			return
 		}
@@ -399,7 +405,7 @@ func main() {
 			http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 			return
 		}
-		content := renderAndCapture(func() { lofigui.HTML(state.BuildBalanceSheetHTML()) })
+		content := renderAndCapture(func() { lofigui.HTML(buildBalanceSheetHTML(bank)) })
 		if serveHTMX(w, r, content) {
 			return
 		}
@@ -413,7 +419,7 @@ func main() {
 			http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 			return
 		}
-		content := renderAndCapture(func() { lofigui.HTML(state.BuildProductsHTML(gbp.FamilySavings)) })
+		content := renderAndCapture(func() { lofigui.HTML(buildProductsHTML(bank, gbp.FamilySavings)) })
 		if serveHTMX(w, r, content) {
 			return
 		}
@@ -425,7 +431,7 @@ func main() {
 			http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 			return
 		}
-		content := renderAndCapture(func() { lofigui.HTML(state.BuildProductsHTML(gbp.FamilyLending)) })
+		content := renderAndCapture(func() { lofigui.HTML(buildProductsHTML(bank, gbp.FamilyLending)) })
 		if serveHTMX(w, r, content) {
 			return
 		}
@@ -445,7 +451,7 @@ func main() {
 		}
 		sessID := getSessionID(w, r)
 		piiAuth := authStore.EffectivePII(sessID)
-		content := renderAndCapture(func() { lofigui.HTML(state.BuildCustomersHTML(page, piiAuth)) })
+		content := renderAndCapture(func() { lofigui.HTML(buildCustomersHTML(bank, page, piiAuth)) })
 		if serveHTMX(w, r, content) {
 			return
 		}
@@ -474,7 +480,7 @@ func main() {
 				http.NotFound(w, r)
 				return
 			}
-			content := renderAndCapture(func() { lofigui.HTML(state.BuildCustomerAccountHTML(parts[0], idx, piiAuth, txPage)) })
+			content := renderAndCapture(func() { lofigui.HTML(buildCustomerAccountHTML(bank, parts[0], idx, piiAuth, txPage)) })
 			if serveHTMX(w, r, content) {
 				return
 			}
@@ -483,7 +489,7 @@ func main() {
 		}
 
 		id := parts[0]
-		content := renderAndCapture(func() { lofigui.HTML(state.BuildCustomerDetailHTML(id, piiAuth, txPage)) })
+		content := renderAndCapture(func() { lofigui.HTML(buildCustomerDetailHTML(bank, id, piiAuth, txPage)) })
 		if serveHTMX(w, r, content) {
 			return
 		}
@@ -504,7 +510,7 @@ func main() {
 		if page < 1 {
 			page = 1
 		}
-		content := renderAndCapture(func() { renderPaymentsPage(state, piiAuth, page, role) })
+		content := renderAndCapture(func() { renderPaymentsPage(bank, state, piiAuth, page, role) })
 		if serveHTMX(w, r, content) {
 			return
 		}
@@ -561,7 +567,7 @@ func main() {
 		}
 		sessID := getSessionID(w, r)
 		piiAuth := authStore.EffectivePII(sessID)
-		content := renderAndCapture(func() { lofigui.HTML(state.BuildPaymentDetailHTML(id, piiAuth)) })
+		content := renderAndCapture(func() { lofigui.HTML(buildPaymentDetailHTML(bank, id, piiAuth)) })
 		if serveHTMX(w, r, content) {
 			return
 		}
@@ -585,7 +591,7 @@ func main() {
 			http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 			return
 		}
-		content := renderAndCapture(func() { lofigui.HTML(state.BuildSettingsHTML()) })
+		content := renderAndCapture(func() { lofigui.HTML(buildSettingsHTML(bank, state.MaxCustomers())) })
 		if serveHTMX(w, r, content) {
 			return
 		}
@@ -629,7 +635,7 @@ func main() {
 			http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 			return
 		}
-		content := renderAndCapture(func() { lofigui.HTML(state.BuildChartsHTML()) })
+		content := renderAndCapture(func() { lofigui.HTML(buildChartsHTML(bank)) })
 		if serveHTMX(w, r, content) {
 			return
 		}
@@ -643,7 +649,7 @@ func main() {
 		}
 		sessID := getSessionID(w, r)
 		piiAuth := authStore.EffectivePII(sessID)
-		content := renderAndCapture(func() { lofigui.HTML(state.BuildBBSIHTML(piiAuth)) })
+		content := renderAndCapture(func() { lofigui.HTML(buildBBSIHTML(bank, piiAuth)) })
 		if serveHTMX(w, r, content) {
 			return
 		}
@@ -662,7 +668,7 @@ func main() {
 		}
 		sessID := getSessionID(w, r)
 		piiAuth := authStore.EffectivePII(sessID)
-		content := renderAndCapture(func() { lofigui.HTML(state.BuildCustomerViewHTML(id, piiAuth)) })
+		content := renderAndCapture(func() { lofigui.HTML(buildCustomerViewHTML(bank, id, piiAuth)) })
 		if serveHTMX(w, r, content) {
 			return
 		}
@@ -676,7 +682,7 @@ func main() {
 			http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 			return
 		}
-		content := state.BuildCashPositionHTML()
+		content := buildCashPositionHTML(bank)
 		if serveHTMX(w, r, content) {
 			return
 		}
@@ -688,7 +694,7 @@ func main() {
 			http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 			return
 		}
-		content := state.BuildCapitalHTML()
+		content := buildCapitalHTML(bank)
 		if serveHTMX(w, r, content) {
 			return
 		}
@@ -700,7 +706,7 @@ func main() {
 			http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 			return
 		}
-		content := state.BuildGiltsHTML()
+		content := buildGiltsHTML(bank)
 		if serveHTMX(w, r, content) {
 			return
 		}
@@ -720,8 +726,8 @@ func main() {
 		pounds := 0.0
 		fmt.Sscanf(r.FormValue("face_value"), "%f", &pounds)
 		faceValue := poundsToPence(pounds) // form input is pounds; storage is minor units
-		if tenor != "" && faceValue >= 1000_00 {
-			state.BuyGilt(tenor, faceValue)
+		if err := bank.BuyGilt(r.Context(), tenor, faceValue); err != nil {
+			log.Printf("buy gilt %s %d: %v", tenor, faceValue, err)
 		}
 		http.Redirect(w, r, "/treasury/gilts", http.StatusSeeOther)
 	})
