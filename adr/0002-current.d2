@@ -1,0 +1,34 @@
+# ADR-0002, where we are: what is fused, and what lives only in memory.
+direction: right
+
+demo: cmd/demo (package main, one process) {
+  ui: Web UI (Build…HTML, lofigui / WASM JS)
+  state: DemoState {
+    sim: Simulation loop and controls
+    bank: Bank state (register, payments, treasury, book)
+    memory: Held only in memory {
+      style.stroke-dash: 3
+      engine: Products engine accounts (gobank-products)
+      txlog: txLog (capped 100k)
+      hist: Chart histories
+    }
+  }
+  api: Open /api/customer/ + phone frame
+  ui -> state: calls directly
+  api -> state
+}
+
+bff: cmd/bff {
+  server: BFF (sessions, login, screens)
+  stub: stubbank {style.stroke-dash: 3}
+  server -> stub: no real bank
+}
+
+db: Database (pglike or Postgres) {
+  shape: cylinder
+}
+
+app: Mobile app (Flutter)
+
+demo.state -> db: register, ledger, payments, PII, accrual_state
+app -> bff.server

@@ -1,0 +1,51 @@
+# ADR-0002 target: where each piece runs, per topology. Same packages in all three.
+direction: right
+
+wasm: WASM (browser tab, simulation) {
+  tab: One Go process {
+    bff: BFF (HTML)
+    gen: Generators + warped clock
+    wf: Day-start workflow
+    core: Core
+    bff -> core
+    gen -> core
+    wf -> core
+  }
+  db: pglike (one handle) {shape: cylinder}
+  tab.core -> db
+}
+
+single: Single server {
+  proc: One Go process {
+    bff: BFF
+    gen: Generators + warped clock (simulation only)
+    wf: Day-start workflow
+    core: Core
+    bff -> core
+    gen -> core
+    wf -> core
+  }
+  db: Postgres (one handle) {shape: cylinder}
+  proc.core -> db
+}
+
+dist: Distributed {
+  bffs: BFF × N (split by audience at scale) {
+    style.multiple: true
+    core: Core
+  }
+  genp: Event intake: scheme feeds, or generators {
+    core: Core
+  }
+  wfp: Day-start workflow (one runner) {
+    core: Core
+  }
+  primary: Postgres primary (commands) {shape: cylinder}
+  replica: Replicas + projections (queries) {shape: cylinder; style.multiple: true}
+  primary -> replica: replicate / project
+
+  bffs.core -> primary: commands
+  bffs.core -> replica: queries
+  genp.core -> primary: commands
+  wfp.core -> primary: next-day projections
+}

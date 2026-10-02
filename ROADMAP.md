@@ -98,10 +98,26 @@ root module, `cmd/bff` is the service binary, and `app/` is the Flutter shell.
 
 ### To Do (in order)
 
-1. **Extract the banking core** — move `DemoState` and the domain types out of
-   `cmd/demo` (package main) into an importable package and implement
-   `bff.Bank` on it, so `cmd/bff` serves real data
-2. **Demo phone frame onto the screen layer** — `cmd/demo/bankapp_render.go`
+1. **Transition to the target architecture** — [ADR-0002](adr/0002-target-architecture.md):
+   one BFF for app and web, a core library of components over a database
+   that holds every fact, accruals pipelined one day ahead by a start-of-day
+   workflow, and a simulation that differs from production only in event
+   sources and the clock. Nine stages, each leaving the demo running in
+   WASM, on a server and on Hetzner:
+   1. Seams — core commands/queries as interfaces; `DemoState` adapts to
+      them; the BFF runs in the demo process and the app shows real data
+   2. Stored truth — transactions as a ledger projection, stored chart
+      snapshots, sessions in the database
+   3. Pipelined accruals — start-of-day workflow writes next-day
+      projections; interest application is product code inside it
+   4. Events and clock — bank and simulation split; generators and an
+      injected clock
+   5. Core into packages — one component at a time
+   6. One BFF — staff UI and customer web through the BFF (absorbs item 2)
+   7. Read/write split — separate read and write handles
+   8. Many processes — several BFFs, a generator and one workflow runner
+   9. Simulation becomes tests
+2. **Demo phone frame onto the screen layer** (ADR-0002 stage 6) — `cmd/demo/bankapp_render.go`
    becomes a caller of `screen.HTML`, so browser and app show identical screens
    from one source, and the open `/api/customer/` endpoints are retired
 3. **Native security plugin** — biometric-bound keys (Secure Enclave, StrongBox),
@@ -123,7 +139,9 @@ root module, `cmd/bff` is the service binary, and `app/` is the Flutter shell.
 
 ## Phase 3 — Kubernetes + AlloyDB
 
-Same banking core, deployed as services in a Kubernetes cluster with a real database.
+The ADR-0002 stage 8 topology (several BFFs, a generator, one workflow
+runner, primary and replica) deployed to a Kubernetes cluster with a real
+database.
 
 - Deploy to Kubernetes cluster
 - AlloyDB (Postgres-compatible) backend
@@ -133,7 +151,7 @@ Same banking core, deployed as services in a Kubernetes cluster with a real data
 
 ## Phase 4 — CockroachDB + Scale
 
-Prove the core works across regions with distributed SQL.
+The same stage 8 topology across regions on distributed SQL.
 
 - CockroachDB backend
 - Multi-region deployment

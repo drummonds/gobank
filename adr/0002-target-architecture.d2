@@ -1,0 +1,57 @@
+# ADR-0002 target architecture: what may call what.
+# Simulation and production differ only in the event sources and the clock.
+direction: down
+
+clients: Clients {
+  app: Mobile app (Flutter)
+  cweb: Customer web
+  sweb: Staff web (incl. simulation console)
+}
+
+bff: BFF {tooltip: JSON for the app, HTML for the web apps; splits by audience at scale}
+
+events: Event sources {
+  real: Real (payment schemes) {tooltip: production}
+  gen: Generators (population, behaviour, payments) {
+    style.stroke-dash: 3
+    tooltip: simulation only; become the test framework
+  }
+}
+
+clock: Clock {
+  wall: Wall clock (production)
+  warp: Warped clock (simulation) {style.stroke-dash: 3}
+}
+
+workflow: Day-start workflow {tooltip: every account, projected one day ahead; paced over the day}
+
+core: Core library {
+  ledger
+  customers
+  products
+  payments
+  treasury
+  commands: Commands
+  queries: Queries
+}
+
+data: Data {
+  write: Write DB (movements, projections, sessions) {shape: cylinder}
+  read: Read DB (replica + read projections) {shape: cylinder}
+  write -> read: replicate / project
+}
+
+clients.app -> bff
+clients.cweb -> bff
+clients.sweb -> bff
+
+bff -> core.commands
+bff -> core.queries
+events.real -> core.commands
+events.gen -> core.commands: same entry points
+core -> clock: reads today
+workflow -> core.commands: project each account
+clock -> workflow: new day
+
+core.commands -> data.write: write + project ahead
+core.queries -> data.read: read the day wanted
