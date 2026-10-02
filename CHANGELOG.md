@@ -6,6 +6,9 @@
 - The Flutter app's `android/` and `ios/` platform folders are generated
   and committed; the Android debug manifest allows cleartext traffic so a
   debug build can reach the demo over plain HTTP (release builds cannot).
+- Taskfile tasks for the Android emulator: `app:emulator` starts the
+  Android Studio AVD and waits for boot, `app:emulator:stop` kills it,
+  `app:run` runs the app on it (`BFF_URL=` to point it at a demo).
 
 ## [0.3.54] - 2026-10-02
 

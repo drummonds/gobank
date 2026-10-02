@@ -37,6 +37,23 @@ flutter run                                   # Android emulator: 10.0.2.2 reach
 flutter run --dart-define=BFF_URL=http://192.168.1.10:8090   # a real device on your LAN
 ```
 
+## Android emulator
+
+The emulator and one AVD (`Medium_Phone_API_37.0`, created in Android
+Studio) live outside the repo under `~/Android/Sdk` and `~/.android/avd`.
+From the repo root:
+
+```sh
+task app:emulator          # start it and wait for boot (no-op if one is running)
+task app:run               # start if needed, then flutter run on it
+task app:run BFF_URL=http://192.168.1.10:1347   # against the demo instead of the stub
+task app:emulator:stop
+```
+
+Or directly: `flutter emulators --launch Medium_Phone_API_37.0` and
+`adb -s emulator-5554 emu kill`. `flutter emulators --create --name xyz`
+makes another AVD; pass it as `AVD=xyz`.
+
 Stub credentials: customer `cust-001` or `cust-002`, password `password`.
 
 ## Run against the demo

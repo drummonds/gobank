@@ -181,6 +181,28 @@ tasks:
     cmds:
       - go run .
 
+  app:emulator:
+    desc: Start the Android emulator (AVD from Android Studio; override with AVD=name)
+    vars:
+      AVD: '{{.AVD | default "Medium_Phone_API_37.0"}}'
+    status:
+      - adb devices | grep -q '^emulator-'
+    cmds:
+      - flutter emulators --launch {{.AVD}}
+      - adb wait-for-device shell 'while [ "$(getprop sys.boot_completed)" != 1 ]; do sleep 1; done'
+
+  app:emulator:stop:
+    desc: Stop the running Android emulator
+    cmds:
+      - adb -s emulator-5554 emu kill
+
+  app:run:
+    desc: Run the Flutter app on the emulator (starts it if needed; BFF_URL overrides the default http://10.0.2.2:8090)
+    dir: app
+    deps: [app:emulator]
+    cmds:
+      - flutter run -d emulator-5554 {{if .BFF_URL}}--dart-define=BFF_URL={{.BFF_URL}}{{end}}
+
   cloud:ui:
     desc: "Environments console (states, create/redeploy/down) served by ../gobank-deploy, which owns all Hetzner deployment (run via tp secrets)"
     cmds:
