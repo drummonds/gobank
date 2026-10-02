@@ -2,6 +2,11 @@
 
 ## [Unreleased]
 
+### Added
+- The Flutter app's `android/` and `ios/` platform folders are generated
+  and committed; the Android debug manifest allows cleartext traffic so a
+  debug build can reach the demo over plain HTTP (release builds cannot).
+
 ## [0.3.54] - 2026-10-02
 
  - Core contracts package; the app logs in to the running demo
@@ -16,9 +21,6 @@
   real customers: `GOBANK_APP_PASSWORD` is the one password every customer
   logs in with (unset = app login off). Transactions still come from the
   demo's in-memory log until stage 2.
-- The Flutter app's `android/` and `ios/` platform folders are generated
-  and committed; the Android debug manifest allows cleartext traffic so a
-  debug build can reach the demo over plain HTTP (release builds cannot).
 
 ### Fixed
 - `bff/stubbank` returned transactions grouped by account, oldest first,

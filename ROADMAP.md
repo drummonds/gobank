@@ -112,11 +112,10 @@ root module, `cmd/bff` is the service binary, and `app/` is the Flutter shell.
       Stories: (a) [x] (unreleased) customer contracts in `core`, contract
       suite, demo adapter, BFF at `/v1/`; (b) [ ] gobank-deploy sets
       `GOBANK_APP_PASSWORD` per environment and shows it (its story 1g);
-      (c) [ ] Android debug build — install Flutter, `flutter create`,
-      commit `app/android` and `app/ios` (the Flutter convention; the
-      README's "generated, not committed" dates from having no SDK), allow
-      cleartext traffic in the debug manifest only — then (a) is
-      sense-checked from a phone against Hetzner; (d) [ ] staff queries;
+      (c) [x] (unreleased) Android debug build — `app/android` and
+      `app/ios` generated and committed, cleartext traffic allowed in the
+      debug manifest only — then (a) is sense-checked from a phone against
+      Hetzner; (d) [ ] staff queries;
       (e) [ ] commands
    2. Stored truth — transactions as a ledger projection, stored chart
       snapshots, sessions in the database
