@@ -2,6 +2,11 @@
 
 ## [Unreleased]
 
+ - ADR-0003: from stage 2 every release is an in-place upgrade of the
+   running demo with recorded downtime, blue-green at stage 8; roadmap
+   ticks stage 1 (v0.4.0), breaks stage 2 into stories, adds feature
+   flags and multiple payment rails
+
 ## [0.4.0] - 2026-10-03
 
  - ADR-0002 stage 1 complete: staff queries and commands as core contracts, every staff page through them; Flutter platform folders and emulator tasks

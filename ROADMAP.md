@@ -19,6 +19,30 @@ The browser-based model proves the banking core works end-to-end.
 
 ### To Do
 
+- **Feature flag component** — a `flags` component (own table, ADR-0001)
+  holding named on/off switches, read through a core query and flipped from
+  a staff page; WASM keeps them in memory. Needed for the ADR-0002
+  transition, where an old and a new path run side by side (stage 2
+  computed versus projected transactions, a new payment rail) and the demo
+  must switch between them per deployment without a rebuild. A flag is
+  short-lived: it is deleted once both paths converge. Out of scope:
+  percentage rollouts, per-customer targeting, external flag services.
+  Open: startup-only (read once from config; simple, no table, every process
+  agrees) versus live (stored, flippable mid-run; lets the demo show a
+  cutover or a kill switch without a restart)
+- **Multiple payment rails** — every payment records the rail it travelled
+  (internal book transfer, FPS, Bacs, CHAPS) and each rail is a scheme
+  adapter behind one interface with its own settlement timing, cut-offs,
+  limits and outage behaviour; a routing rule picks the rail from amount and
+  urgency. The payments component stays the one bank-level view (one
+  lifecycle, one list, filterable by rail) and gains a per-rail view:
+  volumes, queue depth, settlement position and scheme status. The existing
+  mock-fps and FPS stand-in items below become the FPS rail's stories, and
+  the adapter boundary is what Phase 3 unbundles. Out of scope: real scheme
+  messaging (ISO 20022), cards. Open: rail as a column on the one
+  `payments` table (the coherent view comes free) versus a table per rail
+  with a bank-level union view (each rail's data differs — Bacs has a
+  three-day cycle, CHAPS is same-day, FPS instant)
 - **Daily accrual cost scales with every account** — each account gets a
   ledger posting every day (`collectAccrualMovements`: a "Daily interest
   accrual" movement whenever a new whole penny has accrued, plus a reversal
@@ -107,24 +131,42 @@ root module, `cmd/bff` is the service binary, and `app/` is the Flutter shell.
    WASM, on a server and on Hetzner. Every story ends with a release
    deployed to the Hetzner demo and sense-checked there before the next
    starts:
-   1. Seams — core commands/queries as interfaces; `DemoState` adapts to
+   1. [x] (v0.4.0) Seams — core commands/queries as interfaces; `DemoState` adapts to
       them; the BFF runs in the demo process and the app shows real data.
       Stories: (a) [x] (v0.3.54) customer contracts in `core`, contract
       suite, demo adapter, BFF at `/v1/`; (b) [x] gobank-deploy sets
       `GOBANK_APP_PASSWORD` per environment and shows it (its story 1g,
-      gobank-deploy v0.3.0); (c) [x] (unreleased) Android debug build —
+      gobank-deploy v0.3.0); (c) [x] (v0.4.0) Android debug build —
       `app/android` and `app/ios` generated and committed, cleartext
-      traffic allowed in the debug manifest only — then (a) is
-      sense-checked from a phone against Hetzner (still to do);
-      (d) [x] (unreleased) staff queries — `core.StaffQueries`, one
+      traffic allowed in the debug manifest only — then (a)
+      sense-checked from a phone against Hetzner (2026-10-03);
+      (d) [x] (v0.4.0) staff queries — `core.StaffQueries`, one
       interface per component (book, customer register, payments,
       products, treasury), every staff page rendering from them;
-      (e) [x] (unreleased) commands — `core.Commands`: `Transfer` (the
+      (e) [x] (v0.4.0) commands — `core.Commands`: `Transfer` (the
       payments generator calls it) and `BuyGilt` (the treasury page calls
       it). Opening a customer stays inside the generator until stage 4
       splits generators from the bank
    2. Stored truth — transactions as a ledger projection, stored chart
-      snapshots, sessions in the database
+      snapshots, sessions in the database. From here every story is an
+      upgrade of the running Hetzner demo, downtime accepted and recorded
+      until stage 8 ([ADR-0003](adr/0003-upgrade-in-place-until-stage-8.md);
+      deployment level 2 on the manual's
+      [maturity ladder](https://man.bytestone.uk/maturity.html)), and
+      development moves to a branch per story merged by pull request on
+      the Forgejo (code level 1). Stories: (a) [ ] simulated day length —
+      a setting (`GOBANK_DAY_LENGTH`, zero means flat out; shown and set on
+      the simulation page) so a day can take two hours and an upgrade
+      lands mid-day; (b) [ ] resume — the demo stops dropping its tables
+      at start and rebuilds its state from the database, with a schema
+      version table and versioned migrations replacing the ad hoc
+      `ALTER TABLE`; (c) [ ] upgrade drill — redeploy N to N+1 on Hetzner
+      mid-day with an expand/contract migration, record the downtime,
+      roll back to N from the release store and confirm nothing is lost;
+      the drill is then every later story's acceptance; (d) [ ]
+      transactions as a ledger projection replacing `txLog`; (e) [ ] chart
+      histories as stored daily snapshots; (f) [ ] sessions in the
+      database
    3. Pipelined accruals — start-of-day workflow writes next-day
       projections; interest application is product code inside it
    4. Events and clock — bank and simulation split; generators and an
@@ -132,7 +174,9 @@ root module, `cmd/bff` is the service binary, and `app/` is the Flutter shell.
    5. Core into packages — one component at a time
    6. One BFF — staff UI and customer web through the BFF (absorbs item 2)
    7. Read/write split — separate read and write handles
-   8. Many processes — several BFFs, a generator and one workflow runner
+   8. Many processes — several BFFs, a generator and one workflow runner;
+      deploys go blue-green (deployment level 3), ending the downtime
+      accepted since stage 2
    9. Simulation becomes tests
 2. **Demo phone frame onto the screen layer** (ADR-0002 stage 6) — `cmd/demo/bankapp_render.go`
    becomes a caller of `screen.HTML`, so browser and app show identical screens
