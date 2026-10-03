@@ -35,6 +35,11 @@ type DemoState struct {
 	epoch               int // bumped by Reset; work planned before a reset is not applied after it (mu)
 	running             bool
 	cancel              context.CancelFunc
+	loopDone            chan struct{} // closed when the run loop's goroutine has exited (mu)
+	shuttingDown        bool          // the loop was stopped by Shutdown, not the operator: the run is still on (mu)
+	resumedRunning      bool          // the run was going when the previous process stopped
+	dayEndsAt           time.Time     // when the day in progress ends, zero when flat out or stopped (mu)
+	dsn                 string        // the database this state was opened on, "" for in-memory
 	products            []Product
 	nCustomers          int // customers on the books (mu)
 	currentDay          time.Time
@@ -113,8 +118,111 @@ func NewDemoState() *DemoState {
 }
 
 // NewDemoStateWithDSN creates a DemoState backed by the given database.
-// Empty dsn uses in-memory pglike; a postgres:// DSN uses real PostgreSQL.
+// Empty dsn uses in-memory pglike; a postgres:// DSN uses real PostgreSQL,
+// and the run recorded in it, if any, resumes.
 func NewDemoStateWithDSN(dsn string) *DemoState {
+	return newDemoState().openOn(openDB(dsn), dsn)
+}
+
+// newDemoStateOn is a DemoState over an already open database: the next
+// process over the same database, in tests.
+func newDemoStateOn(db *sql.DB, dsn string) *DemoState {
+	return newDemoState().openOn(db, dsn)
+}
+
+// openOn takes db as the state's database and resumes the run recorded in
+// it, or records the start of a fresh one.
+func (ds *DemoState) openOn(db *sql.DB, dsn string) *DemoState {
+	ds.attachDB(db, dsn)
+	run, resumed := loadRun(ds.db)
+	if resumed {
+		ds.currentDay, ds.dayCount = run.Day, run.DayCount
+		ds.boeRate = lookupBoERate(run.Day)
+		ds.boeHistory = []RatePoint{{Date: run.Day, Rate: ds.boeRate}}
+		ds.rng = rand.New(rand.NewSource(42 + int64(run.DayCount)))
+		ds.resumedRunning = run.Running
+	}
+	ds.initLedger()
+	if resumed {
+		ds.resumeBooks()
+	} else {
+		saveRun(ds.db, runState{Day: ds.currentDay})
+	}
+	ds.recordHistory()
+	return ds
+}
+
+// ResumedRunning reports whether the run was going when the previous
+// process stopped; the caller starts the loop again.
+func (ds *DemoState) ResumedRunning() bool { return ds.resumedRunning }
+
+// resumeBooks rebuilds the in-memory picture of the bank from the
+// database: the engine adopts every registered account with its ledger
+// balance, accrued interest and the book totals are read back, and the
+// sequence numbers continue from the rows on record. The daily histories
+// and the transaction log start again from today, until stage 2 stories
+// (d) and (e) store them.
+func (ds *DemoState) resumeBooks() {
+	if ds.db == nil || ds.sim == nil || ds.ledger == nil {
+		return
+	}
+	ds.mu.Lock()
+	defer ds.mu.Unlock()
+	registered, err := registeredAccounts(ds.db)
+	if err != nil {
+		log.Printf("resume: %v", err)
+		return
+	}
+	balances, err := registeredBalances(ds.db)
+	if err != nil {
+		log.Printf("resume: %v", err)
+		return
+	}
+	ledgerAccounts, err := ds.ledger.ListAccounts("")
+	if err != nil {
+		log.Printf("resume: ledger accounts: %v", err)
+		return
+	}
+	byID := make(map[string]*luca.Account, len(ledgerAccounts))
+	for _, a := range ledgerAccounts {
+		byID[a.ID] = a
+	}
+	ds.simMu.Lock()
+	adopted := 0
+	for _, r := range registered {
+		acct, ok := byID[r.LedgerAccountID]
+		if !ok {
+			log.Printf("resume: registered account %s of %s is not in the ledger", r.LedgerAccountID, r.CustomerID)
+			continue
+		}
+		p, ok := ds.productByID(r.ProductID)
+		if !ok {
+			log.Printf("resume: account %s of %s is on unknown product %s", r.LedgerAccountID, r.CustomerID, r.ProductID)
+			continue
+		}
+		_, err := ds.sim.AdoptAccount(gbp.Adoption{
+			Account: acct, ProductID: r.ProductID, Status: gbp.StatusActive, OpenedAt: r.Opened,
+			Balance: balances[r.LedgerAccountID],
+			Params:  map[string]string{"annual_rate": fmt.Sprintf("%f", p.Rate)},
+		})
+		if err != nil {
+			log.Printf("resume: adopt %s: %v", r.LedgerAccountID, err)
+			continue
+		}
+		adopted++
+	}
+	ds.syncFromLedgerLocked()
+	ds.simMu.Unlock()
+	ds.nCustomers = ds.custStoreCount()
+	ds.nextCustSeq = ds.lastCustomerSeq() + 1
+	ds.nextPaymentID = lastPaymentID(ds.db) + 1
+	log.Printf("resume: day %d (%s), %d customers, %d accounts, savings %s, lending %s",
+		ds.dayCount, ds.currentDay.Format("2006-01-02"), ds.nCustomers, adopted, fmtMoney(ds.book.Savings), fmtMoney(ds.book.Lending))
+}
+
+// newDemoState is the state of a bank on its first day, before it has a
+// database.
+func newDemoState() *DemoState {
 	startDay := time.Date(2020, 1, 1, 0, 0, 0, 0, time.UTC)
 	boeRate := lookupBoERate(startDay)
 	rng := rand.New(rand.NewSource(42))
@@ -133,9 +241,6 @@ func NewDemoStateWithDSN(dsn string) *DemoState {
 		now:           time.Now,
 		memoryLimit:   defaultMemoryLimit,
 	}
-	ds.initDBWithDSN(dsn)
-	ds.initLedger()
-	ds.recordHistory()
 	return ds
 }
 
@@ -167,7 +272,7 @@ func (ds *DemoState) initLedger() {
 	for _, p := range ds.products {
 		sim.RegisterProduct(p.Product)
 	}
-	equityAcct, err := ledger.CreateAccount("Equity:Capital", "GBP", -2, 0)
+	equityAcct, err := ensureLedgerAccount(ledger, "Equity:Capital") // already there on a resumed run
 	if err != nil {
 		log.Printf("initLedger: create equity: %v", err)
 		return
@@ -443,6 +548,8 @@ func (ds *DemoState) advanceDay() {
 	}
 
 	boeNumerator := ds.boeAccruedNumerator
+	// A shutdown is not a stop: the next process carries the run on.
+	run := runState{Day: ds.currentDay, DayCount: ds.dayCount, Running: ds.running || ds.shuttingDown}
 	db, ledger := ds.db, ds.ledger
 	ds.mu.Unlock()
 
@@ -460,6 +567,9 @@ func (ds *DemoState) advanceDay() {
 	if newCustomer != nil {
 		ds.persistCustomerPlan(*newCustomer)
 	}
+	// The day is on record once everything it wrote is: a restart from
+	// here resumes on the next day.
+	saveRun(db, run)
 }
 
 // codeDailyAccrual marks daily interest accrual movements and their month-end
@@ -720,6 +830,14 @@ func (ds *DemoState) refreshFromLedger() {
 		log.Printf("refreshFromLedger: %v", err)
 		return
 	}
+	ds.syncFromLedgerLocked()
+}
+
+// syncFromLedgerLocked reads back what the database holds of the bank's
+// position beyond the engine's balances: accrued interest (per account and
+// BoE), the book totals and the BoE interest applied. Must be called with
+// ds.mu and ds.simMu held.
+func (ds *DemoState) syncFromLedgerLocked() {
 	ds.loadAccrualState()
 	ds.refreshBookTotals()
 	// Applied BoE interest is derivable from its ledger account balance.
@@ -759,11 +877,18 @@ func (ds *DemoState) Start() {
 		return
 	}
 	ctx, cancel := context.WithCancel(context.Background())
+	done := make(chan struct{})
 	ds.cancel = cancel
+	ds.loopDone = done
 	ds.running = true
+	ds.shuttingDown = false
+	run := runState{Day: ds.currentDay, DayCount: ds.dayCount, Running: true}
+	db := ds.db
 	ds.mu.Unlock()
+	saveRun(db, run)
 
 	go func() {
+		defer close(done)
 		// Self-pace: wait after each day completes rather than on a
 		// fixed-rate ticker (see minDayGap). With a day length set, the
 		// wait is what remains of the day, so a day takes at least that
@@ -775,23 +900,69 @@ func (ds *DemoState) Start() {
 				return
 			case <-time.After(wait):
 				start := ds.now()
+				dayLength := ds.settings.Get().DayLength
+				ds.setDayEnd(start, dayLength)
 				ds.advanceDay()
-				wait = nextDayDelay(ds.settings.Get().DayLength, ds.now().Sub(start))
+				wait = nextDayDelay(dayLength, ds.now().Sub(start))
 			}
 		}
 	}()
 }
 
-func (ds *DemoState) Stop() {
+// setDayEnd records when the day starting now ends: a day length on, or
+// never when flat out.
+func (ds *DemoState) setDayEnd(start time.Time, dayLength time.Duration) {
 	ds.mu.Lock()
 	defer ds.mu.Unlock()
+	ds.dayEndsAt = time.Time{}
+	if dayLength > 0 {
+		ds.dayEndsAt = start.Add(dayLength)
+	}
+}
+
+func (ds *DemoState) Stop() {
+	ds.mu.Lock()
 	if !ds.running {
+		ds.mu.Unlock()
 		return
 	}
 	ds.running = false
 	if ds.cancel != nil {
 		ds.cancel()
 		ds.cancel = nil
+	}
+	ds.dayEndsAt = time.Time{}
+	run := runState{Day: ds.currentDay, DayCount: ds.dayCount, Running: false}
+	db := ds.db
+	ds.mu.Unlock()
+	saveRun(db, run)
+}
+
+// Shutdown is the process ending, not the operator stopping the run: the
+// loop is told to stop and the day in progress is waited for (bounded by
+// ctx), so the database is consistent for the next process, which finds
+// the run still recorded as running and carries it on.
+func (ds *DemoState) Shutdown(ctx context.Context) error {
+	ds.mu.Lock()
+	done := ds.loopDone
+	if ds.running {
+		ds.running = false
+		ds.shuttingDown = true
+		if ds.cancel != nil {
+			ds.cancel()
+			ds.cancel = nil
+		}
+	}
+	ds.dayEndsAt = time.Time{}
+	ds.mu.Unlock()
+	if done == nil {
+		return nil
+	}
+	select {
+	case <-done:
+		return nil
+	case <-ctx.Done():
+		return ctx.Err()
 	}
 }
 
@@ -928,8 +1099,19 @@ func (ds *DemoState) Reset() {
 	// accrual rows from before the reset.
 	ds.clearRegisterLocked()
 	ds.clearAccrualLocked()
-	ds.initDB()
+	ds.dayEndsAt = time.Time{}
+	ds.shuttingDown = false
+	ds.resumedRunning = false
+	if ds.dbIsPostgres {
+		// A fresh run on the same database: every table goes and the
+		// schema is migrated again from nothing.
+		dropAllPublicTables(ds.db)
+		ds.attachDB(ds.db, ds.dsn)
+	} else {
+		ds.initDB()
+	}
 	ds.initLedger()
+	saveRun(ds.db, runState{Day: ds.currentDay})
 	ds.recordHistory()
 }
 
@@ -1005,6 +1187,7 @@ type SimStatus struct {
 	InterestPer12h      int64   // interest movements the engine posts per 12h at its measured rate
 	MemoryExceeded      bool
 	DayLength           time.Duration // wall-clock length of a simulated day; zero is flat out
+	DayEndsIn           time.Duration // what is left of the day in progress; zero when flat out or stopped
 }
 
 // SimStatus returns the console state under one lock.
@@ -1015,7 +1198,12 @@ func (ds *DemoState) SimStatus() SimStatus {
 	if ds.addingCustRunning {
 		addRate = perSecond(ds.addingCustProgress, ds.now().Sub(ds.addingCustStart))
 	}
+	var dayEndsIn time.Duration
+	if ds.running && !ds.dayEndsAt.IsZero() {
+		dayEndsIn = max(ds.dayEndsAt.Sub(ds.now()), 0)
+	}
 	return SimStatus{
+		DayEndsIn:           dayEndsIn,
 		Running:             ds.running,
 		AddingCust:          ds.addingCustRunning,
 		AddingProgress:      ds.addingCustProgress,
@@ -1060,7 +1248,11 @@ func renderDashContent(d DashData) string {
 	dateStr := d.Bank.Day.Format("2 Jan 2006")
 	nimStr := fmt.Sprintf("%.0f bps", d.Bank.NIMBps)
 	s.WriteString(`<nav class="level mb-4">`)
-	s.WriteString(fmt.Sprintf(`<div class="level-item has-text-centered"><div><p class="heading">Day</p><p class="title is-5">%d &mdash; %s</p></div></div>`, d.Bank.DayCount, dateStr))
+	countdown := ""
+	if d.Sim.DayEndsIn > 0 {
+		countdown = fmt.Sprintf(`<p class="heading">ends in %s</p>`, d.Sim.DayEndsIn.Round(time.Second))
+	}
+	s.WriteString(fmt.Sprintf(`<div class="level-item has-text-centered"><div><p class="heading">Day</p><p class="title is-5">%d &mdash; %s</p>%s</div></div>`, d.Bank.DayCount, dateStr, countdown))
 	s.WriteString(fmt.Sprintf(`<div class="level-item has-text-centered"><div><p class="heading">Customers</p><p class="title is-5">%d</p></div></div>`, d.Bank.Customers))
 	s.WriteString(fmt.Sprintf(`<div class="level-item has-text-centered"><div><p class="heading">NIM</p><p class="title is-5">%s</p></div></div>`, nimStr))
 	if d.Sim.DayLength > 0 {

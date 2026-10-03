@@ -12,6 +12,8 @@ git.bytestone.uk/hum3/gobank-db v0.2.0 h1:kMysLV0VTO8hzvS+FMGBg1UoCr+/+Oesag8hBT
 git.bytestone.uk/hum3/gobank-db v0.2.0/go.mod h1:wCD+SdqmWlwoKc55VUnC/X3bNtkp3KedWD1cja0D9QA=
 git.bytestone.uk/hum3/gobank-products v0.1.10 h1:y6MmGkXfZqPMSdT4x0/SgaL4QfNjcwCUfnlH8Ceq1Aw=
 git.bytestone.uk/hum3/gobank-products v0.1.10/go.mod h1:szlHyCmqdAtdA22/qkQOcJXOQI0VoyY3ygGLmyzOjYM=
+git.bytestone.uk/hum3/gobank-products v0.1.11-0.20261003153435-a52c2d1effbc h1:ahUPFezNf3CJRDNQwDvIzBxPBcUswUMa23ceIY6j3/I=
+git.bytestone.uk/hum3/gobank-products v0.1.11-0.20261003153435-a52c2d1effbc/go.mod h1:szlHyCmqdAtdA22/qkQOcJXOQI0VoyY3ygGLmyzOjYM=
 git.bytestone.uk/hum3/gobanks-customers v0.2.1 h1:zbZe3kSlcUeJJx/la1vcEIAX49fOhBj6daYw+HKd5F4=
 git.bytestone.uk/hum3/gobanks-customers v0.2.1/go.mod h1:yMxA+b9Lu/FoAivvycwsoAHvQgy8SgaYitO5peIDlEk=
 git.bytestone.uk/hum3/gogal v0.2.0 h1:ZV/8PRYhzfqOLpN9YVh+QtS3TDe0P9UJPvTMuyasTBw=

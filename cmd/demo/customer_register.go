@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"fmt"
 	"log"
+	"time"
 
 	luca "git.bytestone.uk/hum3/go-luca"
 	gbp "git.bytestone.uk/hum3/gobank-products"
@@ -18,8 +19,8 @@ import (
 // idx is the account's position in the customer's account list; the bank
 // app and admin pages address accounts by (customer, index).
 
-func (ds *DemoState) createCustomerAccountsTable() {
-	_, err := ds.db.Exec(`CREATE TABLE IF NOT EXISTS customer_accounts (
+var customersSchema = componentSchema{component: "customers", migrations: []migration{
+	{1, []string{`CREATE TABLE IF NOT EXISTS customer_accounts (
 		customer_id VARCHAR(20) NOT NULL,
 		idx INTEGER NOT NULL,
 		ledger_account_id VARCHAR(64) NOT NULL UNIQUE,
@@ -28,11 +29,13 @@ func (ds *DemoState) createCustomerAccountsTable() {
 		account_num VARCHAR(8) NOT NULL,
 		opened TIMESTAMP NOT NULL,
 		PRIMARY KEY (customer_id, idx)
-	)`)
-	if err != nil {
-		log.Printf("initDB: create customer_accounts: %v", err)
-	}
-	// The contract view: the register as other components read it.
+	)`}},
+}}
+
+// createCustomerAccountsView (re)creates the contract view: the register
+// as other components read it. Recreated at every start so a durable
+// database picks up a changed definition.
+func (ds *DemoState) createCustomerAccountsView() {
 	for _, stmt := range []string{
 		`DROP VIEW IF EXISTS contract_customer_accounts`,
 		`CREATE VIEW contract_customer_accounts AS
@@ -53,6 +56,80 @@ func (ds *DemoState) clearRegisterLocked() {
 	if _, err := ds.db.Exec(`DELETE FROM customer_accounts`); err != nil {
 		log.Printf("clearRegister: %v", err)
 	}
+}
+
+// registeredAccount is one row of the register as a resume reads it: which
+// ledger account, on which product, opened when.
+type registeredAccount struct {
+	CustomerID      string
+	LedgerAccountID string
+	ProductID       string
+	Opened          time.Time
+}
+
+// registeredAccounts is every account on the register, in customer and
+// index order.
+func registeredAccounts(db *sql.DB) ([]registeredAccount, error) {
+	rows, err := db.Query(`SELECT customer_id, ledger_account_id, product_id, opened FROM customer_accounts ORDER BY customer_id, idx`)
+	if err != nil {
+		return nil, fmt.Errorf("register: %w", err)
+	}
+	defer rows.Close()
+	var out []registeredAccount
+	for rows.Next() {
+		var a registeredAccount
+		if err := rows.Scan(&a.CustomerID, &a.LedgerAccountID, &a.ProductID, &a.Opened); err != nil {
+			return nil, fmt.Errorf("register: scan: %w", err)
+		}
+		out = append(out, a)
+	}
+	return out, rows.Err()
+}
+
+// registeredBalances is the ledger balance of every registered account, in
+// one pass over the ledger's movements rather than a query per account.
+func registeredBalances(db *sql.DB) (map[string]luca.Amount, error) {
+	rows, err := db.Query(`SELECT ca.ledger_account_id, COALESCE(SUM(m.delta), 0) FROM contract_customer_accounts ca
+		LEFT JOIN (
+			SELECT to_account_id AS id, amount AS delta FROM contract_ledger_movements
+			UNION ALL
+			SELECT from_account_id AS id, -amount AS delta FROM contract_ledger_movements
+		) m ON m.id = ca.ledger_account_id
+		GROUP BY ca.ledger_account_id`)
+	if err != nil {
+		return nil, fmt.Errorf("register balances: %w", err)
+	}
+	defer rows.Close()
+	out := map[string]luca.Amount{}
+	for rows.Next() {
+		var id string
+		var bal luca.Amount
+		if err := rows.Scan(&id, &bal); err != nil {
+			return nil, fmt.Errorf("register balances: scan: %w", err)
+		}
+		out[id] = bal
+	}
+	return out, rows.Err()
+}
+
+// lastCustomerSeq is the sequence number of the newest customer (IDs are
+// cust-<seq>), zero when there are none: a resumed run numbers its next
+// customer after it.
+func (ds *DemoState) lastCustomerSeq() int {
+	n := ds.custStoreCount()
+	if n == 0 {
+		return 0
+	}
+	recs, _, err := ds.custStore.List(context.Background(), n-1, 1)
+	if err != nil || len(recs) == 0 {
+		log.Printf("lastCustomerSeq: %v", err)
+		return 0
+	}
+	var seq int
+	if _, err := fmt.Sscanf(recs[0].ID, "cust-%d", &seq); err != nil {
+		log.Printf("lastCustomerSeq: customer ID %q: %v", recs[0].ID, err)
+	}
+	return seq
 }
 
 // execer is *sql.DB or *sql.Tx.

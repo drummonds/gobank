@@ -77,17 +77,24 @@ func (ds *DemoState) dbConfigRows() [][2]string {
 	return rows
 }
 
-// initDB opens an in-memory pglike database and creates the gilt tables.
+// initDB opens a fresh in-memory pglike database.
 func (ds *DemoState) initDB() {
 	ds.initDBWithDSN("")
 }
 
-// initDBWithDSN opens a database connection. Empty dsn uses in-memory pglike;
-// a postgres:// DSN uses pgx for real PostgreSQL.
+// initDBWithDSN opens a database and takes it as the demo's. Empty dsn
+// uses in-memory pglike; a postgres:// DSN uses pgx for real PostgreSQL.
 func (ds *DemoState) initDBWithDSN(dsn string) {
 	if ds.db != nil {
 		ds.db.Close()
 	}
+	ds.attachDB(openDB(dsn), dsn)
+}
+
+// openDB opens the database behind dsn. A requested PostgreSQL backend is
+// verified reachable, since sql.Open is lazy and would otherwise fail
+// silently on first use.
+func openDB(dsn string) *sql.DB {
 	var db *sql.DB
 	var err error
 	if dsn == "" {
@@ -97,28 +104,39 @@ func (ds *DemoState) initDBWithDSN(dsn string) {
 	}
 	if err != nil {
 		log.Printf("initDB: open failed: %v", err)
-		return
+		return nil
 	}
-	// sql.Open is lazy: verify a requested PostgreSQL backend is actually
-	// reachable rather than silently failing on first use.
 	if dsn != "" {
 		if err := db.Ping(); err != nil {
 			log.Fatalf("initDB: cannot reach %s: %v", describeBackend(dsn), err)
 		}
-		// The demo cannot resume from persisted rows — in-memory sim state
-		// is authoritative and starts fresh, so leftover tables from a
-		// previous run would only collide (duplicate customer IDs etc.).
-		// Start every run with an empty database; export .goluca to keep a
-		// run's ledger.
-		dropAllPublicTables(db)
 	}
+	return db
+}
+
+// attachDB takes db as the demo's database. Its tables are kept: every
+// component's schema is migrated to the current version and the contract
+// views are refreshed, and whatever run the rows describe is there to be
+// resumed (ADR-0003). The one exception is a database from before schema
+// versions, written by a demo that dropped every table at start: it is
+// started fresh, as that demo would have.
+func (ds *DemoState) attachDB(db *sql.DB, dsn string) {
 	ds.db = db
+	ds.dsn = dsn
 	ds.dbBackend = describeBackend(dsn)
 	ds.dbIsPostgres = dsn != ""
-	ds.createGiltTables()
-	ds.createAccrualTable()
-	ds.createCustomerAccountsTable()
-	ds.createPaymentsTable()
+	if db == nil {
+		return
+	}
+	if ds.dbIsPostgres && isLegacyDatabase(db) {
+		log.Printf("initDB: database predates schema versions; starting it fresh")
+		dropAllPublicTables(db)
+	}
+	if err := migrate(db, demoSchemas()); err != nil {
+		log.Fatalf("initDB: %v", err)
+	}
+	ds.createCustomerAccountsView()
+	ds.createPaymentsView()
 
 	// Create customer store (shares same DB)
 	custStore, err := customers.NewSQLCustomerStore(db, piiKeyProvider)

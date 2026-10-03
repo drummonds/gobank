@@ -3,6 +3,7 @@
 package main
 
 import (
+	"context"
 	"fmt"
 	"html/template"
 	"log"
@@ -10,9 +11,11 @@ import (
 	"net"
 	"net/http"
 	"os"
+	"os/signal"
 	"strconv"
 	"strings"
 	"sync"
+	"syscall"
 	"time"
 
 	gbp "git.bytestone.uk/hum3/gobank-products"
@@ -181,6 +184,11 @@ func main() {
 		log.Fatalf("GOBANK_DAY_LENGTH: %v", err)
 	}
 	state.SetDayLength(dayLength)
+	// A run that was going when the previous process stopped carries on.
+	if state.ResumedRunning() {
+		log.Printf("resume: the run was going; starting the loop")
+		state.Start()
+	}
 
 	app := lofigui.NewApp()
 	app.Version = "Model Bank " + version
@@ -226,8 +234,9 @@ func main() {
 	registerBankAppAPI(state)
 	registerBankAppRoutes(state, appCtrl)
 
-	// fullPage renders template with app state context (no Refresh header).
-	fullPage := func(w http.ResponseWriter, r *http.Request, content string) {
+	// renderPage renders the layout around content; polling "Running" makes
+	// the layout re-fetch the whole page every second.
+	renderPage := func(w http.ResponseWriter, r *http.Request, content, polling string) {
 		sessID := getSessionID(w, r)
 		role := authStore.GetRole(sessID)
 		ctrl.RenderTemplate(w, lofigui.TemplateContext{
@@ -235,9 +244,18 @@ func main() {
 			"version":         app.Version,
 			"controller_name": ctrl.Name,
 			"results":         template.HTML(content),
-			"polling":         simStatus(state),
+			"polling":         polling,
 			"role":            string(role),
 		})
+	}
+	// fullPage renders template with app state context (no Refresh header).
+	fullPage := func(w http.ResponseWriter, r *http.Request, content string) {
+		renderPage(w, r, content, simStatus(state))
+	}
+	// staticPage is a page that polls its own fragments, if anything: the
+	// layout's whole-page poll stays off so forms on it keep what is typed.
+	staticPage := func(w http.ResponseWriter, r *http.Request, content string) {
+		renderPage(w, r, content, "Stopped")
 	}
 
 	// requireRole returns 403 if the session's role lacks the given permission.
@@ -601,11 +619,23 @@ func main() {
 			http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 			return
 		}
-		content := renderAndCapture(func() { lofigui.HTML(buildSettingsHTML(bank, state.Settings())) })
+		polling := simStatus(state) == "Running"
+		content := renderAndCapture(func() { lofigui.HTML(buildSettingsHTML(bank, state.Settings(), polling)) })
 		if serveHTMX(w, r, content) {
 			return
 		}
-		fullPage(w, r, content)
+		staticPage(w, r, content)
+	})
+
+	// The settings page's status line, polled on its own so the form is
+	// never re-rendered under the operator.
+	http.HandleFunc("/settings/status", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != "GET" {
+			http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+			return
+		}
+		w.Header().Set("Content-Type", "text/html; charset=utf-8")
+		fmt.Fprint(w, renderSettingsStatus(bank, simStatus(state) == "Running"))
 	})
 
 	// --- Auth ---
@@ -863,7 +893,8 @@ func main() {
 			log.Fatalf("listen %s: %v", addr, err)
 		}
 		log.Printf("Starting Model Bank Demo on %s", addr)
-		log.Fatal(http.Serve(ln, nil))
+		serve(ln, state)
+		return
 	}
 
 	// Try ports starting from 1347, auto-increment if in use
@@ -875,7 +906,35 @@ func main() {
 			continue
 		}
 		log.Printf("Starting Model Bank Demo on http://localhost%s", addr)
-		log.Fatal(http.Serve(ln, nil))
+		serve(ln, state)
+		return
 	}
 	log.Fatal("Could not find an available port in range 1347-1356")
+}
+
+// serve runs the HTTP server on ln until SIGTERM or SIGINT, then stops the
+// run loop, waits for the day in progress to finish writing and drains the
+// server. This is the stop step of an in-place upgrade (ADR-0003); the
+// service manager's stop timeout bounds it.
+func serve(ln net.Listener, state *DemoState) {
+	srv := &http.Server{}
+	go func() {
+		if err := srv.Serve(ln); err != nil && err != http.ErrServerClosed {
+			log.Fatal(err)
+		}
+	}()
+	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	defer stop()
+	<-ctx.Done()
+	stop()
+	log.Printf("shutdown: signal received; finishing the day in progress")
+	if err := state.Shutdown(context.Background()); err != nil {
+		log.Printf("shutdown: run loop: %v", err)
+	}
+	drain, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	if err := srv.Shutdown(drain); err != nil {
+		log.Printf("shutdown: server: %v", err)
+	}
+	log.Printf("shutdown: done")
 }

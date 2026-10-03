@@ -78,8 +78,8 @@ type Payment struct {
 // The payments component owns the payments table. Other code reads
 // payments through the contract_payments view or the API below (ADR-0001).
 
-func (ds *DemoState) createPaymentsTable() {
-	stmts := []string{
+var paymentsSchema = componentSchema{component: "payments", migrations: []migration{
+	{1, []string{
 		`CREATE TABLE IF NOT EXISTS payments (
 			id INTEGER PRIMARY KEY,
 			type SMALLINT NOT NULL,
@@ -93,8 +93,14 @@ func (ds *DemoState) createPaymentsTable() {
 		)`,
 		`CREATE INDEX IF NOT EXISTS payments_from_id ON payments (from_id)`,
 		`CREATE INDEX IF NOT EXISTS payments_to_id ON payments (to_id)`,
-		// The contract view: what other components may read. Recreated so
-		// a durable database picks up a changed definition.
+	}},
+}}
+
+// createPaymentsView (re)creates the contract view: what other components
+// may read. Recreated at every start so a durable database picks up a
+// changed definition.
+func (ds *DemoState) createPaymentsView() {
+	stmts := []string{
 		`DROP VIEW IF EXISTS contract_payments`,
 		`CREATE VIEW contract_payments AS
 			SELECT id, reference, type, from_id, to_id, amount, status, created_at, settled_at FROM payments`,
@@ -227,6 +233,16 @@ func (ds *DemoState) clearPaymentsLocked() {
 		}
 	}
 	ds.nextPaymentID = 1
+}
+
+// lastPaymentID is the highest payment ID on record, zero when there are
+// none: a resumed run numbers its next payment after it.
+func lastPaymentID(db *sql.DB) int {
+	var id int
+	if err := db.QueryRow(`SELECT COALESCE(MAX(id), 0) FROM payments`).Scan(&id); err != nil {
+		log.Printf("lastPaymentID: %v", err)
+	}
+	return id
 }
 
 // SendPayment is the payments generator: it picks two customers and an

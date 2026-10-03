@@ -47,16 +47,17 @@ func (s *simSettings) Update(fn func(*Settings)) {
 // Settings is a snapshot of the console settings.
 func (ds *DemoState) Settings() Settings { return ds.settings.Get() }
 
-// buildSettingsHTML renders the settings form: the bank's parameters from
-// the core, the console's settings from the simulation.
-func buildSettingsHTML(q core.BookQueries, settings Settings) string {
+// buildSettingsHTML renders the settings page: a status line that polls
+// while the simulation runs, then the form, which is static so a value
+// being typed is never wiped before Save (as the dashboard's controls
+// are). The bank's parameters come from the core, the console's settings
+// from the simulation.
+func buildSettingsHTML(q core.BookQueries, settings Settings, polling bool) string {
 	pos, _ := q.Position(context.Background())
-	customerCount := pos.Customers
-	currentDay := pos.Day
 
 	var s strings.Builder
 	s.WriteString(`<h2 class="title is-4">Settings</h2>`)
-	s.WriteString(fmt.Sprintf(`<p class="subtitle is-6 has-text-grey">Current customers: %d | Sim date: %s</p>`, customerCount, currentDay.Format("2 Jan 2006")))
+	s.WriteString(renderSettingsStatus(q, polling))
 
 	s.WriteString(`<form action="/settings" method="post">`)
 	s.WriteString(`<div class="box">`)
@@ -103,6 +104,21 @@ func buildSettingsHTML(q core.BookQueries, settings Settings) string {
 	s.WriteString(`</div></div>`)
 	s.WriteString(`</div></form>`)
 
+	return s.String()
+}
+
+// renderSettingsStatus is the settings page's status line: customers on
+// the books and the simulated date. It is the only part of the page that
+// polls, and only while the simulation runs.
+func renderSettingsStatus(q core.BookQueries, polling bool) string {
+	pos, _ := q.Position(context.Background())
+	var s strings.Builder
+	s.WriteString(`<div id="settings-status"`)
+	if polling {
+		s.WriteString(` hx-get="/settings/status" hx-trigger="every 1s" hx-swap="outerHTML"`)
+	}
+	s.WriteString(fmt.Sprintf(`><p class="subtitle is-6 has-text-grey">Current customers: %d | Sim date: %s</p></div>`,
+		pos.Customers, pos.Day.Format("2 Jan 2006")))
 	return s.String()
 }
 

@@ -160,7 +160,7 @@ root module, `cmd/bff` is the service binary, and `app/` is the Flutter shell.
       - [x] (unreleased) (a) simulated day length — a setting (`GOBANK_DAY_LENGTH`,
         zero means flat out; shown and set on the simulation page) so a
         day can take two hours and an upgrade lands mid-day
-      - [ ] (b) resume — the demo stops dropping its tables at start and
+      - [x] (unreleased) (b) resume — the demo stops dropping its tables at start and
         rebuilds its state from the database, with a schema version table
         and versioned migrations replacing the ad hoc `ALTER TABLE`. Also,
         from (a)'s sense-check: the settings form is static under the page

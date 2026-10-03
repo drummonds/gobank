@@ -6,6 +6,8 @@ git.bytestone.uk/hum3/gobank-db v0.2.0 h1:kMysLV0VTO8hzvS+FMGBg1UoCr+/+Oesag8hBT
 git.bytestone.uk/hum3/gobank-db v0.2.0/go.mod h1:wCD+SdqmWlwoKc55VUnC/X3bNtkp3KedWD1cja0D9QA=
 git.bytestone.uk/hum3/gobank-products v0.1.10 h1:y6MmGkXfZqPMSdT4x0/SgaL4QfNjcwCUfnlH8Ceq1Aw=
 git.bytestone.uk/hum3/gobank-products v0.1.10/go.mod h1:szlHyCmqdAtdA22/qkQOcJXOQI0VoyY3ygGLmyzOjYM=
+git.bytestone.uk/hum3/gobank-products v0.1.11-0.20261003153435-a52c2d1effbc h1:ahUPFezNf3CJRDNQwDvIzBxPBcUswUMa23ceIY6j3/I=
+git.bytestone.uk/hum3/gobank-products v0.1.11-0.20261003153435-a52c2d1effbc/go.mod h1:szlHyCmqdAtdA22/qkQOcJXOQI0VoyY3ygGLmyzOjYM=
 git.bytestone.uk/hum3/gotreesitter v0.6.8 h1:9q2V0stkzhrWDY39EoMhrQmkHqHFydI5iW8xOFVDvwE=
 git.bytestone.uk/hum3/gotreesitter v0.6.8/go.mod h1:Wypi8nYsGD8zsHzKvZoU6Cy/aSW3Z3v8E9BCvKzR1wM=
 github.com/davecgh/go-spew v1.1.0/go.mod h1:J7Y8YcW2NihsgmVo/mv3lAwl/skON4iLHjSsI+c5H38=

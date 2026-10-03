@@ -19,6 +19,18 @@ type Component struct {
 
 var components = []Component{
 	{
+		Name:    "schema",
+		Purpose: "Which version each component's tables are at; migrations bring a database up to date at start.",
+		Files:   []string{"schema.go"},
+		Tables:  []string{"schema_versions"},
+	},
+	{
+		Name:    "simulation",
+		Purpose: "The run's place in time: the day the bank is on and whether the run loop is going, so a restart resumes.",
+		Files:   []string{"run.go"},
+		Tables:  []string{"sim_run"},
+	},
+	{
 		Name:    "ledger",
 		Purpose: "Double-entry books of account: every balance is the sum of its movements.",
 		Library: "go-luca",

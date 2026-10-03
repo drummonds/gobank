@@ -2,6 +2,33 @@
 
 ## [Unreleased]
 
+ - Stage 2 story (b): the demo resumes its run from the database; schema versions and migrations; static settings form; end-of-day countdown
+
+ - ADR-0002 stage 2, story (b): resume. The demo no longer drops its
+   tables at start: on PostgreSQL it rebuilds the bank from the database
+   (the engine adopts every registered account with its ledger balance,
+   accrued interest and the book totals are read back, sequence numbers
+   continue) and carries on from the recorded day. A run that was going
+   when the process stopped starts again by itself. SIGTERM finishes the
+   day in progress before the process exits, so an in-place upgrade
+   (ADR-0003) leaves the database consistent; the daily histories and the
+   transaction log restart from the resumed day until stories (d) and
+   (e) store them. A database from before this release (which was never
+   meant to outlive its process) is started fresh, once.
+ - Schema versions: every component that owns tables declares its schema
+   as numbered migrations, applied once and recorded in `schema_versions`
+   per component (the ad hoc `ALTER TABLE` is gone). Two new components
+   in the registry: `schema` and `simulation` (the run row, `sim_run`).
+ - Reset on PostgreSQL stays on PostgreSQL: it drops the run's tables and
+   migrates again, where before it silently switched to the in-memory
+   store.
+ - Settings page: only the status line polls (its own HTMX fragment); the
+   form is static, so a value being typed is no longer wiped before Save.
+ - Dashboard: with a day length set, the day tile counts down to the end
+   of the day.
+ - gobank-products: `Simulation.AdoptAccount` (pinned at a pre-release
+   commit until v0.1.11 is tagged).
+
 ## [0.5.0] - 2026-10-03
 
  - Stage 2 story (a): simulated day length (GOBANK_DAY_LENGTH); ADR-0003 upgrade-in-place; feature flags and payment rails on the roadmap
