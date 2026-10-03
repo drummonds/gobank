@@ -26,9 +26,9 @@ var components = []Component{
 	},
 	{
 		Name:    "simulation",
-		Purpose: "The run's place in time: the day the bank is on and whether the run loop is going, so a restart resumes.",
-		Files:   []string{"run.go"},
-		Tables:  []string{"sim_run"},
+		Purpose: "The run's place in time (the day the bank is on, whether the run loop is going, so a restart resumes) and the restart record: each process start against the stop before it, for an upgrade's downtime.",
+		Files:   []string{"run.go", "restarts.go"},
+		Tables:  []string{"sim_run", "restarts"},
 	},
 	{
 		Name:    "ledger",

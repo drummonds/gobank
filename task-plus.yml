@@ -1,3 +1,6 @@
+maturity:
+  code: 1
+  deploy: 2
 remotes:
   - name: origin
     forge: forgejo

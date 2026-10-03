@@ -7,7 +7,8 @@ import (
 	"time"
 )
 
-// The simulation component's own table: the run's place in time. One row,
+// The simulation component's tables: the run's place in time, and the
+// restart record (restarts.go). One row,
 // overwritten at the end of every day and when the loop starts or stops,
 // so a restart picks the run up where it was (ADR-0003: the run resumes).
 
@@ -19,6 +20,7 @@ var simulationSchema = componentSchema{component: "simulation", migrations: []mi
 		running BOOLEAN NOT NULL,
 		updated_at TIMESTAMP NOT NULL
 	)`}},
+	restartsMigration,
 }}
 
 // runState is where the run is: the simulated day the bank is on, how
@@ -27,6 +29,7 @@ type runState struct {
 	Day      time.Time
 	DayCount int
 	Running  bool
+	SavedAt  time.Time // when the row was last written; read only, for the restart record
 }
 
 // saveRun overwrites the run row.
@@ -48,7 +51,7 @@ func loadRun(db *sql.DB) (r runState, ok bool) {
 	if db == nil {
 		return runState{}, false
 	}
-	err := db.QueryRow(`SELECT current_day, day_count, running FROM sim_run WHERE id = 1`).Scan(&r.Day, &r.DayCount, &r.Running)
+	err := db.QueryRow(`SELECT current_day, day_count, running, updated_at FROM sim_run WHERE id = 1`).Scan(&r.Day, &r.DayCount, &r.Running, &r.SavedAt)
 	if err != nil {
 		if !errors.Is(err, sql.ErrNoRows) {
 			log.Printf("loadRun: %v", err)
@@ -57,5 +60,6 @@ func loadRun(db *sql.DB) (r runState, ok bool) {
 	}
 	// A simulated day is a UTC date, whatever the driver's location.
 	r.Day = time.Date(r.Day.Year(), r.Day.Month(), r.Day.Day(), 0, 0, 0, 0, time.UTC)
+	r.SavedAt = r.SavedAt.UTC()
 	return r, true
 }

@@ -2,6 +2,24 @@
 
 ## [Unreleased]
 
+ - ADR-0002 stage 2, story (c): the restart record. Every process start
+   writes a row to `restarts` (simulation component, schema version 2:
+   a new table only, so v0.6.0 runs on the same database and a rollback
+   is possible) with its version, the run's day and customers, and the
+   version and stop time of the process it follows; a clean stop (SIGTERM,
+   after the day in progress and the HTTP drain) writes the stop time and
+   the run as it leaves it. The settings page shows the record newest
+   first: downtime per restart, day and customers at the previous stop
+   against this start (red when they differ), and "unknown (unclean
+   stop)" when the previous process was killed. A process from before the
+   record (or a rollback to one) shows as unrecorded, its downtime
+   measured from its last write of the run row.
+ - `upgrade-drill.md`: the in-place upgrade and rollback drill on Hetzner,
+   every later story's acceptance (ADR-0003).
+ - `task-plus.yml` declares maturity code 1 (branch per story, pull
+   request) and deploy 2 (upgrade in place, downtime recorded, rollback
+   rehearsed).
+
 ## [0.6.0] - 2026-10-04
 
  - Stage 2 story (b): resume from the database, schema versions, static settings form, end-of-day countdown

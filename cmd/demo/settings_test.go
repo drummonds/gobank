@@ -39,7 +39,7 @@ func TestSettingsFormIsStaticWhileStatusPolls(t *testing.T) {
 	ds := NewDemoState()
 	bank := newCoreAdapter(ds, "")
 
-	polled := buildSettingsHTML(bank, ds.Settings(), true)
+	polled := buildSettingsHTML(bank, ds.Settings(), true, nil)
 	found := strings.Contains(polled, `id="settings-status"`)
 	hx := strings.Index(polled, `hx-get="/settings/status"`)
 	form := strings.Index(polled, `<form`)
@@ -53,7 +53,7 @@ func TestSettingsFormIsStaticWhileStatusPolls(t *testing.T) {
 		t.Errorf("form missing the day length field")
 	}
 
-	still := buildSettingsHTML(bank, ds.Settings(), false)
+	still := buildSettingsHTML(bank, ds.Settings(), false, nil)
 	if strings.Contains(still, "hx-") {
 		t.Errorf("a page that is not polling should carry no HTMX attributes")
 	}

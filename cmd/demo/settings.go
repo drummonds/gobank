@@ -51,8 +51,8 @@ func (ds *DemoState) Settings() Settings { return ds.settings.Get() }
 // while the simulation runs, then the form, which is static so a value
 // being typed is never wiped before Save (as the dashboard's controls
 // are). The bank's parameters come from the core, the console's settings
-// from the simulation.
-func buildSettingsHTML(q core.BookQueries, settings Settings, polling bool) string {
+// from the simulation; the restart record follows the form.
+func buildSettingsHTML(q core.BookQueries, settings Settings, polling bool, restarts []Restart) string {
 	pos, _ := q.Position(context.Background())
 
 	var s strings.Builder
@@ -103,6 +103,7 @@ func buildSettingsHTML(q core.BookQueries, settings Settings, polling bool) stri
 	s.WriteString(`<button class="button is-primary" type="submit">Save Settings</button>`)
 	s.WriteString(`</div></div>`)
 	s.WriteString(`</div></form>`)
+	s.WriteString(renderRestarts(restarts))
 
 	return s.String()
 }

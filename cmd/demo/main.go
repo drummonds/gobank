@@ -620,7 +620,7 @@ func main() {
 			return
 		}
 		polling := simStatus(state) == "Running"
-		content := renderAndCapture(func() { lofigui.HTML(buildSettingsHTML(bank, state.Settings(), polling)) })
+		content := renderAndCapture(func() { lofigui.HTML(buildSettingsHTML(bank, state.Settings(), polling, state.Restarts(10))) })
 		if serveHTMX(w, r, content) {
 			return
 		}
@@ -936,5 +936,6 @@ func serve(ln net.Listener, state *DemoState) {
 	if err := srv.Shutdown(drain); err != nil {
 		log.Printf("shutdown: server: %v", err)
 	}
+	state.RecordStop()
 	log.Printf("shutdown: done")
 }

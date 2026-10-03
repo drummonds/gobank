@@ -157,10 +157,10 @@ root module, `cmd/bff` is the service binary, and `app/` is the Flutter shell.
       [maturity ladder](https://man.bytestone.uk/maturity.html)), and
       development moves to a branch per story merged by pull request on
       the Forgejo (code level 1). Stories:
-      - [x] (unreleased) (a) simulated day length — a setting (`GOBANK_DAY_LENGTH`,
+      - [x] (v0.5.0) (a) simulated day length — a setting (`GOBANK_DAY_LENGTH`,
         zero means flat out; shown and set on the simulation page) so a
         day can take two hours and an upgrade lands mid-day
-      - [x] (unreleased) (b) resume — the demo stops dropping its tables at start and
+      - [x] (v0.6.0) (b) resume — the demo stops dropping its tables at start and
         rebuilds its state from the database, with a schema version table
         and versioned migrations replacing the ad hoc `ALTER TABLE`. Also,
         from (a)'s sense-check: the settings form is static under the page
@@ -168,10 +168,15 @@ root module, `cmd/bff` is the service binary, and `app/` is the Flutter shell.
         dashboard already does) so a value being typed is not wiped before
         Save; and the dashboard's day tile counts down the seconds to the
         end of the day
-      - [ ] (c) upgrade drill — redeploy N to N+1 on Hetzner mid-day with
-        an expand/contract migration, record the downtime, roll back to N
-        from the release store and confirm nothing is lost; the drill is
-        then every later story's acceptance
+      - [x] (unreleased) (c) upgrade drill — the demo keeps a restart
+        record (`restarts`, an expand-only migration of the simulation
+        component): each process start against the stop before it, with
+        the downtime and the run's day and customers on both sides, shown
+        on the settings page; `upgrade-drill.md` is the drill — redeploy
+        N to N+1 on Hetzner mid-day, read the downtime off the record,
+        roll back to N from the release store and forward again, confirm
+        nothing is lost — and every later story's acceptance. Needs
+        gobank-deploy story 1i (stop timeout, fetch a named tag)
       - [ ] (d) transactions as a ledger projection replacing `txLog`
       - [ ] (e) chart histories as stored daily snapshots
       - [ ] (f) sessions in the database

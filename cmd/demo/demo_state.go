@@ -37,6 +37,7 @@ type DemoState struct {
 	cancel              context.CancelFunc
 	loopDone            chan struct{} // closed when the run loop's goroutine has exited (mu)
 	shuttingDown        bool          // the loop was stopped by Shutdown, not the operator: the run is still on (mu)
+	restartID           int64         // this process's row in the restart record (mu)
 	resumedRunning      bool          // the run was going when the previous process stopped
 	dayEndsAt           time.Time     // when the day in progress ends, zero when flat out or stopped (mu)
 	dsn                 string        // the database this state was opened on, "" for in-memory
@@ -149,6 +150,9 @@ func (ds *DemoState) openOn(db *sql.DB, dsn string) *DemoState {
 		saveRun(ds.db, runState{Day: ds.currentDay})
 	}
 	ds.recordHistory()
+	ds.mu.Lock()
+	ds.restartID = recordStart(ds.db, version, ds.dayCount, ds.nCustomers, run.SavedAt)
+	ds.mu.Unlock()
 	return ds
 }
 

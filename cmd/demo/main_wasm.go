@@ -342,7 +342,7 @@ func goRenderExplorerTable(this js.Value, args []js.Value) any {
 
 func goRenderSettings(this js.Value, args []js.Value) any {
 	lofigui.Reset()
-	lofigui.HTML(buildSettingsHTML(bank, state.Settings(), false))
+	lofigui.HTML(buildSettingsHTML(bank, state.Settings(), false, state.Restarts(10)))
 	return js.ValueOf(lofigui.Buffer())
 }
 
