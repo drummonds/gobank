@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+## [0.4.1] - 2026-10-03
+
+ - Stage 2 story (a): simulated day length (GOBANK_DAY_LENGTH); ADR-0003 upgrade-in-place; feature flags and payment rails on the roadmap
+
  - ADR-0002 stage 2, story (a): simulated day length. `GOBANK_DAY_LENGTH`
    (a duration such as `2h`; unset or `0` runs flat out) sets how long a
    simulated day takes in wall-clock time; the settings page shows and
