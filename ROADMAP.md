@@ -133,20 +133,22 @@ root module, `cmd/bff` is the service binary, and `app/` is the Flutter shell.
    starts:
    1. [x] (v0.4.0) Seams — core commands/queries as interfaces; `DemoState` adapts to
       them; the BFF runs in the demo process and the app shows real data.
-      Stories: (a) [x] (v0.3.54) customer contracts in `core`, contract
-      suite, demo adapter, BFF at `/v1/`; (b) [x] gobank-deploy sets
-      `GOBANK_APP_PASSWORD` per environment and shows it (its story 1g,
-      gobank-deploy v0.3.0); (c) [x] (v0.4.0) Android debug build —
-      `app/android` and `app/ios` generated and committed, cleartext
-      traffic allowed in the debug manifest only — then (a)
-      sense-checked from a phone against Hetzner (2026-10-03);
-      (d) [x] (v0.4.0) staff queries — `core.StaffQueries`, one
-      interface per component (book, customer register, payments,
-      products, treasury), every staff page rendering from them;
-      (e) [x] (v0.4.0) commands — `core.Commands`: `Transfer` (the
-      payments generator calls it) and `BuyGilt` (the treasury page calls
-      it). Opening a customer stays inside the generator until stage 4
-      splits generators from the bank
+      Stories:
+      - [x] (v0.3.54) (a) customer contracts in `core`, contract suite,
+        demo adapter, BFF at `/v1/`
+      - [x] (b) gobank-deploy sets `GOBANK_APP_PASSWORD` per environment
+        and shows it (its story 1g, gobank-deploy v0.3.0)
+      - [x] (v0.4.0) (c) Android debug build — `app/android` and `app/ios`
+        generated and committed, cleartext traffic allowed in the debug
+        manifest only — then (a) sense-checked from a phone against
+        Hetzner (2026-10-03)
+      - [x] (v0.4.0) (d) staff queries — `core.StaffQueries`, one
+        interface per component (book, customer register, payments,
+        products, treasury), every staff page rendering from them
+      - [x] (v0.4.0) (e) commands — `core.Commands`: `Transfer` (the
+        payments generator calls it) and `BuyGilt` (the treasury page
+        calls it). Opening a customer stays inside the generator until
+        stage 4 splits generators from the bank
    2. Stored truth — transactions as a ledger projection, stored chart
       snapshots, sessions in the database. From here every story is an
       upgrade of the running Hetzner demo, downtime accepted and recorded
@@ -154,19 +156,20 @@ root module, `cmd/bff` is the service binary, and `app/` is the Flutter shell.
       deployment level 2 on the manual's
       [maturity ladder](https://man.bytestone.uk/maturity.html)), and
       development moves to a branch per story merged by pull request on
-      the Forgejo (code level 1). Stories: (a) [ ] simulated day length —
-      a setting (`GOBANK_DAY_LENGTH`, zero means flat out; shown and set on
-      the simulation page) so a day can take two hours and an upgrade
-      lands mid-day; (b) [ ] resume — the demo stops dropping its tables
-      at start and rebuilds its state from the database, with a schema
-      version table and versioned migrations replacing the ad hoc
-      `ALTER TABLE`; (c) [ ] upgrade drill — redeploy N to N+1 on Hetzner
-      mid-day with an expand/contract migration, record the downtime,
-      roll back to N from the release store and confirm nothing is lost;
-      the drill is then every later story's acceptance; (d) [ ]
-      transactions as a ledger projection replacing `txLog`; (e) [ ] chart
-      histories as stored daily snapshots; (f) [ ] sessions in the
-      database
+      the Forgejo (code level 1). Stories:
+      - [ ] (a) simulated day length — a setting (`GOBANK_DAY_LENGTH`,
+        zero means flat out; shown and set on the simulation page) so a
+        day can take two hours and an upgrade lands mid-day
+      - [ ] (b) resume — the demo stops dropping its tables at start and
+        rebuilds its state from the database, with a schema version table
+        and versioned migrations replacing the ad hoc `ALTER TABLE`
+      - [ ] (c) upgrade drill — redeploy N to N+1 on Hetzner mid-day with
+        an expand/contract migration, record the downtime, roll back to N
+        from the release store and confirm nothing is lost; the drill is
+        then every later story's acceptance
+      - [ ] (d) transactions as a ledger projection replacing `txLog`
+      - [ ] (e) chart histories as stored daily snapshots
+      - [ ] (f) sessions in the database
    3. Pipelined accruals — start-of-day workflow writes next-day
       projections; interest application is product code inside it
    4. Events and clock — bank and simulation split; generators and an
