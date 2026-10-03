@@ -162,7 +162,12 @@ root module, `cmd/bff` is the service binary, and `app/` is the Flutter shell.
         day can take two hours and an upgrade lands mid-day
       - [ ] (b) resume — the demo stops dropping its tables at start and
         rebuilds its state from the database, with a schema version table
-        and versioned migrations replacing the ad hoc `ALTER TABLE`
+        and versioned migrations replacing the ad hoc `ALTER TABLE`. Also,
+        from (a)'s sense-check: the settings form is static under the page
+        poll (an HTMX status section polls, the form does not, as the
+        dashboard already does) so a value being typed is not wiped before
+        Save; and the dashboard's day tile counts down the seconds to the
+        end of the day
       - [ ] (c) upgrade drill — redeploy N to N+1 on Hetzner mid-day with
         an expand/contract migration, record the downtime, roll back to N
         from the release store and confirm nothing is lost; the drill is
