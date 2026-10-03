@@ -4,33 +4,53 @@ import (
 	"context"
 	"fmt"
 	"strings"
+	"sync"
 	"time"
 
 	"git.bytestone.uk/hum3/gobank/core"
 )
 
-// Settings holds configurable parameters for the simulation.
+// Settings are the simulation console's knobs: what an operator sets on the
+// settings page or in the environment. The bank's own parameters (BoE rate,
+// reserve ratio) are bank state on DemoState, not settings.
 type Settings struct {
-	MaxCustomers        int
-	BoEBaseRate         float64       // annual rate as decimal, e.g. 0.0525 = 5.25%
-	CapitalReserveRatio float64       // fraction of deposits that must be held as reserves, e.g. 0.15 = 15%
-	DayLength           time.Duration // wall-clock length of a simulated day; zero is flat out
+	MaxCustomers int
+	DayLength    time.Duration // wall-clock length of a simulated day; zero is flat out
 }
 
 func DefaultSettings() Settings {
-	return Settings{
-		MaxCustomers:        1_000_000,
-		BoEBaseRate:         0.0525,
-		CapitalReserveRatio: 0.15,
-	}
+	return Settings{MaxCustomers: 1_000_000}
 }
 
+// simSettings holds the console settings behind Get and Update. Readers (the
+// run loop, the generators, the pages) take a snapshot and never wait on
+// ds.mu; the lock is this type's own business.
+type simSettings struct {
+	mu sync.Mutex
+	v  Settings
+}
+
+// Get is a snapshot of the settings as they are now.
+func (s *simSettings) Get() Settings {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.v
+}
+
+// Update applies fn to the settings; fn changes only the fields it names.
+func (s *simSettings) Update(fn func(*Settings)) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	fn(&s.v)
+}
+
+// Settings is a snapshot of the console settings.
+func (ds *DemoState) Settings() Settings { return ds.settings.Get() }
+
 // buildSettingsHTML renders the settings form: the bank's parameters from
-// the core, the simulation's customer ceiling and day length from the
-// console.
-func buildSettingsHTML(q core.BookQueries, maxCustomers int, dayLength time.Duration) string {
+// the core, the console's settings from the simulation.
+func buildSettingsHTML(q core.BookQueries, settings Settings) string {
 	pos, _ := q.Position(context.Background())
-	settings := Settings{MaxCustomers: maxCustomers, BoEBaseRate: pos.BoERate, CapitalReserveRatio: pos.ReserveRatio, DayLength: dayLength}
 	customerCount := pos.Customers
 	currentDay := pos.Day
 
@@ -63,7 +83,7 @@ func buildSettingsHTML(q core.BookQueries, maxCustomers int, dayLength time.Dura
 	s.WriteString(`<div class="field">`)
 	s.WriteString(`<label class="label">BoE Base Rate</label>`)
 	s.WriteString(`<div class="control">`)
-	s.WriteString(fmt.Sprintf(`<span class="tag is-medium is-info">%.2f%%</span>`, settings.BoEBaseRate*100))
+	s.WriteString(fmt.Sprintf(`<span class="tag is-medium is-info">%.2f%%</span>`, pos.BoERate*100))
 	s.WriteString(`</div>`)
 	s.WriteString(`<p class="help">Driven by historical Bank of England data</p>`)
 	s.WriteString(`</div>`)
@@ -72,7 +92,7 @@ func buildSettingsHTML(q core.BookQueries, maxCustomers int, dayLength time.Dura
 	s.WriteString(`<div class="field">`)
 	s.WriteString(`<label class="label">Capital Reserve Ratio</label>`)
 	s.WriteString(`<div class="control">`)
-	s.WriteString(fmt.Sprintf(`<span class="tag is-medium is-warning">%.0f%%</span>`, settings.CapitalReserveRatio*100))
+	s.WriteString(fmt.Sprintf(`<span class="tag is-medium is-warning">%.0f%%</span>`, pos.ReserveRatio*100))
 	s.WriteString(`</div>`)
 	s.WriteString(`<p class="help">Minimum fraction of deposits held as BoE reserves</p>`)
 	s.WriteString(`</div>`)
@@ -86,11 +106,10 @@ func buildSettingsHTML(q core.BookQueries, maxCustomers int, dayLength time.Dura
 	return s.String()
 }
 
-// UpdateSettings updates the simulation settings.
+// UpdateSettings sets the customer ceiling; out-of-range values are refused.
 func (ds *DemoState) UpdateSettings(maxCust int) {
-	ds.mu.Lock()
-	defer ds.mu.Unlock()
-	if maxCust >= 3 && maxCust <= 1_000_000 {
-		ds.settings.MaxCustomers = maxCust
+	if maxCust < 3 || maxCust > 1_000_000 {
+		return
 	}
+	ds.settings.Update(func(s *Settings) { s.MaxCustomers = maxCust })
 }

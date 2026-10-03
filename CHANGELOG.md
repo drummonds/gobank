@@ -8,6 +8,10 @@
    changes it, the dashboard shows it when set, and it takes effect from
    the next day. The run loop waits out what remains of the day after the
    day's work instead of a fixed 200ms.
+ - Console settings (customer ceiling, day length) are a value behind
+   `Get` and `Update` with their own lock, so the run loop and the pages
+   never wait on the state lock; Reset keeps them. The BoE rate and
+   reserve ratio are bank state, no longer settings.
  - ADR-0003: from stage 2 every release is an in-place upgrade of the
    running demo with recorded downtime, blue-green at stage 8; roadmap
    ticks stage 1 (v0.4.0), breaks stage 2 into stories, adds feature

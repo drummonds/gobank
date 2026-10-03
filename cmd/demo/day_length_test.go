@@ -65,7 +65,7 @@ func TestDayLengthSetting(t *testing.T) {
 		t.Errorf("negative day length should be ignored, got %v", got)
 	}
 
-	page := buildSettingsHTML(newCoreAdapter(ds, ""), ds.MaxCustomers(), ds.DayLength())
+	page := buildSettingsHTML(newCoreAdapter(ds, ""), ds.Settings())
 	if !strings.Contains(page, `name="day_length"`) || !strings.Contains(page, `value="2h0m0s"`) {
 		t.Errorf("settings page should show the day length field with the current value:\n%s", page)
 	}

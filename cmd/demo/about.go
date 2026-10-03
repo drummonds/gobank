@@ -20,7 +20,7 @@ func (ds *DemoState) BuildRuntimeHTML() string {
 	dayCount := ds.dayCount
 	customerCount := ds.nCustomers
 	productCount := len(ds.products)
-	boeRate := ds.settings.BoEBaseRate * 100
+	boeRate := ds.boeRate * 100
 	piiCount := ds.custStoreCount()
 	dbBackend := ds.dbBackend
 	if dbBackend == "" {

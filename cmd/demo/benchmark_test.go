@@ -54,13 +54,13 @@ func benchSimulateYear(ds *DemoState) {
 
 func newBenchState(n int) *DemoState {
 	ds := NewDemoState()
-	ds.settings.MaxCustomers = n
+	ds.settings.Update(func(s *Settings) { s.MaxCustomers = n })
 	return ds
 }
 
 func newBenchStateWithDSN(maxCust int, dsn string) *DemoState {
 	ds := NewDemoStateWithDSN(dsn)
-	ds.settings.MaxCustomers = maxCust
+	ds.settings.Update(func(s *Settings) { s.MaxCustomers = maxCust })
 	return ds
 }
 

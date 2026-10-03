@@ -601,7 +601,7 @@ func main() {
 			http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 			return
 		}
-		content := renderAndCapture(func() { lofigui.HTML(buildSettingsHTML(bank, state.MaxCustomers(), state.DayLength())) })
+		content := renderAndCapture(func() { lofigui.HTML(buildSettingsHTML(bank, state.Settings())) })
 		if serveHTMX(w, r, content) {
 			return
 		}

@@ -44,7 +44,9 @@ type DemoState struct {
 	payCancel           context.CancelFunc
 	opCostPerDay        luca.Amount // minor units per day
 	rng                 *rand.Rand
-	settings            Settings
+	settings            simSettings // console knobs; its own lock, see settings.go
+	boeRate             float64     // BoE base rate as a decimal, e.g. 0.0525; moves with the historical series (mu)
+	reserveRatio        float64     // fraction of deposits held as BoE reserves, e.g. 0.15 (mu)
 	nextCustSeq         int
 	piiAuthorized       bool
 	boeHistory          []RatePoint
@@ -114,8 +116,7 @@ func NewDemoState() *DemoState {
 // Empty dsn uses in-memory pglike; a postgres:// DSN uses real PostgreSQL.
 func NewDemoStateWithDSN(dsn string) *DemoState {
 	startDay := time.Date(2020, 1, 1, 0, 0, 0, 0, time.UTC)
-	settings := DefaultSettings()
-	settings.BoEBaseRate = lookupBoERate(startDay)
+	boeRate := lookupBoERate(startDay)
 	rng := rand.New(rand.NewSource(42))
 
 	ds := &DemoState{
@@ -124,9 +125,11 @@ func NewDemoStateWithDSN(dsn string) *DemoState {
 		nextPaymentID: 1,
 		opCostPerDay:  50_00, // £50.00/day in minor units
 		rng:           rng,
-		settings:      settings,
+		settings:      simSettings{v: DefaultSettings()},
+		boeRate:       boeRate,
+		reserveRatio:  defaultReserveRatio,
 		nextCustSeq:   1,
-		boeHistory:    []RatePoint{{Date: startDay, Rate: settings.BoEBaseRate}},
+		boeHistory:    []RatePoint{{Date: startDay, Rate: boeRate}},
 		now:           time.Now,
 		memoryLimit:   defaultMemoryLimit,
 	}
@@ -247,11 +250,11 @@ func (ds *DemoState) recordHistory() {
 
 	// NIM in bps: (loan interest income + BoE interest - deposit interest expense) / total deposits * 365 * 10000
 	cash := savings - lending
-	requiredReserves := luca.Amount(float64(savings) * ds.settings.CapitalReserveRatio)
+	requiredReserves := luca.Amount(float64(savings) * ds.reserveRatio)
 	excessCash := cash - requiredReserves
 	dailyBoeInt := 0.0
 	if excessCash > 0 {
-		dailyBoeInt = float64(excessCash) * ds.settings.BoEBaseRate / 365.0
+		dailyBoeInt = float64(excessCash) * ds.boeRate / 365.0
 	}
 	nimBps := 0.0
 	if savings > 0 {
@@ -262,12 +265,16 @@ func (ds *DemoState) recordHistory() {
 
 // --- Bank simulation ---
 
+// defaultReserveRatio is the fraction of deposits the bank holds as BoE
+// reserves until a treasury policy sets it.
+const defaultReserveRatio = 0.15
+
 // lendingHeadroom returns how much additional lending the bank can take on
 // while maintaining the capital reserve ratio. Must be called with ds.mu held.
 func (ds *DemoState) lendingHeadroom() luca.Amount {
 	deposits, loans := ds.book.Savings, ds.book.Lending
 	// Required reserves = ratio * deposits. Max loans = deposits - required reserves.
-	maxLoans := luca.Amount(float64(deposits) * (1 - ds.settings.CapitalReserveRatio))
+	maxLoans := luca.Amount(float64(deposits) * (1 - ds.reserveRatio))
 	return maxLoans - loans
 }
 
@@ -370,12 +377,12 @@ func (ds *DemoState) advanceDay() {
 	}
 	totalDeposits, totalLoans := ds.book.Savings, ds.book.Lending
 
-	requiredReserves := luca.Amount(float64(totalDeposits) * ds.settings.CapitalReserveRatio)
+	requiredReserves := luca.Amount(float64(totalDeposits) * ds.reserveRatio)
 	cash := totalDeposits - totalLoans
 	excessCash := cash - requiredReserves
 	if excessCash > 0 {
 		// Exact BoE interest accrual: numerator over gbp.AccrualDenominator.
-		ds.boeAccruedNumerator += int64(excessCash) * int64(math.Round(ds.settings.BoEBaseRate*10_000))
+		ds.boeAccruedNumerator += int64(excessCash) * int64(math.Round(ds.boeRate*10_000))
 	}
 	boeMovements := ds.collectBoEInterest(day)
 
@@ -387,11 +394,11 @@ func (ds *DemoState) advanceDay() {
 		ds.simMu.Unlock()
 	}
 
-	ds.settings.BoEBaseRate = lookupBoERate(ds.currentDay)
-	ds.boeHistory = append(ds.boeHistory, RatePoint{Date: ds.currentDay, Rate: ds.settings.BoEBaseRate})
+	ds.boeRate = lookupBoERate(ds.currentDay)
+	ds.boeHistory = append(ds.boeHistory, RatePoint{Date: ds.currentDay, Rate: ds.boeRate})
 
-	if ds.nCustomers < ds.settings.MaxCustomers {
-		boeRate := ds.settings.BoEBaseRate
+	if ds.nCustomers < ds.settings.Get().MaxCustomers {
+		boeRate := ds.boeRate
 		avgSavings := averageRate(ds.products, gbp.FamilySavings)
 		avgLending := averageRate(ds.products, gbp.FamilyLending)
 
@@ -769,7 +776,7 @@ func (ds *DemoState) Start() {
 			case <-time.After(wait):
 				start := ds.now()
 				ds.advanceDay()
-				wait = nextDayDelay(ds.DayLength(), ds.now().Sub(start))
+				wait = nextDayDelay(ds.settings.Get().DayLength, ds.now().Sub(start))
 			}
 		}
 	}()
@@ -820,7 +827,7 @@ func (ds *DemoState) AddCustomersBatch(n int) {
 			wg.Go(func() {
 				for ctx.Err() == nil {
 					ds.mu.Lock()
-					if claimed >= n || ds.nCustomers >= ds.settings.MaxCustomers {
+					if claimed >= n || ds.nCustomers >= ds.settings.Get().MaxCustomers {
 						ds.mu.Unlock()
 						return
 					}
@@ -903,15 +910,14 @@ func (ds *DemoState) Reset() {
 	if ds.custStore != nil {
 		ds.custStore.Reset(context.Background())
 	}
-	ds.settings = DefaultSettings()
-	ds.settings.BoEBaseRate = lookupBoERate(ds.currentDay)
+	ds.boeRate = lookupBoERate(ds.currentDay)
 	ds.nextCustSeq = 1
 	ds.nCustomers = 0
 	ds.book = bookTotals{}
 	ds.dayAccrualSavings, ds.dayAccrualLending = 0, 0
 	ds.piiAuthorized = false
 	ds.memoryExceeded = false
-	ds.boeHistory = []RatePoint{{Date: ds.currentDay, Rate: ds.settings.BoEBaseRate}}
+	ds.boeHistory = []RatePoint{{Date: ds.currentDay, Rate: ds.boeRate}}
 	ds.balanceHistory = nil
 	ds.customerHistory = nil
 	ds.nimHistory = nil
@@ -948,9 +954,9 @@ func (ds *DemoState) positionLocked() core.Position {
 		Savings:          savings,
 		Lending:          lending,
 		Cash:             savings - lending,
-		RequiredReserves: luca.Amount(float64(savings) * ds.settings.CapitalReserveRatio),
-		ReserveRatio:     ds.settings.CapitalReserveRatio,
-		BoERate:          ds.settings.BoEBaseRate,
+		RequiredReserves: luca.Amount(float64(savings) * ds.reserveRatio),
+		ReserveRatio:     ds.reserveRatio,
+		BoERate:          ds.boeRate,
 		BoEInterest:      ds.boeInterestTotal(),
 		NIMBps:           nimBps,
 	}
@@ -1016,17 +1022,10 @@ func (ds *DemoState) SimStatus() SimStatus {
 		AddingTarget:        ds.addingCustTarget,
 		CustomersPerSec:     addRate,
 		LastCustomersPerSec: ds.lastAddRate,
-		DayLength:           ds.settings.DayLength,
+		DayLength:           ds.settings.Get().DayLength,
 		InterestPer12h:      ds.interestRate.per(interestWindow),
 		MemoryExceeded:      ds.memoryExceeded,
 	}
-}
-
-// MaxCustomers is the simulation's customer ceiling.
-func (ds *DemoState) MaxCustomers() int {
-	ds.mu.Lock()
-	defer ds.mu.Unlock()
-	return ds.settings.MaxCustomers
 }
 
 // DashData is what the dashboard shows: the bank's position and history

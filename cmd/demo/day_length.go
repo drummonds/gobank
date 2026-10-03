@@ -47,14 +47,5 @@ func (ds *DemoState) SetDayLength(d time.Duration) {
 	if d < 0 {
 		return
 	}
-	ds.mu.Lock()
-	ds.settings.DayLength = d
-	ds.mu.Unlock()
-}
-
-// DayLength is the wall-clock length of a simulated day; zero is flat out.
-func (ds *DemoState) DayLength() time.Duration {
-	ds.mu.Lock()
-	defer ds.mu.Unlock()
-	return ds.settings.DayLength
+	ds.settings.Update(func(s *Settings) { s.DayLength = d })
 }
