@@ -2,7 +2,7 @@
 
 ## [Unreleased]
 
-## [0.4.1] - 2026-10-03
+## [0.5.0] - 2026-10-03
 
  - Stage 2 story (a): simulated day length (GOBANK_DAY_LENGTH); ADR-0003 upgrade-in-place; feature flags and payment rails on the roadmap
 
