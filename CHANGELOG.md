@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+## [0.6.0] - 2026-10-04
+
+ - Stage 2 story (b): resume from the database, schema versions, static settings form, end-of-day countdown
+
  - Stage 2 story (b): the demo resumes its run from the database; schema versions and migrations; static settings form; end-of-day countdown
 
  - ADR-0002 stage 2, story (b): resume. The demo no longer drops its
