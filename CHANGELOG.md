@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+## [0.4.0] - 2026-10-03
+
+ - ADR-0002 stage 1 complete: staff queries and commands as core contracts, every staff page through them; Flutter platform folders and emulator tasks
+
  - Stage 1 seams complete: staff queries and commands through `core`
 
 ### Added
