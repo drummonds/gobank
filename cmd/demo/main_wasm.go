@@ -342,7 +342,7 @@ func goRenderExplorerTable(this js.Value, args []js.Value) any {
 
 func goRenderSettings(this js.Value, args []js.Value) any {
 	lofigui.Reset()
-	lofigui.HTML(buildSettingsHTML(bank, state.MaxCustomers()))
+	lofigui.HTML(buildSettingsHTML(bank, state.MaxCustomers(), state.DayLength()))
 	return js.ValueOf(lofigui.Buffer())
 }
 
@@ -350,6 +350,11 @@ func goUpdateSettings(this js.Value, args []js.Value) any {
 	if len(args) >= 1 {
 		maxCust := args[0].Int()
 		state.UpdateSettings(maxCust)
+	}
+	if len(args) >= 2 { // day length as a duration string; invalid is ignored
+		if dayLength, err := parseDayLength(args[1].String()); err == nil {
+			state.SetDayLength(dayLength)
+		}
 	}
 	return nil
 }

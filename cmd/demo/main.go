@@ -174,6 +174,13 @@ func main() {
 		log.Fatalf("GOBANK_MEMORY_LIMIT: %v", err)
 	}
 	state.SetMemoryLimit(limit)
+	// GOBANK_DAY_LENGTH slows the simulation to a wall-clock day length
+	// (e.g. 2h); unset runs flat out. Also settable on the settings page.
+	dayLength, err := dayLengthFromEnv()
+	if err != nil {
+		log.Fatalf("GOBANK_DAY_LENGTH: %v", err)
+	}
+	state.SetDayLength(dayLength)
 
 	app := lofigui.NewApp()
 	app.Version = "Model Bank " + version
@@ -584,6 +591,9 @@ func main() {
 			r.ParseForm()
 			maxCust, _ := strconv.Atoi(r.FormValue("max_customers"))
 			state.UpdateSettings(maxCust)
+			if dayLength, err := parseDayLength(r.FormValue("day_length")); err == nil {
+				state.SetDayLength(dayLength)
+			}
 			http.Redirect(w, r, "/settings", http.StatusSeeOther)
 			return
 		}
@@ -591,7 +601,7 @@ func main() {
 			http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 			return
 		}
-		content := renderAndCapture(func() { lofigui.HTML(buildSettingsHTML(bank, state.MaxCustomers())) })
+		content := renderAndCapture(func() { lofigui.HTML(buildSettingsHTML(bank, state.MaxCustomers(), state.DayLength())) })
 		if serveHTMX(w, r, content) {
 			return
 		}

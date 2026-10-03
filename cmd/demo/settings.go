@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"strings"
+	"time"
 
 	"git.bytestone.uk/hum3/gobank/core"
 )
@@ -11,8 +12,9 @@ import (
 // Settings holds configurable parameters for the simulation.
 type Settings struct {
 	MaxCustomers        int
-	BoEBaseRate         float64 // annual rate as decimal, e.g. 0.0525 = 5.25%
-	CapitalReserveRatio float64 // fraction of deposits that must be held as reserves, e.g. 0.15 = 15%
+	BoEBaseRate         float64       // annual rate as decimal, e.g. 0.0525 = 5.25%
+	CapitalReserveRatio float64       // fraction of deposits that must be held as reserves, e.g. 0.15 = 15%
+	DayLength           time.Duration // wall-clock length of a simulated day; zero is flat out
 }
 
 func DefaultSettings() Settings {
@@ -24,10 +26,11 @@ func DefaultSettings() Settings {
 }
 
 // buildSettingsHTML renders the settings form: the bank's parameters from
-// the core, the simulation's customer ceiling from the console.
-func buildSettingsHTML(q core.BookQueries, maxCustomers int) string {
+// the core, the simulation's customer ceiling and day length from the
+// console.
+func buildSettingsHTML(q core.BookQueries, maxCustomers int, dayLength time.Duration) string {
 	pos, _ := q.Position(context.Background())
-	settings := Settings{MaxCustomers: maxCustomers, BoEBaseRate: pos.BoERate, CapitalReserveRatio: pos.ReserveRatio}
+	settings := Settings{MaxCustomers: maxCustomers, BoEBaseRate: pos.BoERate, CapitalReserveRatio: pos.ReserveRatio, DayLength: dayLength}
 	customerCount := pos.Customers
 	currentDay := pos.Day
 
@@ -45,6 +48,15 @@ func buildSettingsHTML(q core.BookQueries, maxCustomers int) string {
 	s.WriteString(fmt.Sprintf(`<input class="input" type="number" name="max_customers" value="%d" min="3" max="1000000">`, settings.MaxCustomers))
 	s.WriteString(`</div>`)
 	s.WriteString(`<p class="help">Maximum number of customers in the simulation (3-1,000,000)</p>`)
+	s.WriteString(`</div>`)
+
+	// Day length
+	s.WriteString(`<div class="field">`)
+	s.WriteString(`<label class="label">Day Length</label>`)
+	s.WriteString(`<div class="control">`)
+	s.WriteString(fmt.Sprintf(`<input class="input" type="text" name="day_length" value="%s">`, settings.DayLength))
+	s.WriteString(`</div>`)
+	s.WriteString(`<p class="help">Wall-clock length of a simulated day, e.g. 2h or 90m; 0 runs flat out. Takes effect from the next day</p>`)
 	s.WriteString(`</div>`)
 
 	// BoE Base Rate (read-only)

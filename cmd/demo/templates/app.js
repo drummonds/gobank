@@ -297,7 +297,8 @@ function attachSettingsForm() {
         form.addEventListener('submit', function(e) {
             e.preventDefault();
             var maxCust = parseInt(form.querySelector('[name="max_customers"]').value, 10);
-            if (typeof goUpdateSettings === 'function') goUpdateSettings(maxCust);
+            var dayLength = form.querySelector('[name="day_length"]').value;
+            if (typeof goUpdateSettings === 'function') goUpdateSettings(maxCust, dayLength);
             renderPage();
         });
     }

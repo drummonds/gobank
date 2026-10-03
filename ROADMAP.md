@@ -157,7 +157,7 @@ root module, `cmd/bff` is the service binary, and `app/` is the Flutter shell.
       [maturity ladder](https://man.bytestone.uk/maturity.html)), and
       development moves to a branch per story merged by pull request on
       the Forgejo (code level 1). Stories:
-      - [ ] (a) simulated day length — a setting (`GOBANK_DAY_LENGTH`,
+      - [x] (unreleased) (a) simulated day length — a setting (`GOBANK_DAY_LENGTH`,
         zero means flat out; shown and set on the simulation page) so a
         day can take two hours and an upgrade lands mid-day
       - [ ] (b) resume — the demo stops dropping its tables at start and

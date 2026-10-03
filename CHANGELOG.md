@@ -2,6 +2,12 @@
 
 ## [Unreleased]
 
+ - ADR-0002 stage 2, story (a): simulated day length. `GOBANK_DAY_LENGTH`
+   (a duration such as `2h`; unset or `0` runs flat out) sets how long a
+   simulated day takes in wall-clock time; the settings page shows and
+   changes it, the dashboard shows it when set, and it takes effect from
+   the next day. The run loop waits out what remains of the day after the
+   day's work instead of a fixed 200ms.
  - ADR-0003: from stage 2 every release is an in-place upgrade of the
    running demo with recorded downtime, blue-green at stage 8; roadmap
    ticks stage 1 (v0.4.0), breaks stage 2 into stories, adds feature

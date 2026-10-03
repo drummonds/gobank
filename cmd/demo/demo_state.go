@@ -757,18 +757,19 @@ func (ds *DemoState) Start() {
 	ds.mu.Unlock()
 
 	go func() {
-		// Self-pace: wait 200ms after each day completes rather than a
-		// fixed-rate ticker. In WASM a ticker deadlocks the page once
-		// advanceDay takes longer than the interval: the next tick is always
-		// already due, the Go scheduler never goes idle, and control never
-		// returns to the JS event loop — UI frozen, days advancing flat-out
-		// until the tab runs out of memory.
+		// Self-pace: wait after each day completes rather than on a
+		// fixed-rate ticker (see minDayGap). With a day length set, the
+		// wait is what remains of the day, so a day takes at least that
+		// long of wall-clock time and the setting slows the run.
+		wait := minDayGap
 		for {
 			select {
 			case <-ctx.Done():
 				return
-			case <-time.After(200 * time.Millisecond):
+			case <-time.After(wait):
+				start := ds.now()
 				ds.advanceDay()
+				wait = nextDayDelay(ds.DayLength(), ds.now().Sub(start))
 			}
 		}
 	}()
@@ -997,6 +998,7 @@ type SimStatus struct {
 	LastCustomersPerSec float64 // rate of the last finished batch add
 	InterestPer12h      int64   // interest movements the engine posts per 12h at its measured rate
 	MemoryExceeded      bool
+	DayLength           time.Duration // wall-clock length of a simulated day; zero is flat out
 }
 
 // SimStatus returns the console state under one lock.
@@ -1014,6 +1016,7 @@ func (ds *DemoState) SimStatus() SimStatus {
 		AddingTarget:        ds.addingCustTarget,
 		CustomersPerSec:     addRate,
 		LastCustomersPerSec: ds.lastAddRate,
+		DayLength:           ds.settings.DayLength,
 		InterestPer12h:      ds.interestRate.per(interestWindow),
 		MemoryExceeded:      ds.memoryExceeded,
 	}
@@ -1061,6 +1064,9 @@ func renderDashContent(d DashData) string {
 	s.WriteString(fmt.Sprintf(`<div class="level-item has-text-centered"><div><p class="heading">Day</p><p class="title is-5">%d &mdash; %s</p></div></div>`, d.Bank.DayCount, dateStr))
 	s.WriteString(fmt.Sprintf(`<div class="level-item has-text-centered"><div><p class="heading">Customers</p><p class="title is-5">%d</p></div></div>`, d.Bank.Customers))
 	s.WriteString(fmt.Sprintf(`<div class="level-item has-text-centered"><div><p class="heading">NIM</p><p class="title is-5">%s</p></div></div>`, nimStr))
+	if d.Sim.DayLength > 0 {
+		s.WriteString(fmt.Sprintf(`<div class="level-item has-text-centered"><div><p class="heading">Day length</p><p class="title is-5">%s</p></div></div>`, d.Sim.DayLength))
+	}
 	if d.Sim.InterestPer12h > 0 {
 		s.WriteString(fmt.Sprintf(`<div class="level-item has-text-centered"><div><p class="heading">Interest movements / 12h</p><p class="title is-5">%s</p></div></div>`, groupThousands(strconv.FormatInt(d.Sim.InterestPer12h, 10))))
 	}
