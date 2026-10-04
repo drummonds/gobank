@@ -3,6 +3,7 @@
 package main
 
 import (
+	"database/sql"
 	"log/slog"
 
 	"git.bytestone.uk/hum3/gobank/bff"
@@ -12,7 +13,8 @@ import (
 // stage 1). It is mounted on the demo's own port under /v1/ — the BFF's
 // routes are root-relative /v1/... already — so the deployment opens no
 // new port. The adapter's password is GOBANK_APP_PASSWORD; empty leaves
-// the routes up with every login refused.
-func newAppBFF(bank *coreAdapter, log *slog.Logger) *bff.Server {
-	return bff.NewServer(bff.Config{Bank: bank, Auth: bank, Logger: log})
+// the routes up with every login refused. Sessions live in the demo's
+// database (the sessions component), so a restart keeps customers logged in.
+func newAppBFF(bank *coreAdapter, db *sql.DB, log *slog.Logger) *bff.Server {
+	return bff.NewServer(bff.Config{Bank: bank, Auth: bank, SessionDB: db, Logger: log})
 }

@@ -201,7 +201,7 @@ func main() {
 	phonePreviewFunc = func(custID string, accountIdx int) string { return renderPhonePreview(state, custID, accountIdx) }
 
 	// The customer BFF, on this port under /v1/.
-	appBFF := newAppBFF(bank, slog.Default())
+	appBFF := newAppBFF(bank, state.DB(), slog.Default())
 	http.Handle("/v1/", appBFF)
 	go func() {
 		for range time.Tick(time.Minute) {

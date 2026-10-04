@@ -17,7 +17,7 @@ import (
 func TestAppBFFServesRealCustomer(t *testing.T) {
 	ds := NewDemoState()
 	addFundedCustomer(ds)
-	ts := httptest.NewServer(newAppBFF(newCoreAdapter(ds, "letmein"), slog.New(slog.NewTextHandler(io.Discard, nil))))
+	ts := httptest.NewServer(newAppBFF(newCoreAdapter(ds, "letmein"), ds.DB(), slog.New(slog.NewTextHandler(io.Discard, nil))))
 	t.Cleanup(ts.Close)
 
 	post := func(body string) (int, map[string]any) {

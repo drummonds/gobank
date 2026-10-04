@@ -69,6 +69,13 @@ var components = []Component{
 		Tables:  []string{"daily_snapshots"},
 	},
 	{
+		Name:    "sessions",
+		Purpose: "The customer app's live sessions, kept by the BFF so a restart keeps customers logged in.",
+		Library: "bff",
+		Files:   []string{"sessions.go", "app_bff.go"},
+		Tables:  []string{"sessions"},
+	},
+	{
 		Name:    "treasury",
 		Purpose: "Gilt yields and holdings: where the bank places its liquidity.",
 		Files:   []string{"treasury.go"},

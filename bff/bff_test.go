@@ -22,16 +22,19 @@ type fixture struct {
 	now time.Time
 }
 
-func newFixture(t *testing.T) *fixture {
+func newFixture(t *testing.T) *fixture { return newFixtureWith(t, bff.Config{}) }
+
+// newFixtureWith serves the stub bank with cfg's session store settings
+// on top of the fixture's defaults.
+func newFixtureWith(t *testing.T, cfg bff.Config) *fixture {
 	f := &fixture{t: t, now: time.Date(2026, 9, 21, 12, 0, 0, 0, time.UTC)}
 	bank := stubbank.New()
-	srv := bff.NewServer(bff.Config{
-		Bank: bank, Auth: bank,
-		MaxLoginFailures: 3, LoginWindow: 10 * time.Minute,
-		SessionIdle: 5 * time.Minute, SessionTTL: time.Hour,
-		Logger: slog.New(slog.NewTextHandler(io.Discard, nil)),
-		Now:    func() time.Time { return f.now },
-	})
+	cfg.Bank, cfg.Auth = bank, bank
+	cfg.MaxLoginFailures, cfg.LoginWindow = 3, 10*time.Minute
+	cfg.SessionIdle, cfg.SessionTTL = 5*time.Minute, time.Hour
+	cfg.Logger = slog.New(slog.NewTextHandler(io.Discard, nil))
+	cfg.Now = func() time.Time { return f.now }
+	srv := bff.NewServer(cfg)
 	f.ts = httptest.NewServer(srv)
 	t.Cleanup(f.ts.Close)
 	return f

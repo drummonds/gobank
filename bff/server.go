@@ -12,6 +12,7 @@ package bff
 
 import (
 	"context"
+	"database/sql"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -33,6 +34,7 @@ type Config struct {
 
 	SessionTTL  time.Duration // absolute session lifetime; default 8h
 	SessionIdle time.Duration // idle timeout; default 15m
+	SessionDB   *sql.DB       // keep sessions in this database (its sessions table exists); nil keeps them in memory
 
 	MaxLoginFailures int           // per customer ID and per client address; default 5
 	LoginWindow      time.Duration // sliding window for failures; default 15m
@@ -46,7 +48,7 @@ type Config struct {
 type Server struct {
 	cfg      Config
 	mux      *http.ServeMux
-	sessions *SessionStore
+	sessions Sessions
 	limiter  *failureLimiter
 	log      *slog.Logger
 }
@@ -74,10 +76,14 @@ func NewServer(cfg Config) *Server {
 	if cfg.Logger == nil {
 		cfg.Logger = slog.Default()
 	}
+	var sessions Sessions = NewSessionStore(cfg.SessionTTL, cfg.SessionIdle, cfg.Now)
+	if cfg.SessionDB != nil {
+		sessions = NewSQLSessions(cfg.SessionDB, cfg.SessionTTL, cfg.SessionIdle, cfg.Now)
+	}
 	s := &Server{
 		cfg:      cfg,
 		mux:      http.NewServeMux(),
-		sessions: NewSessionStore(cfg.SessionTTL, cfg.SessionIdle, cfg.Now),
+		sessions: sessions,
 		limiter:  newFailureLimiter(cfg.MaxLoginFailures, cfg.LoginWindow, cfg.Now),
 		log:      cfg.Logger,
 	}
@@ -95,7 +101,7 @@ func NewServer(cfg Config) *Server {
 }
 
 // Sessions exposes the session store, e.g. for a periodic Sweep.
-func (s *Server) Sessions() *SessionStore { return s.sessions }
+func (s *Server) Sessions() Sessions { return s.sessions }
 
 // ServeHTTP applies the security headers every response carries, then routes.
 func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
