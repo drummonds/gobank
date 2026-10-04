@@ -165,9 +165,17 @@ func buildCustomersHTML(q core.StaffQueries, page int, piiAuth bool) string {
 	return s.String()
 }
 
-// phonePreviewFunc renders an inline phone preview for the admin customer pages.
-// Set by main() in HTTP mode; nil in WASM mode.
-var phonePreviewFunc func(custID string, accountIdx int) string
+// customerLabel is how a page names a customer: the name with PII
+// authorisation, otherwise the ID (the rule every page follows, see
+// partyLabel in payments.go).
+func customerLabel(q core.StaffQueries, id string, piiAuthorized bool) string {
+	if piiAuthorized {
+		if name, err := q.CustomerName(context.Background(), id); err == nil && name != "" {
+			return name
+		}
+	}
+	return id
+}
 
 // buildCustomerDetailHTML renders a single customer's detail page with two-column layout.
 // Left column: summary, PII, KYC, accounts table. Right column: phone preview.
@@ -178,7 +186,7 @@ func buildCustomerDetailHTML(q core.StaffQueries, id string, piiAuthorized bool,
 		return `<div class="notification is-warning">Customer not found.</div>`
 	}
 
-	name, _ := q.CustomerName(ctx, cust.ID)
+	name := customerLabel(q, cust.ID, piiAuthorized)
 
 	// Compute aggregate values
 	var totalSavings, totalLending luca.Amount
@@ -205,9 +213,6 @@ func buildCustomerDetailHTML(q core.StaffQueries, id string, piiAuthorized bool,
 
 	s.WriteString(fmt.Sprintf(`<div class="level"><div class="level-left"><div class="level-item"><h2 class="title is-4 mb-0">%s</h2></div><div class="level-item"><a href="/app/customer/%s" target="_blank" class="button is-small is-success is-outlined">Bank App</a></div></div></div>`, name, cust.ID))
 	s.WriteString(fmt.Sprintf(`<p class="subtitle is-6 has-text-grey">ID: %s</p>`, cust.ID))
-
-	s.WriteString(`<div class="columns">`)
-	s.WriteString(`<div class="column is-7">`)
 
 	// A. Summary panel (no PII)
 	s.WriteString(`<div class="box">
@@ -277,17 +282,6 @@ func buildCustomerDetailHTML(q core.StaffQueries, id string, piiAuthorized bool,
 	}
 	s.WriteString(`</tbody></table></div>`)
 
-	s.WriteString(`</div>`) // end column is-7
-
-	// Right column: phone preview
-	s.WriteString(`<div class="column is-5">`)
-	if phonePreviewFunc != nil {
-		s.WriteString(phonePreviewFunc(cust.ID, -1))
-	}
-	s.WriteString(`</div>`)
-
-	s.WriteString(`</div>`) // end columns
-
 	return s.String()
 }
 
@@ -302,7 +296,7 @@ func buildCustomerAccountHTML(q core.StaffQueries, custID string, accountIdx int
 		return `<div class="notification is-warning">Account not found.</div>`
 	}
 
-	name, _ := q.CustomerName(ctx, cust.ID)
+	name := customerLabel(q, cust.ID, piiAuthorized)
 	a := cust.Accounts[accountIdx]
 
 	var s strings.Builder
@@ -317,9 +311,6 @@ func buildCustomerAccountHTML(q core.StaffQueries, custID string, accountIdx int
 	s.WriteString(`</div><div class="level-item">`)
 	s.WriteString(fmt.Sprintf(`<a href="/app/customer/%s/product/%d" target="_blank" class="button is-small is-success is-outlined">Bank App</a>`, cust.ID, accountIdx))
 	s.WriteString(`</div></div></div>`)
-
-	s.WriteString(`<div class="columns">`)
-	s.WriteString(`<div class="column is-7">`)
 
 	// Account detail card
 	s.WriteString(`<div class="box">`)
@@ -369,17 +360,6 @@ func buildCustomerAccountHTML(q core.StaffQueries, custID string, accountIdx int
 			s.WriteString(`</nav>`)
 		}
 	}
-
-	s.WriteString(`</div>`) // end column is-7
-
-	// Right column: phone preview
-	s.WriteString(`<div class="column is-5">`)
-	if phonePreviewFunc != nil {
-		s.WriteString(phonePreviewFunc(cust.ID, accountIdx))
-	}
-	s.WriteString(`</div>`)
-
-	s.WriteString(`</div>`) // end columns
 
 	return s.String()
 }

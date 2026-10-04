@@ -44,7 +44,7 @@ var components = []Component{
 		Name:    "customers",
 		Purpose: "Who the bank's customers are, their KYC status, and the accounts each holds.",
 		Library: "gobanks-customers",
-		Files:   []string{"customers.go", "customers_http.go", "customer_register.go", "customer_gen.go", "pii_store.go", "transactions.go"},
+		Files:   []string{"customers.go", "customer_register.go", "customer_gen.go", "pii_store.go", "transactions.go"},
 		Tables:  []string{"cust_customers", "cust_pii", "customer_accounts"},
 		Views:   []string{"contract_customer_accounts"},
 	},

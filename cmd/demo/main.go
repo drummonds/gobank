@@ -198,7 +198,6 @@ func main() {
 	// every staff page read and write the bank through it.
 	appPassword := os.Getenv("GOBANK_APP_PASSWORD")
 	bank := newCoreAdapter(state, appPassword)
-	phonePreviewFunc = func(custID string, accountIdx int) string { return renderPhonePreview(state, custID, accountIdx) }
 
 	// The customer BFF, on this port under /v1/.
 	appBFF := newAppBFF(bank, state.DB(), slog.Default())
