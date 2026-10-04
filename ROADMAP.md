@@ -149,7 +149,7 @@ root module, `cmd/bff` is the service binary, and `app/` is the Flutter shell.
         payments generator calls it) and `BuyGilt` (the treasury page
         calls it). Opening a customer stays inside the generator until
         stage 4 splits generators from the bank
-   2. Stored truth — transactions as a ledger projection, stored chart
+   2. [x] (unreleased) Stored truth — transactions as a ledger projection, stored chart
       snapshots, sessions in the database. From here every story is an
       upgrade of the running Hetzner demo, downtime accepted and recorded
       until stage 8 ([ADR-0003](adr/0003-upgrade-in-place-until-stage-8.md);
@@ -177,11 +177,14 @@ root module, `cmd/bff` is the service binary, and `app/` is the Flutter shell.
         roll back to N from the release store and forward again, confirm
         nothing is lost — and every later story's acceptance. Needs
         gobank-deploy story 1i (stop timeout, fetch a named tag)
-      - [x] (unreleased) about/runtime shows the schema version per
+      - [x] (v0.8.0) about/runtime shows the schema version per
         component, as `/about.json` already does
-      - [x] (unreleased) (d) transactions as a ledger projection replacing `txLog`
-      - [ ] (e) chart histories as stored daily snapshots
-      - [ ] (f) sessions in the database
+      - [x] (v0.8.0) (d) transactions as a ledger projection replacing `txLog`
+      - [x] (unreleased) (e) chart histories as stored daily snapshots —
+        the `history` component, one row a day in `daily_snapshots`
+      - [x] (unreleased) (f) sessions in the database — `bff.Sessions`,
+        with a SQL store over the demo's database (the `sessions`
+        component)
    3. Pipelined accruals — start-of-day workflow writes next-day
       projections; interest application is product code inside it
    4. Events and clock — bank and simulation split; generators and an

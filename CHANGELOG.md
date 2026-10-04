@@ -2,6 +2,39 @@
 
 ## [Unreleased]
 
+ - ADR-0002 stage 2, story (e): the dashboard's daily series (book,
+   customers, NIM, BoE base rate) are stored daily snapshots: the
+   `history` component, one row a day in `daily_snapshots`, written when
+   a day begins and never rewritten, so a restart on Postgres shows the
+   same charts and the position's NIM is the latest snapshot's. The
+   in-memory slices are gone; the charts draw the newest 7,300 days.
+ - ADR-0002 stage 2, story (f): app sessions live in the database. The
+   BFF's session store is a contract (`bff.Sessions`) with the memory
+   store it had and `bff.SQLSessions` over a `sessions` table (token hash,
+   customer, created and last-seen times); `Config.SessionDB` picks it.
+   The demo passes its database and registers the table as the `sessions`
+   component, so a restart or an upgrade keeps customers logged in.
+   `cmd/bff` on the stub bank stays in memory.
+ - With (e) and (f), stage 2 (stored truth) is complete: a restart on
+   Postgres resumes with the same transactions and charts. Both
+   migrations only add a table, so v0.8.0 runs on the same database and a
+   rollback is possible.
+ - Customer detail and account pages show the customer's name only with
+   PII authorisation, falling back to the ID as every other page does
+   (#23), and no longer carry the inline phone preview, so the record has
+   the page (#24); the Bank App button opens the real app.
+ - Payment Created and Settled times are full UTC datetimes
+   (`2006-01-02 15:04:05Z`) on the detail page, its timeline, the
+   payments list and the customer report (#22).
+ - Currency is a property of the product (`Currency`, ISO 4217; GBP for
+   every product today) and reaches `core.Account`, `core.Transaction`,
+   `core.Product` and the screen tree (`currency` on row and tx
+   components; additive, schema stays v1). `screen.Glyph` picks the
+   savings glyph from it (pound, dollar, euro or yen banknote; a money bag
+   otherwise) and the demo's phone frame renders through it and
+   `bff.TxIcon`, so the dollar sign is gone and the icon tables exist once
+   (#26).
+
 ## [0.8.0] - 2026-10-04
 
  - Stage 2 story (d): transactions as a ledger projection
