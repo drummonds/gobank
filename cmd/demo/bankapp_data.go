@@ -29,7 +29,7 @@ type apiAccountsResponse struct {
 }
 
 type apiTxEntry struct {
-	ID          int         `json:"id"`
+	ID          string      `json:"id"`
 	Date        string      `json:"date"`
 	ProductName string      `json:"product_name"`
 	Type        string      `json:"type"`

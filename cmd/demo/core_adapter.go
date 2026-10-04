@@ -12,9 +12,8 @@ import (
 // coreAdapter is the demo's implementation of the core contracts
 // (ADR-0002 stage 1): the BFF and the staff web app reach DemoState only
 // through it. Figures come from where the demo keeps them today — the
-// register and the products engine for accounts, txLog for transactions,
-// in-memory series for histories — so transaction history is as partial as
-// txLog is until stage 2 replaces it with a ledger projection.
+// register and the products engine for accounts, the ledger for
+// transactions, in-memory series for histories.
 type coreAdapter struct {
 	ds *DemoState
 	// password is the one app password every customer logs in with
@@ -78,7 +77,7 @@ func coreAccounts(accounts []CustomerAccount) []core.Account {
 	return accts
 }
 
-// Transactions implements core.CustomerQueries from txLog, newest first.
+// Transactions implements core.CustomerQueries from the ledger, newest first.
 func (a *coreAdapter) Transactions(_ context.Context, customerID string, page int) (core.TransactionPage, error) {
 	if !a.ds.customerExists(customerID) {
 		return core.TransactionPage{}, core.ErrNotFound

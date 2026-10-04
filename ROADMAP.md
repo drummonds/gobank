@@ -179,7 +179,7 @@ root module, `cmd/bff` is the service binary, and `app/` is the Flutter shell.
         gobank-deploy story 1i (stop timeout, fetch a named tag)
       - [x] (unreleased) about/runtime shows the schema version per
         component, as `/about.json` already does
-      - [ ] (d) transactions as a ledger projection replacing `txLog`
+      - [x] (unreleased) (d) transactions as a ledger projection replacing `txLog`
       - [ ] (e) chart histories as stored daily snapshots
       - [ ] (f) sessions in the database
    3. Pipelined accruals — start-of-day workflow writes next-day

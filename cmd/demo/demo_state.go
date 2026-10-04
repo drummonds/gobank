@@ -74,8 +74,6 @@ type DemoState struct {
 	dbIsPostgres        bool   // real PostgreSQL (pgx) rather than in-memory pglike
 	ledger              *luca.SQLLedger
 	custStore           *customers.SQLCustomerStore
-	txLog               []TxEntry
-	nextTxID            int
 	sim                 *gbp.Simulation
 	simClock            *gbp.SimClock
 	equityAccountID     string
@@ -98,10 +96,8 @@ type DemoState struct {
 }
 
 const (
-	maxTxLogEntries  = 100_000 // B3: cap txLog size
-	txLogTrimPercent = 10      // trim oldest 10% when exceeded
-	maxHistoryPoints = 7_300   // B4: ~20 years of daily data
-	memCheckInterval = 10      // check every N sim-days
+	maxHistoryPoints = 7_300 // B4: ~20 years of daily data
+	memCheckInterval = 10    // check every N sim-days
 )
 
 // capSlice returns a slice trimmed to maxLen by dropping the oldest entries.
@@ -276,7 +272,7 @@ func (ds *DemoState) initLedger() {
 	for _, p := range ds.products {
 		sim.RegisterProduct(p.Product)
 	}
-	equityAcct, err := ensureLedgerAccount(ledger, "Equity:Capital") // already there on a resumed run
+	equityAcct, err := ensureLedgerAccount(ledger, equityCapitalPath) // already there on a resumed run
 	if err != nil {
 		log.Printf("initLedger: create equity: %v", err)
 		return
@@ -419,7 +415,6 @@ func (ds *DemoState) advanceDay() {
 	var accrualBatches []accrualBatch
 	var appliedSavings, appliedLending luca.Amount // month-end interest applied to customer balances
 	var accrualSavings, accrualLending int64       // today's accrual, numerator units
-	var interestTxs []TxEntry                      // customer-facing entries for applied interest
 	accrualStart := ds.now()
 	movements := 0
 	if sim != nil {
@@ -450,7 +445,6 @@ func (ds *DemoState) advanceDay() {
 					} else {
 						appliedLending += applied
 					}
-					interestTxs = append(interestTxs, ds.interestTx(day, au.Account, applied))
 				}
 				id := au.Account.Account.ID
 				if !seen[id] {
@@ -481,9 +475,6 @@ func (ds *DemoState) advanceDay() {
 	ds.book.Savings += appliedSavings
 	ds.book.Lending += appliedLending
 	ds.dayAccrualSavings, ds.dayAccrualLending = accrualSavings, accrualLending
-	for _, tx := range interestTxs {
-		ds.appendTx(tx)
-	}
 	totalDeposits, totalLoans := ds.book.Savings, ds.book.Lending
 
 	requiredReserves := luca.Amount(float64(totalDeposits) * ds.reserveRatio)
@@ -524,13 +515,6 @@ func (ds *DemoState) advanceDay() {
 			p := ds.planCustomerLocked()
 			newCustomer = &p
 		}
-	}
-
-	// B3: Cap txLog
-	if len(ds.txLog) > maxTxLogEntries {
-		trim := len(ds.txLog) * txLogTrimPercent / 100
-		copy(ds.txLog, ds.txLog[trim:])
-		ds.txLog = ds.txLog[:len(ds.txLog)-trim]
 	}
 
 	ds.recordHistory()
@@ -1097,8 +1081,6 @@ func (ds *DemoState) Reset() {
 	ds.customerHistory = nil
 	ds.nimHistory = nil
 	ds.boeAccruedNumerator = 0
-	ds.txLog = nil
-	ds.nextTxID = 0
 	// Clear persisted numerators so a durable (postgres) DB doesn't carry
 	// accrual rows from before the reset.
 	ds.clearRegisterLocked()

@@ -14,7 +14,11 @@ func (ds *DemoState) createLedgerViews() {
 	stmts := []string{
 		`DROP VIEW IF EXISTS contract_ledger_movements`,
 		`CREATE VIEW contract_ledger_movements AS
-			SELECT id, from_account_id, to_account_id, amount, code, value_time, description FROM movements`,
+			SELECT m.id, m.from_account_id, m.to_account_id, fa.full_path AS from_path, ta.full_path AS to_path,
+			       m.amount, m.code, m.value_time, m.knowledge_time, m.description
+			FROM movements m
+			JOIN accounts fa ON fa.id = m.from_account_id
+			JOIN accounts ta ON ta.id = m.to_account_id`,
 	}
 	for _, stmt := range stmts {
 		if _, err := ds.db.Exec(stmt); err != nil {

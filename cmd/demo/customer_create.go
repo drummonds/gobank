@@ -151,13 +151,11 @@ func (ds *DemoState) persistCustomerPlan(p customerPlan) {
 				log.Printf("createCustomer: %v", err)
 			}
 		}
+		// The movement carries the payment reference: it is the statement
+		// line the customer sees (transactions.go).
 		a := p.cust.Accounts[f.idx]
-		desc := "Initial deposit"
-		if f.payment.Type == PayLoanDisbursement {
-			desc = "Loan disbursement"
-		}
 		if sim != nil && a.LedgerAccountID != "" {
-			ds.recordSimMovementOn(sim, p.day, p.equityID, a.LedgerAccountID, f.payment.Amount, luca.CodeBookTransfer, desc)
+			ds.recordSimMovementOn(sim, p.day, p.equityID, a.LedgerAccountID, f.payment.Amount, luca.CodeBookTransfer, f.payment.Reference)
 		}
 	}
 	if tx != nil {
@@ -167,19 +165,6 @@ func (ds *DemoState) persistCustomerPlan(p customerPlan) {
 		}
 	}
 
-	ds.mu.Lock()
-	defer ds.mu.Unlock()
-	if p.epoch != ds.epoch {
-		return
-	}
-	for _, f := range p.funding {
-		a := p.cust.Accounts[f.idx]
-		txType := TxDepositIn
-		if f.payment.Type == PayLoanDisbursement {
-			txType = TxLoanDisbursement
-		}
-		ds.emitTx(p.day, p.cust.ID, a.LedgerAccountID, a.ProductName, txType, f.payment.Amount, a.Balance, f.payment.Reference)
-	}
 }
 
 // abandonPlanLocked takes a planned customer the database refused back off

@@ -2,6 +2,18 @@
 
 ## [Unreleased]
 
+ - ADR-0002 stage 2, story (d): a customer's transactions are a projection
+   of the ledger. Every statement line is a movement on one of the
+   customer's ledger accounts, read from `contract_ledger_movements` (which
+   now carries both account paths and the knowledge time) with the balance
+   it left; the in-memory `txLog` and its 100k cap are gone, so a restart
+   shows the same transactions and no history is ever trimmed. A
+   movement reads as Deposit, Loan, Transfer In, Transfer Out, Interest or
+   Loan Interest by its code, counterparty and the account's family
+   (`txTypeOf`). The funding movement of a new customer now carries its
+   payment reference, as transfers do. `core.Transaction.ID` is the
+   movement's ID (a string, was an int).
+
  - `GET /about.json`: the process for another program — version, schema
    version per component, console settings (day length), the run (running,
    time left in the day), the position and the restart record with

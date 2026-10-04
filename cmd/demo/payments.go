@@ -310,11 +310,6 @@ func (ds *DemoState) transfer(t core.Transfer) (Payment, error) {
 	ref := fmt.Sprintf("PAY-%06d", ds.nextPaymentID)
 	ds.recordSimMovement(fromAcc.LedgerAccountID, toAcc.LedgerAccountID, t.Amount, luca.CodeBookTransfer, ref)
 
-	ds.emitTx(ds.currentDay, t.From, fromAcc.LedgerAccountID, fromAcc.ProductName,
-		TxTransferOut, t.Amount, fromAcc.Balance-t.Amount, ref)
-	ds.emitTx(ds.currentDay, t.To, toAcc.LedgerAccountID, toAcc.ProductName,
-		TxTransferIn, t.Amount, toAcc.Balance+t.Amount, ref)
-
 	p := Payment{
 		ID:        ds.nextPaymentID,
 		Type:      PayTransfer,

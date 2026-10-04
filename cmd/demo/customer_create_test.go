@@ -26,10 +26,10 @@ func TestCreateCustomerRefusedLeavesBookUnchanged(t *testing.T) {
 	ds.createCustomer()
 
 	ds.mu.Lock()
-	n, book, txs := ds.nCustomers, ds.book, len(ds.txLog)
+	n, book := ds.nCustomers, ds.book
 	ds.mu.Unlock()
-	if n != 0 || book != (bookTotals{}) || txs != 0 {
-		t.Fatalf("refused customer left nCustomers=%d book=%+v txLog=%d", n, book, txs)
+	if n != 0 || book != (bookTotals{}) {
+		t.Fatalf("refused customer left nCustomers=%d book=%+v", n, book)
 	}
 	if p := ds.paymentCount(); p != 0 {
 		t.Fatalf("refused customer left %d payments", p)

@@ -42,7 +42,7 @@ type Account struct {
 
 // Transaction is one ledger entry as shown to the customer.
 type Transaction struct {
-	ID          int
+	ID          string // the ledger movement's ID
 	Date        string
 	ProductName string
 	Type        string // "Deposit", "Interest", "Transfer In", "Transfer Out", "Loan", "Loan Interest"

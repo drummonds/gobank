@@ -50,7 +50,7 @@ func (b *Bank) add(id, name string, accts []core.Account) {
 	c := &customer{Customer: core.Customer{ID: id, Name: name}, password: "password"}
 	start := time.Date(2026, 1, 5, 0, 0, 0, 0, time.UTC)
 	var all []core.Transaction
-	txID := 1
+	txID := 0
 	for i := range accts {
 		a := &accts[i]
 		a.Index = i
@@ -60,9 +60,9 @@ func (b *Bank) add(id, name string, accts []core.Account) {
 			if typ == "Transfer Out" || typ == "Loan Interest" {
 				amt = -amt
 			}
-			all = append(all, core.Transaction{ID: txID, Date: start.AddDate(0, 0, day).Format("2006-01-02"),
-				ProductName: a.ProductName, Type: typ, Reference: ref, Amount: abs(amt), Balance: bal})
 			txID++
+			all = append(all, core.Transaction{ID: fmt.Sprintf("m%04d", txID), Date: start.AddDate(0, 0, day).Format("2006-01-02"),
+				ProductName: a.ProductName, Type: typ, Reference: ref, Amount: abs(amt), Balance: bal})
 		}
 		if a.Family == "Lending" {
 			post(0, "Loan", "Drawdown", 500000)
@@ -93,7 +93,7 @@ func (b *Bank) add(id, name string, accts []core.Account) {
 		if a.Date != b.Date {
 			return strings.Compare(b.Date, a.Date)
 		}
-		return b.ID - a.ID
+		return strings.Compare(b.ID, a.ID)
 	})
 	c.txs = all
 	b.customers[id] = c

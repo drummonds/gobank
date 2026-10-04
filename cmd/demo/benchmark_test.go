@@ -37,13 +37,10 @@ func benchCountAccounts(ds *DemoState) int {
 	return n
 }
 
-// benchSimulateDays advances n days, clearing txLog each day to bound memory.
+// benchSimulateDays advances n days.
 func benchSimulateDays(ds *DemoState, n int) {
 	for range n {
 		ds.advanceDay()
-		ds.mu.Lock()
-		ds.txLog = ds.txLog[:0]
-		ds.mu.Unlock()
 	}
 }
 
@@ -108,9 +105,6 @@ func BenchmarkDayScale(b *testing.B) {
 						ds := newBenchStateWithDSN(nCust, be.dsn)
 						benchAddCustomers(ds, nCust)
 						nAcct := benchCountAccounts(ds)
-						ds.mu.Lock()
-						ds.txLog = ds.txLog[:0]
-						ds.mu.Unlock()
 						b.StartTimer()
 
 						start := time.Now()
@@ -139,9 +133,6 @@ func BenchmarkBaseline(b *testing.B) {
 		ds := newBenchState(1)
 		benchAddCustomers(ds, 1)
 		nAcct := benchCountAccounts(ds)
-		ds.mu.Lock()
-		ds.txLog = ds.txLog[:0]
-		ds.mu.Unlock()
 
 		start := time.Now()
 		benchSimulateDays(ds, 60)
@@ -161,9 +152,6 @@ func BenchmarkBaselineHTTP(b *testing.B) {
 		ds := newBenchState(1)
 		benchAddCustomers(ds, 1)
 		nAcct := benchCountAccounts(ds)
-		ds.mu.Lock()
-		ds.txLog = ds.txLog[:0]
-		ds.mu.Unlock()
 
 		mux := http.NewServeMux()
 		mux.HandleFunc("POST /advance", func(w http.ResponseWriter, r *http.Request) {
@@ -238,9 +226,6 @@ func BenchmarkSimulateYear(b *testing.B) {
 				b.StopTimer()
 				ds := newBenchState(n)
 				benchAddCustomers(ds, n)
-				ds.mu.Lock()
-				ds.txLog = ds.txLog[:0]
-				ds.mu.Unlock()
 				b.StartTimer()
 
 				start := time.Now()
@@ -267,10 +252,6 @@ func BenchmarkFullYear(b *testing.B) {
 				createStart := time.Now()
 				benchAddCustomers(ds, n)
 				createDur := time.Since(createStart)
-
-				ds.mu.Lock()
-				ds.txLog = ds.txLog[:0]
-				ds.mu.Unlock()
 
 				simStart := time.Now()
 				benchSimulateYear(ds)
