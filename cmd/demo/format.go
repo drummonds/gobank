@@ -3,6 +3,7 @@ package main
 import (
 	"fmt"
 	"strings"
+	"time"
 
 	luca "git.bytestone.uk/hum3/go-luca"
 )
@@ -29,6 +30,13 @@ func groupThousands(s string) string {
 // fmtMoney formats an amount in minor units (pence) as £1,234,567.89 with
 // comma separators. Money is stored as integer minor units throughout the
 // demo — float64 is prohibited for money storage.
+// fmtUTC renders an instant as a full UTC datetime, "2006-01-02 15:04:05Z":
+// a bare time of day is ambiguous once the demo has run for more than a
+// day or is read from another zone.
+func fmtUTC(t time.Time) string {
+	return t.UTC().Format("2006-01-02 15:04:05Z")
+}
+
 func fmtMoney(v luca.Amount) string {
 	prefix := "£"
 	if v < 0 {

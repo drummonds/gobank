@@ -499,7 +499,7 @@ func buildPaymentsHTML(q core.StaffQueries, piiAuth bool, page int, running bool
   <td><span class="tag %s">%s</span></td>
   <td>%s</td>
   <td><a href="/payments/%d" class="button is-small is-link is-light">Detail</a></td>
-</tr>`, p.ID, paymentTypeTag(p.Type), p.Type, from, to, fmtMoney(p.Amount), p.Reference, paymentStatusTag(p.Status), p.Status, p.CreatedAt.Format("15:04:05"), p.ID))
+</tr>`, p.ID, paymentTypeTag(p.Type), p.Type, from, to, fmtMoney(p.Amount), p.Reference, paymentStatusTag(p.Status), p.Status, fmtUTC(p.CreatedAt), p.ID))
 		}
 
 		s.WriteString(`</tbody></table></div>`)
@@ -548,10 +548,10 @@ func buildPaymentDetailHTML(q core.StaffQueries, id int, piiAuth bool) string {
 	s.WriteString(`</div>`)
 	s.WriteString(`<div class="columns">`)
 	s.WriteString(fmt.Sprintf(`<div class="column"><strong>Status:</strong> <span class="tag %s">%s</span></div>`, paymentStatusTag(p.Status), p.Status))
-	s.WriteString(fmt.Sprintf(`<div class="column"><strong>Created:</strong> %s</div>`, p.CreatedAt.Format("15:04:05")))
+	s.WriteString(fmt.Sprintf(`<div class="column"><strong>Created:</strong> %s</div>`, fmtUTC(p.CreatedAt)))
 	settled := "—"
 	if !p.SettledAt.IsZero() {
-		settled = p.SettledAt.Format("15:04:05")
+		settled = fmtUTC(p.SettledAt)
 	}
 	s.WriteString(fmt.Sprintf(`<div class="column"><strong>Settled:</strong> %s</div>`, settled))
 	s.WriteString(`</div></div>`)
@@ -566,7 +566,7 @@ func buildTimelineSVG(p core.Payment) string {
 	var s strings.Builder
 
 	s.WriteString(`<div class="box mt-4"><h3 class="title is-5">Settlement Timeline</h3>`)
-	s.WriteString(`<svg viewBox="0 0 500 80" xmlns="http://www.w3.org/2000/svg" style="max-width:500px;width:100%;height:auto">`)
+	s.WriteString(`<svg viewBox="0 0 500 92" xmlns="http://www.w3.org/2000/svg" style="max-width:500px;width:100%;height:auto">`)
 	s.WriteString(`<style>text{font-family:Arial,Helvetica,sans-serif}</style>`)
 
 	// Line
@@ -578,13 +578,13 @@ func buildTimelineSVG(p core.Payment) string {
 		Time  string
 		Done  bool
 	}{
-		{50, "Pending", p.CreatedAt.Format("15:04:05"), paymentStatusReached(p.Status, core.PaymentPending)},
+		{50, "Pending", fmtUTC(p.CreatedAt), paymentStatusReached(p.Status, core.PaymentPending)},
 		{250, "Processing", "", paymentStatusReached(p.Status, core.PaymentProcessing)},
 		{450, "Completed", "", paymentStatusReached(p.Status, core.PaymentCompleted)},
 	}
 
 	if !p.SettledAt.IsZero() {
-		steps[2].Time = p.SettledAt.Format("15:04:05")
+		steps[2].Time = fmtUTC(p.SettledAt)
 	}
 
 	for _, st := range steps {
@@ -604,8 +604,10 @@ func buildTimelineSVG(p core.Payment) string {
 			s.WriteString(fmt.Sprintf(`<text x="%d" y="34" text-anchor="middle" font-size="11" fill="#fff" font-weight="bold">&#10003;</text>`, st.X))
 		}
 		s.WriteString(fmt.Sprintf(`<text x="%d" y="60" text-anchor="middle" font-size="11" fill="#363636">%s</text>`, st.X, st.Label))
-		if st.Time != "" {
-			s.WriteString(fmt.Sprintf(`<text x="%d" y="74" text-anchor="middle" font-size="9" fill="#7a7a7a">%s</text>`, st.X, st.Time))
+		if st.Time != "" { // the UTC datetime, date over time
+			date, clock, _ := strings.Cut(st.Time, " ")
+			s.WriteString(fmt.Sprintf(`<text x="%d" y="74" text-anchor="middle" font-size="9" fill="#7a7a7a">%s</text>`, st.X, date))
+			s.WriteString(fmt.Sprintf(`<text x="%d" y="86" text-anchor="middle" font-size="9" fill="#7a7a7a">%s</text>`, st.X, clock))
 		}
 	}
 

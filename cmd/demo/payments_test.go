@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"fmt"
 	"strings"
 	"testing"
@@ -123,5 +124,41 @@ func TestContractPaymentsView(t *testing.T) {
 	}
 	if n != ds.paymentCount() {
 		t.Errorf("view has %d rows, paymentCount = %d", n, ds.paymentCount())
+	}
+}
+
+// Payment times are full UTC datetimes, on the detail page and in every
+// list: a bare time of day is ambiguous once the demo has run for more
+// than a day (#22).
+func TestPaymentTimesAreUTCDatetimes(t *testing.T) {
+	ds := NewDemoState()
+	twoFundedCustomers(ds)
+	ds.SendPayment()
+	q := newCoreAdapter(ds, "")
+	page, err := q.PaymentPage(context.Background(), 1)
+	if err != nil || len(page.Payments) == 0 {
+		t.Fatalf("PaymentPage: %v, %d entries", err, len(page.Payments))
+	}
+	p := page.Payments[0]
+	want := p.CreatedAt.UTC().Format("2006-01-02 15:04:05Z")
+	if got := fmtUTC(p.CreatedAt); got != want {
+		t.Errorf("fmtUTC = %q, want %q", got, want)
+	}
+	for what, html := range map[string]string{
+		"detail": buildPaymentDetailHTML(q, p.ID, false),
+		"list":   buildPaymentsHTML(q, false, 1, false),
+	} {
+		if !strings.Contains(html, want) {
+			t.Errorf("%s page lacks the UTC datetime %q", what, want)
+		}
+	}
+	// The customer report lists the customer's own payments.
+	for _, p := range page.Payments {
+		if p.From == "cust-001" || p.To == "cust-001" {
+			if html := buildCustomerViewHTML(q, "cust-001", true); !strings.Contains(html, fmtUTC(p.CreatedAt)) {
+				t.Errorf("report page lacks the UTC datetime %q of payment %d", fmtUTC(p.CreatedAt), p.ID)
+			}
+			break
+		}
 	}
 }

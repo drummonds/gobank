@@ -195,7 +195,7 @@ func buildCustomerViewHTML(q core.StaffQueries, id string, piiAuthorized bool) s
 			s.WriteString(fmt.Sprintf(`<tr>
   <td>%d</td><td>%s</td><td>%s</td><td>%s</td>
   <td><span class="tag %s">%s</span></td><td>%s</td><td>%s</td>
-</tr>`, p.ID, dirTag, counterparty, fmtMoney(p.Amount), paymentStatusTag(p.Status), p.Status, p.Reference, p.CreatedAt.Format("15:04:05")))
+</tr>`, p.ID, dirTag, counterparty, fmtMoney(p.Amount), paymentStatusTag(p.Status), p.Status, p.Reference, fmtUTC(p.CreatedAt)))
 		}
 		s.WriteString(`</tbody></table></div>`)
 	}
