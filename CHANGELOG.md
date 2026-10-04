@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+## [0.8.0] - 2026-10-04
+
+ - Stage 2 story (d): transactions as a ledger projection
+
  - ADR-0002 stage 2, story (d): a customer's transactions are a projection
    of the ledger. Every statement line is a movement on one of the
    customer's ledger accounts, read from `contract_ledger_movements` (which
