@@ -195,11 +195,11 @@ root module, `cmd/bff` is the service binary, and `app/` is the Flutter shell.
       component owns no table once `accrual_state` is retired. Numbers
       cross the contract as NUMERIC, so how go-luca stores them
       (integers, numerator and denominator) stays inside it. Stories:
-      - [ ] (a) enabler, go-postgres: NUMERIC in pglike — a `::numeric`
+      - [x] (go-postgres v0.7.0) (a) enabler, go-postgres: NUMERIC in pglike — a `::numeric`
         cast and arithmetic, rounding and comparison on it give exact
         decimals with PostgreSQL's scale rules, so a contract view can
         publish a NUMERIC column computed from integers on both drivers
-      - [ ] (b) go-luca: two contract views — `contract_ledger_eod_positions`
+      - [x] (go-luca unreleased) (b) go-luca: two contract views — `contract_ledger_eod_positions`
         (account, day, balance, accrued; the cheap one, from stored
         projections written for both accounts of a movement, incrementally)
         and `contract_ledger_live_positions` (today's row plus today's
@@ -207,7 +207,12 @@ root module, `cmd/bff` is the service binary, and `app/` is the Flutter shell.
         moving in from the demo, a projection-only write for the daily
         pass, and `knowledge_time` stored on every write path (cold review
         go-luca #6). Done with the cost measured: rows per account per
-        day at the Hetzner scale, and the two views benchmarked
+        day at the Hetzner scale, and the two views benchmarked. Measured
+        on pglike at 1,000 accounts: 0.55 ms per account for the daily
+        pass, 0.34 ms for a one-account live read, 11 ms for a day of
+        every account from the end-of-day view; one row per account per
+        day. Found and filed go-postgres #21 (INTERVAL arithmetic on a
+        qualified column)
       - [ ] (c) gobank-products: `Product.NextDay` — a pure function from
         an account's projection and the day's balance to the next day's
         projection and the ledger postings it calls for, with the
