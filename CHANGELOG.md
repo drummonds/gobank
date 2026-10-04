@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+## [0.7.0] - 2026-10-04
+
+ - Adding restart component
+
  - ADR-0002 stage 2, story (c): the restart record. Every process start
    writes a row to `restarts` (simulation component, schema version 2:
    a new table only, so v0.6.0 runs on the same database and a rollback
