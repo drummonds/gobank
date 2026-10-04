@@ -177,6 +177,9 @@ root module, `cmd/bff` is the service binary, and `app/` is the Flutter shell.
         roll back to N from the release store and forward again, confirm
         nothing is lost — and every later story's acceptance. Needs
         gobank-deploy story 1i (stop timeout, fetch a named tag)
+      - [ ] about/runtime shows the schema version per component, as
+        `/about.json` already does; it is the one thing the JSON has that
+        no page shows
       - [ ] (d) transactions as a ledger projection replacing `txLog`
       - [ ] (e) chart histories as stored daily snapshots
       - [ ] (f) sessions in the database
