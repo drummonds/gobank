@@ -28,6 +28,19 @@ one under test.
 | unrecorded | a duration | the process before kept no restart record (pre-v0.7.0, or a rollback to it); the downtime is an upper bound from its last run-row write |
 | — | — | first start over this database |
 
+## Running it from gobank-deploy
+
+[gobank-deploy](https://gobank-deploy.docs.bytestone.uk/) runs steps 2 to
+8 as a workflow: the **Drill** button on an environment's row observes the
+position and the restart record at `/about.json` before and after each
+hop (upgrade, rollback, forward), gates each hop on the version serving,
+a clean previous stop with a known downtime and an intact handover, and
+keeps every drill with its observations in its database. Step 1 is done
+for you when the day length is under 30 minutes (set to 2h), and the
+drill waits for a day with ten minutes left so the upgrade lands mid-day.
+Step 3, the release, stays yours. The drill page there gives the line
+for the record below.
+
 ## Record the result
 
 Add a line to the story's roadmap entry or PR: date, N → N+1, downtime,

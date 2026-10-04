@@ -4,6 +4,7 @@ package main
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"html/template"
 	"log"
@@ -823,6 +824,17 @@ func main() {
 			return
 		}
 		fullPage(w, r, content)
+	})
+
+	// The demo's state for another program: gobank-deploy's upgrade drill
+	// reads the position and the restart record here.
+	http.HandleFunc("/about.json", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != "GET" {
+			http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(aboutStatus(bank, state))
 	})
 
 	http.HandleFunc("/about/runtime", func(w http.ResponseWriter, r *http.Request) {

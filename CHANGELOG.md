@@ -2,6 +2,13 @@
 
 ## [Unreleased]
 
+ - `GET /about.json`: the process for another program — version, schema
+   version per component, console settings (day length), the run (running,
+   time left in the day), the position and the restart record with
+   downtime and whether the handover was intact. gobank-deploy's upgrade
+   drill reads it before and after each redeploy; `upgrade-drill.md` says
+   how that automated run maps onto the manual steps.
+
 ## [0.7.0] - 2026-10-04
 
  - Adding restart component

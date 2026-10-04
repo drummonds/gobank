@@ -104,3 +104,25 @@ func tableExists(db *sql.DB, name string) bool {
 	_, err := db.Exec(fmt.Sprintf(`SELECT 1 FROM %s WHERE 1 = 0`, name))
 	return err == nil
 }
+
+// appliedSchemaVersions is the version each component's tables are at,
+// as the about endpoint reports it.
+func appliedSchemaVersions(db *sql.DB) []SchemaVersion {
+	if db == nil {
+		return nil
+	}
+	rows, err := db.Query(`SELECT component, MAX(version) FROM schema_versions GROUP BY component ORDER BY component`)
+	if err != nil {
+		log.Printf("appliedSchemaVersions: %v", err)
+		return nil
+	}
+	defer rows.Close()
+	var out []SchemaVersion
+	for rows.Next() {
+		var s SchemaVersion
+		if err := rows.Scan(&s.Component, &s.Version); err == nil {
+			out = append(out, s)
+		}
+	}
+	return out
+}
