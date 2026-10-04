@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+## [0.9.0] - 2026-10-04
+
+ - Stage 2 complete: stored daily snapshots and database sessions; customer page PII and layout fixes, UTC payment times, product currency
+
  - ADR-0002 stage 2, story (e): the dashboard's daily series (book,
    customers, NIM, BoE base rate) are stored daily snapshots: the
    `history` component, one row a day in `daily_snapshots`, written when
