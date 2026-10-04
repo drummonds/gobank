@@ -8,6 +8,8 @@
    downtime and whether the handover was intact. gobank-deploy's upgrade
    drill reads it before and after each redeploy; `upgrade-drill.md` says
    how that automated run maps onto the manual steps.
+ - The about/runtime page's Data Store box shows the schema version each
+   component's tables are at, as `/about.json` does.
 
 ## [0.7.0] - 2026-10-04
 

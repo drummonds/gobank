@@ -35,6 +35,7 @@ func (ds *DemoState) BuildRuntimeHTML() string {
 	// Live database queries — after the unlock so a slow database can
 	// never stall other pages on ds.mu.
 	dbConfig := ds.dbConfigRows()
+	schema := appliedSchemaVersions(ds.db)
 	paymentCount := ds.paymentCount()
 
 	var s strings.Builder
@@ -86,6 +87,9 @@ func (ds *DemoState) BuildRuntimeHTML() string {
 	s.WriteString(`<h3 class="title is-5">Data Store</h3>`)
 	s.WriteString(`<table class="table is-fullwidth">`)
 	s.WriteString(fmt.Sprintf(`<tr><th>Type</th><td>%s</td></tr>`, dbBackend))
+	for _, v := range schema {
+		s.WriteString(fmt.Sprintf(`<tr><th>Schema: %s</th><td>%d</td></tr>`, html.EscapeString(v.Component), v.Version))
+	}
 	for _, r := range dbConfig {
 		s.WriteString(fmt.Sprintf(`<tr><th>%s</th><td>%s</td></tr>`, html.EscapeString(r[0]), html.EscapeString(r[1])))
 	}

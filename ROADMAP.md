@@ -168,7 +168,7 @@ root module, `cmd/bff` is the service binary, and `app/` is the Flutter shell.
         dashboard already does) so a value being typed is not wiped before
         Save; and the dashboard's day tile counts down the seconds to the
         end of the day
-      - [x] (unreleased) (c) upgrade drill — the demo keeps a restart
+      - [x] (v0.7.0) (c) upgrade drill — the demo keeps a restart
         record (`restarts`, an expand-only migration of the simulation
         component): each process start against the stop before it, with
         the downtime and the run's day and customers on both sides, shown
@@ -177,9 +177,8 @@ root module, `cmd/bff` is the service binary, and `app/` is the Flutter shell.
         roll back to N from the release store and forward again, confirm
         nothing is lost — and every later story's acceptance. Needs
         gobank-deploy story 1i (stop timeout, fetch a named tag)
-      - [ ] about/runtime shows the schema version per component, as
-        `/about.json` already does; it is the one thing the JSON has that
-        no page shows
+      - [x] (unreleased) about/runtime shows the schema version per
+        component, as `/about.json` already does
       - [ ] (d) transactions as a ledger projection replacing `txLog`
       - [ ] (e) chart histories as stored daily snapshots
       - [ ] (f) sessions in the database

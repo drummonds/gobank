@@ -58,3 +58,18 @@ func TestAboutShowsConfiguredMemoryLimit(t *testing.T) {
 		t.Errorf("runtime page should show the %s auto-stop threshold:\n%s", want, html)
 	}
 }
+
+// The runtime page shows the schema version each component's tables are
+// at, as /about.json does, so an operator can read it without the JSON.
+func TestRuntimeShowsSchemaVersionPerComponent(t *testing.T) {
+	ds := NewDemoState()
+	html := ds.BuildRuntimeHTML()
+	for _, want := range []string{
+		`<tr><th>Schema: simulation</th><td>2</td></tr>`,
+		`<tr><th>Schema: products</th><td>1</td></tr>`,
+	} {
+		if !strings.Contains(html, want) {
+			t.Errorf("runtime page should show %s:\n%s", want, html)
+		}
+	}
+}
