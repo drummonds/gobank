@@ -149,7 +149,7 @@ root module, `cmd/bff` is the service binary, and `app/` is the Flutter shell.
         payments generator calls it) and `BuyGilt` (the treasury page
         calls it). Opening a customer stays inside the generator until
         stage 4 splits generators from the bank
-   2. [x] (unreleased) Stored truth — transactions as a ledger projection, stored chart
+   2. [x] (v0.9.0) Stored truth — transactions as a ledger projection, stored chart
       snapshots, sessions in the database. From here every story is an
       upgrade of the running Hetzner demo, downtime accepted and recorded
       until stage 8 ([ADR-0003](adr/0003-upgrade-in-place-until-stage-8.md);
@@ -180,13 +180,52 @@ root module, `cmd/bff` is the service binary, and `app/` is the Flutter shell.
       - [x] (v0.8.0) about/runtime shows the schema version per
         component, as `/about.json` already does
       - [x] (v0.8.0) (d) transactions as a ledger projection replacing `txLog`
-      - [x] (unreleased) (e) chart histories as stored daily snapshots —
+      - [x] (v0.9.0) (e) chart histories as stored daily snapshots —
         the `history` component, one row a day in `daily_snapshots`
-      - [x] (unreleased) (f) sessions in the database — `bff.Sessions`,
+      - [x] (v0.9.0) (f) sessions in the database — `bff.Sessions`,
         with a SQL store over the demo's database (the `sessions`
         component)
    3. Pipelined accruals — start-of-day workflow writes next-day
-      projections; interest application is product code inside it
+      projections; interest application is product code inside it. A
+      projection is an account's position at the start of a day: its
+      balance and its accrued-but-unapplied interest. go-luca publishes
+      the position as contract views and decides how it is kept (stored
+      projections, sums over ranges); gobank-products holds the rules,
+      one account at a time, and stores nothing; the demo's products
+      component owns no table once `accrual_state` is retired. Numbers
+      cross the contract as NUMERIC, so how go-luca stores them
+      (integers, numerator and denominator) stays inside it. Stories:
+      - [ ] (a) enabler, go-postgres: NUMERIC in pglike — a `::numeric`
+        cast and arithmetic, rounding and comparison on it give exact
+        decimals with PostgreSQL's scale rules, so a contract view can
+        publish a NUMERIC column computed from integers on both drivers
+      - [ ] (b) go-luca: two contract views — `contract_ledger_eod_positions`
+        (account, day, balance, accrued; the cheap one, from stored
+        projections written for both accounts of a movement, incrementally)
+        and `contract_ledger_live_positions` (today's row plus today's
+        movements; dearer, and said so) — with `contract_ledger_movements`
+        moving in from the demo, a projection-only write for the daily
+        pass, and `knowledge_time` stored on every write path (cold review
+        go-luca #6). Done with the cost measured: rows per account per
+        day at the Hetzner scale, and the two views benchmarked
+      - [ ] (c) gobank-products: `Product.NextDay` — a pure function from
+        an account's projection and the day's balance to the next day's
+        projection and the ledger postings it calls for, with the
+        application cycle (daily, monthly, annual) a product parameter
+        and month-end application gone as a separate pass; the existing
+        sweep loops over it so the goldens hold
+      - [ ] (d) projections are the truth — the demo writes each day's
+        pass as go-luca projections and posts customer movements with
+        projections; balance and accrued reads come from the views;
+        `accrual_state` goes (the BoE reserve's accrual becomes a
+        projection on its account)
+      - [ ] (e) the start-of-day workflow — the date advances at the
+        start of the slot; the pass over every account is paced over the
+        day length (flat out at zero) and resumes after a restart from
+        the projections already written; a transfer or funding rewrites
+        the touched account's next-day projection; the engine's account
+        map and the end-of-day sweep go. Done-when of the stage; drilled
+        with a restart mid-pass
    4. Events and clock — bank and simulation split; generators and an
       injected clock
    5. Core into packages — one component at a time
