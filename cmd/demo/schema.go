@@ -31,7 +31,7 @@ type componentSchema struct {
 // demoSchemas is every component's schema. Libraries (the ledger, the
 // customer store) create their own tables and are not listed.
 func demoSchemas() []componentSchema {
-	return []componentSchema{simulationSchema, productsSchema, customersSchema, paymentsSchema, treasurySchema}
+	return []componentSchema{simulationSchema, productsSchema, customersSchema, paymentsSchema, treasurySchema, historySchema}
 }
 
 // migrate brings every component's tables up to its latest version,

@@ -20,8 +20,8 @@ import (
 	"git.bytestone.uk/hum3/gogal"
 )
 
-// The daily series are the core's history types (ADR-0002 stage 1); the
-// demo still keeps them in memory until stage 2 stores them.
+// The daily series are the core's history types (ADR-0002 stage 1),
+// stored as daily snapshots (history.go).
 type (
 	RatePoint     = core.RatePoint
 	BalancePoint  = core.BalancePoint
@@ -55,9 +55,6 @@ type DemoState struct {
 	reserveRatio        float64     // fraction of deposits held as BoE reserves, e.g. 0.15 (mu)
 	nextCustSeq         int
 	piiAuthorized       bool
-	boeHistory          []RatePoint
-	balanceHistory      []BalancePoint
-	customerHistory     []CustomerPoint
 	addingCustRunning   bool
 	addingCustCancel    context.CancelFunc
 	addingCustProgress  int
@@ -67,8 +64,8 @@ type DemoState struct {
 	interestRate        interestThroughput
 	progress            dayProgress      // the day being processed, for the runtime page
 	now                 func() time.Time // wall clock, injectable for tests
-	nimHistory          []NIMPoint
-	boeAccruedNumerator int64 // BoE interest on excess reserves, numerator units over gbp.AccrualDenominator
+	nimBps              float64          // the latest snapshot's NIM, for the position (mu)
+	boeAccruedNumerator int64            // BoE interest on excess reserves, numerator units over gbp.AccrualDenominator
 	db                  *sql.DB
 	dbBackend           string // human-readable data store description, set by initDBWithDSN
 	dbIsPostgres        bool   // real PostgreSQL (pgx) rather than in-memory pglike
@@ -96,19 +93,9 @@ type DemoState struct {
 }
 
 const (
-	maxHistoryPoints = 7_300 // B4: ~20 years of daily data
+	maxHistoryPoints = 7_300 // the charts draw at most ~20 years of daily points
 	memCheckInterval = 10    // check every N sim-days
 )
-
-// capSlice returns a slice trimmed to maxLen by dropping the oldest entries.
-func capSlice[T any](s []T, maxLen int) []T {
-	if len(s) <= maxLen {
-		return s
-	}
-	drop := len(s) - maxLen
-	copy(s, s[drop:])
-	return s[:maxLen]
-}
 
 func NewDemoState() *DemoState {
 	return NewDemoStateWithDSN("")
@@ -135,7 +122,6 @@ func (ds *DemoState) openOn(db *sql.DB, dsn string) *DemoState {
 	if resumed {
 		ds.currentDay, ds.dayCount = run.Day, run.DayCount
 		ds.boeRate = lookupBoERate(run.Day)
-		ds.boeHistory = []RatePoint{{Date: run.Day, Rate: ds.boeRate}}
 		ds.rng = rand.New(rand.NewSource(42 + int64(run.DayCount)))
 		ds.resumedRunning = run.Running
 	}
@@ -145,7 +131,10 @@ func (ds *DemoState) openOn(db *sql.DB, dsn string) *DemoState {
 	} else {
 		saveRun(ds.db, runState{Day: ds.currentDay})
 	}
-	ds.recordHistory()
+	saveSnapshot(ds.db, ds.recordHistory())
+	if latest, ok := latestSnapshot(ds.db); ok {
+		ds.nimBps = latest.NIMBps // the day's NIM is on record; this process has no accrual yet
+	}
 	ds.mu.Lock()
 	ds.restartID = recordStart(ds.db, version, ds.dayCount, ds.nCustomers, run.SavedAt)
 	ds.mu.Unlock()
@@ -237,7 +226,6 @@ func newDemoState() *DemoState {
 		boeRate:       boeRate,
 		reserveRatio:  defaultReserveRatio,
 		nextCustSeq:   1,
-		boeHistory:    []RatePoint{{Date: startDay, Rate: boeRate}},
 		now:           time.Now,
 		memoryLimit:   defaultMemoryLimit,
 	}
@@ -343,15 +331,14 @@ func (ds *DemoState) addCustomerToLedger(sim *gbp.Simulation, cust *CustomerReco
 	}
 }
 
-// recordHistory appends current balance/customer/NIM totals to history slices.
-// Must be called with ds.mu held.
-func (ds *DemoState) recordHistory() {
+// recordHistory takes the day's snapshot — the book, the customers, the
+// NIM and the base rate — for the caller to store (saveSnapshot, off the
+// lock). Must be called with ds.mu held.
+func (ds *DemoState) recordHistory() DailySnapshot {
 	savings, lending := ds.book.Savings, ds.book.Lending
 	// Today's interest in minor units, from the engine's exact accrual (rate math for the NIM ratio, not storage).
 	totalDepInt := float64(ds.dayAccrualSavings) / gbp.AccrualDenominator
 	totalLoanInt := float64(ds.dayAccrualLending) / gbp.AccrualDenominator
-	ds.balanceHistory = append(ds.balanceHistory, BalancePoint{Date: ds.currentDay, Savings: savings, Lending: lending})
-	ds.customerHistory = append(ds.customerHistory, CustomerPoint{Date: ds.currentDay, Count: ds.nCustomers})
 
 	// NIM in bps: (loan interest income + BoE interest - deposit interest expense) / total deposits * 365 * 10000
 	cash := savings - lending
@@ -365,7 +352,8 @@ func (ds *DemoState) recordHistory() {
 	if savings > 0 {
 		nimBps = (totalLoanInt + dailyBoeInt - totalDepInt) / float64(savings) * 365.0 * 10000.0
 	}
-	ds.nimHistory = append(ds.nimHistory, NIMPoint{Date: ds.currentDay, NIM: nimBps})
+	ds.nimBps = nimBps
+	return DailySnapshot{Day: ds.currentDay, Savings: savings, Lending: lending, Customers: ds.nCustomers, NIMBps: nimBps, BoERate: ds.boeRate}
 }
 
 // --- Bank simulation ---
@@ -495,7 +483,6 @@ func (ds *DemoState) advanceDay() {
 	}
 
 	ds.boeRate = lookupBoERate(ds.currentDay)
-	ds.boeHistory = append(ds.boeHistory, RatePoint{Date: ds.currentDay, Rate: ds.boeRate})
 
 	if ds.nCustomers < ds.settings.Get().MaxCustomers {
 		boeRate := ds.boeRate
@@ -517,13 +504,7 @@ func (ds *DemoState) advanceDay() {
 		}
 	}
 
-	ds.recordHistory()
-
-	// B4: Cap history arrays
-	ds.boeHistory = capSlice(ds.boeHistory, maxHistoryPoints)
-	ds.balanceHistory = capSlice(ds.balanceHistory, maxHistoryPoints)
-	ds.customerHistory = capSlice(ds.customerHistory, maxHistoryPoints)
-	ds.nimHistory = capSlice(ds.nimHistory, maxHistoryPoints)
+	snapshot := ds.recordHistory()
 
 	// B2: Periodic memory check
 	if ds.dayCount%memCheckInterval == 0 && heapExceeds(ds.memoryLimit) {
@@ -555,6 +536,7 @@ func (ds *DemoState) advanceDay() {
 	if newCustomer != nil {
 		ds.persistCustomerPlan(*newCustomer)
 	}
+	saveSnapshot(db, snapshot)
 	// The day is on record once everything it wrote is: a restart from
 	// here resumes on the next day.
 	saveRun(db, run)
@@ -1076,10 +1058,7 @@ func (ds *DemoState) Reset() {
 	ds.dayAccrualSavings, ds.dayAccrualLending = 0, 0
 	ds.piiAuthorized = false
 	ds.memoryExceeded = false
-	ds.boeHistory = []RatePoint{{Date: ds.currentDay, Rate: ds.boeRate}}
-	ds.balanceHistory = nil
-	ds.customerHistory = nil
-	ds.nimHistory = nil
+	ds.nimBps = 0
 	ds.boeAccruedNumerator = 0
 	// Clear persisted numerators so a durable (postgres) DB doesn't carry
 	// accrual rows from before the reset.
@@ -1098,7 +1077,7 @@ func (ds *DemoState) Reset() {
 	}
 	ds.initLedger()
 	saveRun(ds.db, runState{Day: ds.currentDay})
-	ds.recordHistory()
+	saveSnapshot(ds.db, ds.recordHistory())
 }
 
 // position is the bank's position (core.Position) read under one lock.
@@ -1111,10 +1090,7 @@ func (ds *DemoState) position() core.Position {
 // positionLocked is position with ds.mu held.
 func (ds *DemoState) positionLocked() core.Position {
 	savings, lending := ds.book.Savings, ds.book.Lending
-	nimBps := 0.0
-	if n := len(ds.nimHistory); n > 0 {
-		nimBps = ds.nimHistory[n-1].NIM
-	}
+	nimBps := ds.nimBps
 	return core.Position{
 		Day:              ds.currentDay,
 		DayCount:         ds.dayCount,
@@ -1148,16 +1124,10 @@ func (ds *DemoState) profitAndLoss() core.ProfitAndLoss {
 	}
 }
 
-// history copies the daily series (core.History) under one lock.
+// history is the daily series (core.History), read from the stored
+// snapshots.
 func (ds *DemoState) history() core.History {
-	ds.mu.Lock()
-	defer ds.mu.Unlock()
-	return core.History{
-		Balances:  append([]BalancePoint(nil), ds.balanceHistory...),
-		Customers: append([]CustomerPoint(nil), ds.customerHistory...),
-		NIM:       append([]NIMPoint(nil), ds.nimHistory...),
-		BoERate:   append([]RatePoint(nil), ds.boeHistory...),
-	}
+	return historyOf(loadSnapshots(ds.DB()))
 }
 
 // SimStatus is the simulation console's own state: what is running and

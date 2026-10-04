@@ -63,6 +63,12 @@ var components = []Component{
 		Views:   []string{"contract_payments"},
 	},
 	{
+		Name:    "history",
+		Purpose: "The bank's daily series for the dashboard charts: one snapshot a day of the book, the customers, the NIM and the base rate.",
+		Files:   []string{"history.go"},
+		Tables:  []string{"daily_snapshots"},
+	},
+	{
 		Name:    "treasury",
 		Purpose: "Gilt yields and holdings: where the bank places its liquidity.",
 		Files:   []string{"treasury.go"},
