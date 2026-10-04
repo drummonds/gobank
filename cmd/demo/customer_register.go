@@ -244,7 +244,7 @@ func (ds *DemoState) accountsOf(customerID string) []CustomerAccount {
 			return nil
 		}
 		if p, ok := ds.productByID(a.ProductID); ok {
-			a.ProductName, a.Family, a.Rate = p.Name, p.Family, p.Rate
+			a.ProductName, a.Family, a.Rate, a.Currency = p.Name, p.Family, p.Rate, p.Currency
 		}
 		accounts = append(accounts, a)
 	}

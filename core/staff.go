@@ -246,6 +246,7 @@ type Product struct {
 	ID          string
 	Name        string
 	Family      string // "Savings" or "Lending"
+	Currency    string // ISO 4217 code of the product's money, e.g. "GBP"
 	Rate        float64
 	Terms       string
 	Description string

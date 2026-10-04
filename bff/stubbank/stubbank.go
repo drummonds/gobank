@@ -36,12 +36,12 @@ type Bank struct {
 func New() *Bank {
 	b := &Bank{customers: map[string]*customer{}}
 	b.add("cust-001", "Alice Example", []core.Account{
-		{ProductName: "Easy Saver", Family: "Savings", Rate: 0.035, SortCode: "04-00-04", AccountNum: "10000001", OpenDate: "2025-01-06"},
-		{ProductName: "Fixed Rate Bond", Family: "Savings", Rate: 0.0425, SortCode: "04-00-04", AccountNum: "10000002", OpenDate: "2025-03-03"},
-		{ProductName: "Personal Loan", Family: "Lending", Rate: 0.069, SortCode: "04-00-04", AccountNum: "20000001", OpenDate: "2025-05-12"},
+		{ProductName: "Easy Saver", Family: "Savings", Currency: "GBP", Rate: 0.035, SortCode: "04-00-04", AccountNum: "10000001", OpenDate: "2025-01-06"},
+		{ProductName: "Fixed Rate Bond", Family: "Savings", Currency: "GBP", Rate: 0.0425, SortCode: "04-00-04", AccountNum: "10000002", OpenDate: "2025-03-03"},
+		{ProductName: "Personal Loan", Family: "Lending", Currency: "GBP", Rate: 0.069, SortCode: "04-00-04", AccountNum: "20000001", OpenDate: "2025-05-12"},
 	})
 	b.add("cust-002", "Bob Example", []core.Account{
-		{ProductName: "Easy Saver", Family: "Savings", Rate: 0.035, SortCode: "04-00-04", AccountNum: "10000003", OpenDate: "2025-07-01"},
+		{ProductName: "Easy Saver", Family: "Savings", Currency: "GBP", Rate: 0.035, SortCode: "04-00-04", AccountNum: "10000003", OpenDate: "2025-07-01"},
 	})
 	return b
 }
@@ -62,7 +62,7 @@ func (b *Bank) add(id, name string, accts []core.Account) {
 			}
 			txID++
 			all = append(all, core.Transaction{ID: fmt.Sprintf("m%04d", txID), Date: start.AddDate(0, 0, day).Format("2006-01-02"),
-				ProductName: a.ProductName, Type: typ, Reference: ref, Amount: abs(amt), Balance: bal})
+				ProductName: a.ProductName, Type: typ, Currency: a.Currency, Reference: ref, Amount: abs(amt), Balance: bal})
 		}
 		if a.Family == "Lending" {
 			post(0, "Loan", "Drawdown", 500000)

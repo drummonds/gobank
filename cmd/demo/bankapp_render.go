@@ -3,6 +3,9 @@ package main
 import (
 	"fmt"
 	"strings"
+
+	"git.bytestone.uk/hum3/gobank/bff"
+	"git.bytestone.uk/hum3/gobank/screen"
 )
 
 // phoneHeader renders the green header bar inside the phone frame.
@@ -97,10 +100,10 @@ func (ds *DemoState) buildAppBalanceHTML(custID string) string {
 
 	// Per-account cards (clickable to product detail)
 	for i, a := range resp.Accounts {
-		familyIcon := "&#128178;" // savings
+		familyIcon := screen.Glyph(screen.IconSavings, a.Currency)
 		familyColor := "#48c78e"
 		if a.Family == "Lending" {
-			familyIcon = "&#128179;"
+			familyIcon = screen.Glyph(screen.IconLending, a.Currency)
 			familyColor = "#3e8ed0"
 		}
 		fmt.Fprintf(&s, `<a href="/app/customer/%s/product/%d" style="display:block;text-decoration:none;color:inherit;margin-bottom:8px">
@@ -156,17 +159,7 @@ func (ds *DemoState) buildAppTransactionsHTML(custID string, page int) string {
 				amtPrefix = "+"
 				amtColor = "#3e8ed0"
 			}
-			icon := "&#128178;"
-			switch tx.Type {
-			case "Transfer Out":
-				icon = "&#8593;"
-			case "Transfer In":
-				icon = "&#8595;"
-			case "Interest", "Loan Interest":
-				icon = "&#9733;"
-			case "Loan":
-				icon = "&#127974;"
-			}
+			icon := screen.Glyph(bff.TxIcon(tx.Type), tx.Currency)
 			fmt.Fprintf(&s, `<div style="display:flex;align-items:center;padding:8px 0;border-bottom:1px solid #f0f0f0">
   <div style="width:32px;height:32px;border-radius:50%%;background:#f0f0f0;display:flex;align-items:center;justify-content:center;margin-right:10px;font-size:0.9rem">%s</div>
   <div style="flex:1">
@@ -264,17 +257,7 @@ func (ds *DemoState) buildAppProductHTML(custID string, accountIdx, txPage int) 
 				amtPrefix = "+"
 				amtColor = "#3e8ed0"
 			}
-			icon := "&#128178;"
-			switch tx.Type {
-			case "Transfer Out":
-				icon = "&#8593;"
-			case "Transfer In":
-				icon = "&#8595;"
-			case "Interest", "Loan Interest":
-				icon = "&#9733;"
-			case "Loan":
-				icon = "&#127974;"
-			}
+			icon := screen.Glyph(bff.TxIcon(tx.Type), tx.Currency)
 			fmt.Fprintf(&s, `<div style="display:flex;align-items:center;padding:8px 0;border-bottom:1px solid #f0f0f0">
   <div style="width:32px;height:32px;border-radius:50%%;background:#f0f0f0;display:flex;align-items:center;justify-content:center;margin-right:10px;font-size:0.9rem">%s</div>
   <div style="flex:1">

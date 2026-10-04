@@ -15,6 +15,7 @@ type apiCustomer struct {
 type apiAccount struct {
 	ProductName string      `json:"product_name"`
 	Family      string      `json:"family"`
+	Currency    string      `json:"currency"` // ISO 4217
 	Rate        float64     `json:"rate"`
 	Balance     luca.Amount `json:"balance_minor"` // integer minor units (pence)
 	Interest    luca.Amount `json:"interest_minor"`
@@ -33,6 +34,7 @@ type apiTxEntry struct {
 	Date        string      `json:"date"`
 	ProductName string      `json:"product_name"`
 	Type        string      `json:"type"`
+	Currency    string      `json:"currency"` // ISO 4217
 	Amount      luca.Amount `json:"amount_minor"`
 	Balance     luca.Amount `json:"balance_minor"`
 	Reference   string      `json:"reference"`
@@ -52,6 +54,7 @@ type apiProductDetail struct {
 	AccountIndex int         `json:"account_index"`
 	ProductName  string      `json:"product_name"`
 	Family       string      `json:"family"`
+	Currency     string      `json:"currency"` // ISO 4217
 	Rate         float64     `json:"rate"`
 	Balance      luca.Amount `json:"balance_minor"`
 	Interest     luca.Amount `json:"interest_minor"`
@@ -97,6 +100,7 @@ func (ds *DemoState) bankAppAccounts(custID string) *apiAccountsResponse {
 		resp.Accounts = append(resp.Accounts, apiAccount{
 			ProductName: a.ProductName,
 			Family:      string(a.Family),
+			Currency:    a.Currency,
 			Rate:        a.Rate,
 			Balance:     a.Balance,
 			Interest:    a.Interest,
@@ -119,6 +123,7 @@ func (ds *DemoState) bankAppTransactions(custID string, page int) apiTransaction
 			Date:        tx.Date.Format("2006-01-02"),
 			ProductName: tx.ProductName,
 			Type:        tx.Type.String(),
+			Currency:    tx.Currency,
 			Amount:      tx.Amount,
 			Balance:     tx.Balance,
 			Reference:   tx.Reference,
@@ -146,6 +151,7 @@ func (ds *DemoState) bankAppProductDetail(custID string, accountIdx int) *apiPro
 		AccountIndex: accountIdx,
 		ProductName:  a.ProductName,
 		Family:       string(a.Family),
+		Currency:     a.Currency,
 		Rate:         a.Rate,
 		Balance:      a.Balance,
 		Interest:     a.Interest,
@@ -164,6 +170,7 @@ func (ds *DemoState) bankAppProductTransactions(custID string, accountIdx, page 
 			Date:        tx.Date.Format("2006-01-02"),
 			ProductName: tx.ProductName,
 			Type:        tx.Type.String(),
+			Currency:    tx.Currency,
 			Amount:      tx.Amount,
 			Balance:     tx.Balance,
 			Reference:   tx.Reference,

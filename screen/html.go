@@ -68,7 +68,7 @@ func component(c Component) string {
 		if href != "" {
 			fmt.Fprintf(&b, `<a class="rowlink" href="%s">`, esc(href))
 		}
-		fmt.Fprintf(&b, `<div class="row" style="border-left-color:%s"><div><span>%s</span> <strong>%s</strong><br><span class="muted">%s</span></div>`, accent(c.Tone), glyph(c.Icon), esc(c.Title), esc(c.Subtitle))
+		fmt.Fprintf(&b, `<div class="row" style="border-left-color:%s"><div><span>%s</span> <strong>%s</strong><br><span class="muted">%s</span></div>`, accent(c.Tone), Glyph(c.Icon, c.Currency), esc(c.Title), esc(c.Subtitle))
 		fmt.Fprintf(&b, `<div class="right"><div><strong>%s</strong><br><span class="muted">%s</span></div>`, esc(c.Value), esc(c.Note))
 		if href != "" {
 			b.WriteString(`<span class="chev">&#8250;</span>`)
@@ -79,7 +79,7 @@ func component(c Component) string {
 		}
 	case TypeTx:
 		fmt.Fprintf(&b, `<div class="tx"><div class="txicon">%s</div><div class="txbody"><div class="line"><strong>%s</strong><span style="color:%s;font-weight:bold">%s</span></div><div class="line muted"><span>%s</span><span>%s</span></div></div></div>`,
-			glyph(c.Icon), esc(c.Title), accent(c.Tone), esc(c.Value), esc(c.Subtitle), esc(c.Note))
+			Glyph(c.Icon, c.Currency), esc(c.Title), accent(c.Tone), esc(c.Value), esc(c.Subtitle), esc(c.Note))
 	case TypeHeading:
 		fmt.Fprintf(&b, `<p class="heading">%s</p>`, esc(c.Text))
 	case TypeText:
@@ -133,6 +133,26 @@ func component(c Component) string {
 
 func esc(s string) string { return html.EscapeString(s) }
 
+// Glyph is the HTML glyph for an icon. The savings icon is the currency's
+// banknote, so it follows the account's currency rather than assuming
+// one; every other icon ignores the currency.
+func Glyph(i Icon, currency string) string {
+	if i != IconSavings {
+		return glyph(i)
+	}
+	switch currency {
+	case "GBP":
+		return "&#128183;" // pound banknote
+	case "USD":
+		return "&#128181;" // dollar banknote
+	case "EUR":
+		return "&#128182;" // euro banknote
+	case "JPY":
+		return "&#128180;" // yen banknote
+	}
+	return "&#128176;" // money bag: a currency with no banknote glyph
+}
+
 func glyph(i Icon) string {
 	switch i {
 	case IconHome:
@@ -141,8 +161,6 @@ func glyph(i Icon) string {
 		return "&#128179;"
 	case IconActivity:
 		return "&#128196;"
-	case IconSavings:
-		return "&#128178;"
 	case IconIn:
 		return "&#8595;"
 	case IconOut:

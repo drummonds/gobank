@@ -298,3 +298,27 @@ func TestFormatMoney(t *testing.T) {
 		}
 	}
 }
+
+// Account rows and transaction rows carry the account's currency, so a
+// client can show the right symbol (#26).
+func TestScreensCarryTheAccountCurrency(t *testing.T) {
+	f := newFixture(t)
+	_, m := f.login("cust-001", "password")
+	token := m["token"].(string)
+	for _, path := range []string{"/v1/screen/accounts", "/v1/screen/activity", "/v1/screen/product/0"} {
+		_, sc := f.do("GET", path, token, "", "")
+		n := 0
+		for _, c := range screenOf(sc)["body"].([]any) {
+			comp := c.(map[string]any)
+			if comp["type"] == "row" || comp["type"] == "tx" {
+				n++
+				if comp["currency"] != "GBP" {
+					t.Errorf("%s: %s %q has currency %v, want GBP", path, comp["type"], comp["title"], comp["currency"])
+				}
+			}
+		}
+		if n == 0 {
+			t.Errorf("%s: no account or transaction rows to check", path)
+		}
+	}
+}

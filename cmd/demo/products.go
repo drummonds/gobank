@@ -13,6 +13,7 @@ import (
 // Product wraps a gbp.Product with demo-specific UI fields.
 type Product struct {
 	*gbp.Product
+	Currency    string  // ISO 4217 code of the product's money; every product is GBP today
 	Rate        float64 // annual rate as decimal (cached from Defaults)
 	Terms       string
 	Description string
@@ -20,12 +21,12 @@ type Product struct {
 
 func AllProducts() []Product {
 	return []Product{
-		{Product: gbp.EasyAccess(), Rate: 0.015, Terms: "No notice", Description: "Instant access savings with competitive rate"},
-		{Product: gbp.FixedTerm(), Rate: 0.040, Terms: "2 year fixed", Description: "Higher rate for locking funds for 2 years"},
-		{Product: gbp.ISA(), Rate: 0.035, Terms: "Annual allowance", Description: "Tax-free savings up to annual ISA allowance"},
-		{Product: gbp.PersonalLoan(), Rate: 0.069, Terms: "1-5 years", Description: "Unsecured personal loan for any purpose"},
-		{Product: gbp.Mortgage(), Rate: 0.045, Terms: "25 year", Description: "Residential mortgage with fixed rate period"},
-		{Product: gbp.Overdraft(), Rate: 0.159, Terms: "Revolving", Description: "Arranged overdraft facility on current account"},
+		{Product: gbp.EasyAccess(), Currency: "GBP", Rate: 0.015, Terms: "No notice", Description: "Instant access savings with competitive rate"},
+		{Product: gbp.FixedTerm(), Currency: "GBP", Rate: 0.040, Terms: "2 year fixed", Description: "Higher rate for locking funds for 2 years"},
+		{Product: gbp.ISA(), Currency: "GBP", Rate: 0.035, Terms: "Annual allowance", Description: "Tax-free savings up to annual ISA allowance"},
+		{Product: gbp.PersonalLoan(), Currency: "GBP", Rate: 0.069, Terms: "1-5 years", Description: "Unsecured personal loan for any purpose"},
+		{Product: gbp.Mortgage(), Currency: "GBP", Rate: 0.045, Terms: "25 year", Description: "Residential mortgage with fixed rate period"},
+		{Product: gbp.Overdraft(), Currency: "GBP", Rate: 0.159, Terms: "Revolving", Description: "Arranged overdraft facility on current account"},
 	}
 }
 

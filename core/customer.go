@@ -29,6 +29,7 @@ type Account struct {
 	Index       int // position in the customer's account list; stable for a session
 	ProductName string
 	Family      string // "Savings" or "Lending"
+	Currency    string // ISO 4217 code of the product's money, e.g. "GBP"
 	Rate        float64
 	Balance     luca.Amount
 	Interest    luca.Amount // applied to the balance to date
@@ -46,6 +47,7 @@ type Transaction struct {
 	Date        string
 	ProductName string
 	Type        string // "Deposit", "Interest", "Transfer In", "Transfer Out", "Loan", "Loan Interest"
+	Currency    string // the account's, ISO 4217
 	Reference   string
 	Amount      luca.Amount
 	Balance     luca.Amount

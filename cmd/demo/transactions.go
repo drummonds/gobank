@@ -59,6 +59,7 @@ type TxEntry struct {
 	AccountID   string // ledger account the entry is for
 	ProductName string
 	Type        TxType
+	Currency    string      // the account's, ISO 4217
 	Amount      luca.Amount // minor units, always positive; direction implied by Type
 	Balance     luca.Amount // minor units; the account's balance after this entry
 	Reference   string      // the movement's description: a payment reference, or what interest was applied for
@@ -141,6 +142,7 @@ func (ds *DemoState) accountTransactions(custID string, a CustomerAccount) []TxE
 			AccountID:   a.LedgerAccountID,
 			ProductName: a.ProductName,
 			Type:        txTypeOf(code, counterparty, in, a.Family),
+			Currency:    a.Currency,
 			Amount:      amount,
 			Balance:     balance,
 			Reference:   description,

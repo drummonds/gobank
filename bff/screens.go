@@ -68,8 +68,10 @@ func AccountsScreen(c core.Customer, accounts []core.Account) screen.Screen {
 		if a.Family == "Lending" {
 			icon, tone = screen.IconLending, screen.ToneLending
 		}
-		s.Add(screen.Row(icon, a.ProductName, fmt.Sprintf("%.2f%% APR", a.Rate*100),
-			FormatMoney(a.Balance), "Interest: "+FormatMoney(a.Interest), tone, screen.Go(productPath(a.Index))))
+		row := screen.Row(icon, a.ProductName, fmt.Sprintf("%.2f%% APR", a.Rate*100),
+			FormatMoney(a.Balance), "Interest: "+FormatMoney(a.Interest), tone, screen.Go(productPath(a.Index)))
+		row.Currency = a.Currency
+		s.Add(row)
 	}
 	s.Add(screen.Button("Log out", screen.ToneMuted, screen.Logout()))
 	s.Nav = nav("accounts")
@@ -131,23 +133,38 @@ func addTransactions(s *screen.Screen, page core.TransactionPage, showProduct bo
 			date = tx.Date
 			s.Add(screen.Heading(date))
 		}
-		sign, tone, icon := "+", screen.TonePositive, screen.IconSavings
-		switch tx.Type {
-		case "Transfer Out":
-			sign, tone, icon = "-", screen.ToneNegative, screen.IconOut
-		case "Loan Interest":
-			sign, tone, icon = "-", screen.ToneNegative, screen.IconInterest
-		case "Interest":
-			icon = screen.IconInterest
-		case "Transfer In":
-			icon = screen.IconIn
-		case "Loan":
-			tone, icon = screen.ToneLending, screen.IconLoan
-		}
+		sign, tone, icon := txStyle(tx.Type)
 		sub := tx.Reference
 		if showProduct {
 			sub = tx.ProductName + " · " + tx.Reference
 		}
-		s.Add(screen.Tx(icon, tx.Type, sub, sign+FormatMoney(tx.Amount), "Bal: "+FormatMoney(tx.Balance), tone))
+		row := screen.Tx(icon, tx.Type, sub, sign+FormatMoney(tx.Amount), "Bal: "+FormatMoney(tx.Balance), tone)
+		row.Currency = tx.Currency
+		s.Add(row)
 	}
+}
+
+// txStyle is how a transaction type reads: its sign, tone and icon.
+func txStyle(txType string) (sign string, tone screen.Tone, icon screen.Icon) {
+	sign, tone, icon = "+", screen.TonePositive, screen.IconSavings
+	switch txType {
+	case "Transfer Out":
+		sign, tone, icon = "-", screen.ToneNegative, screen.IconOut
+	case "Loan Interest":
+		sign, tone, icon = "-", screen.ToneNegative, screen.IconInterest
+	case "Interest":
+		icon = screen.IconInterest
+	case "Transfer In":
+		icon = screen.IconIn
+	case "Loan":
+		tone, icon = screen.ToneLending, screen.IconLoan
+	}
+	return sign, tone, icon
+}
+
+// TxIcon is the icon a transaction type shows, for a renderer outside the
+// screen tree (the demo's phone frame) so the decision lives once.
+func TxIcon(txType string) screen.Icon {
+	_, _, icon := txStyle(txType)
+	return icon
 }

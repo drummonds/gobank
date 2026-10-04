@@ -105,6 +105,7 @@ type Component struct {
 	Subtitle string  `json:"subtitle,omitempty"`
 	Value    string  `json:"value,omitempty"`
 	Note     string  `json:"note,omitempty"`
+	Currency string  `json:"currency,omitempty"` // ISO 4217 code of the money a row or tx shows; the renderer picks the glyph by it
 	Text     string  `json:"text,omitempty"`
 	Pairs    []Pair  `json:"pairs,omitempty"`
 	Fields   []Field `json:"fields,omitempty"`

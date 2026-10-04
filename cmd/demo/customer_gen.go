@@ -97,6 +97,7 @@ func generateCustomer(rng *rand.Rand, seq int, products []Product, openDate time
 			ProductID:   p.ID,
 			ProductName: p.Name,
 			Family:      p.Family,
+			Currency:    p.Currency,
 			Balance:     0,
 			Rate:        p.Rate,
 			OpenDate:    openDate,

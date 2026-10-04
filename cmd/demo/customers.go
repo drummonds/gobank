@@ -71,6 +71,7 @@ type CustomerAccount struct {
 	ProductID        string
 	ProductName      string
 	Family           gbp.ProductFamily
+	Currency         string      // ISO 4217, from the product
 	Balance          luca.Amount // minor units (pence); principal plus applied interest
 	Rate             float64     // annual rate (a rate, not money)
 	Interest         luca.Amount // minor units; lifetime interest applied to the balance

@@ -107,3 +107,26 @@ func TestJourneys(t *testing.T) {
 		}
 	}
 }
+
+// The savings glyph follows the account's currency (#26): a GBP account
+// shows a pound note, never the dollar sign the renderer used to hard-code.
+func TestSavingsGlyphFollowsCurrency(t *testing.T) {
+	const dollar = "&#128178;"
+	for currency, want := range map[string]string{
+		"GBP": "&#128183;", "USD": "&#128181;", "EUR": "&#128182;", "JPY": "&#128180;", "": "&#128176;",
+	} {
+		row := Row(IconSavings, "Easy Saver", "3.50% APR", "£1.00", "", ToneSavings, nil)
+		row.Currency = currency
+		tx := Tx(IconSavings, "Deposit", "Opening", "+£1.00", "Bal: £1.00", TonePositive)
+		tx.Currency = currency
+		s := New("accounts", "/v1/screen/accounts", "Alice")
+		s.Add(row, tx)
+		h := HTML(s)
+		if strings.Count(h, want) != 2 || strings.Contains(h, dollar) {
+			t.Errorf("currency %q: want the glyph %s on the row and the tx and no dollar sign; got %s", currency, want, h)
+		}
+	}
+	if g := Glyph(IconLending, "GBP"); g != glyph(IconLending) {
+		t.Errorf("Glyph(lending, GBP) = %s, want the lending glyph %s regardless of currency", g, glyph(IconLending))
+	}
+}
