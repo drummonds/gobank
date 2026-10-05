@@ -34,10 +34,9 @@ func allCustomers(t *testing.T, ds *DemoState) []CustomerRecord {
 	return page
 }
 
-// TestInterestAccruesDaily verifies the products engine accrues interest every
-// day with visible accrued amounts, and that no application movements (the
-// engine's month-end code) appear before month end. Daily accruals do post
-// ledger movements, under codeDailyAccrual — see TestDailyAccrualMovements.
+// TestInterestAccruesDaily verifies the pass accrues interest every day
+// with visible accrued amounts, and that no application movements appear
+// before month end. Daily accrual posts nothing: it lives on the position.
 func TestInterestAccruesDaily(t *testing.T) {
 	ds := NewDemoState()
 	addFundedCustomer(ds)
@@ -66,115 +65,61 @@ func TestInterestAccruesDaily(t *testing.T) {
 	if count != 0 {
 		t.Errorf("daily accrual should not write application movements, found %d", count)
 	}
+	var customerAccruals int
+	if err := ds.db.QueryRow(`SELECT COUNT(*) FROM movements WHERE code = $1 AND description = 'Daily interest accrual'`, codeDailyAccrual).Scan(&customerAccruals); err != nil {
+		t.Fatalf("query movements: %v", err)
+	}
+	if customerAccruals != 0 {
+		t.Errorf("customer accrual posted %d daily movements; it belongs on the position", customerAccruals)
+	}
 }
 
-// accruedPenceByFamily sums floor(numerator/denominator) over every account of
-// every customer per family (the holding accounts are bank-wide). Caller holds ds.mu.
-func accruedPenceByFamily(t *testing.T, ds *DemoState) (savings, lending luca.Amount) {
+// interestByFamily sums the read model's applied interest and its accrued
+// interest at 7dp over every account of every customer, per family.
+func interestByFamily(t *testing.T, ds *DemoState) (appliedSavings, appliedLending luca.Amount, accruedSavingsE7, accruedLendingE7 int64) {
 	t.Helper()
-	for _, c := range allCustomers(t, ds) {
-		for _, a := range c.Accounts {
-			ma, ok := ds.sim.GetManagedAccount(a.LedgerAccountID)
-			if !ok {
-				t.Fatalf("%s: managed account missing", a.ProductName)
-			}
-			pence := luca.Amount(ma.AccruedNumerator / gbp.AccrualDenominator)
-			if a.Family == gbp.FamilySavings {
-				savings += pence
-			} else {
-				lending += pence
-			}
-		}
-	}
-	return savings, lending
-}
-
-// assertAccrualHoldings checks the AccruedInterest holding account balances
-// equal the whole pence currently accrued but unapplied. Caller holds ds.mu.
-func assertAccrualHoldings(t *testing.T, ds *DemoState) {
-	t.Helper()
-	wantSavings, wantLending := accruedPenceByFamily(t, ds)
-	gotSavings, err := ds.sim.Ledger.Balance(ds.accrSavingsID)
-	if err != nil {
-		t.Fatalf("savings holding balance: %v", err)
-	}
-	gotLending, err := ds.sim.Ledger.Balance(ds.accrLendingID)
-	if err != nil {
-		t.Fatalf("lending holding balance: %v", err)
-	}
-	if gotSavings != wantSavings {
-		t.Errorf("Liability:AccruedInterest balance %d != accrued pence %d", gotSavings, wantSavings)
-	}
-	if gotLending != wantLending {
-		t.Errorf("Asset:AccruedInterest balance %d != accrued pence %d", gotLending, wantLending)
-	}
-}
-
-// TestDailyAccrualMovements verifies daily accruals are visible in the ledger:
-// whole pence move into the AccruedInterest holding accounts each day, and the
-// month-end reversal empties them as the engine applies the month's interest,
-// leaving net P&L exactly the engine's application amounts.
-func TestDailyAccrualMovements(t *testing.T) {
-	ds := NewDemoState()
-	addFundedCustomer(ds)
-
-	for range 5 { // mid-month
-		ds.AdvanceDay()
-	}
-	ds.mu.Lock()
-	var count int
-	if err := ds.db.QueryRow(`SELECT COUNT(*) FROM movements WHERE code = $1`, codeDailyAccrual).Scan(&count); err != nil {
-		t.Fatalf("query accrual movements: %v", err)
-	}
-	if count == 0 {
-		t.Fatal("no daily accrual movements in the ledger")
-	}
-	assertAccrualHoldings(t, ds)
-	ds.mu.Unlock()
-
-	for range 30 { // crosses the 31 Jan application
-		ds.AdvanceDay()
-	}
-	ds.mu.Lock()
-	defer ds.mu.Unlock()
-	// Holdings now carry only the new month's accruals; the January pence
-	// were reversed out on application day.
-	assertAccrualHoldings(t, ds)
-
-	// Net P&L in the ledger is the engine's applied interest plus the current
-	// month's accrued-to-date pence (posted daily, reversed only on
-	// application): January's accruals cancelled against January's
-	// application, February's still stand. Expense:Interest pays out both
-	// (balance = in - out, so it goes negative).
-	var appliedSavings, appliedLending luca.Amount
 	for _, c := range allCustomers(t, ds) {
 		for _, a := range c.Accounts {
 			if a.Family == gbp.FamilySavings {
 				appliedSavings += a.Interest
+				accruedSavingsE7 += a.AccruedE7
 			} else {
 				appliedLending += a.Interest
+				accruedLendingE7 += a.AccruedE7
 			}
 		}
 	}
-	accruedSavings, accruedLending := accruedPenceByFamily(t, ds)
-	expense, err := ds.sim.Ledger.Balance(ds.expenseInterestID)
-	if err != nil {
-		t.Fatalf("expense balance: %v", err)
+	return
+}
+
+// The bank's interest to date on an accrual basis is what the ledger
+// shows: the P&L accounts carry the applications, the positions carry the
+// accrual not yet applied, and nothing is posted daily to get there.
+func TestInterestTotalsOnAnAccrualBasis(t *testing.T) {
+	ds := NewDemoState()
+	for range 3 {
+		addFundedCustomer(ds)
 	}
-	income, err := ds.sim.Ledger.Balance(ds.incomeInterestID)
-	if err != nil {
-		t.Fatalf("income balance: %v", err)
+	for range 35 { // crosses the 31 Jan application
+		ds.AdvanceDay()
 	}
-	if want := -(appliedSavings + accruedSavings); expense != want {
-		t.Errorf("Expense:Interest balance %d != -(applied %d + accrued %d)", expense, appliedSavings, accruedSavings)
+
+	appliedSavings, appliedLending, accruedSavingsE7, accruedLendingE7 := interestByFamily(t, ds)
+	if appliedSavings <= 0 || accruedSavingsE7 <= 0 {
+		t.Fatalf("savings applied %d, accrued %d e7: the test needs both", appliedSavings, accruedSavingsE7)
 	}
-	if want := -(appliedLending + accruedLending); income != want {
-		t.Errorf("Income:Interest balance %d != -(applied %d + accrued %d)", income, appliedLending, accruedLending)
+	income, expense := ds.interestTotals()
+	if want := appliedSavings + poundsE7(accruedSavingsE7).Pence(); expense != want {
+		t.Errorf("deposit interest expense %d, want applied %d + accrued %d", expense, appliedSavings, poundsE7(accruedSavingsE7).Pence())
+	}
+	if want := appliedLending + poundsE7(accruedLendingE7).Pence(); income != want {
+		t.Errorf("loan interest income %d, want applied %d + accrued %d", income, appliedLending, poundsE7(accruedLendingE7).Pence())
 	}
 }
 
-// TestInterestAppliedMonthly verifies accrued interest is applied to balances
-// as ledger movements at month end, and the mirror matches the engine cache.
+// TestInterestAppliedMonthly verifies accrued interest is applied to
+// balances as ledger movements at month end, booked by the pass the
+// following morning.
 func TestInterestAppliedMonthly(t *testing.T) {
 	ds := NewDemoState()
 	addFundedCustomer(ds)
@@ -188,15 +133,15 @@ func TestInterestAppliedMonthly(t *testing.T) {
 	var applied luca.Amount
 	for _, a := range firstCustomerAccounts(t, ds) {
 		applied += a.Interest
-		if ma, ok := ds.sim.GetManagedAccount(a.LedgerAccountID); ok {
-			if ma.CachedBalance != a.Balance {
-				t.Errorf("%s: mirror balance %d != engine cache %d", a.ProductName, a.Balance, ma.CachedBalance)
-			}
-		} else if a.LedgerAccountID != "" {
-			t.Errorf("%s: managed account missing", a.ProductName)
-		}
 		if a.Rate > 0 && a.Balance > 0 && a.Interest == 0 {
 			t.Errorf("%s: no interest applied after month end (balance %d, rate %v)", a.ProductName, a.Balance, a.Rate)
+		}
+		bal, err := ds.ledger.Balance(a.LedgerAccountID)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if bal != a.Balance {
+			t.Errorf("%s: read model balance %d != ledger %d", a.ProductName, a.Balance, bal)
 		}
 	}
 	if applied <= 0 {
@@ -226,7 +171,9 @@ func TestNoFloatMoneyStorage(t *testing.T) {
 		_ luca.Amount = BalancePoint{}.Lending
 		_ luca.Amount = GiltHolding{}.FaceValue
 		_ int64       = CustomerAccount{}.AccruedE7
-		_ int64       = ManagedAccountAccruedNumerator()
+		_ int64       = luca.Position{}.Accrued.Num
+		_ int64       = dayResult{}.accrued
+		_ luca.Amount = dayResult{}.applied
 		_ luca.Amount = core.Account{}.Balance
 		_ luca.Amount = core.Account{}.Interest
 		_ int64       = core.Account{}.AccruedE7
@@ -267,61 +214,45 @@ func TestPoundsE7(t *testing.T) {
 	}
 }
 
-// ManagedAccountAccruedNumerator anchors the engine-side integer accrual type.
-func ManagedAccountAccruedNumerator() int64 {
-	var ma gbp.ManagedAccount
-	return ma.AccruedNumerator
-}
-
-// assertAccrualPersisted checks every account's ledger position for the
-// closed day carries the engine's numerator and balance, and that the BoE
-// reserves position carries ds.boeAccruedNumerator. Caller holds ds.mu.
-func assertAccrualPersisted(t *testing.T, ds *DemoState) {
+// assertPositionsAreTheTruth checks every account's position for today
+// is what the read model shows, and that the BoE reserves position for
+// the day just closed carries ds.boeAccruedNumerator. Caller holds ds.mu.
+func assertPositionsAreTheTruth(t *testing.T, ds *DemoState) {
 	t.Helper()
-	closed := ds.currentDay.AddDate(0, 0, -1)
+	today := ds.currentDay
 	for _, a := range firstCustomerAccounts(t, ds) {
-		ma, ok := ds.sim.GetManagedAccount(a.LedgerAccountID)
-		if !ok {
-			t.Fatalf("%s: managed account missing", a.ProductName)
-		}
-		p, err := ds.ledger.PositionAt(a.LedgerAccountID, closed)
+		p, err := ds.ledger.PositionAt(a.LedgerAccountID, today)
 		if err != nil || p == nil {
-			t.Fatalf("%s: position for %s: %v %v", a.ProductName, closed.Format("2006-01-02"), p, err)
+			t.Fatalf("%s: position for %s: %v %v", a.ProductName, today.Format("2006-01-02"), p, err)
 		}
-		if !p.Day.Equal(closed) {
-			t.Errorf("%s: latest position is %s, want %s", a.ProductName, p.Day.Format("2006-01-02"), closed.Format("2006-01-02"))
+		if !p.Day.Equal(today) {
+			t.Errorf("%s: latest position is %s, want %s", a.ProductName, p.Day.Format("2006-01-02"), today.Format("2006-01-02"))
 		}
-		if p.Accrued.Num != ma.AccruedNumerator || p.Accrued.Den != gbp.AccrualDenominator {
-			t.Errorf("%s: stored accrual %d/%d != engine %d/%d", a.ProductName, p.Accrued.Num, p.Accrued.Den, ma.AccruedNumerator, gbp.AccrualDenominator)
+		if p.Accrued.Den != gbp.AccrualDenominator {
+			t.Errorf("%s: accrual denominator %d, want %d", a.ProductName, p.Accrued.Den, gbp.AccrualDenominator)
 		}
-		if p.Balance != ma.CachedBalance {
-			t.Errorf("%s: stored balance %d != engine %d", a.ProductName, p.Balance, ma.CachedBalance)
+		if a.AccruedE7 != int64(accrualPoundsE7(p.Accrued.Num)) {
+			t.Errorf("%s: read model accrual %d != position's %d at 7dp", a.ProductName, a.AccruedE7, accrualPoundsE7(p.Accrued.Num))
 		}
-		if a.AccruedE7 != int64(accrualPoundsE7(ma.AccruedNumerator)) {
-			t.Errorf("%s: view accrual %d != engine's %d at 7dp", a.ProductName, a.AccruedE7, accrualPoundsE7(ma.AccruedNumerator))
+		if a.Balance != p.Balance {
+			t.Errorf("%s: read model balance %d != position's %d", a.ProductName, a.Balance, p.Balance)
 		}
 	}
+	closed := today.AddDate(0, 0, -1)
 	p, err := ds.ledger.PositionAt(ds.boeReservesID, closed)
-	if err != nil || p == nil {
-		t.Fatalf("BoE reserves position: %v %v", p, err)
+	if err != nil || p == nil || !p.Day.Equal(closed) {
+		t.Fatalf("BoE reserves position for %s: %v %v", closed.Format("2006-01-02"), p, err)
 	}
 	if p.Accrued.Num != ds.boeAccruedNumerator {
 		t.Errorf("stored BoE numerator %d != state %d", p.Accrued.Num, ds.boeAccruedNumerator)
 	}
-	// The shadow table the previous release reads on a rollback keeps pace.
-	var boe int64
-	if err := ds.db.QueryRow(`SELECT numerator FROM accrual_state WHERE account_id = $1`, boeAccrualKey).Scan(&boe); err != nil {
-		t.Fatalf("query BoE accrual row: %v", err)
-	}
-	if boe != ds.boeAccruedNumerator {
-		t.Errorf("shadow BoE numerator %d != state %d", boe, ds.boeAccruedNumerator)
-	}
 }
 
-// TestAccrualStatePersisted verifies the daily pass projects every
-// account's position (mid-month and across a month-end application) so
-// the ledger alone carries the balance and accrued-but-unapplied interest.
-func TestAccrualStatePersisted(t *testing.T) {
+// TestPositionsAreTheTruth verifies the daily pass projects every account's
+// position (mid-month and across a month-end application) so the ledger
+// alone carries the balance and accrued-but-unapplied interest, and that
+// the retired accrual_state table is left alone.
+func TestPositionsAreTheTruth(t *testing.T) {
 	ds := NewDemoState()
 	addFundedCustomer(ds)
 
@@ -329,63 +260,21 @@ func TestAccrualStatePersisted(t *testing.T) {
 		ds.AdvanceDay()
 	}
 	ds.mu.Lock()
-	assertAccrualPersisted(t, ds)
+	assertPositionsAreTheTruth(t, ds)
 	ds.mu.Unlock()
 
 	for range 30 { // crosses the 31 Jan month end: numerators drop to remainders
 		ds.AdvanceDay()
 	}
 	ds.mu.Lock()
-	assertAccrualPersisted(t, ds)
-	ds.mu.Unlock()
-}
-
-// TestAccrualStateRestored verifies refreshFromLedger rehydrates in-memory
-// numerators (engine and BoE) and account mirrors from the ledger's positions.
-func TestAccrualStateRestored(t *testing.T) {
-	ds := NewDemoState()
-	addFundedCustomer(ds)
-	for range 5 {
-		ds.AdvanceDay()
-	}
-
-	ds.mu.Lock()
 	defer ds.mu.Unlock()
-
-	wantBoe := ds.boeAccruedNumerator
-	want := make(map[string]int64)
-	var total int64
-	accounts := firstCustomerAccounts(t, ds)
-	ds.simMu.Lock()
-	for _, a := range accounts {
-		ma, ok := ds.sim.GetManagedAccount(a.LedgerAccountID)
-		if !ok {
-			ds.simMu.Unlock()
-			t.Fatalf("%s: managed account missing", a.ProductName)
-		}
-		want[a.LedgerAccountID] = ma.AccruedNumerator
-		total += ma.AccruedNumerator
-		ma.AccruedNumerator = 0 // simulate lost in-memory state
+	assertPositionsAreTheTruth(t, ds)
+	var rows int
+	if err := ds.db.QueryRow(`SELECT COUNT(*) FROM accrual_state`).Scan(&rows); err != nil {
+		t.Fatalf("accrual_state: %v", err)
 	}
-	ds.simMu.Unlock()
-	ds.boeAccruedNumerator = 0
-	if total <= 0 {
-		t.Fatal("no accrual to restore — test would be vacuous")
-	}
-
-	ds.refreshFromLedger()
-
-	if ds.boeAccruedNumerator != wantBoe {
-		t.Errorf("BoE numerator not restored: got %d, want %d", ds.boeAccruedNumerator, wantBoe)
-	}
-	for _, a := range firstCustomerAccounts(t, ds) {
-		ma, _ := ds.sim.GetManagedAccount(a.LedgerAccountID)
-		if ma.AccruedNumerator != want[a.LedgerAccountID] {
-			t.Errorf("%s: numerator not restored: got %d, want %d", a.ProductName, ma.AccruedNumerator, want[a.LedgerAccountID])
-		}
-		if a.Accrued != ma.AccruedInterest() {
-			t.Errorf("%s: mirror Accrued %d != engine %d", a.ProductName, a.Accrued, ma.AccruedInterest())
-		}
+	if rows != 0 {
+		t.Errorf("accrual_state has %d rows; nothing writes it any more", rows)
 	}
 }
 
@@ -404,21 +293,21 @@ func TestBoEInterestInLedger(t *testing.T) {
 		if ds.boePostedPence != ds.boeAccruedNumerator/gbp.AccrualDenominator {
 			t.Errorf("posted pence %d != floor(numerator) %d", ds.boePostedPence, ds.boeAccruedNumerator/gbp.AccrualDenominator)
 		}
-		holding, err := ds.sim.Ledger.Balance(ds.accrBoEID)
+		holding, err := ds.ledger.Balance(ds.accrBoEID)
 		if err != nil {
 			t.Fatalf("holding balance: %v", err)
 		}
 		if holding != luca.Amount(ds.boePostedPence) {
 			t.Errorf("Asset:AccruedInterest:BoE balance %d != posted pence %d", holding, ds.boePostedPence)
 		}
-		reserves, err := ds.sim.Ledger.Balance(ds.boeReservesID)
+		reserves, err := ds.ledger.Balance(ds.boeReservesID)
 		if err != nil {
 			t.Fatalf("reserves balance: %v", err)
 		}
 		if reserves != ds.boeInterestApplied {
 			t.Errorf("Asset:BoEReserves balance %d != applied %d", reserves, ds.boeInterestApplied)
 		}
-		income, err := ds.sim.Ledger.Balance(ds.incomeBoEID)
+		income, err := ds.ledger.Balance(ds.incomeBoEID)
 		if err != nil {
 			t.Fatalf("income balance: %v", err)
 		}
@@ -452,7 +341,8 @@ func TestBoEInterestInLedger(t *testing.T) {
 }
 
 // TestBoEInterestRestored verifies the BoE fields rehydrate from the DB:
-// numerator and posted-pence from accrual_state, applied from the ledger.
+// numerator and posted-pence from the reserve account's position, applied
+// from its balance.
 func TestBoEInterestRestored(t *testing.T) {
 	ds := NewDemoState()
 	for range 8 {

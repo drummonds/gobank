@@ -15,9 +15,9 @@ one under test.
 | 3 | Release N+1 (`tp release` on `main` once the story's PR is merged); its `post_release` fetches the binaries into the store | laptop | release printed; `gobank-deploy status prod` shows N+1 as the next deploy |
 | 4 | Redeploy prod | gobank-deploy page on hydrogen | job log: `systemctl restart`, then `Model Bank N+1` |
 | 5 | Read the newest row of the restart record | demo settings page, Restarts | downtime; previous version N with a stop time; day and customers at stop → start equal |
-| 6 | Check the position against step 2 | demo dashboard | same day, customers, savings, lending |
+| 6 | Check the position against step 2 | demo dashboard | the same day or the next (the stop finishes the day in progress and a restart begins a new one); customers, savings, lending the same |
 | 7 | Roll back: make N the store's latest and redeploy | `curl -X POST https://gobank-deploy.lan.drummonds.net/fetch?tag=N`, then Redeploy | `Model Bank N` serving; the run resumes |
-| 8 | Forward again: fetch N+1, redeploy | as 7 with N+1 | restart record: a row following an *unrecorded* process (N kept no record), downtime from the run row's last write; position unchanged |
+| 8 | Forward again: fetch N+1, redeploy | as 7 with N+1 | restart record: a row following an *unrecorded* process (N kept no record), downtime from the run row's last write; position as in step 6 |
 
 ## What the record says
 
@@ -37,7 +37,11 @@ hop (upgrade, rollback, forward), gates each hop on the version serving,
 a clean previous stop with a known downtime and an intact handover, and
 keeps every drill with its observations in its database. Step 1 is done
 for you when the day length is under 30 minutes (set to 2h), and the
-drill waits for a day with ten minutes left so the upgrade lands mid-day.
+drill waits for a day with ten minutes left so the upgrade lands mid-day;
+the setting is made again after each hop, since a release before v0.10.3
+forgets it on restart. A hop may land one day on at the stop and one
+more after the start; further than that is the run going on at full
+speed, and the hop fails.
 Step 3, the release, stays yours. The drill page there gives the line
 for the record below.
 

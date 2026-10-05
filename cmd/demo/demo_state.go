@@ -39,6 +39,7 @@ type DemoState struct {
 	shuttingDown        bool          // the loop was stopped by Shutdown, not the operator: the run is still on (mu)
 	restartID           int64         // this process's row in the restart record (mu)
 	resumedRunning      bool          // the run was going when the previous process stopped
+	dayLengthRecorded   bool          // the console set the day length; it is on the run row and beats the environment's (mu)
 	dayEndsAt           time.Time     // when the day in progress ends, zero when flat out or stopped (mu)
 	dsn                 string        // the database this state was opened on, "" for in-memory
 	products            []Product
@@ -61,9 +62,10 @@ type DemoState struct {
 	addingCustTarget    int
 	addingCustStart     time.Time
 	lastAddRate         float64 // customers/s of the last finished batch
-	interestRate        interestThroughput
+	passRate            passThroughput
 	progress            dayProgress      // the day being processed, for the runtime page
 	now                 func() time.Time // wall clock, injectable for tests
+	passHook            func()           // called after each account the pass visits; tests only
 	nimBps              float64          // the latest snapshot's NIM, for the position (mu)
 	boeAccruedNumerator int64            // BoE interest on excess reserves, numerator units over gbp.AccrualDenominator
 	db                  *sql.DB
@@ -71,20 +73,14 @@ type DemoState struct {
 	dbIsPostgres        bool   // real PostgreSQL (pgx) rather than in-memory pglike
 	ledger              *luca.SQLLedger
 	custStore           *customers.SQLCustomerStore
-	sim                 *gbp.Simulation
-	simClock            *gbp.SimClock
 	equityAccountID     string
-	accrualPosted       map[string]int64 // pence posted to AccruedInterest per account, not yet reversed (simMu)
-	expenseInterestID   string           // ledger IDs for accrual movements, resolved lazily (simMu)
+	expenseInterestID   string // ledger IDs the day's rules post against, resolved at start
 	incomeInterestID    string
-	accrSavingsID       string
-	accrLendingID       string
 	incomeBoEID         string
 	accrBoEID           string
 	boeReservesID       string
 	boePostedPence      int64        // whole pence of BoE accrual posted to the ledger, not yet applied (mu)
 	boeInterestApplied  luca.Amount  // cumulative BoE interest applied into Asset:BoEReserves (mu)
-	simMu               sync.Mutex   // serializes mutations of ds.sim in-memory state (engine sweeps vs payments)
 	accountLocks        accountLocks // one lock per ledger account: an in-day event and the daily pass take turns on it
 	memoryExceeded      bool         // true when heap > memoryLimit; simulation pauses
 	memoryLimit         uint64       // auto-stop threshold, see SetMemoryLimit
@@ -125,6 +121,10 @@ func (ds *DemoState) openOn(db *sql.DB, dsn string) *DemoState {
 		ds.boeRate = lookupBoERate(run.Day)
 		ds.rng = rand.New(rand.NewSource(42 + int64(run.DayCount)))
 		ds.resumedRunning = run.Running
+		if run.DayLengthSet {
+			ds.settings.Update(func(s *Settings) { s.DayLength = run.DayLength })
+			ds.dayLengthRecorded = true
+		}
 	}
 	ds.initLedger()
 	if resumed {
@@ -147,67 +147,22 @@ func (ds *DemoState) openOn(db *sql.DB, dsn string) *DemoState {
 func (ds *DemoState) ResumedRunning() bool { return ds.resumedRunning }
 
 // resumeBooks rebuilds the in-memory picture of the bank from the
-// database: the engine adopts every registered account with its ledger
-// balance, accrued interest and the book totals are read back, and the
-// sequence numbers continue from the rows on record. The daily histories
-// and the transaction log start again from today, until stage 2 stories
-// (d) and (e) store them.
+// database: the book totals, the BoE reserve's position and the interest
+// applied are read back, and the sequence numbers continue from the rows
+// on record. Every account's balance and accrued interest is its ledger
+// position, so nothing per account is loaded.
 func (ds *DemoState) resumeBooks() {
-	if ds.db == nil || ds.sim == nil || ds.ledger == nil {
+	if ds.db == nil || ds.ledger == nil {
 		return
 	}
 	ds.mu.Lock()
 	defer ds.mu.Unlock()
-	registered, err := registeredAccounts(ds.db)
-	if err != nil {
-		log.Printf("resume: %v", err)
-		return
-	}
-	balances, err := registeredBalances(ds.db)
-	if err != nil {
-		log.Printf("resume: %v", err)
-		return
-	}
-	ledgerAccounts, err := ds.ledger.ListAccounts("")
-	if err != nil {
-		log.Printf("resume: ledger accounts: %v", err)
-		return
-	}
-	byID := make(map[string]*luca.Account, len(ledgerAccounts))
-	for _, a := range ledgerAccounts {
-		byID[a.ID] = a
-	}
-	ds.simMu.Lock()
-	adopted := 0
-	for _, r := range registered {
-		acct, ok := byID[r.LedgerAccountID]
-		if !ok {
-			log.Printf("resume: registered account %s of %s is not in the ledger", r.LedgerAccountID, r.CustomerID)
-			continue
-		}
-		p, ok := ds.productByID(r.ProductID)
-		if !ok {
-			log.Printf("resume: account %s of %s is on unknown product %s", r.LedgerAccountID, r.CustomerID, r.ProductID)
-			continue
-		}
-		_, err := ds.sim.AdoptAccount(gbp.Adoption{
-			Account: acct, ProductID: r.ProductID, Status: gbp.StatusActive, OpenedAt: r.Opened,
-			Balance: balances[r.LedgerAccountID],
-			Params:  map[string]string{"annual_rate": fmt.Sprintf("%f", p.Rate)},
-		})
-		if err != nil {
-			log.Printf("resume: adopt %s: %v", r.LedgerAccountID, err)
-			continue
-		}
-		adopted++
-	}
 	ds.syncFromLedgerLocked()
-	ds.simMu.Unlock()
 	ds.nCustomers = ds.custStoreCount()
 	ds.nextCustSeq = ds.lastCustomerSeq() + 1
 	ds.nextPaymentID = lastPaymentID(ds.db) + 1
-	log.Printf("resume: day %d (%s), %d customers, %d accounts, savings %s, lending %s",
-		ds.dayCount, ds.currentDay.Format("2006-01-02"), ds.nCustomers, adopted, fmtMoney(ds.book.Savings), fmtMoney(ds.book.Lending))
+	log.Printf("resume: day %d (%s), %d customers, savings %s, lending %s",
+		ds.dayCount, ds.currentDay.Format("2006-01-02"), ds.nCustomers, fmtMoney(ds.book.Savings), fmtMoney(ds.book.Lending))
 }
 
 // newDemoState is the state of a bank on its first day, before it has a
@@ -233,13 +188,11 @@ func newDemoState() *DemoState {
 	return ds
 }
 
-// initLedger creates a go-luca ledger sharing ds.db and gbp simulation.
+// initLedger opens the go-luca ledger on ds.db and resolves the accounts
+// the day's rules post against.
 func (ds *DemoState) initLedger() {
-	ds.accrualPosted = nil
 	ds.expenseInterestID = ""
 	ds.incomeInterestID = ""
-	ds.accrSavingsID = ""
-	ds.accrLendingID = ""
 	ds.incomeBoEID = ""
 	ds.accrBoEID = ""
 	ds.boeReservesID = ""
@@ -251,38 +204,13 @@ func (ds *DemoState) initLedger() {
 		return
 	}
 	ds.ledger = ledger
-	ds.simClock = gbp.NewSimClock(ds.currentDay)
-	sim, err := gbp.NewSimulation(ledger, ds.simClock)
-	if err != nil {
-		log.Printf("initLedger: %v", err)
-		return
-	}
-	for _, p := range ds.products {
-		sim.RegisterProduct(p.Product)
-	}
 	equityAcct, err := ensureLedgerAccount(ledger, equityCapitalPath) // already there on a resumed run
 	if err != nil {
 		log.Printf("initLedger: create equity: %v", err)
 		return
 	}
-	ds.sim = sim
 	ds.equityAccountID = equityAcct.ID
-	// Create the accrual accounts now, not lazily in the day sweep: that
-	// runs under simMu, and a database write there can deadlock against a
-	// customer transaction waiting for simMu.
-	ds.simMu.Lock()
 	ds.ensureAccrualAccounts()
-	ds.simMu.Unlock()
-
-	// Pace large account sweeps so the single-threaded WASM host can yield
-	// to the browser event loop during month-end interest application.
-	n := 0
-	sim.PaceHook = func() {
-		n++
-		if n%64 == 0 {
-			yieldToBrowser()
-		}
-	}
 }
 
 // ensureLedgerAccount returns the account at path, creating it if missing.
@@ -297,10 +225,11 @@ func ensureLedgerAccount(ledger luca.Ledger, path string) (*luca.Account, error)
 	return ledger.CreateAccount(path, "GBP", -2, 0)
 }
 
-// addCustomerToLedger registers a customer's accounts in the go-luca ledger.
-// Must be called with ds.mu held.
-func (ds *DemoState) addCustomerToLedger(sim *gbp.Simulation, cust *CustomerRecord) {
-	if sim == nil {
+// addCustomerToLedger opens a customer's accounts in the go-luca ledger.
+// The products engine is not involved: an account is its ledger account
+// and the product named on the register. Must be called with ds.mu held.
+func (ds *DemoState) addCustomerToLedger(ledger *luca.SQLLedger, cust *CustomerRecord) {
+	if ledger == nil {
 		return
 	}
 	for i := range cust.Accounts {
@@ -310,22 +239,12 @@ func (ds *DemoState) addCustomerToLedger(sim *gbp.Simulation, cust *CustomerReco
 			pathPrefix = "Asset:Loans"
 		}
 		fullPath := fmt.Sprintf("%s:%s:%s", pathPrefix, cust.ID, a.ProductID)
-		params := map[string]string{
-			"annual_rate": fmt.Sprintf("%f", a.Rate),
-		}
-		ds.simMu.Lock()
-		ma, err := sim.OpenAccount(a.ProductID, fullPath, "GBP", -2, params)
+		acct, err := ledger.CreateAccount(fullPath, "GBP", -2, 0)
 		if err != nil {
-			ds.simMu.Unlock()
 			log.Printf("ledger: open account %s: %v", fullPath, err)
 			continue
 		}
-		// The demo funds accounts via direct movements rather than the
-		// Deposit lifecycle, so activate explicitly: the products engine
-		// only accrues interest on active accounts.
-		ma.Status = gbp.StatusActive
-		ds.simMu.Unlock()
-		a.LedgerAccountID = ma.Account.ID
+		a.LedgerAccountID = acct.ID
 	}
 }
 
@@ -369,115 +288,77 @@ func (ds *DemoState) lendingHeadroom() luca.Amount {
 	return maxLoans - loans
 }
 
-// advanceDay advances one simulated day. Interest is handled by the
-// gobank-products engine: exact daily accrual in memory, applied to accounts
-// as ledger movements at month end. The demo additionally posts each day's
-// whole accrued pence into AccruedInterest holding accounts (see
-// collectAccrualMovements) and persists the exact numerators to
-// accrual_state. The engine sweep runs without holding ds.mu, and all bulk
-// database writes stream in ~targetTxTime transactions with no locks held,
-// so dashboard reads stay responsive throughout.
-// Must be called WITHOUT ds.mu held.
+// advanceDay runs one slot of the simulation: the start-of-day workflow
+// (ADR-0002 stage 3). Yesterday's bank-level books are closed and the date
+// moves on, then the pass projects every account's position for the new
+// day (pass.go), paced over the day's length. A day whose pass did not
+// finish — a restart, a stop — is resumed instead: the date stays and the
+// pass carries on from the accounts still without a position. Reads never
+// wait on the pass: an account's position for the day is written when the
+// pass reaches it, and until then its latest position plus the day's
+// movements is the answer. Must be called WITHOUT ds.mu held.
 func (ds *DemoState) advanceDay() {
+	ds.advanceDayCtx(context.Background())
+}
+
+// advanceDayCtx is advanceDay stopping early when ctx ends, leaving the
+// rest of the day's pass for the next call over the same day.
+func (ds *DemoState) advanceDayCtx(ctx context.Context) {
 	ds.mu.Lock()
 	if ds.memoryExceeded {
 		ds.mu.Unlock()
 		return
 	}
-	sim := ds.sim
-	day := ds.currentDay
+	db, ledger := ds.db, ds.ledger
+	day, dayEnd := ds.currentDay, ds.dayEndsAt
 	ds.mu.Unlock()
-	ds.progress.begin(day)
 
-	// Phase 1: products engine end-of-day (and month-end application) —
-	// no ds.mu held; simMu serializes against payments touching sim state.
-	// Only in-memory work happens under simMu; the day's accrual movements
-	// are collected here and streamed to the ledger below with no locks
-	// held, so customer adds and dashboard reads are never stuck behind a
-	// day's worth of database writes.
-	var accrualRows []accrualRow
-	var newCustomer *customerPlan // today's new customer, persisted once ds.mu is released
-	var accrualBatches []accrualBatch
-	var appliedSavings, appliedLending luca.Amount // month-end interest applied to customer balances
-	var accrualSavings, accrualLending int64       // today's accrual, numerator units
-	movements := 0
-	if sim != nil {
-		engine := "products engine"
-		if day.Month() != day.AddDate(0, 0, 1).Month() {
-			engine += " (month-end interest application)"
-		}
-		ds.progress.phase(engine, 0)
-		ds.simMu.Lock()
-		updates, err := sim.AdvanceToDate(day)
-		accrualBatches = ds.collectAccrualMovements(updates)
-		// Interest application is inside the day's rules (Product.NextDay),
-		// so the update carries it: InterestAmount is the interest applied,
-		// AccruedDelta the day's accrual alone, AccruedNumerator the
-		// remainder after application. Snapshot the numerator while simMu
-		// still guards engine state.
-		seen := make(map[string]bool)
-		for _, du := range updates {
-			for _, au := range du.Accounts {
-				if au.Account.Family == gbp.FamilySavings {
-					accrualSavings += au.AccruedDelta
-				} else {
-					accrualLending += au.AccruedDelta
-				}
-				if applied := au.InterestAmount; applied != 0 {
-					if au.Account.Family == gbp.FamilySavings {
-						appliedSavings += applied
-					} else {
-						appliedLending += applied
-					}
-				}
-				id := au.Account.Account.ID
-				if !seen[id] {
-					seen[id] = true
-					accrualRows = append(accrualRows, accrualRow{id: id, numerator: au.Account.AccruedNumerator})
-				}
-			}
-		}
-		ds.simMu.Unlock()
-		if err != nil {
-			log.Printf("advanceDay: products engine: %v", err)
-		}
-		for _, b := range accrualBatches {
-			movements += len(b.inputs)
-		}
-		ds.progress.phase("accrual postings", movements)
-		for _, b := range accrualBatches {
-			ds.writeMovementsChunked(b)
-		}
+	pending, err := anyUnprojected(db, day)
+	if err != nil {
+		log.Printf("advanceDay: %v", err)
+		return
 	}
+	if pending {
+		ds.progress.begin(day) // resuming the day's pass
+	} else {
+		day = ds.startDay(ledger)
+	}
+	visited := ds.runPass(ctx, day, dayEnd)
 
-	// Phase 2: sync account mirrors from the engine and do day bookkeeping
-	// under a single short lock hold.
-	ds.progress.phase("bookkeeping", 0)
+	// The throughput the dashboard quotes is the accounts the pass visited
+	// over the whole day, begin to finish: the span the runtime page
+	// reports as the last day's duration.
+	elapsed := ds.progress.finish()
 	ds.mu.Lock()
-	ds.book.Savings += appliedSavings
-	ds.book.Lending += appliedLending
-	ds.dayAccrualSavings, ds.dayAccrualLending = accrualSavings, accrualLending
-	totalDeposits, totalLoans := ds.book.Savings, ds.book.Lending
+	ds.passRate.record(visited, elapsed)
+	ds.mu.Unlock()
+}
 
+// startDay closes yesterday's bank-level books and begins the next day:
+// BoE interest accrues on the excess reserves yesterday closed with and is
+// projected on the reserve account; the date and the base rate move on;
+// the day's snapshot and the run row are written, so a restart from here
+// resumes this day. Returns the new day. Must be called WITHOUT ds.mu held.
+func (ds *DemoState) startDay(ledger *luca.SQLLedger) time.Time {
+	ds.mu.Lock()
+	closed := ds.currentDay
+	totalDeposits, totalLoans := ds.book.Savings, ds.book.Lending
 	requiredReserves := luca.Amount(float64(totalDeposits) * ds.reserveRatio)
 	cash := totalDeposits - totalLoans
 	excessCash := cash - requiredReserves
 	if excessCash > 0 {
 		// Exact BoE interest accrual: numerator over gbp.AccrualDenominator.
-		ds.boeAccruedNumerator += int64(excessCash) * int64(math.Round(ds.boeRate*10_000))
+		ds.boeAccruedNumerator += int64(excessCash) * gbp.RateBps(ds.boeRate)
 	}
-	boeMovements := ds.collectBoEInterest(day)
+	boeMovements := ds.collectBoEInterest(closed)
+	boeNumerator, boeReservesID := ds.boeAccruedNumerator, ds.boeReservesID
 
-	ds.currentDay = ds.currentDay.AddDate(0, 0, 1)
+	ds.currentDay = closed.AddDate(0, 0, 1)
 	ds.dayCount++
-	if ds.simClock != nil {
-		ds.simMu.Lock() // the engine reads the clock under simMu, e.g. opening accounts
-		ds.simClock.SetDate(ds.currentDay)
-		ds.simMu.Unlock()
-	}
-
 	ds.boeRate = lookupBoERate(ds.currentDay)
+	day := ds.currentDay
 
+	var newCustomer *customerPlan // today's new customer, persisted once ds.mu is released
 	if ds.nCustomers < ds.settings.Get().MaxCustomers {
 		boeRate := ds.boeRate
 		avgSavings := averageRate(ds.products, gbp.FamilySavings)
@@ -498,7 +379,10 @@ func (ds *DemoState) advanceDay() {
 		}
 	}
 
+	// The snapshot is the day the bank starts, with the NIM of the day just
+	// closed; the pass accrues the new day from zero.
 	snapshot := ds.recordHistory()
+	ds.dayAccrualSavings, ds.dayAccrualLending = 0, 0
 
 	// B2: Periodic memory check
 	if ds.dayCount%memCheckInterval == 0 && heapExceeds(ds.memoryLimit) {
@@ -510,57 +394,52 @@ func (ds *DemoState) advanceDay() {
 		}
 	}
 
-	boeNumerator, boeReservesID := ds.boeAccruedNumerator, ds.boeReservesID
 	// A shutdown is not a stop: the next process carries the run on.
 	run := runState{Day: ds.currentDay, DayCount: ds.dayCount, Running: ds.running || ds.shuttingDown}
-	db, ledger := ds.db, ds.ledger
+	db := ds.db
 	ds.mu.Unlock()
 
+	ds.progress.begin(day)
+	ds.progress.phase("closing yesterday", 0)
 	if ledger != nil {
 		for _, m := range boeMovements {
 			if _, err := ledger.RecordMovement(m.from, m.to, m.amount, m.code, m.at, m.description); err != nil {
 				log.Printf("advanceDay: BoE interest: %v", err)
 			}
 		}
+		// The BoE reserves account's accrual is a position like any other.
+		if boeReservesID != "" {
+			unlock := ds.accountLocks.lock(boeReservesID)
+			if _, err := ledger.Project(boeReservesID, closed, luca.Fraction{Num: boeNumerator, Den: gbp.AccrualDenominator}); err != nil {
+				log.Printf("advanceDay: BoE reserves position: %v", err)
+			}
+			unlock()
+		}
 	}
-
-	// Phase 3: project the day's positions off both locks, so the ledger
-	// alone carries each account's balance and accrued interest for the
-	// day. The BoE reserves account's accrual is a position like any other.
-	// accrual_state is shadow-written first so the previous release can be
-	// rolled back to (story (e) drops it).
-	persistAccrualState(db, day, accrualRows, boeNumerator)
-	if boeReservesID != "" {
-		accrualRows = append(accrualRows, accrualRow{id: boeReservesID, numerator: boeNumerator})
-	}
-	ds.projectPositions(ledger, day, accrualRows)
 	if newCustomer != nil {
 		ds.persistCustomerPlan(*newCustomer)
 	}
 	saveSnapshot(db, snapshot)
-	// The day is on record once everything it wrote is: a restart from
-	// here resumes on the next day.
+	// The day is on record before its pass begins: a restart from here
+	// resumes it.
 	saveRun(db, run)
-
-	// The throughput the dashboard quotes is the day's accrual movements
-	// over the whole day, projection included: the rate the movements
-	// table actually grows at.
-	elapsed := ds.progress.finish()
-	ds.mu.Lock()
-	ds.interestRate.record(movements, elapsed)
-	ds.mu.Unlock()
+	return day
 }
 
-// codeDailyAccrual marks daily interest accrual movements and their month-end
-// reversals — distinct from the engine's application code (luca.CodeInterestAccrual).
+// codeDailyAccrual marks the BoE reserve's daily interest accrual movements
+// (income recognised as it accrues) — distinct from the application code
+// (luca.CodeInterestAccrual). Customer accounts carry their accrual on
+// their positions and post nothing daily.
 const codeDailyAccrual = "LDAS:FTDP:ACRU"
 
-// ensureAccrualAccounts resolves (creating on first use) the P&L and
-// AccruedInterest holding accounts used by daily accrual movements.
-// Must be called with ds.simMu held.
+// ensureAccrualAccounts resolves (creating on first use) the P&L accounts
+// the day's rules post interest from and the BoE reserve's accounts.
 func (ds *DemoState) ensureAccrualAccounts() bool {
 	if ds.expenseInterestID != "" {
 		return true
+	}
+	if ds.ledger == nil {
+		return false
 	}
 	for _, t := range []struct {
 		path string
@@ -568,13 +447,11 @@ func (ds *DemoState) ensureAccrualAccounts() bool {
 	}{
 		{"Expense:Interest", &ds.expenseInterestID},
 		{"Income:Interest", &ds.incomeInterestID},
-		{"Liability:AccruedInterest", &ds.accrSavingsID},
-		{"Asset:AccruedInterest", &ds.accrLendingID},
 		{"Income:Interest:BoE", &ds.incomeBoEID},
 		{"Asset:AccruedInterest:BoE", &ds.accrBoEID},
 		{"Asset:BoEReserves", &ds.boeReservesID},
 	} {
-		acct, err := ensureLedgerAccount(ds.sim.Ledger, t.path)
+		acct, err := ensureLedgerAccount(ds.ledger, t.path)
 		if err != nil {
 			log.Printf("ensureAccrualAccounts: %s: %v", t.path, err)
 			ds.expenseInterestID = ""
@@ -585,153 +462,14 @@ func (ds *DemoState) ensureAccrualAccounts() bool {
 	return true
 }
 
-// accrualBatch is one day's accrual movements: collected in memory under
-// ds.simMu, then written to the ledger with no locks held.
-type accrualBatch struct {
-	valueTime time.Time
-	inputs    []luca.MovementInput
-}
-
-// targetTxTime is the wall-clock budget for one streamed write transaction.
-// The design goal is smooth streaming under load: at the ultimate capacity of
-// one real day per simulated day, writes should trickle continuously in small
-// transactions that other writers can interleave with, instead of arriving as
-// one monolithic burst that holds locks and demands oversized hardware.
-const targetTxTime = 10 * time.Millisecond
-
-// movementRecorder is the ledger write postMovements needs.
-type movementRecorder interface {
-	RecordLinkedMovements(movements []luca.MovementInput, valueTime time.Time) (string, error)
-}
-
-// dbWriters is how many connections write to the database at once — posting
-// a day's accrual movements or adding customers. On PostgreSQL the writes
-// spread across cores; the in-memory pglike store (and WASM) takes one
-// writer at a time.
+// dbWriters is how many connections write to the database at once when
+// adding customers. On PostgreSQL the writes spread across cores; the
+// in-memory pglike store (and WASM) takes one writer at a time.
 func (ds *DemoState) dbWriters() int {
 	if !ds.dbIsPostgres {
 		return 1
 	}
 	return runtime.NumCPU()
-}
-
-// writeMovementsChunked posts one day's accrual batch with no locks held, so
-// customer creation, payments and dashboard reads interleave between chunks.
-func (ds *DemoState) writeMovementsChunked(b accrualBatch) {
-	if ds.ledger == nil {
-		return
-	}
-	if err := postMovements(ds.ledger, b, ds.dbWriters(), ds.progress.add); err != nil {
-		log.Printf("writeMovementsChunked: %v", err)
-	}
-}
-
-// postMovements writes b's movements with up to workers concurrent writers,
-// each in transactions sized to roughly targetTxTime, adapting its chunk
-// length to its own measured cost. Every movement is posted at most once;
-// after the first error no further chunks start and that error is returned.
-// posted is called with the size of each chunk written.
-func postMovements(rec movementRecorder, b accrualBatch, workers int, posted func(int)) error {
-	var (
-		mu       sync.Mutex
-		next     int
-		firstErr error
-	)
-	// take claims the next n unposted movements, or none once done or failed.
-	take := func(n int) []luca.MovementInput {
-		mu.Lock()
-		defer mu.Unlock()
-		if firstErr != nil || next >= len(b.inputs) {
-			return nil
-		}
-		j := min(next+n, len(b.inputs))
-		chunk := b.inputs[next:j]
-		next = j
-		return chunk
-	}
-	var wg sync.WaitGroup
-	for range max(workers, 1) {
-		wg.Go(func() {
-			n := 64
-			for chunk := take(n); chunk != nil; chunk = take(n) {
-				start := time.Now()
-				if _, err := rec.RecordLinkedMovements(chunk, b.valueTime); err != nil {
-					mu.Lock()
-					if firstErr == nil {
-						firstErr = err
-					}
-					mu.Unlock()
-					return
-				}
-				posted(len(chunk))
-				if el := time.Since(start); el > 0 {
-					n = min(max(int(float64(len(chunk))*float64(targetTxTime)/float64(el)), 16), 8192)
-				}
-				yieldToBrowser()
-			}
-		})
-	}
-	wg.Wait()
-	return firstErr
-}
-
-// collectAccrualMovements builds each day's interest accrual movements:
-// newly accrued whole pence move from the P&L interest account into an
-// AccruedInterest holding account daily, and on month-end days the holding
-// account is emptied back to P&L, because the engine's application movement
-// posts the full month's interest from the same P&L account to the customer
-// account. Net P&L and customer balances therefore stay exactly the engine's;
-// the holding accounts expose the intra-month accrual. Sub-penny remainders
-// live in accrual_state, not the ledger.
-//
-// Only ds.accrualPosted and in-memory batches are touched here — the caller
-// writes the returned batches via writeMovementsChunked after releasing the
-// locks. A later write failure leaves accrualPosted ahead of the ledger; the
-// demo logs and carries on (startup begins from an empty database, and import
-// rebuilds state from the file). Must be called with ds.simMu held.
-func (ds *DemoState) collectAccrualMovements(updates []gbp.DailyUpdate) []accrualBatch {
-	if ds.sim == nil || len(updates) == 0 || !ds.ensureAccrualAccounts() {
-		return nil
-	}
-	if ds.accrualPosted == nil {
-		ds.accrualPosted = make(map[string]int64)
-	}
-	var batches []accrualBatch
-	for _, du := range updates {
-		monthEnd := du.Date.Month() != du.Date.AddDate(0, 0, 1).Month()
-		// Just before the engine's application movements at 23:59:59.
-		valueTime := time.Date(du.Date.Year(), du.Date.Month(), du.Date.Day(), 23, 59, 58, 0, du.Date.Location())
-		var inputs []luca.MovementInput
-		for _, au := range du.Accounts {
-			id := au.Account.Account.ID
-			pnlID, holdID := ds.expenseInterestID, ds.accrSavingsID
-			if au.Account.Family == gbp.FamilyLending {
-				pnlID, holdID = ds.incomeInterestID, ds.accrLendingID
-			}
-			posted := ds.accrualPosted[id]
-			// au.AccruedNumerator is this day's post-accrual, pre-application
-			// value, so the difference is the account's unposted whole pence.
-			if newPence := au.AccruedNumerator/gbp.AccrualDenominator - posted; newPence > 0 {
-				inputs = append(inputs, luca.MovementInput{
-					FromAccountID: pnlID, ToAccountID: holdID, Amount: luca.Amount(newPence),
-					Code: codeDailyAccrual, Description: "Daily interest accrual",
-				})
-				posted += newPence
-			}
-			if monthEnd && posted > 0 {
-				inputs = append(inputs, luca.MovementInput{
-					FromAccountID: holdID, ToAccountID: pnlID, Amount: luca.Amount(posted),
-					Code: codeDailyAccrual, Description: fmt.Sprintf("Accrual reversal on application %s", du.Date.Format("2006-01-02")),
-				})
-				posted = 0
-			}
-			ds.accrualPosted[id] = posted
-		}
-		if len(inputs) > 0 {
-			batches = append(batches, accrualBatch{valueTime: valueTime, inputs: inputs})
-		}
-	}
-	return batches
 }
 
 // ledgerMovement is a movement decided under the locks and written to the
@@ -748,20 +486,12 @@ type ledgerMovement struct {
 // whole pence post daily as Income:Interest:BoE -> Asset:AccruedInterest:BoE
 // (income recognised as it accrues, receivable builds up), and at month end
 // the receivable moves into Asset:BoEReserves as the interest is received.
-// Unlike customer interest there is no reversal — the engine is not involved,
-// so income is never double-posted. Sub-penny remainders carry forward in
-// boeAccruedNumerator. The movements are returned for the caller to write
-// with no locks held; as with customer accruals, a later write failure is
-// logged and the counters stay ahead of the ledger. Must be called with
-// ds.mu held.
+// Sub-penny remainders carry forward in boeAccruedNumerator. The movements
+// are returned for the caller to write with no locks held; a later write
+// failure is logged and the counters stay ahead of the ledger. Must be
+// called with ds.mu held.
 func (ds *DemoState) collectBoEInterest(day time.Time) []ledgerMovement {
-	if ds.sim == nil {
-		return nil
-	}
-	ds.simMu.Lock()
-	ok := ds.ensureAccrualAccounts()
-	ds.simMu.Unlock()
-	if !ok {
+	if !ds.ensureAccrualAccounts() {
 		return nil
 	}
 	var out []ledgerMovement
@@ -794,80 +524,42 @@ func (ds *DemoState) AdvanceDay() {
 	ds.advanceDay()
 }
 
-// refreshFromLedger re-primes the engine's cached balances from the ledger
-// and syncs account mirrors, e.g. after an import wrote movements directly.
-// Must be called with ds.mu held.
+// refreshFromLedger reads the bank's position back from the database,
+// e.g. after an import wrote movements directly. Must be called with ds.mu
+// held.
 func (ds *DemoState) refreshFromLedger() {
-	if ds.sim == nil {
-		return
-	}
-	ds.simMu.Lock()
-	defer ds.simMu.Unlock()
-	if err := ds.sim.RefreshBalances(); err != nil {
-		log.Printf("refreshFromLedger: %v", err)
+	if ds.ledger == nil {
 		return
 	}
 	ds.syncFromLedgerLocked()
 }
 
 // syncFromLedgerLocked reads back what the database holds of the bank's
-// position beyond the engine's balances: accrued interest (per account and
-// BoE), the book totals and the BoE interest applied. Must be called with
-// ds.mu and ds.simMu held.
+// position: the BoE reserve's accrual from its position, the book totals
+// and the BoE interest applied. Accounts need nothing: each one's balance
+// and accrual is its ledger position, read where it is shown. Must be
+// called with ds.mu held.
 func (ds *DemoState) syncFromLedgerLocked() {
 	// The BoE reserves account must be known before its position is read.
-	accounts := ds.ensureAccrualAccounts()
-	ds.loadPositions()
+	if !ds.ensureAccrualAccounts() {
+		return
+	}
+	if p, err := ds.ledger.PositionAt(ds.boeReservesID, ds.currentDay); err != nil {
+		log.Printf("refreshFromLedger: BoE reserves position: %v", err)
+	} else if p != nil && p.Accrued.Den == gbp.AccrualDenominator {
+		ds.boeAccruedNumerator = p.Accrued.Num
+		// Daily posting maintains posted == floor(numerator/denominator)
+		// at every sync point, so the tracker is derivable on restore.
+		ds.boePostedPence = p.Accrued.Num / gbp.AccrualDenominator
+	}
 	ds.refreshBookTotals()
 	// Applied BoE interest is derivable from its ledger account balance.
-	if accounts {
-		if bal, err := ds.sim.Ledger.Balance(ds.boeReservesID); err == nil {
-			ds.boeInterestApplied = bal
-		} else {
-			log.Printf("refreshFromLedger: BoE reserves balance: %v", err)
-		}
+	if bal, err := ds.ledger.Balance(ds.boeReservesID); err == nil {
+		ds.boeInterestApplied = bal
+	} else {
+		log.Printf("refreshFromLedger: BoE reserves balance: %v", err)
 	}
 }
-
-// recordSimMovement posts a movement through the products simulation so its
-// cached balances stay in sync, serialized against the daily engine sweep.
-// Must be called with ds.mu held.
-func (ds *DemoState) recordSimMovement(fromID, toID string, amount luca.Amount, code, description string) {
-	ds.recordSimMovementOn(ds.sim, ds.currentDay, fromID, toID, amount, code, description)
-}
-
-// recordSimMovementOn posts a customer event — a transfer, a funding —
-// against an explicit simulation (a tx-bound one during customer
-// creation). The movement is written with projections, so both accounts'
-// positions for the day are rewritten: an event rewrites the projection
-// of the account it touches. The engine's cached balances then follow,
-// under simMu, as Simulation.RecordMovement would keep them. The engine's
-// own postings (interest application) do not project: the day's pass
-// projects every account it touched once the sweep is done.
-//
-// The caller holds the two accounts' locks (ds.accountLocks) for as long
-// as its transaction holds their rows, so an event and the daily pass
-// take turns on an account and nothing waits for simMu while holding a
-// row another holder of simMu needs. simMu itself is held only for the
-// cache update, never across the write.
-func (ds *DemoState) recordSimMovementOn(sim *gbp.Simulation, day time.Time, fromID, toID string, amount luca.Amount, code, description string) {
-	if sim == nil || fromID == "" || toID == "" {
-		return
-	}
-	if _, err := sim.Ledger.RecordMovementWithProjections(fromID, toID, amount, code, day, description); err != nil {
-		log.Printf("recordSimMovement: %v", err)
-		return
-	}
-	ds.simMu.Lock()
-	defer ds.simMu.Unlock()
-	if ma, ok := sim.GetManagedAccount(fromID); ok {
-		ma.CachedBalance -= amount
-	}
-	if ma, ok := sim.GetManagedAccount(toID); ok {
-		ma.CachedBalance += amount
-	}
-}
-
 func (ds *DemoState) Start() {
 	ds.mu.Lock()
 	if ds.running {
@@ -900,7 +592,7 @@ func (ds *DemoState) Start() {
 				start := ds.now()
 				dayLength := ds.settings.Get().DayLength
 				ds.setDayEnd(start, dayLength)
-				ds.advanceDay()
+				ds.advanceDayCtx(ctx)
 				wait = nextDayDelay(dayLength, ds.now().Sub(start))
 			}
 		}
@@ -1068,7 +760,7 @@ func (ds *DemoState) Reset() {
 		ds.finishAddingLocked()
 	}
 	ds.lastAddRate = 0
-	ds.interestRate = interestThroughput{}
+	ds.passRate = passThroughput{}
 	ds.progress.reset()
 	ds.currentDay = time.Date(2020, 1, 1, 0, 0, 0, 0, time.UTC)
 	ds.dayCount = 0
@@ -1103,6 +795,9 @@ func (ds *DemoState) Reset() {
 	}
 	ds.initLedger()
 	saveRun(ds.db, runState{Day: ds.currentDay})
+	if ds.dayLengthRecorded { // the console's setting outlives the run it was made in
+		saveDayLength(ds.db, ds.settings.Get().DayLength)
+	}
 	saveSnapshot(ds.db, ds.recordHistory())
 }
 
@@ -1166,7 +861,7 @@ type SimStatus struct {
 	AddingTarget        int
 	CustomersPerSec     float64 // live rate of the running batch add
 	LastCustomersPerSec float64 // rate of the last finished batch add
-	InterestPer12h      int64   // interest movements per 12h at the measured whole-day rate
+	AccountDaysPer12h   int64   // accounts the pass would project in 12h at the measured whole-day rate
 	MemoryExceeded      bool
 	DayLength           time.Duration // wall-clock length of a simulated day; zero is flat out
 	DayEndsIn           time.Duration // what is left of the day in progress; zero when flat out or stopped
@@ -1193,7 +888,7 @@ func (ds *DemoState) SimStatus() SimStatus {
 		CustomersPerSec:     addRate,
 		LastCustomersPerSec: ds.lastAddRate,
 		DayLength:           ds.settings.Get().DayLength,
-		InterestPer12h:      ds.interestRate.per(interestWindow),
+		AccountDaysPer12h:   ds.passRate.per(passWindow),
 		MemoryExceeded:      ds.memoryExceeded,
 	}
 }
@@ -1240,8 +935,8 @@ func renderDashContent(d DashData) string {
 	if d.Sim.DayLength > 0 {
 		s.WriteString(fmt.Sprintf(`<div class="level-item has-text-centered"><div><p class="heading">Day length</p><p class="title is-5">%s</p></div></div>`, d.Sim.DayLength))
 	}
-	if d.Sim.InterestPer12h > 0 {
-		s.WriteString(fmt.Sprintf(`<div class="level-item has-text-centered"><div><p class="heading">Interest movements / 12h</p><p class="title is-5">%s</p></div></div>`, groupThousands(strconv.FormatInt(d.Sim.InterestPer12h, 10))))
+	if d.Sim.AccountDaysPer12h > 0 {
+		s.WriteString(fmt.Sprintf(`<div class="level-item has-text-centered"><div><p class="heading">Account days / 12h</p><p class="title is-5">%s</p></div></div>`, groupThousands(strconv.FormatInt(d.Sim.AccountDaysPer12h, 10))))
 	}
 	if d.Sim.AddingCust {
 		s.WriteString(fmt.Sprintf(`<div class="level-item has-text-centered"><div><p class="heading">Adding</p><p class="title is-6">%d / %d</p><p class="heading">%.0f /s</p></div></div>`, d.Sim.AddingProgress, d.Sim.AddingTarget, d.Sim.CustomersPerSec))

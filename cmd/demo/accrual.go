@@ -1,7 +1,6 @@
 package main
 
 import (
-	"database/sql"
 	"hash/fnv"
 	"log"
 	"slices"
@@ -12,19 +11,16 @@ import (
 	gbp "git.bytestone.uk/hum3/gobank-products"
 )
 
-// The products component keeps no state of its own: an account's
-// accrued-but-unapplied interest lives on its ledger position, written by
-// the day's pass (Project) and read back at start (Positions). The
-// accrual_state table below is never read any more; it is still written,
-// as a shadow, so the previous release can be rolled back to on the same
-// database with nothing lost (ADR-0003). Story (e) drops it.
-
-// boeAccrualKey is the accrual_state row holding the bank-level BoE interest
-// numerator. Ledger account IDs are UUIDs, so it can never collide.
-const boeAccrualKey = "_boe"
+// The products component keeps no state of its own: an account's balance
+// and its accrued-but-unapplied interest are its ledger position (go-luca),
+// written for the day by the start-of-day pass (pass.go) and again by every
+// event that moves the balance. gobank-products holds the rules; this file
+// runs them for one account.
 
 // productsSchema: accrual_state held accrued-but-unapplied interest before
-// positions did (gobank ≤ v0.10). Shadow-written for rollback.
+// positions did (gobank ≤ v0.10). Nothing reads or writes it now; the table
+// stays one release so a rollback to v0.10 finds it, and the release after
+// drops it.
 var productsSchema = componentSchema{component: "products", migrations: []migration{
 	{1, []string{`CREATE TABLE IF NOT EXISTS accrual_state (
 		account_id VARCHAR(64) PRIMARY KEY,
@@ -91,115 +87,128 @@ func (l *accountLocks) lock(ids ...string) (unlock func()) {
 	}
 }
 
-// accrualRow is one account's accrued-interest numerator to project.
-type accrualRow struct {
-	id        string
-	numerator int64
+// dayAccount is an account the day's rules run for: its ledger account
+// and the product whose rules apply.
+type dayAccount struct {
+	id      string
+	product Product
 }
 
-// persistAccrualState is the shadow write of accrual_state for rollback:
-// the day's numerators (per account, plus the BoE row) upserted in chunked
-// transactions, without ds.mu or ds.simMu held. Nothing reads it.
-func persistAccrualState(db *sql.DB, day time.Time, rows []accrualRow, boeNumerator int64) {
-	if db == nil {
-		return
-	}
-	rows = append(rows, accrualRow{id: boeAccrualKey, numerator: boeNumerator})
-	const upsert = `INSERT INTO accrual_state (account_id, numerator, accrued_pounds_e7, as_of) VALUES ($1, $2, $3, $4)
-		ON CONFLICT (account_id) DO UPDATE SET numerator = EXCLUDED.numerator,
-			accrued_pounds_e7 = EXCLUDED.accrued_pounds_e7, as_of = EXCLUDED.as_of`
-	n := 64
-	for i := 0; i < len(rows); {
-		j := min(i+n, len(rows))
-		start := time.Now()
-		tx, err := db.Begin()
-		if err != nil {
-			log.Printf("persistAccrualState: begin: %v", err)
-			return
-		}
-		for _, r := range rows[i:j] {
-			if _, err := tx.Exec(upsert, r.id, r.numerator, int64(accrualPoundsE7(r.numerator)), day); err != nil {
-				log.Printf("persistAccrualState: %s: %v", r.id, err)
-				_ = tx.Rollback()
-				return
-			}
-		}
-		if err := tx.Commit(); err != nil {
-			log.Printf("persistAccrualState: commit: %v", err)
-			return
-		}
-		if el := time.Since(start); el > 0 {
-			n = min(max(int(float64(j-i)*float64(targetTxTime)/float64(el)), 16), 8192)
-		}
-		i = j
-		yieldToBrowser()
-	}
+// dayResult is what one account's daily work changed in the bank's
+// totals: the interest applied to its balance (yesterday's cycle end,
+// booked today) and the day's accrual, in numerator units.
+type dayResult struct {
+	family  gbp.ProductFamily
+	applied luca.Amount
+	accrued int64
 }
 
-// projectPositions writes the day's position of every account the pass
-// touched (and the BoE reserves account), one account at a time under
-// that account's lock: the ledger computes the balance from its movements,
-// the row carries the engine's accrual numerator. The account is the unit
-// of daily work — what each one needs is the product's business and will
-// grow — so nothing here batches accounts together. Runs without ds.mu or
-// ds.simMu held.
-func (ds *DemoState) projectPositions(ledger *luca.SQLLedger, day time.Time, rows []accrualRow) {
-	if ledger == nil {
-		return
-	}
-	for i, r := range rows {
-		ds.projectAccount(ledger, day, r)
-		if i%64 == 63 {
-			yieldToBrowser()
-		}
-	}
-}
-
-// projectAccount is one account's share of the daily pass: under the
-// account's lock, its position for the day. Today that is only the
-// projection; the product's other daily work (application, maturity, …)
-// belongs here as it arrives.
-func (ds *DemoState) projectAccount(ledger *luca.SQLLedger, day time.Time, r accrualRow) {
-	unlock := ds.accountLocks.lock(r.id)
-	defer unlock()
-	if _, err := ledger.Project(r.id, day, luca.Fraction{Num: r.numerator, Den: gbp.AccrualDenominator}); err != nil {
-		log.Printf("projectPositions: %s: %v", r.id, err)
-	}
-}
-
-// loadPositions hydrates accrued-interest numerators (per account and the
-// BoE reserves) from the ledger's positions into the engine and demo state.
-// Positions for accounts the engine doesn't know are ignored. Must be
-// called with ds.mu and ds.simMu held, after ensureAccrualAccounts.
-func (ds *DemoState) loadPositions() {
-	if ds.ledger == nil || ds.sim == nil {
-		return
-	}
-	positions, err := ds.ledger.Positions(ds.currentDay)
+// accountDay is one account's share of the day, run under the account's
+// lock by the pass and by every event that moves the balance. Yesterday is
+// closed first: if the product's cycle ended on it and its position still
+// holds whole pence of accrual, the application is booked at yesterday's
+// last second and yesterday's position reprojected with the remainder.
+// Then today is projected: the day's interest accrues on the balance as it
+// stands, and the position for today is written. Both steps are the same
+// however often they run — an applied position has nothing left to apply,
+// and the accrual is computed from yesterday's position each time — so an
+// account may be visited again after a restart, or by an event after the
+// pass, and the last writer's answer is the right one. The ledger may be
+// bound to the caller's transaction.
+func (ds *DemoState) accountDay(ledger *luca.SQLLedger, a dayAccount, day time.Time) (dayResult, error) {
+	res := dayResult{family: a.product.Family}
+	yesterday := day.AddDate(0, 0, -1)
+	prev, err := ledger.PositionAt(a.id, yesterday)
 	if err != nil {
-		log.Printf("loadPositions: %v", err)
-		return
+		return res, err
 	}
-	for _, p := range positions {
-		if p.Accrued.Den != gbp.AccrualDenominator {
-			if p.Accrued.Num != 0 {
-				log.Printf("loadPositions: %s: accrual denominator %d, want %d", p.AccountID, p.Accrued.Den, gbp.AccrualDenominator)
+	if prev == nil {
+		prev = &luca.Position{AccountID: a.id, Day: yesterday} // opened today: nothing carried in
+	}
+	closed, postings := a.product.Apply(*prev)
+	if len(postings) > 0 {
+		for _, p := range postings {
+			counter, err := ds.counterparty(ledger, p.Counterparty)
+			if err != nil {
+				return res, err
 			}
-			continue
-		}
-		if p.AccountID == ds.boeReservesID {
-			ds.boeAccruedNumerator = p.Accrued.Num
-			ds.boePostedPence = p.Accrued.Num / gbp.AccrualDenominator
-			continue
-		}
-		if ma, ok := ds.sim.GetManagedAccount(p.AccountID); ok {
-			ma.AccruedNumerator = p.Accrued.Num
-			// Daily posting maintains posted == floor(numerator/denominator)
-			// at every sync point, so the tracker is derivable on restore.
-			if ds.accrualPosted == nil {
-				ds.accrualPosted = make(map[string]int64)
+			if _, err := ledger.RecordMovement(counter, a.id, p.Amount, p.Code, p.ValueTime, p.Description); err != nil {
+				return res, err
 			}
-			ds.accrualPosted[p.AccountID] = p.Accrued.Num / gbp.AccrualDenominator
+			res.applied += p.Amount
+		}
+		if _, err := ledger.Project(a.id, prev.Day, closed.Accrued); err != nil {
+			return res, err
 		}
 	}
+	balance, err := ledger.Balance(a.id)
+	if err != nil {
+		return res, err
+	}
+	next := a.product.Accrue(day, closed, balance, gbp.RateBps(a.product.Rate))
+	if _, err := ledger.Project(a.id, day, next.Accrued); err != nil {
+		return res, err
+	}
+	res.accrued = int64(balance) * gbp.RateBps(a.product.Rate)
+	return res, nil
+}
+
+// counterparty is the ledger account an application posting comes from:
+// the P&L accounts resolved at start, else looked up by path.
+func (ds *DemoState) counterparty(ledger *luca.SQLLedger, path string) (string, error) {
+	switch path {
+	case "Expense:Interest":
+		if ds.expenseInterestID != "" {
+			return ds.expenseInterestID, nil
+		}
+	case "Income:Interest":
+		if ds.incomeInterestID != "" {
+			return ds.incomeInterestID, nil
+		}
+	}
+	acct, err := ensureLedgerAccount(ledger, path)
+	if err != nil {
+		return "", err
+	}
+	return acct.ID, nil
+}
+
+// bookResultLocked puts what an account's day changed into the running
+// totals. Must be called with ds.mu held.
+func (ds *DemoState) bookResultLocked(r dayResult) {
+	ds.addToBook(r.family, r.applied)
+	if r.family == gbp.FamilySavings {
+		ds.dayAccrualSavings += r.accrued
+	} else {
+		ds.dayAccrualLending += r.accrued
+	}
+}
+
+// postEvent writes a customer event — a transfer, a funding — with
+// projections, so both accounts' positions for the day move at once, then
+// runs the day's rules again for the product accounts it touched: the
+// projection the pass wrote was on the balance as it stood, and the day's
+// interest accrues on the closing balance. The caller holds the accounts'
+// locks for as long as its transaction holds their rows, so the event and
+// the daily pass take turns on an account. What the rules changed in the
+// bank's totals is returned for the caller to book under ds.mu.
+func (ds *DemoState) postEvent(ledger *luca.SQLLedger, day time.Time, fromID, toID string, amount luca.Amount, code, description string, touched ...dayAccount) []dayResult {
+	if ledger == nil || fromID == "" || toID == "" {
+		return nil
+	}
+	if _, err := ledger.RecordMovementWithProjections(fromID, toID, amount, code, day, description); err != nil {
+		log.Printf("postEvent: %v", err)
+		return nil
+	}
+	var results []dayResult
+	for _, a := range touched {
+		r, err := ds.accountDay(ledger, a, day)
+		if err != nil {
+			log.Printf("postEvent: %s: %v", a.id, err)
+			continue
+		}
+		r.accrued = 0 // the pass counts the day's accrual once; an event only moves it
+		results = append(results, r)
+	}
+	return results
 }

@@ -312,7 +312,12 @@ func (ds *DemoState) transfer(t core.Transfer) (Payment, error) {
 	// daily pass and this event take turns on each of them.
 	unlock := ds.accountLocks.lock(fromAcc.LedgerAccountID, toAcc.LedgerAccountID)
 	defer unlock()
-	ds.recordSimMovement(fromAcc.LedgerAccountID, toAcc.LedgerAccountID, t.Amount, luca.CodeBookTransfer, ref)
+	fromProduct, _ := ds.productByID(fromAcc.ProductID)
+	toProduct, _ := ds.productByID(toAcc.ProductID)
+	for _, r := range ds.postEvent(ds.ledger, ds.currentDay, fromAcc.LedgerAccountID, toAcc.LedgerAccountID, t.Amount, luca.CodeBookTransfer, ref,
+		dayAccount{id: fromAcc.LedgerAccountID, product: fromProduct}, dayAccount{id: toAcc.LedgerAccountID, product: toProduct}) {
+		ds.bookResultLocked(r)
+	}
 
 	p := Payment{
 		ID:        ds.nextPaymentID,

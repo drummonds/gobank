@@ -179,12 +179,14 @@ func main() {
 	}
 	state.SetMemoryLimit(limit)
 	// GOBANK_DAY_LENGTH slows the simulation to a wall-clock day length
-	// (e.g. 2h); unset runs flat out. Also settable on the settings page.
+	// (e.g. 2h); unset runs flat out. A day length set on the settings
+	// page is the run's and outlives the process, so a resumed run keeps
+	// its own.
 	dayLength, err := dayLengthFromEnv()
 	if err != nil {
 		log.Fatalf("GOBANK_DAY_LENGTH: %v", err)
 	}
-	state.SetDayLength(dayLength)
+	state.DefaultDayLength(dayLength)
 	// A run that was going when the previous process stopped carries on.
 	if state.ResumedRunning() {
 		log.Printf("resume: the run was going; starting the loop")

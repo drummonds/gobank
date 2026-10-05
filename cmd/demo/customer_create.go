@@ -29,7 +29,6 @@ type customerPlan struct {
 	db       *sql.DB
 	ledger   *luca.SQLLedger
 	store    *customers.SQLCustomerStore
-	sim      *gbp.Simulation
 	equityID string
 }
 
@@ -56,7 +55,7 @@ func (ds *DemoState) planCustomerLocked() customerPlan {
 	ds.nextCustSeq++
 	p := customerPlan{
 		epoch: ds.epoch, cust: cust, pii: pii, day: ds.currentDay,
-		db: ds.db, ledger: ds.ledger, store: ds.custStore, sim: ds.sim, equityID: ds.equityAccountID,
+		db: ds.db, ledger: ds.ledger, store: ds.custStore, equityID: ds.equityAccountID,
 	}
 	for i := range p.cust.Accounts {
 		a := &p.cust.Accounts[i]
@@ -99,7 +98,7 @@ func (ds *DemoState) newPaymentLocked(ptype PaymentType, fromID, toID string, am
 // the books; later failures are logged and the customer kept, as before the
 // split. Must not be called with ds.mu held.
 func (ds *DemoState) persistCustomerPlan(p customerPlan) {
-	store, sim := p.store, p.sim
+	store, ledger := p.store, p.ledger
 	var tx *sql.Tx
 	if p.db != nil && p.ledger != nil {
 		var err error
@@ -112,14 +111,8 @@ func (ds *DemoState) persistCustomerPlan(p customerPlan) {
 		if store != nil {
 			store = store.WithTx(tx)
 		}
-		if sim != nil {
-			// Shallow copy sharing the account/product maps, swapping only the
-			// ledger; under simMu because the engine sweep writes its fields.
-			ds.simMu.Lock()
-			txSim := *sim
-			ds.simMu.Unlock()
-			txSim.Ledger = p.ledger.WithTx(tx)
-			sim = &txSim
+		if ledger != nil {
+			ledger = ledger.WithTx(tx)
 		}
 	}
 
@@ -135,7 +128,7 @@ func (ds *DemoState) persistCustomerPlan(p customerPlan) {
 		ds.mu.Unlock()
 		return
 	}
-	ds.addCustomerToLedger(sim, &p.cust)
+	ds.addCustomerToLedger(ledger, &p.cust)
 	// Funding rewrites the equity account's position and the new accounts'
 	// inside this transaction, so their locks are held until it commits:
 	// creators take turns on the equity account, and the daily pass waits
@@ -164,8 +157,21 @@ func (ds *DemoState) persistCustomerPlan(p customerPlan) {
 		// The movement carries the payment reference: it is the statement
 		// line the customer sees (transactions.go).
 		a := p.cust.Accounts[f.idx]
-		if sim != nil && a.LedgerAccountID != "" {
-			ds.recordSimMovementOn(sim, p.day, p.equityID, a.LedgerAccountID, f.payment.Amount, luca.CodeBookTransfer, f.payment.Reference)
+		if ledger != nil && a.LedgerAccountID != "" {
+			ds.postEvent(ledger, p.day, p.equityID, a.LedgerAccountID, f.payment.Amount, luca.CodeBookTransfer, f.payment.Reference)
+		}
+	}
+	// An account has a position from the day it opens, funded or not: the
+	// day's rules run on it now, so the day's pass has nothing left to do
+	// for it and a day is complete when every registered account has its
+	// position. A new account has nothing applied, so nothing is booked.
+	for _, a := range p.cust.Accounts {
+		if ledger == nil || a.LedgerAccountID == "" {
+			continue
+		}
+		product, _ := ds.productByID(a.ProductID)
+		if _, err := ds.accountDay(ledger, dayAccount{id: a.LedgerAccountID, product: product}, p.day); err != nil {
+			log.Printf("createCustomer: %s: %v", a.LedgerAccountID, err)
 		}
 	}
 	if tx != nil {

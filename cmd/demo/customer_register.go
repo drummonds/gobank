@@ -5,7 +5,6 @@ import (
 	"database/sql"
 	"fmt"
 	"log"
-	"time"
 
 	luca "git.bytestone.uk/hum3/go-luca"
 	gbp "git.bytestone.uk/hum3/gobank-products"
@@ -14,7 +13,7 @@ import (
 // The account register records which ledger accounts a customer holds and
 // the bank-facing details of each (product, sort code, account number). It
 // is the demo's own table: customer identity lives in gobanks-customers,
-// balances in the go-luca ledger, accrual in the products engine.
+// balances and accrued interest on the go-luca ledger's positions.
 //
 // idx is the account's position in the customer's account list; the bank
 // app and admin pages address accounts by (customer, index).
@@ -56,60 +55,6 @@ func (ds *DemoState) clearRegisterLocked() {
 	if _, err := ds.db.Exec(`DELETE FROM customer_accounts`); err != nil {
 		log.Printf("clearRegister: %v", err)
 	}
-}
-
-// registeredAccount is one row of the register as a resume reads it: which
-// ledger account, on which product, opened when.
-type registeredAccount struct {
-	CustomerID      string
-	LedgerAccountID string
-	ProductID       string
-	Opened          time.Time
-}
-
-// registeredAccounts is every account on the register, in customer and
-// index order.
-func registeredAccounts(db *sql.DB) ([]registeredAccount, error) {
-	rows, err := db.Query(`SELECT customer_id, ledger_account_id, product_id, opened FROM customer_accounts ORDER BY customer_id, idx`)
-	if err != nil {
-		return nil, fmt.Errorf("register: %w", err)
-	}
-	defer rows.Close()
-	var out []registeredAccount
-	for rows.Next() {
-		var a registeredAccount
-		if err := rows.Scan(&a.CustomerID, &a.LedgerAccountID, &a.ProductID, &a.Opened); err != nil {
-			return nil, fmt.Errorf("register: scan: %w", err)
-		}
-		out = append(out, a)
-	}
-	return out, rows.Err()
-}
-
-// registeredBalances is the ledger balance of every registered account, in
-// one pass over the ledger's movements rather than a query per account.
-func registeredBalances(db *sql.DB) (map[string]luca.Amount, error) {
-	rows, err := db.Query(`SELECT ca.ledger_account_id, COALESCE(SUM(m.delta), 0) FROM contract_customer_accounts ca
-		LEFT JOIN (
-			SELECT to_account_id AS id, amount AS delta FROM contract_ledger_movements
-			UNION ALL
-			SELECT from_account_id AS id, -amount AS delta FROM contract_ledger_movements
-		) m ON m.id = ca.ledger_account_id
-		GROUP BY ca.ledger_account_id`)
-	if err != nil {
-		return nil, fmt.Errorf("register balances: %w", err)
-	}
-	defer rows.Close()
-	out := map[string]luca.Amount{}
-	for rows.Next() {
-		var id string
-		var bal luca.Amount
-		if err := rows.Scan(&id, &bal); err != nil {
-			return nil, fmt.Errorf("register balances: scan: %w", err)
-		}
-		out[id] = bal
-	}
-	return out, rows.Err()
 }
 
 // lastCustomerSeq is the sequence number of the newest customer (IDs are
@@ -255,23 +200,13 @@ func (ds *DemoState) accountsOf(customerID string) []CustomerAccount {
 }
 
 // fillAccountFigures sets an account's balance and accrual from the
-// ledger's live position (the latest projection plus today's movements)
-// and its lifetime applied interest from the ledger's movements. The
-// products engine's in-memory figures are used only when there is no
-// database to read.
+// ledger's live position (the latest projection plus the day's movements
+// since) and its lifetime applied interest from the ledger's movements.
 func (ds *DemoState) fillAccountFigures(a *CustomerAccount) {
 	if p, ok := ds.livePosition(a.LedgerAccountID); ok {
 		a.Balance = p.balance
 		a.AccruedE7 = p.accruedE7
 		a.Accrued = poundsE7(p.accruedE7).Pence()
-	} else if ds.sim != nil {
-		ds.simMu.Lock()
-		if ma, ok := ds.sim.GetManagedAccount(a.LedgerAccountID); ok {
-			a.Balance = ma.CachedBalance
-			a.Accrued = ma.AccruedInterest()
-			a.AccruedE7 = int64(accrualPoundsE7(ma.AccruedNumerator))
-		}
-		ds.simMu.Unlock()
 	}
 	a.Interest = ds.appliedInterest(a.LedgerAccountID)
 }

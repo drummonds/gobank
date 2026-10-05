@@ -30,13 +30,11 @@ func newWASMState() *DemoState {
 func goExport(this js.Value, args []js.Value) any {
 	var buf bytes.Buffer
 	state.mu.Lock()
-	if state.sim == nil {
+	if state.ledger == nil {
 		state.mu.Unlock()
 		return js.ValueOf("error: simulation not initialised")
 	}
-	state.simMu.Lock() // wait out any in-flight engine sweep so the export is consistent
-	err := state.sim.ExportGoluca(&buf)
-	state.simMu.Unlock()
+	err := state.ledger.Export(&buf)
 	state.mu.Unlock()
 	if err != nil {
 		return js.ValueOf("error: " + err.Error())
@@ -50,11 +48,11 @@ func goImport(this js.Value, args []js.Value) any {
 	}
 	data := args[0].String()
 	state.mu.Lock()
-	if state.sim == nil {
+	if state.ledger == nil {
 		state.mu.Unlock()
 		return js.ValueOf("error: simulation not initialised")
 	}
-	err := state.sim.Ledger.Import(bytes.NewReader([]byte(data)), &luca.ImportOptions{
+	err := state.ledger.Import(bytes.NewReader([]byte(data)), &luca.ImportOptions{
 		AutoCreateAccounts: true,
 		DefaultCommodity:   "GBP",
 	})

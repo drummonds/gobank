@@ -16,6 +16,9 @@ The browser-based model proves the banking core works end-to-end.
 - lofigui web UI
 - go-luca double-entry accounting integration
 - RBAC infrastructure (admin role)
+- Daily accrual cost no longer scales as a posting per account per day: accrual
+  lives on the ledger position and the start-of-day pass is paced over the
+  day (ADR-0002 stage 3 story (e))
 
 ### To Do
 
@@ -30,19 +33,6 @@ The browser-based model proves the banking core works end-to-end.
   Open: startup-only (read once from config; simple, no table, every process
   agrees) versus live (stored, flippable mid-run; lets the demo show a
   cutover or a kill switch without a restart)
-- **Daily accrual cost scales with every account** — each account gets a
-  ledger posting every day (`collectAccrualMovements`: a "Daily interest
-  accrual" movement whenever a new whole penny has accrued, plus a reversal
-  per account at month end), and `persistAccrualState` upserts one
-  `accrual_state` row per account per day, one statement each. On the
-  Hetzner demo (2026-10-01: 300k customers, ~477k postings a day at
-  ~1.2k/s) a simulated day takes over ten minutes, and the progress label
-  stays on "bookkeeping" through the off-lock write, so the run looks hung.
-  Options: post accruals in aggregate (one movement per family per day,
-  per-account detail kept in `accrual_state`) or per account only at
-  application; batch the upserts (multi-row `VALUES` or `COPY`); label the
-  persist phase. Open: whether the per-account luca export needs
-  per-account daily postings in the ledger
 - **Key and emerging risk register** — a register component (own tables,
   ADR-0001) listing the bank's key risks (credit, liquidity, interest-rate
   risk in the banking book, operational, conduct) with owner, inherent and
@@ -211,7 +201,7 @@ root module, `cmd/bff` is the service binary, and `app/` is the Flutter shell.
         cast and arithmetic, rounding and comparison on it give exact
         decimals with PostgreSQL's scale rules, so a contract view can
         publish a NUMERIC column computed from integers on both drivers
-      - [x] (go-luca unreleased) (b) go-luca: two contract views — `contract_ledger_eod_positions`
+      - [x] (go-luca v0.3.0) (b) go-luca: two contract views — `contract_ledger_eod_positions`
         (account, day, balance, accrued; the cheap one, from stored
         projections written for both accounts of a movement, incrementally)
         and `contract_ledger_live_positions` (today's row plus today's
@@ -225,13 +215,13 @@ root module, `cmd/bff` is the service binary, and `app/` is the Flutter shell.
         every account from the end-of-day view; one row per account per
         day. Found and filed go-postgres #21 (INTERVAL arithmetic on a
         qualified column)
-      - [x] (gobank-products v0.2.0, gobank unreleased) (c) gobank-products: `Product.NextDay` — a pure function from
+      - [x] (gobank-products v0.2.0, gobank v0.10.0) (c) gobank-products: `Product.NextDay` — a pure function from
         an account's projection and the day's balance to the next day's
         projection and the ledger postings it calls for, with the
         application cycle (daily, monthly, annual) a product parameter
         and month-end application gone as a separate pass; the existing
         sweep loops over it so the goldens hold
-      - [x] (unreleased) (d) projections are the truth — the demo writes each day's
+      - [x] (v0.10.0) (d) projections are the truth — the demo writes each day's
         pass as go-luca projections and posts customer movements with
         projections; balance and accrued reads come from the views;
         `accrual_state` goes (the BoE reserve's accrual becomes a
@@ -239,7 +229,7 @@ root module, `cmd/bff` is the service binary, and `app/` is the Flutter shell.
         shadow-written so the drill's rollback loses nothing; (e) drops
         it. Needed go-luca v0.3.1 (`Positions`, constant-cost movement
         projection, accrual carried forward on a movement's new day)
-      - [ ] (e) the start-of-day workflow — the date advances at the
+      - [x] (unreleased) (e) the start-of-day workflow — the date advances at the
         start of the slot; the pass over every account is paced over the
         day length (flat out at zero) and resumes after a restart from
         the projections already written; a transfer or funding rewrites

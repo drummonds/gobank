@@ -12,6 +12,9 @@ import (
 func sumCustomerFigures(t *testing.T, ds *DemoState) (savings, lending, loanInterest, depositInterest luca.Amount, perProduct map[string]productTotal) {
 	t.Helper()
 	perProduct = map[string]productTotal{}
+	// Accrued interest is exact on the positions, so the bank's accrual-basis
+	// figure truncates the family's sum once, not each account's share.
+	var accruedSavingsE7, accruedLendingE7 int64
 	page, total := ds.customerPage(1)
 	if total != len(page) {
 		t.Fatalf("test needs all customers on one page: %d of %d", len(page), total)
@@ -24,13 +27,17 @@ func sumCustomerFigures(t *testing.T, ds *DemoState) (savings, lending, loanInte
 			perProduct[a.ProductID] = pt
 			if a.Family == gbp.FamilySavings {
 				savings += a.Balance
-				depositInterest += a.Interest + a.Accrued
+				depositInterest += a.Interest
+				accruedSavingsE7 += a.AccruedE7
 			} else {
 				lending += a.Balance
-				loanInterest += a.Interest + a.Accrued
+				loanInterest += a.Interest
+				accruedLendingE7 += a.AccruedE7
 			}
 		}
 	}
+	depositInterest += poundsE7(accruedSavingsE7).Pence()
+	loanInterest += poundsE7(accruedLendingE7).Pence()
 	return
 }
 

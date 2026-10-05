@@ -50,10 +50,10 @@ var components = []Component{
 	},
 	{
 		Name:    "products",
-		Purpose: "The product catalogue and the interest rules: exact daily accrual, application on the product's cycle; positions live in the ledger.",
+		Purpose: "The product catalogue and the interest rules, run for one account at a time by the start-of-day pass and by every event that moves a balance; positions live in the ledger.",
 		Library: "gobank-products",
-		Files:   []string{"products.go", "accrual.go"},
-		Tables:  []string{"accrual_state"}, // retired, kept for rollback until story (e)
+		Files:   []string{"products.go", "accrual.go", "pass.go"},
+		Tables:  []string{"accrual_state"}, // retired and unwritten; kept one release for a rollback to v0.10, dropped next
 	},
 	{
 		Name:    "payments",

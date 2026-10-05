@@ -21,15 +21,21 @@ var simulationSchema = componentSchema{component: "simulation", migrations: []mi
 		updated_at TIMESTAMP NOT NULL
 	)`}},
 	restartsMigration,
+	// The day length set on the console is the run's: recorded so the next
+	// process resumes at it (ADR-0003: an upgrade lands mid-day). NULL is
+	// a run that never set one and takes the environment's.
+	{3, []string{`ALTER TABLE sim_run ADD COLUMN day_length VARCHAR(20) NULL`}},
 }}
 
 // runState is where the run is: the simulated day the bank is on, how
 // many days it has run, and whether the run loop was going.
 type runState struct {
-	Day      time.Time
-	DayCount int
-	Running  bool
-	SavedAt  time.Time // when the row was last written; read only, for the restart record
+	Day          time.Time
+	DayCount     int
+	Running      bool
+	SavedAt      time.Time     // when the row was last written; read only, for the restart record
+	DayLength    time.Duration // the day length set on the console; read only, see saveDayLength
+	DayLengthSet bool          // false when the run never set one
 }
 
 // saveRun overwrites the run row.
@@ -46,17 +52,34 @@ func saveRun(db *sql.DB, r runState) {
 	}
 }
 
+// saveDayLength records the day length set on the console against the run
+// row, which saveRun leaves alone: the next process resumes at it.
+func saveDayLength(db *sql.DB, d time.Duration) {
+	if db == nil {
+		return
+	}
+	if _, err := db.Exec(`UPDATE sim_run SET day_length = $1 WHERE id = 1`, d.String()); err != nil {
+		log.Printf("saveDayLength: %v", err)
+	}
+}
+
 // loadRun reads the run row; ok is false when there is no run to resume.
 func loadRun(db *sql.DB) (r runState, ok bool) {
 	if db == nil {
 		return runState{}, false
 	}
-	err := db.QueryRow(`SELECT current_day, day_count, running, updated_at FROM sim_run WHERE id = 1`).Scan(&r.Day, &r.DayCount, &r.Running, &r.SavedAt)
+	var dayLength sql.NullString
+	err := db.QueryRow(`SELECT current_day, day_count, running, updated_at, day_length FROM sim_run WHERE id = 1`).Scan(&r.Day, &r.DayCount, &r.Running, &r.SavedAt, &dayLength)
 	if err != nil {
 		if !errors.Is(err, sql.ErrNoRows) {
 			log.Printf("loadRun: %v", err)
 		}
 		return runState{}, false
+	}
+	if dayLength.Valid {
+		if d, err := parseDayLength(dayLength.String); err == nil {
+			r.DayLength, r.DayLengthSet = d, true
+		}
 	}
 	// A simulated day is a UTC date, whatever the driver's location.
 	r.Day = time.Date(r.Day.Year(), r.Day.Month(), r.Day.Day(), 0, 0, 0, 0, time.UTC)

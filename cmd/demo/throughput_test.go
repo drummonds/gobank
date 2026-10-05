@@ -16,64 +16,60 @@ func steppingClock(start time.Time) func() time.Time {
 	}
 }
 
-func TestInterestThroughputRollingWindow(t *testing.T) {
-	var tp interestThroughput
-	if got := tp.per(interestWindow); got != 0 {
+func TestPassThroughputRollingWindow(t *testing.T) {
+	var tp passThroughput
+	if got := tp.per(passWindow); got != 0 {
 		t.Fatalf("no samples: %d", got)
 	}
 	tp.record(100, time.Second)
-	if got := tp.per(interestWindow); got != 100*43200 {
+	if got := tp.per(passWindow); got != 100*43200 {
 		t.Errorf("one day at 100/s: %d, want %d", got, 100*43200)
 	}
 	tp.record(300, 3*time.Second) // still 100/s overall
-	if got := tp.per(interestWindow); got != 100*43200 {
+	if got := tp.per(passWindow); got != 100*43200 {
 		t.Errorf("two days: %d", got)
 	}
 	// Only the most recent throughputDays count.
 	for range throughputDays {
 		tp.record(10, time.Second)
 	}
-	if got := tp.per(interestWindow); got != 10*43200 {
+	if got := tp.per(passWindow); got != 10*43200 {
 		t.Errorf("window should have rolled past the fast days: %d", got)
 	}
 	tp.record(5, 0)
-	if got := tp.per(interestWindow); got <= 0 {
+	if got := tp.per(passWindow); got <= 0 {
 		t.Errorf("a zero-length sample must not zero the rate: %d", got)
 	}
 }
 
-func TestDashboardReportsInterestMovementsPer12h(t *testing.T) {
+func TestDashboardReportsAccountDaysPer12h(t *testing.T) {
 	ds := NewDemoState()
 	clock := steppingClock(time.Date(2026, 1, 1, 9, 0, 0, 0, time.UTC))
 	ds.now, ds.progress.now = clock, clock
 	addFundedCustomer(ds)
 
-	if got := ds.SimStatus().InterestPer12h; got != 0 {
+	if got := ds.SimStatus().AccountDaysPer12h; got != 0 {
 		t.Fatalf("before any day: %d", got)
 	}
 	ds.AdvanceDay()
 
 	ds.mu.Lock()
-	var movements int
-	// Customer accruals only: the BoE reserve posting is one movement a day
-	// outside the per-account sweep the rate measures.
-	err := ds.db.QueryRow(`SELECT COUNT(*) FROM movements WHERE code = $1 AND description = 'Daily interest accrual'`, codeDailyAccrual).Scan(&movements)
+	var accounts int
+	err := ds.db.QueryRow(`SELECT COUNT(*) FROM customer_accounts`).Scan(&accounts)
 	ds.mu.Unlock()
-	if err != nil || movements == 0 {
-		t.Fatalf("accrual movements: %d, %v", movements, err)
+	if err != nil || accounts == 0 {
+		t.Fatalf("accounts: %d, %v", accounts, err)
 	}
-	// The rate is quoted over the whole day — engine, postings, bookkeeping
-	// and projecting every account's position — the same span the runtime
-	// page reports as the last day's duration, so it tracks how fast the
-	// movements table actually grows. On the stepping clock the accrual
-	// phase alone is 1s and the day is longer.
+	// The rate is quoted over the whole day — closing yesterday's books and
+	// the pass over every account — the same span the runtime page reports
+	// as the last day's duration.
 	last := ds.progress.snapshot()
-	if last.LastDuration <= time.Second {
-		t.Fatalf("last day took %v; the test needs a day longer than its accrual phase", last.LastDuration)
+	if last.LastDuration <= 0 {
+		t.Fatalf("last day took %v", last.LastDuration)
 	}
-	want := int64(float64(movements) * float64(interestWindow) / float64(last.LastDuration))
-	if got := ds.SimStatus().InterestPer12h; got != want {
-		t.Errorf("InterestPer12h = %d, want %d (%d movements over the day's %v)", got, want, movements, last.LastDuration)
+	want := int64(float64(accounts) * float64(passWindow) / float64(last.LastDuration))
+	if got := ds.SimStatus().AccountDaysPer12h; got != want {
+		t.Errorf("AccountDaysPer12h = %d, want %d (%d accounts over the day's %v)", got, want, accounts, last.LastDuration)
 	}
 }
 
@@ -100,8 +96,8 @@ func TestDashboardReportsCustomersAddedPerSecond(t *testing.T) {
 }
 
 func TestDashboardShowsRates(t *testing.T) {
-	html := renderDashContent(DashData{Sim: SimStatus{InterestPer12h: 4320000, AddingCust: true, AddingProgress: 250, AddingTarget: 1000, CustomersPerSec: 83.4}})
-	for _, want := range []string{"Interest movements / 12h", "4,320,000", "250 / 1000", "83 /s"} {
+	html := renderDashContent(DashData{Sim: SimStatus{AccountDaysPer12h: 4320000, AddingCust: true, AddingProgress: 250, AddingTarget: 1000, CustomersPerSec: 83.4}})
+	for _, want := range []string{"Account days / 12h", "4,320,000", "250 / 1000", "83 /s"} {
 		if !contains(html, want) {
 			t.Errorf("dashboard missing %q", want)
 		}

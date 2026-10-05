@@ -2,49 +2,49 @@ package main
 
 import "time"
 
-// interestWindow is the batch window the interest throughput is quoted
-// against: a bank's overnight run. "Movements per 12h" says whether this
-// engine, at its measured rate, could post a day's interest overnight. The
-// rate is measured over the whole simulated day — engine, postings,
-// bookkeeping and projecting every account's position — so it is the rate
-// the movements table actually grows at, not the accrual phase alone.
-const interestWindow = 12 * time.Hour
+// passWindow is the batch window the pass's throughput is quoted against:
+// a bank's overnight run. "Account days per 12h" says whether the pass, at
+// its measured rate, could project every account's day overnight. The
+// rate is measured over the whole simulated day — closing yesterday's
+// books and visiting every account — the span the runtime page reports as
+// the last day's duration.
+const passWindow = 12 * time.Hour
 
-// throughputDays is how many recent simulated days the interest rate is
-// averaged over.
+// throughputDays is how many recent simulated days the rate is averaged
+// over.
 const throughputDays = 10
 
 type daySample struct {
-	movements int
-	elapsed   time.Duration
+	accounts int
+	elapsed  time.Duration
 }
 
-// interestThroughput is a rolling record of how many interest movements
-// each simulated day produced and how long the whole day took.
-type interestThroughput struct {
+// passThroughput is a rolling record of how many accounts each simulated
+// day's pass visited and how long the whole day took.
+type passThroughput struct {
 	samples []daySample
 }
 
-func (t *interestThroughput) record(movements int, elapsed time.Duration) {
-	t.samples = append(t.samples, daySample{movements, elapsed})
+func (t *passThroughput) record(accounts int, elapsed time.Duration) {
+	t.samples = append(t.samples, daySample{accounts, elapsed})
 	if len(t.samples) > throughputDays {
 		t.samples = t.samples[len(t.samples)-throughputDays:]
 	}
 }
 
-// per returns the movements the engine would post in window at the rate
+// per returns the accounts the pass would visit in window at the rate
 // measured over the recent days, or 0 with nothing measured.
-func (t *interestThroughput) per(window time.Duration) int64 {
-	var movements int
+func (t *passThroughput) per(window time.Duration) int64 {
+	var accounts int
 	var elapsed time.Duration
 	for _, s := range t.samples {
-		movements += s.movements
+		accounts += s.accounts
 		elapsed += s.elapsed
 	}
 	if elapsed <= 0 {
 		return 0
 	}
-	return int64(float64(movements) * float64(window) / float64(elapsed))
+	return int64(float64(accounts) * float64(window) / float64(elapsed))
 }
 
 // perSecond is a plain rate for a count over an elapsed time, 0 if no time

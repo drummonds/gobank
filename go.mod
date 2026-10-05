@@ -5,7 +5,7 @@ go 1.26.0
 require (
 	git.bytestone.uk/hum3/go-luca v0.3.1
 	git.bytestone.uk/hum3/go-postgres v0.7.0
-	git.bytestone.uk/hum3/gobank-products v0.2.0
+	git.bytestone.uk/hum3/gobank-products v0.3.0
 )
 
 require (

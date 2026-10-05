@@ -2,6 +2,50 @@
 
 ## [Unreleased]
 
+ - The day length set on the console is the run's and outlives a restart
+ - Stage 3 story (e): the start-of-day workflow — the pass is paced over the day, resumes after a restart, and the products engine's account map is gone
+
+### Changed
+- ADR-0002 stage 3 story (e), the start-of-day workflow. The date advances
+  at the start of the slot; then the pass visits every registered account
+  once, under its lock, and writes its position for the day: yesterday's
+  cycle-end application is booked first, at yesterday's last second, and
+  the day's interest accrues on the balance as it stands. The pass is
+  paced so the share of accounts done tracks the share of the day length
+  elapsed (flat out at zero), and it resumes after a restart or a stop
+  from the projections already written: an account with a position for
+  the day is done, whoever wrote it, so the work left is exactly the
+  accounts without one, and the date does not advance until none are
+  left. A transfer or a funding runs the same day rules on the accounts
+  it touches, so the projection is rewritten on the closing balance; a
+  new account has a position from the day it opens. The runtime page's
+  phase is "projecting positions" with the accounts done, and the
+  dashboard tile is "Account days / 12h": whether the pass, at its
+  measured rate, could do a day's accounts overnight. Measured on pglike:
+  0.47 ms per account-day at 10,000 accounts, the whole day.
+- The products engine (`gbp.Simulation`) and its account map are gone from
+  the demo, with `simMu`: the demo runs `Product.Apply` and
+  `Product.Accrue` (gobank-products v0.3.0) for one account at a time over
+  the ledger's positions, and reads balances and accrued interest from the
+  ledger's views alone. The daily whole-penny postings into the
+  AccruedInterest holding accounts are gone with it: a customer account
+  posts nothing daily, its accrual is on its position, and interest totals
+  on an accrual basis read the applications from the P&L accounts and the
+  accrual from the positions (truncated once per family rather than per
+  account). The BoE reserve keeps its daily posting and month-end receipt,
+  computed at the start of the slot for the day just closed.
+- `accrual_state` is no longer written. The table stays one release so a
+  rollback to v0.10 finds it; the next release drops it.
+
+### Fixed
+- A day length set on the settings page lasted only as long as the
+  process: an upgrade restarted the demo at `GOBANK_DAY_LENGTH` (flat out
+  on prod), so the upgrade drill's 2h day was gone the moment it was
+  needed and the days raced past the drill's readings. The setting is now
+  recorded with the run (`sim_run.day_length`, simulation schema version
+  3) and a resumed run keeps it; `GOBANK_DAY_LENGTH` is where a run
+  starts until the console sets one.
+
 ## [0.10.2] - 2026-10-05
 
  - Dashboard interest throughput is measured over the whole day, projection included

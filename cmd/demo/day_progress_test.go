@@ -63,9 +63,9 @@ func TestDayProgressRemembersLastDay(t *testing.T) {
 	if got.Active {
 		t.Fatalf("finished day still active: %+v", got)
 	}
-	if !got.LastDay.Equal(day) || got.LastDuration != 10*time.Second || got.LastMovements != 500 {
-		t.Errorf("last day = %v in %v with %d movements, want %v in 10s with 500",
-			got.LastDay, got.LastDuration, got.LastMovements, day)
+	if !got.LastDay.Equal(day) || got.LastDuration != 10*time.Second || got.LastAccounts != 500 {
+		t.Errorf("last day = %v in %v with %d accounts, want %v in 10s with 500",
+			got.LastDay, got.LastDuration, got.LastAccounts, day)
 	}
 }
 
@@ -75,20 +75,22 @@ func TestAdvanceDayRecordsDayProgress(t *testing.T) {
 	day := ds.currentDay
 	ds.AdvanceDay()
 
-	var movements int
+	var accounts int
 	ds.mu.Lock()
-	err := ds.db.QueryRow(`SELECT COUNT(*) FROM movements WHERE code = $1 AND description = 'Daily interest accrual'`, codeDailyAccrual).Scan(&movements)
+	err := ds.db.QueryRow(`SELECT COUNT(*) FROM customer_accounts`).Scan(&accounts)
 	ds.mu.Unlock()
-	if err != nil || movements == 0 {
-		t.Fatalf("accrual movements: %d, %v", movements, err)
+	if err != nil || accounts == 0 {
+		t.Fatalf("accounts: %d, %v", accounts, err)
 	}
 
 	got := ds.progress.snapshot()
 	if got.Active {
 		t.Fatalf("day should be finished: %+v", got)
 	}
-	if !got.LastDay.Equal(day) || got.LastMovements != movements {
-		t.Errorf("last day = %v with %d movements, want %v with %d", got.LastDay, got.LastMovements, day, movements)
+	// The day that began is the one the pass projected: the day after the
+	// one the bank was on when AdvanceDay was called.
+	if !got.LastDay.Equal(day.AddDate(0, 0, 1)) || got.LastAccounts != accounts {
+		t.Errorf("last day = %v with %d accounts, want %v with %d", got.LastDay, got.LastAccounts, day.AddDate(0, 0, 1), accounts)
 	}
 }
 
@@ -99,12 +101,12 @@ func TestRuntimeShowsDayInProgress(t *testing.T) {
 	ds.progress.now = fixedClock(&clock)
 
 	ds.progress.begin(time.Date(2020, 2, 29, 0, 0, 0, 0, time.UTC))
-	ds.progress.phase("accrual postings", 955000)
+	ds.progress.phase("projecting positions", 955000)
 	ds.progress.add(404763)
 	clock = t0.Add(5 * time.Minute)
 
 	html := ds.BuildRuntimeHTML()
-	for _, want := range []string{"Day in progress", "29 Feb 2020", "accrual postings", "404,763 / 955,000", "42%", "1,349/s", "5m0s"} {
+	for _, want := range []string{"Day in progress", "29 Feb 2020", "projecting positions", "404,763 / 955,000", "42%", "1,349/s", "5m0s"} {
 		if !strings.Contains(html, want) {
 			t.Errorf("runtime page missing %q", want)
 		}
@@ -118,7 +120,7 @@ func TestRuntimeShowsLastDayWhenIdle(t *testing.T) {
 	ds.progress.now = fixedClock(&clock)
 
 	ds.progress.begin(time.Date(2020, 2, 28, 0, 0, 0, 0, time.UTC))
-	ds.progress.phase("accrual postings", 477634)
+	ds.progress.phase("projecting positions", 477634)
 	ds.progress.add(477634)
 	clock = t0.Add(341 * time.Second)
 	ds.progress.finish()
@@ -127,7 +129,7 @@ func TestRuntimeShowsLastDayWhenIdle(t *testing.T) {
 	if strings.Contains(html, "Day in progress") {
 		t.Error("idle simulation should not claim a day in progress")
 	}
-	for _, want := range []string{"Last day", "28 Feb 2020", "477,634 movements", "5m41s"} {
+	for _, want := range []string{"Last day", "28 Feb 2020", "477,634 accounts", "5m41s"} {
 		if !strings.Contains(html, want) {
 			t.Errorf("runtime page missing %q", want)
 		}

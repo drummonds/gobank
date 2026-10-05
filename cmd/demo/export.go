@@ -17,9 +17,7 @@ func (ds *DemoState) handleExport(w http.ResponseWriter, r *http.Request) {
 	}
 	var buf bytes.Buffer
 	ds.mu.Lock()
-	ds.simMu.Lock() // wait out any in-flight engine sweep so the export is consistent
-	err := ds.sim.ExportGoluca(&buf)
-	ds.simMu.Unlock()
+	err := ds.ledger.Export(&buf)
 	ds.mu.Unlock()
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
@@ -49,7 +47,7 @@ func (ds *DemoState) handleImport(w http.ResponseWriter, r *http.Request) {
 	}
 
 	ds.mu.Lock()
-	err = ds.sim.Ledger.Import(bytes.NewReader(data), &luca.ImportOptions{
+	err = ds.ledger.Import(bytes.NewReader(data), &luca.ImportOptions{
 		AutoCreateAccounts: true,
 		DefaultCommodity:   "GBP",
 	})

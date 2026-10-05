@@ -41,10 +41,30 @@ func nextDayDelay(dayLength, elapsed time.Duration) time.Duration {
 	return max(dayLength-elapsed, minDayGap)
 }
 
-// SetDayLength sets the wall-clock length of a simulated day; zero is flat
-// out. A negative value is refused. Takes effect from the next day.
+// SetDayLength sets the wall-clock length of a simulated day, as the
+// console does; zero is flat out. A negative value is refused. Takes
+// effect from the next day, and is recorded with the run so the next
+// process resumes at it.
 func (ds *DemoState) SetDayLength(d time.Duration) {
 	if d < 0 {
+		return
+	}
+	ds.settings.Update(func(s *Settings) { s.DayLength = d })
+	ds.mu.Lock()
+	ds.dayLengthRecorded = true
+	db := ds.db
+	ds.mu.Unlock()
+	saveDayLength(db, d)
+}
+
+// DefaultDayLength is the environment's day length (GOBANK_DAY_LENGTH):
+// where a run starts until the console sets one. A run resumed with a
+// recorded setting keeps it.
+func (ds *DemoState) DefaultDayLength(d time.Duration) {
+	ds.mu.Lock()
+	recorded := ds.dayLengthRecorded
+	ds.mu.Unlock()
+	if recorded || d < 0 {
 		return
 	}
 	ds.settings.Update(func(s *Settings) { s.DayLength = d })

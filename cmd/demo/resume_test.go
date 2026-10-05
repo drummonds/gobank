@@ -147,3 +147,33 @@ func TestResetStartsAFreshRun(t *testing.T) {
 		t.Errorf("resumed after reset: %+v; want nothing", p)
 	}
 }
+
+// The day length set on the console is the run's: the next process over
+// the same database resumes at it, whatever its environment says. The
+// environment's value (GOBANK_DAY_LENGTH) is where a run starts until the
+// console sets one.
+func TestDayLengthSetOnTheConsoleOutlivesTheProcess(t *testing.T) {
+	first := NewDemoState()
+	first.DefaultDayLength(0)
+	first.SetDayLength(2 * time.Hour)
+
+	second := newDemoStateOn(first.db, "")
+	second.DefaultDayLength(0) // the environment, flat out, as main applies it after the resume
+	if got := second.Settings().DayLength; got != 2*time.Hour {
+		t.Errorf("resumed day length = %s; want the 2h set on the console", got)
+	}
+
+	// Flat out set on the console is a setting too, not an absence.
+	second.SetDayLength(0)
+	third := newDemoStateOn(first.db, "")
+	third.DefaultDayLength(2 * time.Hour)
+	if got := third.Settings().DayLength; got != 0 {
+		t.Errorf("resumed day length = %s; want the flat out set on the console", got)
+	}
+
+	fresh := NewDemoState()
+	fresh.DefaultDayLength(90 * time.Minute)
+	if got := fresh.Settings().DayLength; got != 90*time.Minute {
+		t.Errorf("fresh day length = %s; want the environment's 90m", got)
+	}
+}

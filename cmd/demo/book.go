@@ -54,16 +54,53 @@ func (ds *DemoState) addToBook(family gbp.ProductFamily, delta luca.Amount) {
 }
 
 // interestTotals is the bank's customer interest to date on an accrual
-// basis: loan interest income and deposit interest expense, each applied
-// plus accrued-but-unapplied whole pence. Both are read from the ledger P&L
-// accounts, which the engine credits on application and the daily accrual
-// movements credit as interest accrues (balance = in - out, so the P&L
-// accounts run negative as interest is recognised).
+// basis: loan interest income and deposit interest expense, each the
+// interest applied plus the interest accrued but not yet applied. The
+// applications are the balances of the ledger P&L accounts (balance = in -
+// out, so they run negative as interest is recognised); the accrual is on
+// every account's latest position, summed per product through the ledger's
+// end-of-day view and truncated to whole pence per family.
 func (ds *DemoState) interestTotals() (loanIncome, depositExpense luca.Amount) {
 	if ds.ledger == nil {
 		return 0, 0
 	}
-	return -ds.pathBalance("Income:Interest"), -ds.pathBalance("Expense:Interest")
+	loanIncome, depositExpense = -ds.pathBalance("Income:Interest"), -ds.pathBalance("Expense:Interest")
+	accruedSavings, accruedLending := ds.accruedByFamily()
+	return loanIncome + accruedLending.Pence(), depositExpense + accruedSavings.Pence()
+}
+
+// accruedByFamily sums accrued-but-unapplied interest over every customer
+// account's latest position, per family, at 7dp.
+func (ds *DemoState) accruedByFamily() (savings, lending poundsE7) {
+	if ds.db == nil {
+		return 0, 0
+	}
+	// The view publishes accrued as a NUMERIC at 7dp; scaled to an integer
+	// before summing so the sum is exact on both drivers.
+	rows, err := ds.db.Query(`SELECT ca.product_id, COALESCE(SUM(CAST(ROUND(p.accrued * 10000000) AS BIGINT)), 0)
+		FROM contract_customer_accounts ca
+		JOIN contract_ledger_eod_positions p ON p.account_id = ca.ledger_account_id
+		WHERE p.day = (SELECT MAX(q.day) FROM contract_ledger_eod_positions q WHERE q.account_id = ca.ledger_account_id)
+		GROUP BY ca.product_id`)
+	if err != nil {
+		log.Printf("accruedByFamily: %v", err)
+		return 0, 0
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var productID string
+		var e7 int64
+		if err := rows.Scan(&productID, &e7); err != nil {
+			log.Printf("accruedByFamily: scan: %v", err)
+			return 0, 0
+		}
+		if p, ok := ds.productByID(productID); ok && p.Family == gbp.FamilyLending {
+			lending += poundsE7(e7)
+		} else {
+			savings += poundsE7(e7)
+		}
+	}
+	return savings, lending
 }
 
 // pathBalance is the balance of the account at path, or zero if it has no

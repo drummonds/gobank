@@ -8,8 +8,8 @@ import (
 	"time"
 )
 
-// dayProgress tracks the simulated day being processed, so a day that takes
-// minutes of ledger writes is visibly working rather than looking stopped.
+// dayProgress tracks the simulated day being processed, so a day whose pass
+// is paced over hours is visibly working rather than looking stopped.
 // It has its own lock so the streaming write path never touches ds.mu, and
 // its own clock so reading it doesn't perturb ds.now in tests.
 type dayProgress struct {
@@ -21,13 +21,13 @@ type dayProgress struct {
 	started    time.Time
 	phaseName  string
 	phaseStart time.Time
-	done       int // movements written in the current phase
-	total      int // movements expected in the current phase; 0 if unknown
-	dayDone    int // movements written across the whole day
+	done       int // accounts done in the current phase
+	total      int // accounts expected in the current phase; 0 if unknown
+	dayDone    int // accounts done across the whole day
 
-	lastDay       time.Time
-	lastDuration  time.Duration
-	lastMovements int
+	lastDay      time.Time
+	lastDuration time.Duration
+	lastAccounts int
 }
 
 // DayProgress is a snapshot of dayProgress for rendering.
@@ -37,11 +37,11 @@ type DayProgress struct {
 	Phase       string
 	Done, Total int
 	Elapsed     time.Duration // since the day began
-	Rate        float64       // movements/s within the current phase
+	Rate        float64       // accounts/s within the current phase
 
-	LastDay       time.Time
-	LastDuration  time.Duration
-	LastMovements int
+	LastDay      time.Time
+	LastDuration time.Duration
+	LastAccounts int
 }
 
 func (p *dayProgress) clock() time.Time {
@@ -81,7 +81,7 @@ func (p *dayProgress) finish() time.Duration {
 		return 0
 	}
 	p.active = false
-	p.lastDay, p.lastDuration, p.lastMovements = p.day, p.clock().Sub(p.started), p.dayDone
+	p.lastDay, p.lastDuration, p.lastAccounts = p.day, p.clock().Sub(p.started), p.dayDone
 	return p.lastDuration
 }
 
@@ -89,7 +89,7 @@ func (p *dayProgress) reset() {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 	p.active, p.day, p.phaseName, p.done, p.total, p.dayDone = false, time.Time{}, "", 0, 0, 0
-	p.lastDay, p.lastDuration, p.lastMovements = time.Time{}, 0, 0
+	p.lastDay, p.lastDuration, p.lastAccounts = time.Time{}, 0, 0
 }
 
 func (p *dayProgress) snapshot() DayProgress {
@@ -97,7 +97,7 @@ func (p *dayProgress) snapshot() DayProgress {
 	defer p.mu.Unlock()
 	s := DayProgress{
 		Active: p.active, Day: p.day, Phase: p.phaseName, Done: p.done, Total: p.total,
-		LastDay: p.lastDay, LastDuration: p.lastDuration, LastMovements: p.lastMovements,
+		LastDay: p.lastDay, LastDuration: p.lastDuration, LastAccounts: p.lastAccounts,
 	}
 	if p.active {
 		now := p.clock()
@@ -121,8 +121,8 @@ func (s DayProgress) runtimeRow() string {
 		return fmt.Sprintf(`<tr><th>Day in progress</th><td>%s — %s</td><td class="has-text-grey">%s elapsed</td></tr>`,
 			s.Day.Format("2 Jan 2006"), work, s.Elapsed.Round(time.Second))
 	case !s.LastDay.IsZero():
-		return fmt.Sprintf(`<tr><th>Last day</th><td>%s: %s movements in %s</td></tr>`,
-			s.LastDay.Format("2 Jan 2006"), groupInt(s.LastMovements), s.LastDuration.Round(time.Second))
+		return fmt.Sprintf(`<tr><th>Last day</th><td>%s: %s accounts in %s</td></tr>`,
+			s.LastDay.Format("2 Jan 2006"), groupInt(s.LastAccounts), s.LastDuration.Round(time.Second))
 	}
 	return ""
 }

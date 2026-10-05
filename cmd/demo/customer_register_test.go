@@ -9,7 +9,7 @@ import (
 
 // A created customer is readable back from the database: identity and KYC
 // from the customer store, accounts from the account register, balances and
-// accrual from the products engine.
+// accrual from the ledger's positions.
 func TestCustomerReadableFromDatabase(t *testing.T) {
 	ds := NewDemoState()
 	addFundedCustomer(ds)
@@ -29,12 +29,12 @@ func TestCustomerReadableFromDatabase(t *testing.T) {
 			a.SortCode == "" || a.AccountNum == "" || a.LedgerAccountID == "" || a.OpenDate.IsZero() {
 			t.Errorf("account %d incomplete: %+v", i, a)
 		}
-		ma, ok := ds.sim.GetManagedAccount(a.LedgerAccountID)
-		if !ok {
-			t.Fatalf("account %d: no managed account %s", i, a.LedgerAccountID)
+		bal, err := ds.ledger.Balance(a.LedgerAccountID)
+		if err != nil {
+			t.Fatalf("account %d: ledger balance: %v", i, err)
 		}
-		if a.Balance != ma.CachedBalance {
-			t.Errorf("account %d: balance %d != engine %d", i, a.Balance, ma.CachedBalance)
+		if a.Balance != bal {
+			t.Errorf("account %d: balance %d != ledger %d", i, a.Balance, bal)
 		}
 		if a.Family == gbp.FamilySavings && a.Balance <= 0 {
 			t.Errorf("account %d: savings account unfunded", i)
@@ -54,8 +54,8 @@ func TestCustomerReadableFromDatabase(t *testing.T) {
 }
 
 // Applied interest is derived from the ledger's application movements and
-// accrued-but-unapplied interest from the engine, not from a counter kept
-// alongside the customer.
+// accrued-but-unapplied interest from the ledger's positions, not from a
+// counter kept alongside the customer.
 func TestCustomerInterestReadFromLedger(t *testing.T) {
 	ds := NewDemoState()
 	addFundedCustomer(ds)
