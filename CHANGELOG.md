@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+## [0.11.0] - 2026-10-05
+
+ - Stage 3 story (e): start-of-day workflow paced over the day and resumable; products engine map gone
+
  - The day length set on the console is the run's and outlives a restart
  - Stage 3 story (e): the start-of-day workflow — the pass is paced over the day, resumes after a restart, and the products engine's account map is gone
 
