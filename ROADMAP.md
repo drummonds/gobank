@@ -30,19 +30,6 @@ The browser-based model proves the banking core works end-to-end.
   Open: startup-only (read once from config; simple, no table, every process
   agrees) versus live (stored, flippable mid-run; lets the demo show a
   cutover or a kill switch without a restart)
-- **Multiple payment rails** — every payment records the rail it travelled
-  (internal book transfer, FPS, Bacs, CHAPS) and each rail is a scheme
-  adapter behind one interface with its own settlement timing, cut-offs,
-  limits and outage behaviour; a routing rule picks the rail from amount and
-  urgency. The payments component stays the one bank-level view (one
-  lifecycle, one list, filterable by rail) and gains a per-rail view:
-  volumes, queue depth, settlement position and scheme status. The existing
-  mock-fps and FPS stand-in items below become the FPS rail's stories, and
-  the adapter boundary is what Phase 3 unbundles. Out of scope: real scheme
-  messaging (ISO 20022), cards. Open: rail as a column on the one
-  `payments` table (the coherent view comes free) versus a table per rail
-  with a bank-level union view (each rail's data differs — Bacs has a
-  three-day cycle, CHAPS is same-day, FPS instant)
 - **Daily accrual cost scales with every account** — each account gets a
   ledger posting every day (`collectAccrualMovements`: a "Daily interest
   accrual" movement whenever a new whole penny has accrued, plus a reversal
@@ -240,23 +227,57 @@ root module, `cmd/bff` is the service binary, and `app/` is the Flutter shell.
       deploys go blue-green (deployment level 3), ending the downtime
       accepted since stage 2
    9. Simulation becomes tests
-2. **Demo phone frame onto the screen layer** (ADR-0002 stage 6) — `cmd/demo/bankapp_render.go`
+2. **Multiple payment rails** — every payment records the rail it travelled
+   (internal book transfer, FPS, Bacs, CHAPS) and each rail is a scheme
+   adapter behind one interface with its own settlement timing, cut-offs,
+   limits and outage behaviour; a routing rule picks the rail from amount and
+   urgency. The payments component stays the one bank-level view (one
+   lifecycle, one list, filterable by rail) and gains a per-rail view:
+   volumes, queue depth, settlement position and scheme status. The existing
+   mock-fps and FPS stand-in items in Phase 1 become the FPS rail's stories,
+   and the adapter boundary is what Phase 3 unbundles. Out of scope: real scheme
+   messaging (ISO 20022), cards. Open: rail as a column on the one
+   `payments` table (the coherent view comes free) versus a table per rail
+   with a bank-level union view (each rail's data differs — Bacs has a
+   three-day cycle, CHAPS is same-day, FPS instant). The rails become real
+   with a **real rail**: one outbound payment from the demo bank to a real account
+   through a live bank API, credentials per environment via gobank-deploy,
+   sandbox first. Out of scope: inbound, bulk, cards. Open: Starling
+   (developer sandbox, personal access token, plain REST) versus Barclays
+   (Open Banking PIS, needs TPP registration and eIDAS certificates, likely
+   out of reach for a hobby project) — Starling sandbox first
+3. **Payee management** — a customer's saved payees (name, sort code and
+   account number, reference), created, edited and deleted in the app and
+   the customer web and offered by send money; a component with its own
+   table (ADR-0001) behind session-only BFF endpoints. Builds on #7.
+   Out of scope: international payees, a real Confirmation of Payee call
+   (stubbed behind an interface). Open: new-payee limits and cooling-off
+4. **KYC process** — onboarding as a lifecycle (pending → verified →
+   rejected → in review): identity capture, document and liveness checks
+   as pluggable verifiers with a stub provider in the demo, a risk rating,
+   and the record of how and when a customer was verified and of later
+   name and address changes (#25); an unverified customer transacts only
+   up to a cap. Out of scope: a real IDV provider (same interface as the
+   stub), AML transaction monitoring (belongs with the risk register).
+   Open: does the customer generator produce KYC outcomes, so the staff
+   view has a queue to work
+5. **Demo phone frame onto the screen layer** (ADR-0002 stage 6) — `cmd/demo/bankapp_render.go`
    becomes a caller of `screen.HTML`, so browser and app show identical screens
    from one source, and the open `/api/customer/` endpoints are retired
-3. **Native security plugin** — biometric-bound keys (Secure Enclave, StrongBox),
+6. **Native security plugin** — biometric-bound keys (Secure Enclave, StrongBox),
    passkey registration and login, App Attest and Play Integrity token fetching,
    certificate pinning, screenshot blocking and app-switcher blanking, jailbreak,
    root and overlay detection; the BFF checks attestation before issuing tokens
-4. **Device-bound signing** — request signing for transactions, step-up
+7. **Device-bound signing** — request signing for transactions, step-up
    authentication (PSD2 SCA)
-5. **Web client on the BFF** — the HTML rendering of the same endpoints becomes
+8. **Web client on the BFF** — the HTML rendering of the same endpoints becomes
    the customer web client; passkeys via WebAuthn in the browser
-6. **App-shielding SDK evaluation** — Promon, Guardsquare, Appdome, Zimperium;
+9. **App-shielding SDK evaluation** — Promon, Guardsquare, Appdome, Zimperium;
    chosen and integrated before any external pilot
-7. **Standalone RBAC module** — extract `Role`/`Can` from `cmd/demo` into its
+10. **Standalone RBAC module** — extract `Role`/`Can` from `cmd/demo` into its
    own repo (not gobank-db) once the BFF is the second consumer; it then
    implements go-dbexplorer's `Authoriser`
-8. **Native checkpoint** — after the first external pilot, a written list of what
+11. **Native checkpoint** — after the first external pilot, a written list of what
    Flutter cannot do; move to SwiftUI and Jetpack Compose only if the list is
    non-empty
 
