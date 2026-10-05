@@ -276,13 +276,11 @@ func (ds *DemoState) initLedger() {
 
 	// Pace large account sweeps so the single-threaded WASM host can yield
 	// to the browser event loop during month-end interest application.
-	if runtime.GOOS == "js" {
-		n := 0
-		sim.PaceHook = func() {
-			n++
-			if n%64 == 0 {
-				time.Sleep(time.Millisecond)
-			}
+	n := 0
+	sim.PaceHook = func() {
+		n++
+		if n%64 == 0 {
+			yieldToBrowser()
 		}
 	}
 }
@@ -665,9 +663,7 @@ func postMovements(rec movementRecorder, b accrualBatch, workers int, posted fun
 				if el := time.Since(start); el > 0 {
 					n = min(max(int(float64(len(chunk))*float64(targetTxTime)/float64(el)), 16), 8192)
 				}
-				if runtime.GOOS == "js" {
-					time.Sleep(time.Millisecond) // yield to the browser event loop
-				}
+				yieldToBrowser()
 			}
 		})
 	}
@@ -1011,9 +1007,7 @@ func (ds *DemoState) AddCustomersBatch(n int) {
 						ds.addingCustProgress++
 					}
 					ds.mu.Unlock()
-					if runtime.GOOS == "js" {
-						time.Sleep(time.Millisecond) // yield to the browser event loop
-					}
+					yieldToBrowser()
 				}
 			})
 		}

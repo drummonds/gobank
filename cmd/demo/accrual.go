@@ -4,7 +4,6 @@ import (
 	"database/sql"
 	"hash/fnv"
 	"log"
-	"runtime"
 	"slices"
 	"sync"
 	"time"
@@ -133,9 +132,7 @@ func persistAccrualState(db *sql.DB, day time.Time, rows []accrualRow, boeNumera
 			n = min(max(int(float64(j-i)*float64(targetTxTime)/float64(el)), 16), 8192)
 		}
 		i = j
-		if runtime.GOOS == "js" {
-			time.Sleep(time.Millisecond) // yield to the browser event loop
-		}
+		yieldToBrowser()
 	}
 }
 
@@ -152,8 +149,8 @@ func (ds *DemoState) projectPositions(ledger *luca.SQLLedger, day time.Time, row
 	}
 	for i, r := range rows {
 		ds.projectAccount(ledger, day, r)
-		if runtime.GOOS == "js" && i%64 == 63 {
-			time.Sleep(time.Millisecond) // yield to the browser event loop
+		if i%64 == 63 {
+			yieldToBrowser()
 		}
 	}
 }
