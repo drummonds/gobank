@@ -2,6 +2,15 @@
 
 ## [Unreleased]
 
+### Fixed
+- The dashboard's "Interest movements / 12h" was quoted at the accrual
+  phase's rate alone (engine plus postings), which since v0.10.0 is the
+  cheap part of a day: projecting every account's position is most of it
+  and ran after the sample was taken, so the figure was about ten times
+  the rate the movements table grows at. The rate is now measured over
+  the whole day, begin to finish, the span the runtime page reports as
+  the last day's duration.
+
 ## [0.10.1] - 2026-10-05
 
  - Fix v0.10.0 deadlock: customer funding no longer projects; the day's pass writes a new account's first position

@@ -72,14 +72,17 @@ func (p *dayProgress) add(n int) {
 	p.dayDone += n
 }
 
-func (p *dayProgress) finish() {
+// finish closes the day and returns how long it took, begin to finish; 0
+// when no day is in progress.
+func (p *dayProgress) finish() time.Duration {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 	if !p.active {
-		return
+		return 0
 	}
 	p.active = false
 	p.lastDay, p.lastDuration, p.lastMovements = p.day, p.clock().Sub(p.started), p.dayDone
+	return p.lastDuration
 }
 
 func (p *dayProgress) reset() {

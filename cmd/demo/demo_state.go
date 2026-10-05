@@ -388,7 +388,6 @@ func (ds *DemoState) advanceDay() {
 	day := ds.currentDay
 	ds.mu.Unlock()
 	ds.progress.begin(day)
-	defer ds.progress.finish()
 
 	// Phase 1: products engine end-of-day (and month-end application) —
 	// no ds.mu held; simMu serializes against payments touching sim state.
@@ -401,7 +400,6 @@ func (ds *DemoState) advanceDay() {
 	var accrualBatches []accrualBatch
 	var appliedSavings, appliedLending luca.Amount // month-end interest applied to customer balances
 	var accrualSavings, accrualLending int64       // today's accrual, numerator units
-	accrualStart := ds.now()
 	movements := 0
 	if sim != nil {
 		engine := "products engine"
@@ -451,13 +449,11 @@ func (ds *DemoState) advanceDay() {
 			ds.writeMovementsChunked(b)
 		}
 	}
-	accrualElapsed := ds.now().Sub(accrualStart)
 
 	// Phase 2: sync account mirrors from the engine and do day bookkeeping
 	// under a single short lock hold.
 	ds.progress.phase("bookkeeping", 0)
 	ds.mu.Lock()
-	ds.interestRate.record(movements, accrualElapsed)
 	ds.book.Savings += appliedSavings
 	ds.book.Lending += appliedLending
 	ds.dayAccrualSavings, ds.dayAccrualLending = accrualSavings, accrualLending
@@ -545,6 +541,14 @@ func (ds *DemoState) advanceDay() {
 	// The day is on record once everything it wrote is: a restart from
 	// here resumes on the next day.
 	saveRun(db, run)
+
+	// The throughput the dashboard quotes is the day's accrual movements
+	// over the whole day, projection included: the rate the movements
+	// table actually grows at.
+	elapsed := ds.progress.finish()
+	ds.mu.Lock()
+	ds.interestRate.record(movements, elapsed)
+	ds.mu.Unlock()
 }
 
 // codeDailyAccrual marks daily interest accrual movements and their month-end
@@ -1162,7 +1166,7 @@ type SimStatus struct {
 	AddingTarget        int
 	CustomersPerSec     float64 // live rate of the running batch add
 	LastCustomersPerSec float64 // rate of the last finished batch add
-	InterestPer12h      int64   // interest movements the engine posts per 12h at its measured rate
+	InterestPer12h      int64   // interest movements per 12h at the measured whole-day rate
 	MemoryExceeded      bool
 	DayLength           time.Duration // wall-clock length of a simulated day; zero is flat out
 	DayEndsIn           time.Duration // what is left of the day in progress; zero when flat out or stopped

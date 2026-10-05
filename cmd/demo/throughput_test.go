@@ -44,7 +44,8 @@ func TestInterestThroughputRollingWindow(t *testing.T) {
 
 func TestDashboardReportsInterestMovementsPer12h(t *testing.T) {
 	ds := NewDemoState()
-	ds.now = steppingClock(time.Date(2026, 1, 1, 9, 0, 0, 0, time.UTC))
+	clock := steppingClock(time.Date(2026, 1, 1, 9, 0, 0, 0, time.UTC))
+	ds.now, ds.progress.now = clock, clock
 	addFundedCustomer(ds)
 
 	if got := ds.SimStatus().InterestPer12h; got != 0 {
@@ -61,10 +62,18 @@ func TestDashboardReportsInterestMovementsPer12h(t *testing.T) {
 	if err != nil || movements == 0 {
 		t.Fatalf("accrual movements: %d, %v", movements, err)
 	}
-	// The day's accrual phase took exactly 1s on the stepping clock.
-	want := int64(movements) * int64(interestWindow/time.Second)
+	// The rate is quoted over the whole day — engine, postings, bookkeeping
+	// and projecting every account's position — the same span the runtime
+	// page reports as the last day's duration, so it tracks how fast the
+	// movements table actually grows. On the stepping clock the accrual
+	// phase alone is 1s and the day is longer.
+	last := ds.progress.snapshot()
+	if last.LastDuration <= time.Second {
+		t.Fatalf("last day took %v; the test needs a day longer than its accrual phase", last.LastDuration)
+	}
+	want := int64(float64(movements) * float64(interestWindow) / float64(last.LastDuration))
 	if got := ds.SimStatus().InterestPer12h; got != want {
-		t.Errorf("InterestPer12h = %d, want %d (%d movements in 1s)", got, want, movements)
+		t.Errorf("InterestPer12h = %d, want %d (%d movements over the day's %v)", got, want, movements, last.LastDuration)
 	}
 }
 

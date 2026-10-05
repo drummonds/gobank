@@ -4,7 +4,10 @@ import "time"
 
 // interestWindow is the batch window the interest throughput is quoted
 // against: a bank's overnight run. "Movements per 12h" says whether this
-// engine, at its measured rate, could post a day's interest overnight.
+// engine, at its measured rate, could post a day's interest overnight. The
+// rate is measured over the whole simulated day — engine, postings,
+// bookkeeping and projecting every account's position — so it is the rate
+// the movements table actually grows at, not the accrual phase alone.
 const interestWindow = 12 * time.Hour
 
 // throughputDays is how many recent simulated days the interest rate is
@@ -17,7 +20,7 @@ type daySample struct {
 }
 
 // interestThroughput is a rolling record of how many interest movements
-// each simulated day produced and how long the day's accrual phase took.
+// each simulated day produced and how long the whole day took.
 type interestThroughput struct {
 	samples []daySample
 }
