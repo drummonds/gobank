@@ -254,15 +254,22 @@ func (ds *DemoState) accountsOf(customerID string) []CustomerAccount {
 	return accounts
 }
 
-// fillAccountFigures sets an account's balance and accrual from the engine
-// and its lifetime applied interest from the ledger.
+// fillAccountFigures sets an account's balance and accrual from the
+// ledger's live position (the latest projection plus today's movements)
+// and its lifetime applied interest from the ledger's movements. The
+// products engine's in-memory figures are used only when there is no
+// database to read.
 func (ds *DemoState) fillAccountFigures(a *CustomerAccount) {
-	if ds.sim != nil {
+	if p, ok := ds.livePosition(a.LedgerAccountID); ok {
+		a.Balance = p.balance
+		a.AccruedE7 = p.accruedE7
+		a.Accrued = poundsE7(p.accruedE7).Pence()
+	} else if ds.sim != nil {
 		ds.simMu.Lock()
 		if ma, ok := ds.sim.GetManagedAccount(a.LedgerAccountID); ok {
 			a.Balance = ma.CachedBalance
 			a.Accrued = ma.AccruedInterest()
-			a.AccruedNumerator = ma.AccruedNumerator
+			a.AccruedE7 = int64(accrualPoundsE7(ma.AccruedNumerator))
 		}
 		ds.simMu.Unlock()
 	}

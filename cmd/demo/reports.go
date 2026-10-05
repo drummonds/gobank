@@ -146,7 +146,7 @@ func buildCustomerViewHTML(q core.StaffQueries, id string, piiAuthorized bool) s
 		} else {
 			totalLending += a.Balance
 		}
-		totalInterest += a.Interest + accrualPoundsE7(a.AccruedNumerator).Pence()
+		totalInterest += a.Interest + poundsE7(a.AccruedE7).Pence()
 	}
 
 	s.WriteString(`<div class="columns mb-4">`)
@@ -160,7 +160,7 @@ func buildCustomerViewHTML(q core.StaffQueries, id string, piiAuthorized bool) s
 	s.WriteString(`<thead><tr><th>Product</th><th>Type</th><th>Rate</th><th>Balance</th><th>Interest Accrued</th><th>Opened</th></tr></thead><tbody>`)
 	for _, a := range cust.Accounts {
 		interestCell := fmtMoney(a.Interest)
-		if accrued := accrualPoundsE7(a.AccruedNumerator); accrued != 0 {
+		if accrued := poundsE7(a.AccruedE7); accrued != 0 {
 			// Accrued-but-unapplied interest modelled as 7dp pounds; it
 			// converts to whole pence on application.
 			interestCell += fmt.Sprintf(` <span class="has-text-grey is-size-7">+%s accruing</span>`, accrued)

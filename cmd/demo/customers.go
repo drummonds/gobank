@@ -68,19 +68,19 @@ type CustomerRecord struct {
 }
 
 type CustomerAccount struct {
-	ProductID        string
-	ProductName      string
-	Family           gbp.ProductFamily
-	Currency         string      // ISO 4217, from the product
-	Balance          luca.Amount // minor units (pence); principal plus applied interest
-	Rate             float64     // annual rate (a rate, not money)
-	Interest         luca.Amount // minor units; lifetime interest applied to the balance
-	Accrued          luca.Amount // minor units; accrued-but-unapplied interest (from the products engine)
-	AccruedNumerator int64       // the same accrual exact, in pence over gbp.AccrualDenominator
-	OpenDate         time.Time
-	SortCode         string
-	AccountNum       string
-	LedgerAccountID  string // go-luca account ID for dual-write
+	ProductID       string
+	ProductName     string
+	Family          gbp.ProductFamily
+	Currency        string      // ISO 4217, from the product
+	Balance         luca.Amount // minor units (pence); principal plus applied interest
+	Rate            float64     // annual rate (a rate, not money)
+	Interest        luca.Amount // minor units; lifetime interest applied to the balance
+	Accrued         luca.Amount // minor units; accrued-but-unapplied interest, whole pence
+	AccruedE7       int64       // the same accrual to 7 decimal places of a pound, from the ledger's live position
+	OpenDate        time.Time
+	SortCode        string
+	AccountNum      string
+	LedgerAccountID string // go-luca account ID for dual-write
 }
 
 const customersPerPage = 50

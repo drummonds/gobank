@@ -62,17 +62,17 @@ func coreAccounts(accounts []CustomerAccount) []core.Account {
 	accts := make([]core.Account, len(accounts))
 	for i, acc := range accounts {
 		accts[i] = core.Account{
-			Index:            i,
-			ProductName:      acc.ProductName,
-			Family:           string(acc.Family),
-			Currency:         acc.Currency,
-			Rate:             acc.Rate,
-			Balance:          acc.Balance,
-			Interest:         acc.Interest,
-			AccruedNumerator: acc.AccruedNumerator,
-			SortCode:         acc.SortCode,
-			AccountNum:       acc.AccountNum,
-			OpenDate:         acc.OpenDate.Format("2006-01-02"),
+			Index:       i,
+			ProductName: acc.ProductName,
+			Family:      string(acc.Family),
+			Currency:    acc.Currency,
+			Rate:        acc.Rate,
+			Balance:     acc.Balance,
+			Interest:    acc.Interest,
+			AccruedE7:   acc.AccruedE7,
+			SortCode:    acc.SortCode,
+			AccountNum:  acc.AccountNum,
+			OpenDate:    acc.OpenDate.Format("2006-01-02"),
 		}
 	}
 	return accts

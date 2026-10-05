@@ -13,7 +13,7 @@ func accrualNumerators(ds *DemoState) map[string]int64 {
 	custs, _ := ds.customerPage(1)
 	for _, c := range custs {
 		for _, a := range c.Accounts {
-			out[a.LedgerAccountID] = a.AccruedNumerator
+			out[a.LedgerAccountID] = a.AccruedE7
 		}
 	}
 	return out

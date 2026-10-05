@@ -250,7 +250,6 @@ func (ds *DemoState) initLedger() {
 		return
 	}
 	ds.ledger = ledger
-	ds.createLedgerViews()
 	ds.simClock = gbp.NewSimClock(ds.currentDay)
 	sim, err := gbp.NewSimulation(ledger, ds.simClock)
 	if err != nil {
@@ -516,7 +515,7 @@ func (ds *DemoState) advanceDay() {
 		}
 	}
 
-	boeNumerator := ds.boeAccruedNumerator
+	boeNumerator, boeReservesID := ds.boeAccruedNumerator, ds.boeReservesID
 	// A shutdown is not a stop: the next process carries the run on.
 	run := runState{Day: ds.currentDay, DayCount: ds.dayCount, Running: ds.running || ds.shuttingDown}
 	db, ledger := ds.db, ds.ledger
@@ -530,9 +529,16 @@ func (ds *DemoState) advanceDay() {
 		}
 	}
 
-	// Phase 3: persist accrual numerators off both locks so the DB alone
-	// carries the accrued-but-unapplied interest state for the day.
+	// Phase 3: project the day's positions off both locks, so the ledger
+	// alone carries each account's balance and accrued interest for the
+	// day. The BoE reserves account's accrual is a position like any other.
+	// accrual_state is shadow-written first so the previous release can be
+	// rolled back to (story (e) drops it).
 	persistAccrualState(db, day, accrualRows, boeNumerator)
+	if boeReservesID != "" {
+		accrualRows = append(accrualRows, accrualRow{id: boeReservesID, numerator: boeNumerator})
+	}
+	projectPositions(ledger, day, accrualRows)
 	if newCustomer != nil {
 		ds.persistCustomerPlan(*newCustomer)
 	}
@@ -808,10 +814,12 @@ func (ds *DemoState) refreshFromLedger() {
 // BoE), the book totals and the BoE interest applied. Must be called with
 // ds.mu and ds.simMu held.
 func (ds *DemoState) syncFromLedgerLocked() {
-	ds.loadAccrualState()
+	// The BoE reserves account must be known before its position is read.
+	accounts := ds.ensureAccrualAccounts()
+	ds.loadPositions()
 	ds.refreshBookTotals()
 	// Applied BoE interest is derivable from its ledger account balance.
-	if ds.ensureAccrualAccounts() {
+	if accounts {
 		if bal, err := ds.sim.Ledger.Balance(ds.boeReservesID); err == nil {
 			ds.boeInterestApplied = bal
 		} else {
@@ -828,15 +836,28 @@ func (ds *DemoState) recordSimMovement(fromID, toID string, amount luca.Amount, 
 }
 
 // recordSimMovementOn is recordSimMovement against an explicit simulation —
-// used with a tx-bound sim during transactional customer creation.
+// used with a tx-bound sim during transactional customer creation. The
+// movement is posted with projections, so both accounts' positions for
+// the day are rewritten (an event rewrites the projection of the account
+// it touches), and the engine's cached balances are kept in step as
+// Simulation.RecordMovement would. The engine's own postings (interest
+// application) do not project: the day's pass projects every account it
+// touched once the sweep is done.
 func (ds *DemoState) recordSimMovementOn(sim *gbp.Simulation, day time.Time, fromID, toID string, amount luca.Amount, code, description string) {
 	if sim == nil || fromID == "" || toID == "" {
 		return
 	}
 	ds.simMu.Lock()
 	defer ds.simMu.Unlock()
-	if _, err := sim.RecordMovement(fromID, toID, amount, code, day, description); err != nil {
+	if _, err := sim.Ledger.RecordMovementWithProjections(fromID, toID, amount, code, day, description); err != nil {
 		log.Printf("recordSimMovement: %v", err)
+		return
+	}
+	if ma, ok := sim.GetManagedAccount(fromID); ok {
+		ma.CachedBalance -= amount
+	}
+	if ma, ok := sim.GetManagedAccount(toID); ok {
+		ma.CachedBalance += amount
 	}
 }
 

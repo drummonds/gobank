@@ -33,12 +33,13 @@ type Account struct {
 	Rate        float64
 	Balance     luca.Amount
 	Interest    luca.Amount // applied to the balance to date
-	// AccruedNumerator is interest accrued but not yet applied, exact, in
-	// units of one penny over gobank-products' AccrualDenominator.
-	AccruedNumerator int64
-	SortCode         string
-	AccountNum       string
-	OpenDate         string
+	// AccruedE7 is interest accrued but not yet applied, in ten-millionths
+	// of the major unit (7 decimal places), as the ledger's position views
+	// publish it.
+	AccruedE7  int64
+	SortCode   string
+	AccountNum string
+	OpenDate   string
 }
 
 // Transaction is one ledger entry as shown to the customer.

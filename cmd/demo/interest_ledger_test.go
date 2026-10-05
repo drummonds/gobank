@@ -225,11 +225,13 @@ func TestNoFloatMoneyStorage(t *testing.T) {
 		_ luca.Amount = BalancePoint{}.Savings
 		_ luca.Amount = BalancePoint{}.Lending
 		_ luca.Amount = GiltHolding{}.FaceValue
-		_ int64       = CustomerAccount{}.AccruedNumerator
+		_ int64       = CustomerAccount{}.AccruedE7
 		_ int64       = ManagedAccountAccruedNumerator()
 		_ luca.Amount = core.Account{}.Balance
 		_ luca.Amount = core.Account{}.Interest
-		_ int64       = core.Account{}.AccruedNumerator
+		_ int64       = core.Account{}.AccruedE7
+		_ luca.Amount = livePosition{}.balance
+		_ int64       = livePosition{}.accruedE7
 		_ luca.Amount = core.Payment{}.Amount
 		_ luca.Amount = core.Position{}.Savings
 	)
@@ -271,39 +273,54 @@ func ManagedAccountAccruedNumerator() int64 {
 	return ma.AccruedNumerator
 }
 
-// assertAccrualPersisted checks every account's stored numerator matches the
-// engine, and the BoE row matches ds.boeAccruedNumerator. Caller holds ds.mu.
+// assertAccrualPersisted checks every account's ledger position for the
+// closed day carries the engine's numerator and balance, and that the BoE
+// reserves position carries ds.boeAccruedNumerator. Caller holds ds.mu.
 func assertAccrualPersisted(t *testing.T, ds *DemoState) {
 	t.Helper()
+	closed := ds.currentDay.AddDate(0, 0, -1)
 	for _, a := range firstCustomerAccounts(t, ds) {
 		ma, ok := ds.sim.GetManagedAccount(a.LedgerAccountID)
 		if !ok {
 			t.Fatalf("%s: managed account missing", a.ProductName)
 		}
-		var stored, storedE7 int64
-		err := ds.db.QueryRow(`SELECT numerator, accrued_pounds_e7 FROM accrual_state WHERE account_id = $1`, a.LedgerAccountID).Scan(&stored, &storedE7)
-		if err != nil {
-			t.Fatalf("%s: query accrual_state: %v", a.ProductName, err)
+		p, err := ds.ledger.PositionAt(a.LedgerAccountID, closed)
+		if err != nil || p == nil {
+			t.Fatalf("%s: position for %s: %v %v", a.ProductName, closed.Format("2006-01-02"), p, err)
 		}
-		if stored != ma.AccruedNumerator {
-			t.Errorf("%s: stored numerator %d != engine %d", a.ProductName, stored, ma.AccruedNumerator)
+		if !p.Day.Equal(closed) {
+			t.Errorf("%s: latest position is %s, want %s", a.ProductName, p.Day.Format("2006-01-02"), closed.Format("2006-01-02"))
 		}
-		if want := int64(accrualPoundsE7(stored)); storedE7 != want {
-			t.Errorf("%s: stored 7dp pounds %d != conversion %d", a.ProductName, storedE7, want)
+		if p.Accrued.Num != ma.AccruedNumerator || p.Accrued.Den != gbp.AccrualDenominator {
+			t.Errorf("%s: stored accrual %d/%d != engine %d/%d", a.ProductName, p.Accrued.Num, p.Accrued.Den, ma.AccruedNumerator, gbp.AccrualDenominator)
+		}
+		if p.Balance != ma.CachedBalance {
+			t.Errorf("%s: stored balance %d != engine %d", a.ProductName, p.Balance, ma.CachedBalance)
+		}
+		if a.AccruedE7 != int64(accrualPoundsE7(ma.AccruedNumerator)) {
+			t.Errorf("%s: view accrual %d != engine's %d at 7dp", a.ProductName, a.AccruedE7, accrualPoundsE7(ma.AccruedNumerator))
 		}
 	}
+	p, err := ds.ledger.PositionAt(ds.boeReservesID, closed)
+	if err != nil || p == nil {
+		t.Fatalf("BoE reserves position: %v %v", p, err)
+	}
+	if p.Accrued.Num != ds.boeAccruedNumerator {
+		t.Errorf("stored BoE numerator %d != state %d", p.Accrued.Num, ds.boeAccruedNumerator)
+	}
+	// The shadow table the previous release reads on a rollback keeps pace.
 	var boe int64
 	if err := ds.db.QueryRow(`SELECT numerator FROM accrual_state WHERE account_id = $1`, boeAccrualKey).Scan(&boe); err != nil {
 		t.Fatalf("query BoE accrual row: %v", err)
 	}
 	if boe != ds.boeAccruedNumerator {
-		t.Errorf("stored BoE numerator %d != state %d", boe, ds.boeAccruedNumerator)
+		t.Errorf("shadow BoE numerator %d != state %d", boe, ds.boeAccruedNumerator)
 	}
 }
 
-// TestAccrualStatePersisted verifies the daily accrual numerators reach the DB
-// (mid-month and across a month-end application) so the database alone carries
-// the accrued-but-unapplied interest state.
+// TestAccrualStatePersisted verifies the daily pass projects every
+// account's position (mid-month and across a month-end application) so
+// the ledger alone carries the balance and accrued-but-unapplied interest.
 func TestAccrualStatePersisted(t *testing.T) {
 	ds := NewDemoState()
 	addFundedCustomer(ds)
@@ -324,7 +341,7 @@ func TestAccrualStatePersisted(t *testing.T) {
 }
 
 // TestAccrualStateRestored verifies refreshFromLedger rehydrates in-memory
-// numerators (engine and BoE) and account mirrors from the accrual_state table.
+// numerators (engine and BoE) and account mirrors from the ledger's positions.
 func TestAccrualStateRestored(t *testing.T) {
 	ds := NewDemoState()
 	addFundedCustomer(ds)

@@ -2,6 +2,26 @@
 
 ## [Unreleased]
 
+ - ADR-0002 stage 3, story (c), gobank side: gobank-products v0.2.0,
+   go-luca v0.3.0 and go-postgres v0.7.0. Interest application is inside
+   the engine's daily pass (`Product.NextDay`, cycle a product parameter),
+   so the day's update carries the applied interest and the demo reads it
+   from there.
+ - ADR-0002 stage 3, story (d): projections are the truth. After each
+   day's sweep the demo projects every account's position into the ledger
+   (`Project`: balance from the movements, the engine's accrual numerator
+   on the row) and reads them back at start (`Positions`), the BoE reserves
+   account's accrual among them. A transfer or funding is posted with
+   projections, so both accounts' positions for the day move at once.
+   Customer balances and accrued interest are read from the ledger's
+   contract view `contract_ledger_live_positions` (money as NUMERIC,
+   parsed exactly), not from the engine's cache: `core.Account` and the
+   customer read model carry `AccruedE7` (7 decimal places of a pound)
+   in place of the engine numerator. The demo's own
+   `contract_ledger_movements` view is gone; go-luca publishes it.
+   `accrual_state` is no longer read; it is still shadow-written so v0.10
+   can be rolled back to with nothing lost, and story (e) drops it.
+
 ## [0.9.0] - 2026-10-04
 
  - Stage 2 complete: stored daily snapshots and database sessions; customer page PII and layout fixes, UTC payment times, product currency

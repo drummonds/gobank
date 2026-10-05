@@ -35,7 +35,7 @@ var components = []Component{
 		Purpose: "Double-entry books of account: every balance is the sum of its movements.",
 		Library: "go-luca",
 		Files:   []string{"ledger.go"},
-		Views:   []string{"contract_ledger_movements"},
+		Views:   []string{"contract_ledger_movements", "contract_ledger_eod_positions", "contract_ledger_live_positions"},
 		Tables: []string{"accounts", "movements", "balances_live", "aliases", "data_points",
 			"movement_metadata", "commodities", "commodity_metadata", "customers",
 			"customer_metadata", "options"},
@@ -50,10 +50,10 @@ var components = []Component{
 	},
 	{
 		Name:    "products",
-		Purpose: "The product catalogue and the interest engine: exact daily accrual, monthly application.",
+		Purpose: "The product catalogue and the interest rules: exact daily accrual, application on the product's cycle; positions live in the ledger.",
 		Library: "gobank-products",
 		Files:   []string{"products.go", "accrual.go"},
-		Tables:  []string{"accrual_state"},
+		Tables:  []string{"accrual_state"}, // retired, kept for rollback until story (e)
 	},
 	{
 		Name:    "payments",

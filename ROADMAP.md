@@ -200,17 +200,20 @@ root module, `cmd/bff` is the service binary, and `app/` is the Flutter shell.
         every account from the end-of-day view; one row per account per
         day. Found and filed go-postgres #21 (INTERVAL arithmetic on a
         qualified column)
-      - [ ] (c) gobank-products: `Product.NextDay` — a pure function from
+      - [x] (gobank-products v0.2.0, gobank unreleased) (c) gobank-products: `Product.NextDay` — a pure function from
         an account's projection and the day's balance to the next day's
         projection and the ledger postings it calls for, with the
         application cycle (daily, monthly, annual) a product parameter
         and month-end application gone as a separate pass; the existing
         sweep loops over it so the goldens hold
-      - [ ] (d) projections are the truth — the demo writes each day's
+      - [x] (unreleased) (d) projections are the truth — the demo writes each day's
         pass as go-luca projections and posts customer movements with
         projections; balance and accrued reads come from the views;
         `accrual_state` goes (the BoE reserve's accrual becomes a
-        projection on its account)
+        projection on its account). Shipped with `accrual_state` still
+        shadow-written so the drill's rollback loses nothing; (e) drops
+        it. Needed go-luca v0.3.1 (`Positions`, constant-cost movement
+        projection, accrual carried forward on a movement's new day)
       - [ ] (e) the start-of-day workflow — the date advances at the
         start of the slot; the pass over every account is paced over the
         day length (flat out at zero) and resumes after a restart from

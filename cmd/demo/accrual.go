@@ -6,22 +6,23 @@ import (
 	"runtime"
 	"time"
 
+	luca "git.bytestone.uk/hum3/go-luca"
 	gbp "git.bytestone.uk/hum3/gobank-products"
 )
 
-// The products component's persistence of engine state: accrual_state
-// holds accrued-but-unapplied interest as exact integer numerators. Other
-// code reaches it through the API below, never the table (ADR-0001).
+// The products component keeps no state of its own: an account's
+// accrued-but-unapplied interest lives on its ledger position, written by
+// the day's pass (Project) and read back at start (Positions). The
+// accrual_state table below is never read any more; it is still written,
+// as a shadow, so the previous release can be rolled back to on the same
+// database with nothing lost (ADR-0003). Story (e) drops it.
 
 // boeAccrualKey is the accrual_state row holding the bank-level BoE interest
 // numerator. Ledger account IDs are UUIDs, so it can never collide.
 const boeAccrualKey = "_boe"
 
-// productsSchema: accrual_state persists accrued-but-unapplied interest as
-// exact integer numerators (minor units = numerator /
-// gbp.AccrualDenominator). The ledger only sees interest at month-end
-// application, so without this table the DB is missing up to a month of
-// accrual per account plus the BoE accumulator.
+// productsSchema: accrual_state held accrued-but-unapplied interest before
+// positions did (gobank ≤ v0.10). Shadow-written for rollback.
 var productsSchema = componentSchema{component: "products", migrations: []migration{
 	{1, []string{`CREATE TABLE IF NOT EXISTS accrual_state (
 		account_id VARCHAR(64) PRIMARY KEY,
@@ -31,8 +32,8 @@ var productsSchema = componentSchema{component: "products", migrations: []migrat
 	)`}},
 }}
 
-// clearAccrualLocked removes every persisted numerator, e.g. on reset of a
-// durable database. Must be called with ds.mu held.
+// clearAccrualLocked removes what the retired table still holds, e.g. on
+// reset of a durable database. Must be called with ds.mu held.
 func (ds *DemoState) clearAccrualLocked() {
 	if ds.db == nil {
 		return
@@ -42,17 +43,15 @@ func (ds *DemoState) clearAccrualLocked() {
 	}
 }
 
-// accrualRow is one account's accrued-interest numerator to persist.
+// accrualRow is one account's accrued-interest numerator to project.
 type accrualRow struct {
 	id        string
 	numerator int64
 }
 
-// persistAccrualState upserts the day's accrued-interest numerators (per
-// account, plus the BoE row) into accrual_state. Runs without ds.mu or
-// ds.simMu held, in transactions sized to roughly targetTxTime each (the
-// upserts are idempotent, so chunked commits are safe), so other writers
-// interleave and no single transaction grows with the account count.
+// persistAccrualState is the shadow write of accrual_state for rollback:
+// the day's numerators (per account, plus the BoE row) upserted in chunked
+// transactions, without ds.mu or ds.simMu held. Nothing reads it.
 func persistAccrualState(db *sql.DB, day time.Time, rows []accrualRow, boeNumerator int64) {
 	if db == nil {
 		return
@@ -73,7 +72,7 @@ func persistAccrualState(db *sql.DB, day time.Time, rows []accrualRow, boeNumera
 		for _, r := range rows[i:j] {
 			if _, err := tx.Exec(upsert, r.id, r.numerator, int64(accrualPoundsE7(r.numerator)), day); err != nil {
 				log.Printf("persistAccrualState: %s: %v", r.id, err)
-				tx.Rollback()
+				_ = tx.Rollback()
 				return
 			}
 		}
@@ -91,42 +90,60 @@ func persistAccrualState(db *sql.DB, day time.Time, rows []accrualRow, boeNumera
 	}
 }
 
-// loadAccrualState hydrates accrued-interest numerators (per account and BoE)
-// from accrual_state into the engine and demo state. Rows for accounts the
-// engine doesn't know are ignored. Must be called with ds.mu and ds.simMu held.
-func (ds *DemoState) loadAccrualState() {
-	if ds.db == nil || ds.sim == nil {
+// projectPositions writes the day's position of every account the pass
+// touched (and the BoE reserves account), one account at a time: the
+// ledger computes the balance from its movements, the row carries the
+// engine's accrual numerator. The account is the unit of daily work —
+// what each one needs is the product's business and will grow — so
+// nothing here batches accounts together. Runs without ds.mu or ds.simMu
+// held.
+func projectPositions(ledger *luca.SQLLedger, day time.Time, rows []accrualRow) {
+	if ledger == nil {
 		return
 	}
-	rows, err := ds.db.Query(`SELECT account_id, numerator FROM accrual_state`)
-	if err != nil {
-		log.Printf("loadAccrualState: %v", err)
-		return
-	}
-	defer rows.Close()
-	for rows.Next() {
-		var id string
-		var numerator int64
-		if err := rows.Scan(&id, &numerator); err != nil {
-			log.Printf("loadAccrualState: scan: %v", err)
-			return
+	for i, r := range rows {
+		if _, err := ledger.Project(r.id, day, luca.Fraction{Num: r.numerator, Den: gbp.AccrualDenominator}); err != nil {
+			log.Printf("projectPositions: %s: %v", r.id, err)
 		}
-		if id == boeAccrualKey {
-			ds.boeAccruedNumerator = numerator
-			ds.boePostedPence = numerator / gbp.AccrualDenominator
+		if runtime.GOOS == "js" && i%64 == 63 {
+			time.Sleep(time.Millisecond) // yield to the browser event loop
+		}
+	}
+}
+
+// loadPositions hydrates accrued-interest numerators (per account and the
+// BoE reserves) from the ledger's positions into the engine and demo state.
+// Positions for accounts the engine doesn't know are ignored. Must be
+// called with ds.mu and ds.simMu held, after ensureAccrualAccounts.
+func (ds *DemoState) loadPositions() {
+	if ds.ledger == nil || ds.sim == nil {
+		return
+	}
+	positions, err := ds.ledger.Positions(ds.currentDay)
+	if err != nil {
+		log.Printf("loadPositions: %v", err)
+		return
+	}
+	for _, p := range positions {
+		if p.Accrued.Den != gbp.AccrualDenominator {
+			if p.Accrued.Num != 0 {
+				log.Printf("loadPositions: %s: accrual denominator %d, want %d", p.AccountID, p.Accrued.Den, gbp.AccrualDenominator)
+			}
 			continue
 		}
-		if ma, ok := ds.sim.GetManagedAccount(id); ok {
-			ma.AccruedNumerator = numerator
+		if p.AccountID == ds.boeReservesID {
+			ds.boeAccruedNumerator = p.Accrued.Num
+			ds.boePostedPence = p.Accrued.Num / gbp.AccrualDenominator
+			continue
+		}
+		if ma, ok := ds.sim.GetManagedAccount(p.AccountID); ok {
+			ma.AccruedNumerator = p.Accrued.Num
 			// Daily posting maintains posted == floor(numerator/denominator)
 			// at every sync point, so the tracker is derivable on restore.
 			if ds.accrualPosted == nil {
 				ds.accrualPosted = make(map[string]int64)
 			}
-			ds.accrualPosted[id] = numerator / gbp.AccrualDenominator
+			ds.accrualPosted[p.AccountID] = p.Accrued.Num / gbp.AccrualDenominator
 		}
-	}
-	if err := rows.Err(); err != nil {
-		log.Printf("loadAccrualState: %v", err)
 	}
 }
