@@ -2,6 +2,24 @@
 
 ## [Unreleased]
 
+### Fixed
+- v0.10.0 stopped within minutes on Hetzner: the day stuck in "products
+  engine" and no customers added. An in-day event (a transfer, a funding)
+  and the daily pass both rewrite an account's position inside a
+  transaction that holds its rows, and the demo serialised events on the
+  global engine mutex, held across the write: one customer creator's
+  transaction held the shared equity account's position row while
+  another, holding the mutex, waited for it, and the engine stopped
+  behind them. Now each ledger account has its own lock (one of 4,096
+  striped by a hash of the ID, so the set is a few kilobytes), held for as
+  long as the work holds the account's rows: a transfer takes its two accounts,
+  a customer creation takes the equity account and the new accounts until
+  it commits, and the daily pass takes each account as it projects it. An
+  event and the pass take turns on one account while every other account
+  carries on; the engine mutex is held only for the cache update. That is
+  the cost of projecting one day ahead: in-day events are heavier and
+  end-of-day work is smeared across the day.
+
 ## [0.10.0] - 2026-10-05
 
  - Stage 3 (c) and (d): interest application inside the daily pass; positions are the truth, read from the ledger's contract views

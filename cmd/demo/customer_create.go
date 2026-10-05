@@ -136,6 +136,16 @@ func (ds *DemoState) persistCustomerPlan(p customerPlan) {
 		return
 	}
 	ds.addCustomerToLedger(sim, &p.cust)
+	// Funding rewrites the equity account's position and the new accounts'
+	// inside this transaction, so their locks are held until it commits:
+	// creators take turns on the equity account, and the daily pass waits
+	// for a new account's funding before projecting it.
+	locked := []string{p.equityID}
+	for _, a := range p.cust.Accounts {
+		locked = append(locked, a.LedgerAccountID)
+	}
+	unlock := ds.accountLocks.lock(locked...)
+	defer unlock()
 	var q execer = p.db
 	if tx != nil {
 		q = tx

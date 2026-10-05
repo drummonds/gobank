@@ -82,14 +82,15 @@ type DemoState struct {
 	incomeBoEID         string
 	accrBoEID           string
 	boeReservesID       string
-	boePostedPence      int64       // whole pence of BoE accrual posted to the ledger, not yet applied (mu)
-	boeInterestApplied  luca.Amount // cumulative BoE interest applied into Asset:BoEReserves (mu)
-	simMu               sync.Mutex  // serializes mutations of ds.sim in-memory state (engine sweeps vs payments)
-	memoryExceeded      bool        // true when heap > memoryLimit; simulation pauses
-	memoryLimit         uint64      // auto-stop threshold, see SetMemoryLimit
-	book                bookTotals  // running customer savings/lending totals, see book.go (mu)
-	dayAccrualSavings   int64       // interest accrued today on savings, numerator units over gbp.AccrualDenominator (mu)
-	dayAccrualLending   int64       // same for lending (mu)
+	boePostedPence      int64        // whole pence of BoE accrual posted to the ledger, not yet applied (mu)
+	boeInterestApplied  luca.Amount  // cumulative BoE interest applied into Asset:BoEReserves (mu)
+	simMu               sync.Mutex   // serializes mutations of ds.sim in-memory state (engine sweeps vs payments)
+	accountLocks        accountLocks // one lock per ledger account: an in-day event and the daily pass take turns on it
+	memoryExceeded      bool         // true when heap > memoryLimit; simulation pauses
+	memoryLimit         uint64       // auto-stop threshold, see SetMemoryLimit
+	book                bookTotals   // running customer savings/lending totals, see book.go (mu)
+	dayAccrualSavings   int64        // interest accrued today on savings, numerator units over gbp.AccrualDenominator (mu)
+	dayAccrualLending   int64        // same for lending (mu)
 }
 
 const (
@@ -538,7 +539,7 @@ func (ds *DemoState) advanceDay() {
 	if boeReservesID != "" {
 		accrualRows = append(accrualRows, accrualRow{id: boeReservesID, numerator: boeNumerator})
 	}
-	projectPositions(ledger, day, accrualRows)
+	ds.projectPositions(ledger, day, accrualRows)
 	if newCustomer != nil {
 		ds.persistCustomerPlan(*newCustomer)
 	}
@@ -835,24 +836,30 @@ func (ds *DemoState) recordSimMovement(fromID, toID string, amount luca.Amount, 
 	ds.recordSimMovementOn(ds.sim, ds.currentDay, fromID, toID, amount, code, description)
 }
 
-// recordSimMovementOn is recordSimMovement against an explicit simulation —
-// used with a tx-bound sim during transactional customer creation. The
-// movement is posted with projections, so both accounts' positions for
-// the day are rewritten (an event rewrites the projection of the account
-// it touches), and the engine's cached balances are kept in step as
-// Simulation.RecordMovement would. The engine's own postings (interest
-// application) do not project: the day's pass projects every account it
-// touched once the sweep is done.
+// recordSimMovementOn posts a customer event — a transfer, a funding —
+// against an explicit simulation (a tx-bound one during customer
+// creation). The movement is written with projections, so both accounts'
+// positions for the day are rewritten: an event rewrites the projection
+// of the account it touches. The engine's cached balances then follow,
+// under simMu, as Simulation.RecordMovement would keep them. The engine's
+// own postings (interest application) do not project: the day's pass
+// projects every account it touched once the sweep is done.
+//
+// The caller holds the two accounts' locks (ds.accountLocks) for as long
+// as its transaction holds their rows, so an event and the daily pass
+// take turns on an account and nothing waits for simMu while holding a
+// row another holder of simMu needs. simMu itself is held only for the
+// cache update, never across the write.
 func (ds *DemoState) recordSimMovementOn(sim *gbp.Simulation, day time.Time, fromID, toID string, amount luca.Amount, code, description string) {
 	if sim == nil || fromID == "" || toID == "" {
 		return
 	}
-	ds.simMu.Lock()
-	defer ds.simMu.Unlock()
 	if _, err := sim.Ledger.RecordMovementWithProjections(fromID, toID, amount, code, day, description); err != nil {
 		log.Printf("recordSimMovement: %v", err)
 		return
 	}
+	ds.simMu.Lock()
+	defer ds.simMu.Unlock()
 	if ma, ok := sim.GetManagedAccount(fromID); ok {
 		ma.CachedBalance -= amount
 	}

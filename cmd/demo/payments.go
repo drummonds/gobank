@@ -308,7 +308,11 @@ func (ds *DemoState) transfer(t core.Transfer) (Payment, error) {
 	}
 
 	ref := fmt.Sprintf("PAY-%06d", ds.nextPaymentID)
+	// The two accounts' positions are rewritten: take their locks so the
+	// daily pass and this event take turns on each of them.
+	unlock := ds.accountLocks.lock(fromAcc.LedgerAccountID, toAcc.LedgerAccountID)
 	ds.recordSimMovement(fromAcc.LedgerAccountID, toAcc.LedgerAccountID, t.Amount, luca.CodeBookTransfer, ref)
+	unlock()
 
 	p := Payment{
 		ID:        ds.nextPaymentID,

@@ -2,8 +2,11 @@ package main
 
 import (
 	"database/sql"
+	"hash/fnv"
 	"log"
 	"runtime"
+	"slices"
+	"sync"
 	"time"
 
 	luca "git.bytestone.uk/hum3/go-luca"
@@ -40,6 +43,52 @@ func (ds *DemoState) clearAccrualLocked() {
 	}
 	if _, err := ds.db.Exec(`DELETE FROM accrual_state`); err != nil {
 		log.Printf("clearAccrual: %v", err)
+	}
+}
+
+// accountLocks serialises the work on one account. An in-day event
+// (a transfer, a funding) and the daily pass each rewrite the account's
+// position inside a transaction that holds its rows; one of them completes
+// before the other starts, and every other account is free meanwhile.
+// That is the cost of projecting one day ahead: in-day events are heavier,
+// and end-of-day processing is smeared across the day. A lock is held for
+// as long as its transaction holds the rows, and several are taken in a
+// fixed order, so no two holders can wait on each other.
+//
+// The locks are striped: an account maps to one of accountLockStripes
+// mutexes by a hash of its ID, so the set costs a few kilobytes however
+// many accounts exist (a mutex per account would be ~150 bytes each,
+// never freed). Two accounts that share a stripe take turns needlessly;
+// with a handful of concurrent holders that is rare.
+type accountLocks struct {
+	m [accountLockStripes]sync.Mutex
+}
+
+const accountLockStripes = 4096
+
+func accountStripe(id string) int {
+	h := fnv.New32a()
+	_, _ = h.Write([]byte(id))
+	return int(h.Sum32() % accountLockStripes)
+}
+
+// lock takes the accounts' stripes in stripe order and returns the release.
+func (l *accountLocks) lock(ids ...string) (unlock func()) {
+	stripes := make([]int, 0, len(ids))
+	for _, id := range ids {
+		if id != "" {
+			stripes = append(stripes, accountStripe(id))
+		}
+	}
+	slices.Sort(stripes)
+	stripes = slices.Compact(stripes)
+	for _, s := range stripes {
+		l.m[s].Lock()
+	}
+	return func() {
+		for i := len(stripes) - 1; i >= 0; i-- {
+			l.m[stripes[i]].Unlock()
+		}
 	}
 }
 
@@ -91,20 +140,22 @@ func persistAccrualState(db *sql.DB, day time.Time, rows []accrualRow, boeNumera
 }
 
 // projectPositions writes the day's position of every account the pass
-// touched (and the BoE reserves account), one account at a time: the
-// ledger computes the balance from its movements, the row carries the
-// engine's accrual numerator. The account is the unit of daily work —
-// what each one needs is the product's business and will grow — so
-// nothing here batches accounts together. Runs without ds.mu or ds.simMu
-// held.
-func projectPositions(ledger *luca.SQLLedger, day time.Time, rows []accrualRow) {
+// touched (and the BoE reserves account), one account at a time under
+// that account's lock: the ledger computes the balance from its movements,
+// the row carries the engine's accrual numerator. The account is the unit
+// of daily work — what each one needs is the product's business and will
+// grow — so nothing here batches accounts together. Runs without ds.mu or
+// ds.simMu held.
+func (ds *DemoState) projectPositions(ledger *luca.SQLLedger, day time.Time, rows []accrualRow) {
 	if ledger == nil {
 		return
 	}
 	for i, r := range rows {
+		unlock := ds.accountLocks.lock(r.id)
 		if _, err := ledger.Project(r.id, day, luca.Fraction{Num: r.numerator, Den: gbp.AccrualDenominator}); err != nil {
 			log.Printf("projectPositions: %s: %v", r.id, err)
 		}
+		unlock()
 		if runtime.GOOS == "js" && i%64 == 63 {
 			time.Sleep(time.Millisecond) // yield to the browser event loop
 		}
