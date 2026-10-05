@@ -67,6 +67,31 @@ The browser-based model proves the banking core works end-to-end.
 - **mock-fps integration** — compiled-in Faster Payments simulator for payment processing
 - **FPS stand-in mode** — simulate FPS outages, payment queuing, and recovery
 
+## Telemetry — between Phase 1 and Phase 2
+
+The demo tells us what it is doing through the runtime page and the day
+length; from stage 3 of ADR-0002 onwards the cost of the design (events
+and the daily pass taking turns per account, projections written through
+the day) has to be measured, not inferred. Telemetry is its own item so
+that every later story ships with its numbers.
+
+- **Observability with OpenTelemetry** — the demo emits metrics and traces
+  through the OpenTelemetry SDK, OTLP to a collector per environment that
+  gobank-deploy runs alongside the demo, starting with what the runtime
+  page shows today: day phase and duration, movements per second,
+  database connections, memory. Out of scope: a logs pipeline, alerting.
+  Open: OTLP push versus a Prometheus pull endpoint; where the collector
+  and viewer live on a one-server environment
+- **Account locks in use** — once the above is in place: how many of the
+  per-account lock stripes are held, how often a holder waits and for how
+  long, with the equity account's stripe named, so the cost of an event
+  and the daily pass taking turns on an account (ADR-0002 stage 3) is
+  measured rather than inferred from the day length
+
+Done when a Hetzner day can be read as a timeline of its phases and lock
+waits in the viewer, and the drill records its downtime from the same
+source.
+
 ## Phase 2 — Mobile apps: Go BFF + Flutter thin client
 
 Thin iOS and Android apps with as little on the device as possible. All banking
