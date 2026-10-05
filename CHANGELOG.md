@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+## [0.12.0] - 2026-10-06
+
+ - about.json carries the two performance rates; benchmark.md is the published performance doc
+
  - about.json carries the two performance rates; benchmark.md is the performance doc, published
 
 ### Changed
