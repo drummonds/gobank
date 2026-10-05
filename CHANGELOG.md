@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+## [0.10.1] - 2026-10-05
+
+ - Fix v0.10.0 deadlock: customer funding no longer projects; the day's pass writes a new account's first position
+
 ### Fixed
 - v0.10.0 stopped within minutes on Hetzner: the day stuck in "products
   engine" and no customers added. An in-day event (a transfer, a funding)
