@@ -160,7 +160,8 @@ func (ds *DemoState) projectPositions(ledger *luca.SQLLedger, day time.Time, row
 // projection; the product's other daily work (application, maturity, …)
 // belongs here as it arrives.
 func (ds *DemoState) projectAccount(ledger *luca.SQLLedger, day time.Time, r accrualRow) {
-	defer ds.accountLocks.lock(r.id)()
+	unlock := ds.accountLocks.lock(r.id)
+	defer unlock()
 	if _, err := ledger.Project(r.id, day, luca.Fraction{Num: r.numerator, Den: gbp.AccrualDenominator}); err != nil {
 		log.Printf("projectPositions: %s: %v", r.id, err)
 	}
