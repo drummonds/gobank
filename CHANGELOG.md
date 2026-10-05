@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+## [0.10.0] - 2026-10-05
+
+ - Stage 3 (c) and (d): interest application inside the daily pass; positions are the truth, read from the ledger's contract views
+
  - ADR-0002 stage 3, story (c), gobank side: gobank-products v0.2.0,
    go-luca v0.3.0 and go-postgres v0.7.0. Interest application is inside
    the engine's daily pass (`Product.NextDay`, cycle a product parameter),
