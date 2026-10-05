@@ -60,3 +60,48 @@ func TestAboutJSONReportsTheProcessForAnotherProgram(t *testing.T) {
 		}
 	}
 }
+
+// The two rates a performance run reads: customers added per second (the
+// live rate while a batch add runs, else the last batch's) and account
+// days per 12h at the pass's measured whole-day rate, with the last day's
+// duration and accounts so the reader can see what the rate is made of.
+func TestAboutJSONReportsTheRates(t *testing.T) {
+	ds := NewDemoState()
+	clock := steppingClock(time.Date(2026, 1, 1, 9, 0, 0, 0, time.UTC))
+	ds.now, ds.progress.now = clock, clock
+
+	got := aboutStatus(newCoreAdapter(ds, ""), ds)
+	if got.Sim.CustomersPerSec != 0 || got.Sim.AccountDaysPer12h != 0 || got.Sim.AddingCustomers {
+		t.Fatalf("before anything: %+v", got.Sim)
+	}
+
+	ds.AddCustomersBatch(5)
+	deadline := time.Now().Add(10 * time.Second)
+	for ds.IsAddingCustomers() && time.Now().Before(deadline) {
+		time.Sleep(5 * time.Millisecond)
+	}
+	ds.AdvanceDay()
+
+	got = aboutStatus(newCoreAdapter(ds, ""), ds)
+	if got.Sim.AddingCustomers || got.Sim.CustomersPerSec != 5 { // batch start and end are the only clock readings: 5 customers in 1s
+		t.Errorf("after a batch add: adding %v, %v customers/s; want not adding at 5/s", got.Sim.AddingCustomers, got.Sim.CustomersPerSec)
+	}
+	last := ds.progress.snapshot()
+	want := int64(float64(last.LastAccounts) * float64(passWindow) / float64(last.LastDuration))
+	if got.Sim.AccountDaysPer12h != want || want == 0 {
+		t.Errorf("account days per 12h = %d, want %d", got.Sim.AccountDaysPer12h, want)
+	}
+	if got.Sim.LastDayAccounts != last.LastAccounts || got.Sim.LastDayDuration != last.LastDuration.String() {
+		t.Errorf("last day = %d accounts in %s, want %d in %s", got.Sim.LastDayAccounts, got.Sim.LastDayDuration, last.LastAccounts, last.LastDuration)
+	}
+
+	b, err := json.Marshal(got)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, want := range []string{`"adding_customers":false`, `"customers_per_sec":5`, `"account_days_per_12h":`, `"last_day_duration":"`, `"last_day_accounts":`} {
+		if !strings.Contains(string(b), want) {
+			t.Errorf("json missing %s:\n%s", want, b)
+		}
+	}
+}

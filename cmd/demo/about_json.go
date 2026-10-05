@@ -33,10 +33,18 @@ type AboutSettings struct {
 	MaxCustomers int    `json:"max_customers"`
 }
 
-// AboutSim is the run as it is now.
+// AboutSim is the run as it is now, with the two rates a performance run
+// reads: customers added per second (the live rate while a batch add runs,
+// else the last batch's) and account days per 12h at the pass's measured
+// whole-day rate, with the last day it is made of.
 type AboutSim struct {
-	Running   bool   `json:"running"`
-	DayEndsIn string `json:"day_ends_in"` // Go duration; "0s" when flat out or stopped
+	Running           bool    `json:"running"`
+	DayEndsIn         string  `json:"day_ends_in"` // Go duration; "0s" when flat out or stopped
+	AddingCustomers   bool    `json:"adding_customers"`
+	CustomersPerSec   float64 `json:"customers_per_sec"`
+	AccountDaysPer12h int64   `json:"account_days_per_12h"`
+	LastDayDuration   string  `json:"last_day_duration"` // Go duration; "" before the first day
+	LastDayAccounts   int     `json:"last_day_accounts"`
 }
 
 // AboutPosition is the bank's position: what the dashboard leads with.
@@ -72,7 +80,7 @@ func aboutStatus(q core.BookQueries, ds *DemoState) AboutStatus {
 		Version:  version,
 		Schema:   appliedSchemaVersions(ds.db),
 		Settings: AboutSettings{DayLength: settings.DayLength.String(), MaxCustomers: settings.MaxCustomers},
-		Sim:      AboutSim{Running: sim.Running, DayEndsIn: sim.DayEndsIn.Round(time.Second).String()},
+		Sim:      aboutSim(sim, ds.progress.snapshot()),
 		Position: AboutPosition{Day: pos.Day.Format("2006-01-02"), DayCount: pos.DayCount, Customers: pos.Customers, Savings: fmtMoney(pos.Savings), Lending: fmtMoney(pos.Lending)},
 	}
 	restarts := ds.Restarts(10)
@@ -84,6 +92,21 @@ func aboutStatus(q core.BookQueries, ds *DemoState) AboutStatus {
 		st.Restarts = append(st.Restarts, aboutRestart(r, previous))
 	}
 	return st
+}
+
+func aboutSim(sim SimStatus, last DayProgress) AboutSim {
+	a := AboutSim{
+		Running: sim.Running, DayEndsIn: sim.DayEndsIn.Round(time.Second).String(),
+		AddingCustomers: sim.AddingCust, CustomersPerSec: sim.LastCustomersPerSec, AccountDaysPer12h: sim.AccountDaysPer12h,
+		LastDayAccounts: last.LastAccounts,
+	}
+	if sim.AddingCust {
+		a.CustomersPerSec = sim.CustomersPerSec
+	}
+	if last.LastDuration > 0 {
+		a.LastDayDuration = last.LastDuration.String()
+	}
+	return a
 }
 
 func aboutRestart(r Restart, previous *Restart) AboutRestart {

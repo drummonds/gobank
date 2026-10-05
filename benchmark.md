@@ -1,4 +1,31 @@
-# Benchmark Results
+# Performance
+
+Two figures say how fast the demo bank is, both read off the demo's
+`/about.json` so a program can take them: **customers added per second**
+(a batch add through the real pipeline: customer, accounts, register,
+funding movements with projections) and **account days per 12h** (the
+start-of-day pass's rate over the whole day, projected to a bank's
+overnight run: every account visited once, its position for the day
+written). The Hetzner runs are the numbers that matter; the laptop tables
+below them are the baseline the design was measured against as it changed.
+
+## Hetzner runs
+
+Made by gobank-deploy's **perf** workflow: an environment is created at a
+scale, the demo set flat out, customers added for a fixed span, days run
+for another, the rates read, the server removed. Each run is a row; the
+spans are in the run's record on the gobank-deploy Perf page.
+
+| Date | gobank | Scale | Server | Customers reached | Customers/s | Days run | Account days / 12h | Last day |
+|---|---|---|---|---|---|---|---|---|
+| | | small | cx23: 2 vCPU, 4 GB | | | | | |
+| | | large | cx53: 16 vCPU, 32 GB | | | | | |
+
+For comparison, the Hetzner demo of 2026-10-01 (300k customers, v0.3.x,
+one accrual posting per account per day) took over ten minutes a
+simulated day at about 1.2k postings/s.
+
+## Laptop baseline (pglike)
 
 Run on Intel Core Ultra 7 165H, Linux, Go 1.25.3, pglike (SQLite `:memory:`) backend.
 (These results predate the move to Go 1.26.0 — re-run to refresh.)

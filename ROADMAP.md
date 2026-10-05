@@ -65,6 +65,21 @@ and the daily pass taking turns per account, projections written through
 the day) has to be measured, not inferred. Telemetry is its own item so
 that every later story ships with its numbers.
 
+- **Performance run on Hetzner, small and large** — a gobank-deploy
+  `perf` workflow (beside the drill) creates an environment at a scale
+  (`small` cx23, `large` cx53), waits for the demo, sets the day length to
+  zero, batch-adds customers for a fixed wall-clock span, lets days run
+  for another, reads the two rates off `/about.json` — customers added per
+  second and account days per 12h (the pass's rate over the whole day) —
+  with the customers and days reached, then downs the box and keeps the
+  observations with the version and server type. gobank's share: the two
+  rates join `/about.json`, and `benchmark.md` becomes the performance
+  doc — published by `docs:build`, each run a dated row per scale,
+  the laptop pglike tables kept as the baseline. Out of scope: profiling
+  on the box, OpenTelemetry (below), cost per customer. Open: the spans
+  (10 minutes each?); whether a run should also report the day's
+  wall-clock at a fixed customer count, for comparison with the
+  2026-10-01 ten-minute days
 - **Observability with OpenTelemetry** — the demo emits metrics and traces
   through the OpenTelemetry SDK, OTLP to a collector per environment that
   gobank-deploy runs alongside the demo, starting with what the runtime

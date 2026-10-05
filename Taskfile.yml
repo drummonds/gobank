@@ -132,6 +132,7 @@ tasks:
       - task-plus md2html --file CHANGELOG.md --dst docs
       - task-plus md2html --file ROADMAP.md --dst docs
       - task-plus md2html --file upgrade-drill.md --dst docs
+      - task-plus md2html --file benchmark.md --dst docs
       - d2 roadmap.d2 docs/roadmap.svg
 
   diagrams:

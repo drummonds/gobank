@@ -2,6 +2,19 @@
 
 ## [Unreleased]
 
+ - about.json carries the two performance rates; benchmark.md is the performance doc, published
+
+### Added
+- `/about.json` `sim` gains the two rates a performance run reads:
+  `customers_per_sec` (the live rate while a batch add runs, else the
+  last batch's), `account_days_per_12h` (the start-of-day pass's rate over
+  the whole day, projected to 12h), with `adding_customers`,
+  `last_day_duration` and `last_day_accounts`. gobank-deploy's perf
+  workflow reads them on a Hetzner environment and the results go in
+  `benchmark.md`, now the performance doc: a dated row per run and scale
+  above the laptop pglike baseline, published by `docs:build` and linked
+  from the docs landing page with the upgrade drill.
+
 ## [0.11.0] - 2026-10-05
 
  - Stage 3 story (e): start-of-day workflow paced over the day and resumable; products engine map gone
