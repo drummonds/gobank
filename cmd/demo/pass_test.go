@@ -136,30 +136,63 @@ func TestPassResumesFromProjectionsAfterRestart(t *testing.T) {
 	}
 }
 
-// The pass is paced: with a day length set, the share of accounts done
-// tracks the share of the day elapsed, so the work is spread over the day
-// rather than run at its start. Flat out when the day has no end.
-func TestPassIsPacedOverTheDay(t *testing.T) {
+// The pass runs at the start of the day at the system's capacity whatever
+// the day length: the day length is headroom, not a pace, and the rest of
+// the day is idle. A real bank's overnight run is the same: done as early
+// as the machine allows, with the night as the margin.
+func TestPassRunsFlatOutWhateverTheDayLength(t *testing.T) {
 	ds := NewDemoState()
-	start := ds.now()
-	dayEnd := start.Add(400 * time.Millisecond)
+	addFundedCustomer(ds)
+	ds.SetDayLength(2 * time.Hour)
+	ds.Start()
+	defer ds.Stop()
 
-	ctx := context.Background()
-	before := time.Now()
-	ds.pace(ctx, start, dayEnd, 1, 4) // a quarter done: wait until a quarter of the day has passed
-	if waited := time.Since(before); waited < 80*time.Millisecond || waited > 300*time.Millisecond {
-		t.Errorf("a quarter of the accounts done waited %v, want about 100ms", waited)
+	deadline := time.Now().Add(3 * time.Second)
+	for ds.progress.snapshot().LastDay.IsZero() {
+		if time.Now().After(deadline) {
+			t.Fatalf("the first day's pass did not finish within 3s of a 2h day: %+v", ds.progress.snapshot())
+		}
+		time.Sleep(10 * time.Millisecond)
 	}
-	before = time.Now()
-	ds.pace(ctx, start, time.Time{}, 1, 4)
-	if waited := time.Since(before); waited > 20*time.Millisecond {
-		t.Errorf("flat out waited %v", waited)
+	if left := ds.SimStatus().DayEndsIn; left < 2*time.Hour-time.Minute {
+		t.Errorf("the pass finished with %v of the day left; want nearly all of it", left)
 	}
-	cancelled, cancel := context.WithCancel(ctx)
-	cancel()
-	before = time.Now()
-	ds.pace(cancelled, ds.now(), ds.now().Add(time.Hour), 1, 4)
-	if waited := time.Since(before); waited > 20*time.Millisecond {
-		t.Errorf("a stopped run waited %v", waited)
+	if p := ds.position(); p.DayCount != 1 {
+		t.Errorf("day count %d after the first day; want 1: the loop idles for the rest of the day", p.DayCount)
+	}
+}
+
+// Setting the day length to zero while the loop idles ends the wait: the
+// next day begins at once, and the console's new length applies to the
+// day in progress rather than the one after.
+func TestDayLengthToZeroEndsTheIdleWait(t *testing.T) {
+	ds := NewDemoState()
+	addFundedCustomer(ds)
+	ds.SetDayLength(time.Hour)
+	ds.Start()
+	defer ds.Stop()
+
+	deadline := time.Now().Add(3 * time.Second)
+	for ds.position().DayCount < 1 {
+		if time.Now().After(deadline) {
+			t.Fatal("the first day did not run")
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	if left := ds.SimStatus().DayEndsIn; left < 59*time.Minute {
+		t.Fatalf("an hour-long day should have most of itself left, has %v", left)
+	}
+
+	ds.SetDayLength(0)
+
+	deadline = time.Now().Add(3 * time.Second)
+	for ds.position().DayCount < 3 {
+		if time.Now().After(deadline) {
+			t.Fatalf("flat out from an idle day: day count %d after 3s, want days to follow at once", ds.position().DayCount)
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	if left := ds.SimStatus().DayEndsIn; left != 0 {
+		t.Errorf("flat out has no end of day to count down to, got %v", left)
 	}
 }

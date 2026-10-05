@@ -42,9 +42,10 @@ func nextDayDelay(dayLength, elapsed time.Duration) time.Duration {
 }
 
 // SetDayLength sets the wall-clock length of a simulated day, as the
-// console does; zero is flat out. A negative value is refused. Takes
-// effect from the next day, and is recorded with the run so the next
-// process resumes at it.
+// console does; zero is flat out. A negative value is refused. It applies
+// to the day in progress — the run loop's idle wait is recomputed, so zero
+// means the next day begins now — and is recorded with the run so the
+// next process resumes at it.
 func (ds *DemoState) SetDayLength(d time.Duration) {
 	if d < 0 {
 		return
@@ -54,6 +55,10 @@ func (ds *DemoState) SetDayLength(d time.Duration) {
 	ds.dayLengthRecorded = true
 	db := ds.db
 	ds.mu.Unlock()
+	select {
+	case ds.dayLengthChanged <- struct{}{}:
+	default: // one change already pending; the loop reads the setting when it wakes
+	}
 	saveDayLength(db, d)
 }
 

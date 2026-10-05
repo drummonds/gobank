@@ -10,13 +10,14 @@ import (
 
 // The start-of-day pass (ADR-0002 stage 3): once the date has moved on,
 // every registered account is visited once, under its lock, and its
-// position for the day written (accountDay). The pass is paced over the
-// day's length, flat out when there is none, and it resumes after a
-// restart from the projections already written: an account with a
-// position for the day is done, whoever wrote it, so the work left is
-// exactly the accounts without one. The account is the unit of daily work
-// — what each one needs is the product's business and will grow — so
-// nothing here batches accounts together.
+// position for the day written (accountDay). The pass runs at the start of
+// the day at the system's capacity, whatever the day length: the length is
+// headroom, as the night is for a bank's overnight run, and the rest of
+// the day is idle. It resumes after a restart from the projections already
+// written: an account with a position for the day is done, whoever wrote
+// it, so the work left is exactly the accounts without one. The account is
+// the unit of daily work — what each one needs is the product's business
+// and will grow — so nothing here batches accounts together.
 
 // passChunk is how many unprojected accounts are fetched at a time.
 const passChunk = 256
@@ -72,12 +73,11 @@ func countUnprojected(db *sql.DB, day time.Time) (int, error) {
 }
 
 // runPass visits every account without a position for day and writes
-// one, paced so that the share done tracks the share of the day elapsed
-// (dayEnd zero: flat out), and returns early when ctx ends — a stop or a
-// shutdown — leaving the rest for the next pass over the same day. Runs
-// without ds.mu held; ds.mu is taken briefly per chunk to book what the
-// rules changed. Returns how many accounts it visited.
-func (ds *DemoState) runPass(ctx context.Context, day, dayEnd time.Time) int {
+// one, flat out, and returns early when ctx ends — a stop or a shutdown —
+// leaving the rest for the next pass over the same day. Runs without
+// ds.mu held; ds.mu is taken briefly per chunk to book what the rules
+// changed. Returns how many accounts it visited.
+func (ds *DemoState) runPass(ctx context.Context, day time.Time) int {
 	if ds.db == nil || ds.ledger == nil {
 		return 0
 	}
@@ -87,7 +87,6 @@ func (ds *DemoState) runPass(ctx context.Context, day, dayEnd time.Time) int {
 		return 0
 	}
 	ds.progress.phase("projecting positions", total)
-	start := ds.now()
 	visited, cursor := 0, ""
 	for ctx.Err() == nil {
 		accounts, err := unprojected(ds.db, day, cursor, passChunk)
@@ -128,26 +127,7 @@ func (ds *DemoState) runPass(ctx context.Context, day, dayEnd time.Time) int {
 		}
 		ds.mu.Unlock()
 		ds.progress.add(len(results))
-		ds.pace(ctx, start, dayEnd, visited, total)
 		yieldToBrowser()
 	}
 	return visited
-}
-
-// pace waits until the share of the day elapsed catches up with the share
-// of accounts done, so the pass is spread over the day rather than run at
-// its start. No wait when the day has no length, or when ctx ends.
-func (ds *DemoState) pace(ctx context.Context, start, dayEnd time.Time, done, total int) {
-	if dayEnd.IsZero() || total <= 0 || done <= 0 {
-		return
-	}
-	target := start.Add(time.Duration(float64(dayEnd.Sub(start)) * float64(done) / float64(total)))
-	wait := target.Sub(ds.now())
-	if wait <= 0 {
-		return
-	}
-	select {
-	case <-ctx.Done():
-	case <-time.After(wait):
-	}
 }

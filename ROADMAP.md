@@ -17,8 +17,8 @@ The browser-based model proves the banking core works end-to-end.
 - go-luca double-entry accounting integration
 - RBAC infrastructure (admin role)
 - Daily accrual cost no longer scales as a posting per account per day: accrual
-  lives on the ledger position and the start-of-day pass is paced over the
-  day (ADR-0002 stage 3 story (e))
+  lives on the ledger position and the start-of-day pass runs at the start of
+  the day with the whole day as headroom (ADR-0002 stage 3 story (e))
 
 ### To Do
 
@@ -244,10 +244,11 @@ root module, `cmd/bff` is the service binary, and `app/` is the Flutter shell.
         shadow-written so the drill's rollback loses nothing; (e) drops
         it. Needed go-luca v0.3.1 (`Positions`, constant-cost movement
         projection, accrual carried forward on a movement's new day)
-      - [x] (unreleased) (e) the start-of-day workflow — the date advances at the
-        start of the slot; the pass over every account is paced over the
-        day length (flat out at zero) and resumes after a restart from
-        the projections already written; a transfer or funding rewrites
+      - [x] (v0.11.0) (e) the start-of-day workflow — the date advances at the
+        start of the slot; the pass over every account runs at the start
+        of the day at the system's capacity (the day length is headroom,
+        the rest of the day idle) and resumes after a restart from the
+        projections already written; a transfer or funding rewrites
         the touched account's next-day projection; the engine's account
         map and the end-of-day sweep go. Done-when of the stage; drilled
         with a restart mid-pass

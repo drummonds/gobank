@@ -66,6 +66,7 @@ type DemoState struct {
 	progress            dayProgress      // the day being processed, for the runtime page
 	now                 func() time.Time // wall clock, injectable for tests
 	passHook            func()           // called after each account the pass visits; tests only
+	dayLengthChanged    chan struct{}    // a console change of the day length, for the run loop's idle wait (one pending at most)
 	nimBps              float64          // the latest snapshot's NIM, for the position (mu)
 	boeAccruedNumerator int64            // BoE interest on excess reserves, numerator units over gbp.AccrualDenominator
 	db                  *sql.DB
@@ -173,17 +174,18 @@ func newDemoState() *DemoState {
 	rng := rand.New(rand.NewSource(42))
 
 	ds := &DemoState{
-		products:      AllProducts(),
-		currentDay:    startDay,
-		nextPaymentID: 1,
-		opCostPerDay:  50_00, // £50.00/day in minor units
-		rng:           rng,
-		settings:      simSettings{v: DefaultSettings()},
-		boeRate:       boeRate,
-		reserveRatio:  defaultReserveRatio,
-		nextCustSeq:   1,
-		now:           time.Now,
-		memoryLimit:   defaultMemoryLimit,
+		products:         AllProducts(),
+		currentDay:       startDay,
+		nextPaymentID:    1,
+		opCostPerDay:     50_00, // £50.00/day in minor units
+		rng:              rng,
+		settings:         simSettings{v: DefaultSettings()},
+		boeRate:          boeRate,
+		reserveRatio:     defaultReserveRatio,
+		nextCustSeq:      1,
+		now:              time.Now,
+		memoryLimit:      defaultMemoryLimit,
+		dayLengthChanged: make(chan struct{}, 1),
 	}
 	return ds
 }
@@ -291,7 +293,7 @@ func (ds *DemoState) lendingHeadroom() luca.Amount {
 // advanceDay runs one slot of the simulation: the start-of-day workflow
 // (ADR-0002 stage 3). Yesterday's bank-level books are closed and the date
 // moves on, then the pass projects every account's position for the new
-// day (pass.go), paced over the day's length. A day whose pass did not
+// day (pass.go) at the system's capacity. A day whose pass did not
 // finish — a restart, a stop — is resumed instead: the date stays and the
 // pass carries on from the accounts still without a position. Reads never
 // wait on the pass: an account's position for the day is written when the
@@ -310,7 +312,7 @@ func (ds *DemoState) advanceDayCtx(ctx context.Context) {
 		return
 	}
 	db, ledger := ds.db, ds.ledger
-	day, dayEnd := ds.currentDay, ds.dayEndsAt
+	day := ds.currentDay
 	ds.mu.Unlock()
 
 	pending, err := anyUnprojected(db, day)
@@ -323,7 +325,7 @@ func (ds *DemoState) advanceDayCtx(ctx context.Context) {
 	} else {
 		day = ds.startDay(ledger)
 	}
-	visited := ds.runPass(ctx, day, dayEnd)
+	visited := ds.runPass(ctx, day)
 
 	// The throughput the dashboard quotes is the accounts the pass visited
 	// over the whole day, begin to finish: the span the runtime page
@@ -581,15 +583,25 @@ func (ds *DemoState) Start() {
 		defer close(done)
 		// Self-pace: wait after each day completes rather than on a
 		// fixed-rate ticker (see minDayGap). With a day length set, the
-		// wait is what remains of the day, so a day takes at least that
-		// long of wall-clock time and the setting slows the run.
+		// wait is what remains of the day: the day's work is done at the
+		// start at the system's capacity and the rest of the day is idle.
+		// A day length set on the console applies to the day in progress:
+		// its end moves, and so does the wait — to zero means now.
+		var start time.Time // when the day in progress began; zero before the first
 		wait := minDayGap
 		for {
 			select {
 			case <-ctx.Done():
 				return
+			case <-ds.dayLengthChanged:
+				if start.IsZero() {
+					continue // no day in progress yet: the first day reads the setting when it begins
+				}
+				dayLength := ds.settings.Get().DayLength
+				ds.setDayEnd(start, dayLength)
+				wait = nextDayDelay(dayLength, ds.now().Sub(start))
 			case <-time.After(wait):
-				start := ds.now()
+				start = ds.now()
 				dayLength := ds.settings.Get().DayLength
 				ds.setDayEnd(start, dayLength)
 				ds.advanceDayCtx(ctx)

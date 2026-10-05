@@ -4,6 +4,15 @@
 
  - about.json carries the two performance rates; benchmark.md is the performance doc, published
 
+### Changed
+- The start-of-day pass is no longer paced over the day length: it runs
+  at the start of the day at the system's capacity, whatever the length,
+  and the rest of the day is idle. The length is headroom, as the night
+  is for a bank's overnight run, not a load to even out (ADR-0002
+  amended). A day length set on the console now applies to the day in
+  progress: the loop's idle wait is recomputed, so setting zero starts the
+  next day at once, and the dashboard's countdown follows.
+
 ### Added
 - `/about.json` `sim` gains the two rates a performance run reads:
   `customers_per_sec` (the live rate while a batch add runs, else the

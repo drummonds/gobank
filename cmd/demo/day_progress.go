@@ -9,7 +9,7 @@ import (
 )
 
 // dayProgress tracks the simulated day being processed, so a day whose pass
-// is paced over hours is visibly working rather than looking stopped.
+// takes minutes at scale is visibly working rather than looking stopped.
 // It has its own lock so the streaming write path never touches ds.mu, and
 // its own clock so reading it doesn't perturb ds.now in tests.
 type dayProgress struct {
