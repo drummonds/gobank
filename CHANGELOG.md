@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+## [0.10.2] - 2026-10-05
+
+ - Dashboard interest throughput is measured over the whole day, projection included
+
 ### Fixed
 - The dashboard's "Interest movements / 12h" was quoted at the accrual
   phase's rate alone (engine plus postings), which since v0.10.0 is the
