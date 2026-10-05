@@ -62,8 +62,8 @@ func parseScaled(s string, scale int) (int64, error) {
 	neg := strings.HasPrefix(s, "-")
 	s = strings.TrimPrefix(strings.TrimPrefix(s, "-"), "+")
 	whole, frac := s, ""
-	if i := strings.IndexByte(s, '.'); i >= 0 {
-		whole, frac = s[:i], s[i+1:]
+	if before, after, ok := strings.Cut(s, "."); ok {
+		whole, frac = before, after
 	}
 	if len(frac) > scale {
 		if strings.Trim(frac[scale:], "0") != "" {
