@@ -151,14 +151,21 @@ func (ds *DemoState) projectPositions(ledger *luca.SQLLedger, day time.Time, row
 		return
 	}
 	for i, r := range rows {
-		unlock := ds.accountLocks.lock(r.id)
-		if _, err := ledger.Project(r.id, day, luca.Fraction{Num: r.numerator, Den: gbp.AccrualDenominator}); err != nil {
-			log.Printf("projectPositions: %s: %v", r.id, err)
-		}
-		unlock()
+		ds.projectAccount(ledger, day, r)
 		if runtime.GOOS == "js" && i%64 == 63 {
 			time.Sleep(time.Millisecond) // yield to the browser event loop
 		}
+	}
+}
+
+// projectAccount is one account's share of the daily pass: under the
+// account's lock, its position for the day. Today that is only the
+// projection; the product's other daily work (application, maturity, …)
+// belongs here as it arrives.
+func (ds *DemoState) projectAccount(ledger *luca.SQLLedger, day time.Time, r accrualRow) {
+	defer ds.accountLocks.lock(r.id)()
+	if _, err := ledger.Project(r.id, day, luca.Fraction{Num: r.numerator, Den: gbp.AccrualDenominator}); err != nil {
+		log.Printf("projectPositions: %s: %v", r.id, err)
 	}
 }
 
