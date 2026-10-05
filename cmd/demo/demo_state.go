@@ -414,11 +414,11 @@ func (ds *DemoState) advanceDay() {
 		ds.simMu.Lock()
 		updates, err := sim.AdvanceToDate(day)
 		accrualBatches = ds.collectAccrualMovements(updates)
-		// Snapshot each swept account's numerator while simMu still guards
-		// engine state: on month-end days the update's recorded numerator and
-		// closing balance are pre-application, so read the live
-		// post-application values instead; the balance difference is the
-		// interest applied to the account.
+		// Interest application is inside the day's rules (Product.NextDay),
+		// so the update carries it: InterestAmount is the interest applied,
+		// AccruedDelta the day's accrual alone, AccruedNumerator the
+		// remainder after application. Snapshot the numerator while simMu
+		// still guards engine state.
 		seen := make(map[string]bool)
 		for _, du := range updates {
 			for _, au := range du.Accounts {
@@ -427,7 +427,7 @@ func (ds *DemoState) advanceDay() {
 				} else {
 					accrualLending += au.AccruedDelta
 				}
-				if applied := au.Account.CachedBalance - au.ClosingBalance; applied != 0 {
+				if applied := au.InterestAmount; applied != 0 {
 					if au.Account.Family == gbp.FamilySavings {
 						appliedSavings += applied
 					} else {

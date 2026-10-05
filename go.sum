@@ -1,11 +1,11 @@
-git.bytestone.uk/hum3/go-luca v0.2.35 h1:5qxapUvqc4Og9R5eLn7cT0Kz6yRlhiq6Ce2kwdK0znM=
-git.bytestone.uk/hum3/go-luca v0.2.35/go.mod h1:F8VzUWHG1Vm3riiHa4HW9zxQAlcTP3GaKfREwcrAFCs=
-git.bytestone.uk/hum3/go-postgres v0.6.0 h1:9OjU5/qnCbsADjSlRnTsQUNOIXEw5rziB6HMnLHKBc4=
-git.bytestone.uk/hum3/go-postgres v0.6.0/go.mod h1:truiim+EVI6y2zj5ziyEkvu/CCX2ruBlGJ5H4hTrOHE=
+git.bytestone.uk/hum3/go-luca v0.3.0 h1:piN4WVAxdEuS1uiNPkKdYeifT7OXh/CrkkEb2wVng1M=
+git.bytestone.uk/hum3/go-luca v0.3.0/go.mod h1:UjlxIBOe/aR95o/6ndZ2kiZX4+rMa81NRdXy3iN/Lb8=
+git.bytestone.uk/hum3/go-postgres v0.7.0 h1:z3j4RlRezOZFK/BbHX2jyGXVNuoVvLrSihTLLM+Tx94=
+git.bytestone.uk/hum3/go-postgres v0.7.0/go.mod h1:truiim+EVI6y2zj5ziyEkvu/CCX2ruBlGJ5H4hTrOHE=
 git.bytestone.uk/hum3/gobank-db v0.2.0 h1:kMysLV0VTO8hzvS+FMGBg1UoCr+/+Oesag8hBTCcJvk=
 git.bytestone.uk/hum3/gobank-db v0.2.0/go.mod h1:wCD+SdqmWlwoKc55VUnC/X3bNtkp3KedWD1cja0D9QA=
-git.bytestone.uk/hum3/gobank-products v0.1.11-0.20261003153435-a52c2d1effbc h1:ahUPFezNf3CJRDNQwDvIzBxPBcUswUMa23ceIY6j3/I=
-git.bytestone.uk/hum3/gobank-products v0.1.11-0.20261003153435-a52c2d1effbc/go.mod h1:szlHyCmqdAtdA22/qkQOcJXOQI0VoyY3ygGLmyzOjYM=
+git.bytestone.uk/hum3/gobank-products v0.2.0 h1:Au0UNolKuQs861vitu8h3QX1GqRaVaLULWAK/zn0p9o=
+git.bytestone.uk/hum3/gobank-products v0.2.0/go.mod h1:5IRZsR44tymNU1U6rPnnftcKVMuGPw2eG4Kcl2AcO/I=
 git.bytestone.uk/hum3/gotreesitter v0.6.8 h1:9q2V0stkzhrWDY39EoMhrQmkHqHFydI5iW8xOFVDvwE=
 git.bytestone.uk/hum3/gotreesitter v0.6.8/go.mod h1:Wypi8nYsGD8zsHzKvZoU6Cy/aSW3Z3v8E9BCvKzR1wM=
 github.com/davecgh/go-spew v1.1.0/go.mod h1:J7Y8YcW2NihsgmVo/mv3lAwl/skON4iLHjSsI+c5H38=
