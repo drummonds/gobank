@@ -2,6 +2,28 @@
 
 ## [Unreleased]
 
+ - The customer app as designed: a wireframe generated from the screen trees (served and proposed), the access states, one journey through the BFF, on a docs page
+
+### Added
+- `app.md`, the customer app page of the docs, with three d2 views: the
+  **wireframe**, one phone per screen with every action wired from the
+  component that carries it to the screen or endpoint it opens, grouped
+  by the customer's state (logged out, onboarding, logged in), generated
+  from the screen trees by `screen.Journeys.Wireframe` and
+  `go run ./cmd/bff -wireframe`; the **access states** (logged out,
+  locked out, logged in, signed out, applying, checking) with a decision
+  table of what Home shows in each; and **one journey through the BFF**
+  as a sequence (log in, summary, pay, expiry, log out).
+- `bff.Storyboard`: every screen the app has or is to have, as screen
+  trees with sample data over the stub bank. Proposed, and drawn dashed:
+  Home as a **summary** a logged-in customer lands on (net position,
+  recent movements, accounts, pay), a four-tab nav (Home, Accounts,
+  Activity, More) with log out on More, a signed-out screen that log out
+  and an expired session land on, pay someone and payment sent, and the
+  start of KYC onboarding (open an account, your details, identity check,
+  checking). The storyboard is where a new screen is designed first; its
+  builders become the served screens when their story is built.
+
 ## [0.14.0] - 2026-10-06
 
  - Stage 4 story (b): the bank reads the time and the base rate from injected sources; the simulation clock is warped by the day length and resumes mid-day

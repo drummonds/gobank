@@ -73,6 +73,7 @@ const tmpl = `<!DOCTYPE html>
               <li><a href="ROADMAP.html">Roadmap</a></li>
               <li><a href="benchmark.html">Performance</a></li>
               <li><a href="upgrade-drill.html">Upgrade drill</a></li>
+              <li><a href="app.html">Customer app</a></li>
               <li><a href="README.html">README</a></li>
               <li><a href="CHANGELOG.html">CHANGELOG</a></li>
             </ul>

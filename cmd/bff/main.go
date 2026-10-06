@@ -6,6 +6,7 @@
 //
 //	go run ./cmd/bff                      # serve on :8090
 //	go run ./cmd/bff -journeys out.d2     # write the customer-journey diagram and exit
+//	go run ./cmd/bff -wireframe out.d2    # write the app wireframe (storyboard) and exit
 package main
 
 import (
@@ -28,11 +29,25 @@ func main() {
 	addr := flag.String("addr", ":8090", "listen address")
 	secure := flag.Bool("secure-cookies", false, "mark the session cookie Secure (set when served over HTTPS)")
 	journeys := flag.String("journeys", "", "write the customer-journey d2 diagram to this file and exit")
+	wireframe := flag.String("wireframe", "", "write the app wireframe d2 diagram (the storyboard: served and proposed screens) to this file and exit")
 	flag.Parse()
 
 	log := slog.New(slog.NewTextHandler(os.Stderr, nil))
 	bank := stubbank.New()
 
+	if *wireframe != "" {
+		j, err := bff.Storyboard(context.Background(), bank, "cust-001")
+		if err != nil {
+			log.Error("wireframe", "err", err)
+			os.Exit(1)
+		}
+		if err := os.WriteFile(*wireframe, []byte(j.Wireframe()), 0o644); err != nil {
+			log.Error("wireframe", "err", err)
+			os.Exit(1)
+		}
+		fmt.Println("wrote", *wireframe)
+		return
+	}
 	if *journeys != "" {
 		j, err := bff.Journeys(context.Background(), bank, "cust-001")
 		if err != nil {

@@ -133,6 +133,7 @@ tasks:
       - task-plus md2html --file ROADMAP.md --dst docs
       - task-plus md2html --file upgrade-drill.md --dst docs
       - task-plus md2html --file benchmark.md --dst docs
+      - task-plus md2html --file app.md --dst docs
       - d2 roadmap.d2 docs/roadmap.svg
 
   diagrams:
@@ -143,6 +144,10 @@ tasks:
       - mkdir -p docs
       - go run ./cmd/bff -journeys docs/journeys.d2
       - d2 docs/journeys.d2 docs/journeys.svg
+      - go run ./cmd/bff -wireframe docs/app-wireframe.d2
+      - d2 docs/app-wireframe.d2 docs/app-wireframe.svg
+      - d2 app-access.d2 docs/app-access.svg
+      - d2 app-bff.d2 docs/app-bff.svg
 
   docs:build:
     desc: Build WASM demo and all pages into docs/
