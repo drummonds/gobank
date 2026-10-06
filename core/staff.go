@@ -25,6 +25,7 @@ type Position struct {
 	BoERate          float64     // Bank of England base rate, annual
 	BoEInterest      luca.Amount // interest earned on reserves to date
 	NIMBps           float64     // latest net interest margin, annualised basis points
+	DayComplete      bool        // every account has its position for Day: the start-of-day pass is done
 }
 
 // ExcessCash is what the bank holds above its required reserves.

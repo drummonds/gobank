@@ -123,7 +123,7 @@ const bankSortCode = "30-90-01"
 // newPaymentLocked allocates a payment that settles immediately. Must be
 // called with ds.mu held.
 func (ds *DemoState) newPaymentLocked(ptype PaymentType, fromID, toID string, amount luca.Amount) Payment {
-	now := time.Now()
+	now := ds.clock.Now()
 	p := Payment{
 		ID: ds.nextPaymentID, Type: ptype, FromID: fromID, ToID: toID, Amount: amount,
 		Status: PaymentCompleted, Reference: fmt.Sprintf("PAY-%06d", ds.nextPaymentID),

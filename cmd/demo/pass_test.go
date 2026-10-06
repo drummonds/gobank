@@ -76,7 +76,7 @@ func TestPassResumesFromProjectionsAfterRestart(t *testing.T) {
 			cancel()
 		}
 	}
-	first.advanceDayCtx(ctx)
+	first.nextDayCtx(ctx)
 	if p := first.position(); !p.Day.Equal(feb1) || p.DayCount != 31 {
 		t.Fatalf("after the interrupted day: %s (%d), want 1 Feb (31)", p.Day.Format("2006-01-02"), p.DayCount)
 	}

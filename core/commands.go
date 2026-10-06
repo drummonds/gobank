@@ -77,10 +77,12 @@ type CustomerCommands interface {
 }
 
 // DayCommands is the start of a day, the one event the clock raises.
-// StartDay moves the bank on to its next business day and runs the day's
-// pass over every account (ADR-0002 stage 3). A pass an earlier call left
-// unfinished, its ctx having ended, is resumed without the day advancing
-// again. Returns the business day the bank is on.
+// StartDay brings the bank onto its Clock's business day: a pass the day
+// in progress still owes is finished first, then each day the clock has
+// moved on to is started and its pass run over every account (ADR-0002
+// stage 3), one day at a time. With the clock still on the bank's day
+// nothing happens. A call cut short by ctx leaves the rest for the next.
+// Returns the business day the bank is on.
 type DayCommands interface {
 	StartDay(ctx context.Context) (time.Time, error)
 }

@@ -8,7 +8,9 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"sync"
 	"testing"
+	"time"
 
 	"git.bytestone.uk/hum3/gobank/core"
 )
@@ -30,6 +32,33 @@ type Fixture struct {
 	CustomerID      string
 	OtherCustomerID string
 	Password        string
+	// Clock is the clock the implementation reads, when the fixture can
+	// move it: StartDay is then checked to follow it. Nil leaves StartDay
+	// checked only for doing nothing while the clock stands still.
+	Clock *FakeClock
+}
+
+// FakeClock is a core.Clock a test sets.
+type FakeClock struct {
+	mu sync.Mutex
+	t  time.Time
+}
+
+// NewFakeClock is a clock reading t.
+func NewFakeClock(t time.Time) *FakeClock { return &FakeClock{t: t} }
+
+// Now implements core.Clock.
+func (c *FakeClock) Now() time.Time {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return c.t
+}
+
+// Set moves the clock to t.
+func (c *FakeClock) Set(t time.Time) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.t = t
 }
 
 // Run checks the implementation against the CustomerQueries contract and,

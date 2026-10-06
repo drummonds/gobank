@@ -63,14 +63,18 @@ type DemoState struct {
 	addingCustStart     time.Time
 	lastAddRate         float64 // customers/s of the last finished batch
 	passRate            passThroughput
-	progress            dayProgress      // the day being processed, for the runtime page
-	now                 func() time.Time // wall clock, injectable for tests
-	passHook            func()           // called after each account the pass visits; tests only
-	bank                coreBank         // the core as the generators reach it (sim_customers.go, sim_payments.go)
-	catalogue           []core.Product   // the generators' copy of the product catalogue, read once (mu)
-	dayLengthChanged    chan struct{}    // a console change of the day length, for the run loop's idle wait (one pending at most)
-	nimBps              float64          // the latest snapshot's NIM, for the position (mu)
-	boeAccruedNumerator int64            // BoE interest on excess reserves, numerator units over gbp.AccrualDenominator
+	progress            dayProgress         // the day being processed, for the runtime page
+	now                 func() time.Time    // wall clock, injectable for tests
+	passHook            func()              // called after each account the pass visits; tests only
+	bank                coreBank            // the core as the generators reach it (sim_customers.go, sim_payments.go)
+	catalogue           []core.Product      // the generators' copy of the product catalogue, read once (mu)
+	simClock            *simClock           // the simulation's warped clock, which the bank reads as clock (sim_clock.go)
+	clock               core.Clock          // where the bank reads the time (ADR-0002 stage 4)
+	rates               core.BaseRateSource // where the bank reads the base rate
+	dayComplete         bool                // every account has its position for currentDay (mu)
+	dayLengthChanged    chan struct{}       // a console change of the day length, for the run loop's idle wait (one pending at most)
+	nimBps              float64             // the latest snapshot's NIM, for the position (mu)
+	boeAccruedNumerator int64               // BoE interest on excess reserves, numerator units over gbp.AccrualDenominator
 	db                  *sql.DB
 	dbBackend           string // human-readable data store description, set by initDBWithDSN
 	dbIsPostgres        bool   // real PostgreSQL (pgx) rather than in-memory pglike
@@ -120,9 +124,15 @@ func (ds *DemoState) openOn(db *sql.DB, dsn string) *DemoState {
 	ds.attachDB(db, dsn)
 	run, resumed := loadRun(ds.db)
 	if resumed {
+		// The simulation's clock resumes its day; the bank's business day
+		// is the latest on its own record, the daily snapshots.
+		ds.simClock.resume(run.Day, run.SlotStart)
 		ds.currentDay, ds.dayCount = run.Day, run.DayCount
-		ds.boeRate = lookupBoERate(run.Day)
-		ds.rng = rand.New(rand.NewSource(42 + int64(run.DayCount)))
+		if first, latest, ok := snapshotSpan(ds.db); ok {
+			ds.currentDay, ds.dayCount = latest, int(latest.Sub(first).Hours()/24)
+		}
+		ds.boeRate = ds.rates.BaseRate(ds.currentDay)
+		ds.rng = rand.New(rand.NewSource(42 + int64(ds.dayCount)))
 		ds.resumedRunning = run.Running
 		if run.DayLengthSet {
 			ds.settings.Update(func(s *Settings) { s.DayLength = run.DayLength })
@@ -132,8 +142,12 @@ func (ds *DemoState) openOn(db *sql.DB, dsn string) *DemoState {
 	ds.initLedger()
 	if resumed {
 		ds.resumeBooks()
+		if pending, err := anyUnprojected(ds.db, ds.currentDay); err == nil {
+			ds.dayComplete = !pending
+		}
 	} else {
 		saveRun(ds.db, runState{Day: ds.currentDay})
+		saveSlotStart(ds.db, ds.now())
 	}
 	saveSnapshot(ds.db, ds.recordHistory())
 	if latest, ok := latestSnapshot(ds.db); ok {
@@ -172,23 +186,32 @@ func (ds *DemoState) resumeBooks() {
 // database.
 func newDemoState() *DemoState {
 	startDay := time.Date(2020, 1, 1, 0, 0, 0, 0, time.UTC)
-	boeRate := lookupBoERate(startDay)
 	rng := rand.New(rand.NewSource(42))
 
 	ds := &DemoState{
 		products:         AllProducts(),
-		currentDay:       startDay,
 		nextPaymentID:    1,
 		opCostPerDay:     50_00, // £50.00/day in minor units
 		rng:              rng,
 		settings:         simSettings{v: DefaultSettings()},
-		boeRate:          boeRate,
 		reserveRatio:     defaultReserveRatio,
 		nextCustSeq:      1,
 		now:              time.Now,
 		memoryLimit:      defaultMemoryLimit,
 		dayLengthChanged: make(chan struct{}, 1),
+		dayComplete:      true,
 	}
+	// Wiring (stage 4): the bank reads the time and the base rate from the
+	// simulation's clock and its replayed series; a real deployment would
+	// wire the wall clock and a feed here.
+	ds.simClock = newSimClock(func() time.Time { return ds.now() })
+	ds.simClock.dayLength = func() time.Duration { return ds.settings.Get().DayLength }
+	ds.simClock.persist = func(_, slotStart time.Time) { saveSlotStart(ds.db, slotStart) }
+	ds.simClock.beginDay(startDay)
+	ds.clock = ds.simClock
+	ds.rates = boeRateHistory
+	ds.currentDay = core.BusinessDay(ds.clock.Now())
+	ds.boeRate = ds.rates.BaseRate(ds.currentDay)
 	ds.bank = newCoreAdapter(ds, "") // the generators' handle; app login goes through main's own adapter
 	return ds
 }
@@ -293,7 +316,7 @@ func (ds *DemoState) lendingHeadroom() luca.Amount {
 	return maxLoans - loans
 }
 
-// advanceDay runs one slot of the simulation: the start-of-day workflow
+// The start-of-day workflow
 // (ADR-0002 stage 3). Yesterday's bank-level books are closed and the date
 // moves on, then the pass projects every account's position for the new
 // day (pass.go) at the system's capacity. A day whose pass did not
@@ -302,41 +325,47 @@ func (ds *DemoState) lendingHeadroom() luca.Amount {
 // wait on the pass: an account's position for the day is written when the
 // pass reaches it, and until then its latest position plus the day's
 // movements is the answer. Must be called WITHOUT ds.mu held.
-func (ds *DemoState) advanceDay() {
-	ds.advanceDayCtx(context.Background())
-}
-
-// advanceDayCtx is advanceDay stopping early when ctx ends, leaving the
-// rest of the day's pass for the next call over the same day.
+// advanceDayCtx is the bank following its clock (core.DayCommands.StartDay):
+// a pass the day in progress still owes is finished first, then every day
+// the clock has moved on to is started and its pass run, one day at a
+// time, until the bank is on the clock's day. Stops early when ctx ends,
+// leaving the rest for the next call. Nothing happens while the clock is
+// still on the bank's day.
 func (ds *DemoState) advanceDayCtx(ctx context.Context) {
-	ds.mu.Lock()
-	if ds.memoryExceeded {
+	for ctx.Err() == nil {
+		ds.mu.Lock()
+		if ds.memoryExceeded {
+			ds.mu.Unlock()
+			return
+		}
+		db, ledger := ds.db, ds.ledger
+		day := ds.currentDay
 		ds.mu.Unlock()
-		return
-	}
-	db, ledger := ds.db, ds.ledger
-	day := ds.currentDay
-	ds.mu.Unlock()
 
-	pending, err := anyUnprojected(db, day)
-	if err != nil {
-		log.Printf("advanceDay: %v", err)
-		return
-	}
-	if pending {
-		ds.progress.begin(day) // resuming the day's pass
-	} else {
-		day = ds.startDay(ledger)
-	}
-	visited := ds.runPass(ctx, day)
+		pending, err := anyUnprojected(db, day)
+		if err != nil {
+			log.Printf("advanceDay: %v", err)
+			return
+		}
+		if pending {
+			ds.progress.begin(day) // resuming the day's pass
+		} else if day.Before(core.BusinessDay(ds.clock.Now())) {
+			day = ds.startDay(ledger)
+		} else {
+			return // on the clock's day, with the day's work done
+		}
+		visited := ds.runPass(ctx, day)
 
-	// The throughput the dashboard quotes is the accounts the pass visited
-	// over the whole day, begin to finish: the span the runtime page
-	// reports as the last day's duration.
-	elapsed := ds.progress.finish()
-	ds.mu.Lock()
-	ds.passRate.record(visited, elapsed)
-	ds.mu.Unlock()
+		// The throughput the dashboard quotes is the accounts the pass visited
+		// over the whole day, begin to finish: the span the runtime page
+		// reports as the last day's duration.
+		elapsed := ds.progress.finish()
+		left, err := anyUnprojected(db, day)
+		ds.mu.Lock()
+		ds.passRate.record(visited, elapsed)
+		ds.dayComplete = err == nil && !left
+		ds.mu.Unlock()
+	}
 }
 
 // startDay closes yesterday's bank-level books and begins the next day:
@@ -362,7 +391,8 @@ func (ds *DemoState) startDay(ledger *luca.SQLLedger) time.Time {
 
 	ds.currentDay = closed.AddDate(0, 0, 1)
 	ds.dayCount++
-	ds.boeRate = lookupBoERate(ds.currentDay)
+	ds.dayComplete = false
+	ds.boeRate = ds.rates.BaseRate(ds.currentDay)
 	day := ds.currentDay
 
 	// The snapshot is the day the bank starts, with the NIM of the day just
@@ -503,8 +533,9 @@ func (ds *DemoState) boeInterestTotal() luca.Amount {
 	return ds.boeInterestApplied + luca.Amount(ds.boeAccruedNumerator/gbp.AccrualDenominator)
 }
 
-// AdvanceDay is the console's step: one day of the simulation, the bank's
-// start of day and then the generators' roll for a new customer.
+// AdvanceDay is the console's step: one day of the simulation, the clock
+// moving on and the bank following, then the generators' roll for a new
+// customer.
 func (ds *DemoState) AdvanceDay() {
 	ds.advanceDay()
 	ds.rollNewCustomer(context.Background())
@@ -588,7 +619,7 @@ func (ds *DemoState) Start() {
 				start = ds.now()
 				dayLength := ds.settings.Get().DayLength
 				ds.setDayEnd(start, dayLength)
-				ds.advanceDayCtx(ctx)
+				ds.nextDayCtx(ctx)
 				if ctx.Err() == nil {
 					ds.rollNewCustomer(ctx)
 				}
@@ -688,14 +719,16 @@ func (ds *DemoState) Reset() {
 	ds.lastAddRate = 0
 	ds.passRate = passThroughput{}
 	ds.progress.reset()
-	ds.currentDay = time.Date(2020, 1, 1, 0, 0, 0, 0, time.UTC)
+	ds.simClock.beginDay(time.Date(2020, 1, 1, 0, 0, 0, 0, time.UTC))
+	ds.currentDay = core.BusinessDay(ds.clock.Now())
 	ds.dayCount = 0
+	ds.dayComplete = true
 	ds.clearPaymentsLocked()
 	ds.rng = rand.New(rand.NewSource(42))
 	if ds.custStore != nil {
 		ds.custStore.Reset(context.Background())
 	}
-	ds.boeRate = lookupBoERate(ds.currentDay)
+	ds.boeRate = ds.rates.BaseRate(ds.currentDay)
 	ds.nextCustSeq = 1
 	ds.nCustomers = 0
 	ds.book = bookTotals{}
@@ -720,6 +753,7 @@ func (ds *DemoState) Reset() {
 	}
 	ds.initLedger()
 	saveRun(ds.db, runState{Day: ds.currentDay})
+	saveSlotStart(ds.db, ds.now())
 	if ds.dayLengthRecorded { // the console's setting outlives the run it was made in
 		saveDayLength(ds.db, ds.settings.Get().DayLength)
 	}
@@ -749,6 +783,7 @@ func (ds *DemoState) positionLocked() core.Position {
 		BoERate:          ds.boeRate,
 		BoEInterest:      ds.boeInterestTotal(),
 		NIMBps:           nimBps,
+		DayComplete:      ds.dayComplete,
 	}
 }
 

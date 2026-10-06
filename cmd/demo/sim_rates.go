@@ -8,18 +8,26 @@ import (
 	"time"
 )
 
+// The Bank of England base rate as the simulation replays it (ADR-0002
+// stage 4): market data the bank reads through core.BaseRateSource, which
+// in a real deployment is a feed. The series is historical, fetched by
+// cmd/boefetch into boe_rates.csv.
+
 //go:embed boe_rates.csv
 var boeRatesCSV string
 
+// rateSeries is a base-rate history, oldest first: a core.BaseRateSource.
+type rateSeries []RatePoint
+
 // boeRateHistory is the parsed historical rate data, populated by init.
-var boeRateHistory []RatePoint
+var boeRateHistory rateSeries
 
 func init() {
 	boeRateHistory = parseBoeRates(boeRatesCSV)
 }
 
-func parseBoeRates(csv string) []RatePoint {
-	var pts []RatePoint
+func parseBoeRates(csv string) rateSeries {
+	var pts rateSeries
 	for line := range strings.SplitSeq(strings.TrimSpace(csv), "\n") {
 		line = strings.TrimSpace(line)
 		if line == "" {
@@ -43,18 +51,15 @@ func parseBoeRates(csv string) []RatePoint {
 	return pts
 }
 
-// lookupBoERate returns the BoE base rate in effect on the given day
-// by finding the most recent rate change on or before that day.
-func lookupBoERate(day time.Time) float64 {
-	if len(boeRateHistory) == 0 {
+// BaseRate implements core.BaseRateSource: the rate in effect on day is
+// the most recent change on or before it.
+func (s rateSeries) BaseRate(day time.Time) float64 {
+	if len(s) == 0 {
 		return 0.0525 // fallback
 	}
-	// Binary search: find last entry with Date <= day
-	i := sort.Search(len(boeRateHistory), func(i int) bool {
-		return boeRateHistory[i].Date.After(day)
-	})
+	i := sort.Search(len(s), func(i int) bool { return s[i].Date.After(day) })
 	if i == 0 {
-		return boeRateHistory[0].Rate
+		return s[0].Rate
 	}
-	return boeRateHistory[i-1].Rate
+	return s[i-1].Rate
 }

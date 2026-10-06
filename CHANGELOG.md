@@ -2,6 +2,36 @@
 
 ## [Unreleased]
 
+ - Stage 4 story (b): the bank reads the time and the base rate from injected sources; the simulation's clock is warped by the day length and resumes mid-day
+
+### Changed
+- ADR-0002 stage 4 story (b), the clock. The bank reads the time from
+  `core.Clock` and the Bank of England base rate from
+  `core.BaseRateSource`; every banking fact is stamped by the clock (a
+  payment's creation and settlement, a customer's join date, a
+  transaction's value date) and the day's rate is the source's for that
+  day. Operational records (restarts, schema versions, the run row's
+  write time) keep the wall clock, as does the ledger's knowledge time.
+  `StartDay` now follows the clock: nothing happens while the clock is on
+  the bank's day; a pass still owed is finished first; days the clock has
+  moved on to are started one at a time until the bank is level. The
+  bank's business day is the latest on its own record, the daily
+  snapshots, not the simulation's run row.
+- The simulation supplies a warped clock: a simulated day begins at the
+  start of its slot and the day length sets how fast the day's hours pass
+  (an hour into a two-hour day is noon); flat out, time passes at the
+  wall's pace; the clock stays inside its day until the next begins. The
+  slot's start is on the run row (simulation schema version 4), so a
+  restart resumes the clock mid-day. The simulation steps its clock only
+  when the bank is level with it and reports the day complete
+  (`core.Position.DayComplete`), so a resumed pass finishes on its own
+  day. Payments on the payments page now carry simulated times.
+- The base-rate series (`boe_rates.csv`) is simulation data
+  (`sim_rates.go`), replayed through the source the bank reads; a real
+  deployment wires a feed in its place.
+- The contract suite's fixture may hand over a fake clock; with one,
+  `StartDay` is checked to follow it.
+
 ## [0.13.0] - 2026-10-06
 
  - Stage 4 story (a): OpenCustomer and StartDay are core commands; the generators reach the bank through commands alone; accrual_state dropped

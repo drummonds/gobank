@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"testing"
+	"time"
 
 	luca "git.bytestone.uk/hum3/go-luca"
 	"git.bytestone.uk/hum3/gobank/core"
@@ -473,14 +474,25 @@ func runCommands(t *testing.T, f Fixture) {
 		}
 	})
 
-	t.Run("start day moves the bank on a business day", func(t *testing.T) {
+	t.Run("start day follows the clock", func(t *testing.T) {
 		before, _ := s.Position(ctx)
 		day, err := c.StartDay(ctx)
+		if err != nil || !day.Equal(before.Day) {
+			t.Errorf("StartDay with the clock on the bank's day = %s, %v; want %s unchanged", day.Format("2006-01-02"), err, before.Day.Format("2006-01-02"))
+		}
+		if same, _ := s.Position(ctx); same.DayCount != before.DayCount {
+			t.Errorf("day count %d -> %d with the clock standing still", before.DayCount, same.DayCount)
+		}
+		if f.Clock == nil {
+			return
+		}
+		f.Clock.Set(before.Day.AddDate(0, 0, 1).Add(9 * time.Hour))
+		day, err = c.StartDay(ctx)
 		if err != nil {
 			t.Fatal(err)
 		}
 		if want := before.Day.AddDate(0, 0, 1); !day.Equal(want) {
-			t.Errorf("StartDay returned %s, want %s", day.Format("2006-01-02"), want.Format("2006-01-02"))
+			t.Errorf("StartDay with the clock a day on returned %s, want %s", day.Format("2006-01-02"), want.Format("2006-01-02"))
 		}
 		after, _ := s.Position(ctx)
 		if !after.Day.Equal(day) || after.DayCount != before.DayCount+1 || after.Customers != before.Customers {

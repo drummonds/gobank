@@ -257,13 +257,13 @@ root module, `cmd/bff` is the service binary, and `app/` is the Flutter shell.
       events come from and in the clock and market data it reads, nothing
       else; the stage ends with the simulation a package of its own that
       knows the bank only through `core`. Stories:
-      - [ ] (a) entry points — `core.CustomerCommands.OpenCustomer` (record,
+      - [x] (v0.13.0) (a) entry points — `core.CustomerCommands.OpenCustomer` (record,
         PII, opening deposits and loan disbursements, with the lending
         headroom a bank rule that trims or refuses the loan) and
         `core.DayCommands.StartDay`; the generators and the console reach
         the bank through these and `Transfer` only, and the daily
         new-customer roll leaves `startDay` for the run loop. Drops
-        `accrual_state`, retired since v0.11.0
+        `accrual_state`, retired since v0.11.0. Drilled on preprod 2026-10-06
       - [ ] (b) the clock — `core.Clock` injected into the bank, which takes
         its business date and every banking timestamp (payments, value
         times, join dates) from it; the simulation supplies a warped clock
@@ -272,7 +272,10 @@ root module, `cmd/bff` is the service binary, and `app/` is the Flutter shell.
         a resume rebuilds it. Operational records (restarts, schema
         versions, session expiry) stay on the wall clock. The base-rate
         series becomes a second injected source, market data the bank
-        reads and the simulation replays
+        reads and the simulation replays. `StartDay` follows the clock
+        (nothing to do while it stands still; catches up a day at a time)
+        and the position says whether the day's pass is complete, which is
+        what lets the simulation step its clock
       - [ ] (c) the split — the simulation moves into `cmd/demo/sim`, built
         on `core` alone: run loop, generators, settings, rate series and
         console status; it drives the bank through `core.Commands` and

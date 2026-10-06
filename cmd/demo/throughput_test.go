@@ -4,6 +4,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"git.bytestone.uk/hum3/gobank/core"
 )
 
 // steppingClock advances one second per reading, so any interval measured
@@ -14,6 +16,14 @@ func steppingClock(start time.Time) func() time.Time {
 		t = t.Add(time.Second)
 		return t
 	}
+}
+
+// fixedBankClock pins the bank's clock on its current time, so a test that
+// counts wall-clock readings (steppingClock) is not disturbed by the
+// stamps the bank puts on payments.
+func fixedBankClock(ds *DemoState) core.Clock {
+	at := ds.clock.Now()
+	return core.ClockFunc(func() time.Time { return at })
 }
 
 func TestPassThroughputRollingWindow(t *testing.T) {
@@ -76,6 +86,7 @@ func TestDashboardReportsAccountDaysPer12h(t *testing.T) {
 func TestDashboardReportsCustomersAddedPerSecond(t *testing.T) {
 	ds := NewDemoState()
 	ds.now = steppingClock(time.Date(2026, 1, 1, 9, 0, 0, 0, time.UTC))
+	ds.clock = fixedBankClock(ds)
 
 	ds.AddCustomersBatch(5)
 	deadline := time.Now().Add(10 * time.Second)

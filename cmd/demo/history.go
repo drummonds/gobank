@@ -71,6 +71,22 @@ func latestSnapshot(db *sql.DB) (DailySnapshot, bool) {
 	return s, true
 }
 
+// snapshotSpan is the first and the latest day on record: the bank's
+// opening day and its current business day. ok is false with no record.
+func snapshotSpan(db *sql.DB) (first, latest time.Time, ok bool) {
+	if db == nil {
+		return first, latest, false
+	}
+	var lo, hi sql.NullTime
+	if err := db.QueryRow(`SELECT MIN(day), MAX(day) FROM daily_snapshots`).Scan(&lo, &hi); err != nil || !lo.Valid || !hi.Valid {
+		if err != nil {
+			log.Printf("snapshotSpan: %v", err)
+		}
+		return first, latest, false
+	}
+	return lo.Time.UTC(), hi.Time.UTC(), true
+}
+
 // loadSnapshots reads every snapshot, oldest first.
 func loadSnapshots(db *sql.DB) []DailySnapshot {
 	if db == nil {

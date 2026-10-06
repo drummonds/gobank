@@ -13,10 +13,12 @@ import (
 // against: customer queries, staff queries and commands.
 func TestCoreAdapterContract(t *testing.T) {
 	ds := NewDemoState()
+	clock := coretest.NewFakeClock(ds.clock.Now())
+	ds.clock = clock
 	twoFundedCustomers(ds)
 	a := newCoreAdapter(ds, "secret")
 	coretest.Run(t, coretest.Fixture{
-		Queries: a, Auth: a, Staff: a, Commands: a,
+		Queries: a, Auth: a, Staff: a, Commands: a, Clock: clock,
 		CustomerID: "cust-001", OtherCustomerID: "cust-002", Password: "secret",
 	})
 }

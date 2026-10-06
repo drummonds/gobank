@@ -292,7 +292,7 @@ func (ds *DemoState) transfer(t core.Transfer) (Payment, error) {
 		Amount:    t.Amount,
 		Status:    PaymentPending,
 		Reference: ref,
-		CreatedAt: time.Now(),
+		CreatedAt: ds.clock.Now(),
 	}
 	ds.nextPaymentID++
 	var q execer
@@ -308,7 +308,7 @@ func (ds *DemoState) transfer(t core.Transfer) (Payment, error) {
 		time.Sleep(500 * time.Millisecond)
 		ds.setPaymentStatus(p.ID, PaymentProcessing, time.Time{})
 		time.Sleep(1 * time.Second)
-		ds.setPaymentStatus(p.ID, PaymentCompleted, time.Now())
+		ds.setPaymentStatus(p.ID, PaymentCompleted, ds.clock.Now())
 	}()
 	return p, nil
 }

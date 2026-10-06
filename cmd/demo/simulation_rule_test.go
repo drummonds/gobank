@@ -13,13 +13,13 @@ import (
 // core.Commands and decide them from core.StaffQueries, and touch nothing
 // of the bank's own. Story (c) moves them into a package of their own,
 // where the compiler takes over this check.
-var simulationFiles = []string{"sim_customers.go", "sim_payments.go"}
+var simulationFiles = []string{"sim_customers.go", "sim_payments.go", "sim_clock.go", "sim_rates.go"}
 
 // simulationState is what of DemoState the generators may use: the
 // simulation's own knobs and progress, its randomness, its clock, and the
 // bank as the core presents it.
 var simulationState = []string{
-	"mu", "epoch", "rng", "settings", "now", "bank", "catalogue",
+	"mu", "epoch", "rng", "settings", "now", "bank", "catalogue", "simClock",
 	"payRunning", "payCancel",
 	"addingCustRunning", "addingCustCancel", "addingCustProgress", "addingCustTarget", "addingCustStart", "lastAddRate",
 	"dbWriters",

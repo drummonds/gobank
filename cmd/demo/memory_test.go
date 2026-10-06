@@ -65,7 +65,7 @@ func TestRuntimeShowsSchemaVersionPerComponent(t *testing.T) {
 	ds := NewDemoState()
 	html := ds.BuildRuntimeHTML()
 	for _, want := range []string{
-		`<tr><th>Schema: simulation</th><td>3</td></tr>`,
+		`<tr><th>Schema: simulation</th><td>4</td></tr>`,
 		`<tr><th>Schema: products</th><td>2</td></tr>`,
 	} {
 		if !strings.Contains(html, want) {

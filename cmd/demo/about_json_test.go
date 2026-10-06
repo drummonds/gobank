@@ -69,6 +69,7 @@ func TestAboutJSONReportsTheRates(t *testing.T) {
 	ds := NewDemoState()
 	clock := steppingClock(time.Date(2026, 1, 1, 9, 0, 0, 0, time.UTC))
 	ds.now, ds.progress.now = clock, clock
+	ds.clock = fixedBankClock(ds) // banking stamps must not step the wall clock
 
 	got := aboutStatus(newCoreAdapter(ds, ""), ds)
 	if got.Sim.CustomersPerSec != 0 || got.Sim.AccountDaysPer12h != 0 || got.Sim.AddingCustomers {
@@ -80,6 +81,7 @@ func TestAboutJSONReportsTheRates(t *testing.T) {
 	for ds.IsAddingCustomers() && time.Now().Before(deadline) {
 		time.Sleep(5 * time.Millisecond)
 	}
+	ds.clock = ds.simClock // the day follows the simulation's clock again
 	ds.AdvanceDay()
 
 	got = aboutStatus(newCoreAdapter(ds, ""), ds)

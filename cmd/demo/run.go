@@ -25,6 +25,10 @@ var simulationSchema = componentSchema{component: "simulation", migrations: []mi
 	// process resumes at it (ADR-0003: an upgrade lands mid-day). NULL is
 	// a run that never set one and takes the environment's.
 	{3, []string{`ALTER TABLE sim_run ADD COLUMN day_length VARCHAR(20) NULL`}},
+	// When the simulated day in progress began, by the wall clock, so the
+	// next process resumes the clock mid-day (stage 4: the simulation's
+	// clock). NULL is a run from before the clock.
+	{4, []string{`ALTER TABLE sim_run ADD COLUMN slot_start TIMESTAMP NULL`}},
 }}
 
 // runState is where the run is: the simulated day the bank is on, how
@@ -36,6 +40,7 @@ type runState struct {
 	SavedAt      time.Time     // when the row was last written; read only, for the restart record
 	DayLength    time.Duration // the day length set on the console; read only, see saveDayLength
 	DayLengthSet bool          // false when the run never set one
+	SlotStart    time.Time     // when the day in progress began, by the wall clock; read only, see saveSlotStart
 }
 
 // saveRun overwrites the run row.
@@ -63,13 +68,25 @@ func saveDayLength(db *sql.DB, d time.Duration) {
 	}
 }
 
+// saveSlotStart records when the simulated day in progress began, which
+// saveRun leaves alone.
+func saveSlotStart(db *sql.DB, at time.Time) {
+	if db == nil {
+		return
+	}
+	if _, err := db.Exec(`UPDATE sim_run SET slot_start = $1 WHERE id = 1`, at.UTC()); err != nil {
+		log.Printf("saveSlotStart: %v", err)
+	}
+}
+
 // loadRun reads the run row; ok is false when there is no run to resume.
 func loadRun(db *sql.DB) (r runState, ok bool) {
 	if db == nil {
 		return runState{}, false
 	}
 	var dayLength sql.NullString
-	err := db.QueryRow(`SELECT current_day, day_count, running, updated_at, day_length FROM sim_run WHERE id = 1`).Scan(&r.Day, &r.DayCount, &r.Running, &r.SavedAt, &dayLength)
+	var slotStart sql.NullTime
+	err := db.QueryRow(`SELECT current_day, day_count, running, updated_at, day_length, slot_start FROM sim_run WHERE id = 1`).Scan(&r.Day, &r.DayCount, &r.Running, &r.SavedAt, &dayLength, &slotStart)
 	if err != nil {
 		if !errors.Is(err, sql.ErrNoRows) {
 			log.Printf("loadRun: %v", err)
@@ -84,5 +101,8 @@ func loadRun(db *sql.DB) (r runState, ok bool) {
 	// A simulated day is a UTC date, whatever the driver's location.
 	r.Day = time.Date(r.Day.Year(), r.Day.Month(), r.Day.Day(), 0, 0, 0, 0, time.UTC)
 	r.SavedAt = r.SavedAt.UTC()
+	if slotStart.Valid {
+		r.SlotStart = slotStart.Time.UTC()
+	}
 	return r, true
 }
