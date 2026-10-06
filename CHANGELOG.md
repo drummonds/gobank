@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+## [0.15.0] - 2026-10-06
+
+ - Stage 4 story (c), the simulation as a package of its own (the stage is done), and the customer app as designed: generated wireframe, access states, BFF journey
+
  - Stage 4 story (c): the simulation is a package of its own, built on the core alone; the stage's done-when
  - The customer app as designed: a wireframe generated from the screen trees (served and proposed), the access states, one journey through the BFF, on a docs page
 
