@@ -297,13 +297,14 @@ root module, `cmd/bff` is the service binary, and `app/` is the Flutter shell.
 - **1.5.2** [x] history — `bank/history`: the daily snapshots
 - **1.5.3** [x] ledger — `bank/ledger`: the go-luca wrapper, the chart of
   accounts, the account locks and `postEvent`
-- **1.5.4** [ ] products — `bank/products`: the catalogue, the pass and
-  the accrual over the ledger
-- **1.5.5** [ ] customers — `bank/customers`: the store, the register,
-  opening and transactions, over ledger and products
-- **1.5.6** [ ] payments — `bank/payments`, over all of the above
-- **1.5.7** [ ] bank — the composite replaces `DemoState` and dissolves
-  `coreAdapter`; book and about read through `core`; the stage's done-when
+- **1.5.4** [ ] products, customers, payments and the bank, as one story:
+  `bank/products` (the catalogue, the pass and the accrual over the
+  ledger), `bank/customers` (the store, the register, opening and
+  transactions, over ledger and products), `bank/payments` over all of
+  the above, and `bank` the composite that replaces `DemoState` and
+  dissolves `coreAdapter`; book and about read through `core`. Stories
+  1.5.4 to 1.5.7 of the original breakdown, taken together and released
+  once; the stage's done-when
 - **1.6** One BFF — staff UI and customer web through the BFF (absorbs item 2)
 - **1.7** Read/write split — separate read and write handles
 - **1.8** Many processes — several BFFs, a generator and one workflow runner;

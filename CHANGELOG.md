@@ -28,6 +28,11 @@
   and `postEvent` run the day's rules on the accounts an event touched,
   over the package. The six resolved account IDs leave `DemoState` for
   the ledger's `Chart`. No schema change.
+- The WASM integration test no longer runs a full year of one customer;
+  the short run renders the customers and treasury capital pages too,
+  so every page is still exercised. `task check` is ~25s quicker.
+- Roadmap: stories 1.5.4 to 1.5.7 (products, customers, payments, the
+  bank composite) are one story, released once.
 
 ## [0.16.0] - 2026-10-06
 

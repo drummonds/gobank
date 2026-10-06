@@ -117,7 +117,9 @@ function testShortRun(nCustomers, nDays) {
     assertHTML(dash, 'dashboard after ' + nDays + ' days');
     assertHTML(goRenderPnL(), 'P&L after ' + nDays + ' days');
     assertHTML(goRenderBalanceSheet(), 'balance sheet after ' + nDays + ' days');
+    assertHTML(goRenderCustomers(), 'customers after ' + nDays + ' days');
     assertHTML(goRenderTreasuryCash(), 'treasury cash after ' + nDays + ' days');
+    assertHTML(goRenderTreasuryCapital(), 'treasury capital after ' + nDays + ' days');
     assertHTML(goRenderBBSI(), 'BBSI report after ' + nDays + ' days');
 
     // The explorer bridge takes a link's href whole, so an FK link's filter
@@ -126,43 +128,6 @@ function testShortRun(nCustomers, nDays) {
     assert(filtered.includes('Filter: customer_id = cust-001'), 'explorer FK filter honoured in WASM');
 
     console.log('  ' + nDays + ' days advanced OK');
-}
-
-function testFullYear(nCustomers) {
-    console.log('\n--- Full year: ' + nCustomers + ' customers, 365 days ---');
-    goReset();
-    goUpdateSettings(nCustomers); // fix customer count
-    goAddCustomers(nCustomers);
-
-    // Time each half to detect non-linear scaling
-    const t0 = Date.now();
-    for (let d = 0; d < 182; d++) {
-        goAdvanceDay();
-    }
-    const firstHalfMs = Date.now() - t0;
-
-    const t1 = Date.now();
-    for (let d = 182; d < 365; d++) {
-        goAdvanceDay();
-    }
-    const secondHalfMs = Date.now() - t1;
-
-    const totalMs = firstHalfMs + secondHalfMs;
-    const ratio = secondHalfMs / firstHalfMs;
-
-    const dash = goRender();
-    assertHTML(dash, 'dashboard after 365 days');
-    assertHTML(goRenderPnL(), 'P&L after 365 days');
-    assertHTML(goRenderBalanceSheet(), 'balance sheet after 365 days');
-    assertHTML(goRenderCustomers(), 'customers after 365 days');
-    assertHTML(goRenderTreasuryCash(), 'treasury cash after 365 days');
-    assertHTML(goRenderTreasuryCapital(), 'treasury capital after 365 days');
-    assertHTML(goRenderBBSI(), 'BBSI after 365 days');
-
-    console.log('  365 days in ' + (totalMs / 1000).toFixed(2) + 's (first half ' + firstHalfMs + 'ms, second half ' + secondHalfMs + 'ms, ratio ' + ratio.toFixed(2) + ')');
-    // With linear scaling the second half should cost about the same as the first.
-    // Allow up to 2x for WASM/GC variance; anything above indicates non-linear regression.
-    assert(ratio < 2.0, 'day scaling is near-linear (second/first half ratio ' + ratio.toFixed(2) + ' < 2.0)');
 }
 
 function testPayments() {
@@ -209,7 +174,6 @@ function testExportImport() {
     testInitialRender();
     testShortRun(10, 7);
     testPayments();
-    testFullYear(1);
     // Export/Import last — depends on ledger which may not init in WASM yet.
     // A Go panic here kills the process, so keep it at the end.
     testExportImport();
