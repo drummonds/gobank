@@ -2,6 +2,15 @@
 
 ## [Unreleased]
 
+ - First Hetzner performance row: small (cx23) at v0.12.0, 142 customers/s and 18.4M account days per 12h
+
+### Changed
+- `benchmark.md` carries the first Hetzner run, small scale: 60,000
+  customers reached at 142.1/s, 18,388,121 account days per 12h, the
+  last day 4m41s over 119,794 accounts. The rows are now written by
+  gobank-deploy's `perf` command into this checkout; `large` is a ccx33
+  with dedicated cores.
+
 ## [0.12.0] - 2026-10-06
 
  - about.json carries the two performance rates; benchmark.md is the published performance doc

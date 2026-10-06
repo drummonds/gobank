@@ -11,15 +11,19 @@ below them are the baseline the design was measured against as it changed.
 
 ## Hetzner runs
 
-Made by gobank-deploy's **perf** workflow: an environment is created at a
-scale, the demo set flat out, customers added for a fixed span, days run
-for another, the rates read, the server removed. Each run is a row; the
-spans are in the run's record on the gobank-deploy Perf page.
+Made by gobank-deploy's **perf** workflow (`tp secrets gobank-deploy perf
+perf`): an environment is created at each scale, the demo set flat out,
+customers added for ten minutes, days run for ten more, the rates read,
+the servers removed. The command writes each run's row into this table
+(`small` is cx23, shared; `large` is ccx33, dedicated cores, so the
+account-days figure says whether the pass uses them); commit and release
+to publish. The spans and the workflow's steps are on the gobank-deploy
+Performance page.
 
 | Date | gobank | Scale | Server | Customers reached | Customers/s | Days run | Account days / 12h | Last day |
 |---|---|---|---|---|---|---|---|---|
-| | | small | cx23: 2 vCPU, 4 GB | | | | | |
-| | | large | cx53: 16 vCPU, 32 GB | | | | | |
+| 2026-10-06 | v0.12.0 | small | cx23: 4 GB | 60,000 | 142.1 | 3 | 18,388,121 | 4m41s over 119,794 accounts |
+| | | large | | | | | | |
 
 For comparison, the Hetzner demo of 2026-10-01 (300k customers, v0.3.x,
 one accrual posting per account per day) took over ten minutes a
