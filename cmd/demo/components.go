@@ -66,7 +66,7 @@ var components = []Component{
 	{
 		Name:    "history",
 		Purpose: "The bank's daily series for the dashboard charts: one snapshot a day of the book, the customers, the NIM and the base rate.",
-		Files:   []string{"history.go"},
+		Package: "bank/history",
 		Tables:  []string{"daily_snapshots"},
 	},
 	{

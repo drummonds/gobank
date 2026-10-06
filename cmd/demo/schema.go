@@ -3,6 +3,7 @@ package main
 import (
 	"database/sql"
 	"fmt"
+	"git.bytestone.uk/hum3/gobank/bank/history"
 	"git.bytestone.uk/hum3/gobank/bank/schema"
 	"git.bytestone.uk/hum3/gobank/bank/treasury"
 	"log"
@@ -27,7 +28,7 @@ type componentSchema = schema.Component
 // demoSchemas is every component's schema. Libraries (the ledger, the
 // customer store) create their own tables and are not listed.
 func demoSchemas() []componentSchema {
-	return []componentSchema{simulationSchema, productsSchema, customersSchema, paymentsSchema, treasury.Schema, historySchema, sessionsSchema}
+	return []componentSchema{simulationSchema, productsSchema, customersSchema, paymentsSchema, treasury.Schema, history.Schema, sessionsSchema}
 }
 
 // migrate brings every component's tables up to its latest version,

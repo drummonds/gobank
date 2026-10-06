@@ -2,6 +2,15 @@
 
 ## [Unreleased]
 
+### Changed
+- ADR-0002 stage 5 story 1.5.2, history. The daily snapshots are the
+  package `bank/history`: it owns `daily_snapshots` and its migration
+  (`history.Schema`), writes a day's snapshot once (`Save`), gives the
+  latest day and the span of the record (`Latest`, `Span`) and the series
+  the charts draw (`Series`, the newest `MaxPoints` days as
+  `core.History`). The demo takes the snapshot (`recordHistory`) and the
+  adapter's `History` reads the series from the package. No schema change.
+
 ## [0.16.0] - 2026-10-06
 
  - Stage 5 story 1.5.1: the treasury is the first bank component in a package of its own, bank/treasury

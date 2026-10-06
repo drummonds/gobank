@@ -154,8 +154,8 @@ func (a *coreAdapter) BalanceSheet(ctx context.Context) (core.BalanceSheet, erro
 }
 
 // History implements core.BookQueries.
-func (a *coreAdapter) History(context.Context) (core.History, error) {
-	return a.ds.history(), nil
+func (a *coreAdapter) History(ctx context.Context) (core.History, error) {
+	return a.ds.history.Series(ctx)
 }
 
 // --- Customer register ---

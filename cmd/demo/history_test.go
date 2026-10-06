@@ -1,8 +1,21 @@
 package main
 
 import (
+	"context"
 	"testing"
+
+	"git.bytestone.uk/hum3/gobank/core"
 )
+
+// series is the daily series as the bank's record gives them.
+func series(t *testing.T, ds *DemoState) core.History {
+	t.Helper()
+	h, err := ds.history.Series(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	return h
+}
 
 // The daily series behind the dashboard charts are stored snapshots, one
 // row a day (ADR-0002 stage 2, story e): a restart over the same database
@@ -14,7 +27,7 @@ func TestRestartKeepsTheDailySeries(t *testing.T) {
 	for range 10 {
 		first.advanceDay()
 	}
-	before := first.history()
+	before := series(t, first)
 	if n := len(before.Balances); n != 11 { // the opening day and ten more
 		t.Fatalf("balance points before restart = %d, want 11", n)
 	}
@@ -24,7 +37,7 @@ func TestRestartKeepsTheDailySeries(t *testing.T) {
 	}
 
 	second := newDemoStateOn(first.db, "")
-	after := second.history()
+	after := series(t, second)
 	if len(after.Balances) != len(before.Balances) {
 		t.Fatalf("balance points after restart = %d, want %d", len(after.Balances), len(before.Balances))
 	}
@@ -48,7 +61,7 @@ func TestRestartKeepsTheDailySeries(t *testing.T) {
 
 	// The series carry on from where they were.
 	second.advanceDay()
-	if n := len(second.history().Balances); n != 12 {
+	if n := len(series(t, second).Balances); n != 12 {
 		t.Errorf("balance points after one more day = %d, want 12", n)
 	}
 }
@@ -60,7 +73,7 @@ func TestResetClearsTheDailySeries(t *testing.T) {
 		ds.advanceDay()
 	}
 	ds.Reset()
-	h := ds.history()
+	h := series(t, ds)
 	if len(h.Balances) != 1 || len(h.BoERate) != 1 {
 		t.Fatalf("series after reset: %d balance points, %d BoE points; want 1 each", len(h.Balances), len(h.BoERate))
 	}

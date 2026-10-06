@@ -292,9 +292,9 @@ root module, `cmd/bff` is the service binary, and `app/` is the Flutter shell.
   import test is the boundary) is proven before the entangled components
   move. Every story is a pure move, no schema change. Done-when of the
   stage: `cmd/demo` holds only wiring, the console and the UI. Stories:
-- **1.5.1** [ ] treasury — `bank/treasury`: gilt yields and holdings,
+- **1.5.1** [x] (v0.16.0) treasury — `bank/treasury`: gilt yields and holdings,
   `Buy`; reads only the bank's business day
-- **1.5.2** [ ] history — `bank/history`: the daily snapshots
+- **1.5.2** [x] history — `bank/history`: the daily snapshots
 - **1.5.3** [ ] ledger — `bank/ledger`: the go-luca wrapper, the chart of
   accounts, the account locks and `postEvent`
 - **1.5.4** [ ] products — `bank/products`: the catalogue, the pass and

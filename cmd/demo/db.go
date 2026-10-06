@@ -8,6 +8,7 @@ import (
 	"strings"
 
 	_ "git.bytestone.uk/hum3/go-postgres"
+	"git.bytestone.uk/hum3/gobank/bank/history"
 	"git.bytestone.uk/hum3/gobank/bank/treasury"
 	customers "git.bytestone.uk/hum3/gobanks-customers"
 	_ "github.com/jackc/pgx/v5/stdlib"
@@ -139,6 +140,7 @@ func (ds *DemoState) attachDB(db *sql.DB, dsn string) {
 	ds.createCustomerAccountsView()
 	ds.createPaymentsView()
 	ds.treasury = treasury.New(db, ds.businessDay)
+	ds.history = history.New(db)
 
 	// Create customer store (shares same DB)
 	custStore, err := customers.NewSQLCustomerStore(db, piiKeyProvider)

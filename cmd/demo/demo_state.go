@@ -15,6 +15,7 @@ import (
 
 	luca "git.bytestone.uk/hum3/go-luca"
 	gbp "git.bytestone.uk/hum3/gobank-products"
+	"git.bytestone.uk/hum3/gobank/bank/history"
 	"git.bytestone.uk/hum3/gobank/bank/treasury"
 	"git.bytestone.uk/hum3/gobank/cmd/demo/sim"
 	"git.bytestone.uk/hum3/gobank/core"
@@ -23,7 +24,7 @@ import (
 )
 
 // The daily series are the core's history types (ADR-0002 stage 1),
-// stored as daily snapshots (history.go).
+// stored as daily snapshots (bank/history).
 type (
 	RatePoint     = core.RatePoint
 	BalancePoint  = core.BalancePoint
@@ -66,6 +67,7 @@ type DemoState struct {
 	dbIsPostgres        bool   // real PostgreSQL (pgx) rather than in-memory pglike
 	ledger              *luca.SQLLedger
 	treasury            *treasury.Treasury // the gilt desk (bank/treasury), opened on db
+	history             *history.History   // the daily snapshots (bank/history), opened on db
 	custStore           *customers.SQLCustomerStore
 	equityAccountID     string
 	expenseInterestID   string // ledger IDs the day's rules post against, resolved at start
@@ -82,8 +84,6 @@ type DemoState struct {
 	dayAccrualSavings   int64        // interest accrued today on savings, numerator units over gbp.AccrualDenominator (mu)
 	dayAccrualLending   int64        // same for lending (mu)
 }
-
-const maxHistoryPoints = 7_300 // the charts draw at most ~20 years of daily points
 
 func NewDemoState() *DemoState {
 	return NewDemoStateWithDSN("")
@@ -113,7 +113,9 @@ func (ds *DemoState) openOn(db *sql.DB, dsn string) *DemoState {
 		// is the latest on its own record, the daily snapshots.
 		ds.sim.Resume(sim.Run{Day: run.Day, DayCount: run.DayCount, Running: run.Running, SlotStart: run.SlotStart}, run.DayLength, run.DayLengthSet)
 		ds.currentDay, ds.dayCount = run.Day, run.DayCount
-		if first, latest, ok := snapshotSpan(ds.db); ok {
+		if first, latest, ok, err := ds.history.Span(context.Background()); err != nil {
+			log.Printf("resume: %v", err)
+		} else if ok {
 			ds.currentDay, ds.dayCount = latest, int(latest.Sub(first).Hours()/24)
 		}
 		ds.boeRate = ds.rates.BaseRate(ds.currentDay)
@@ -129,8 +131,10 @@ func (ds *DemoState) openOn(db *sql.DB, dsn string) *DemoState {
 		saveRun(ds.db, runState{Day: ds.currentDay})
 		saveSlotStart(ds.db, time.Now())
 	}
-	saveSnapshot(ds.db, ds.recordHistory())
-	if latest, ok := latestSnapshot(ds.db); ok {
+	ds.saveSnapshot(ds.recordHistory())
+	if latest, ok, err := ds.history.Latest(context.Background()); err != nil {
+		log.Printf("resume: %v", err)
+	} else if ok {
 		ds.nimBps = latest.NIMBps // the day's NIM is on record; this process has no accrual yet
 	}
 	ds.mu.Lock()
@@ -258,10 +262,21 @@ func (ds *DemoState) addCustomerToLedger(ledger *luca.SQLLedger, cust *CustomerR
 	}
 }
 
+// saveSnapshot stores a day's snapshot on the bank's record and logs a
+// refusal; the record itself is the component's (bank/history).
+func (ds *DemoState) saveSnapshot(s history.Snapshot) {
+	if ds.history == nil {
+		return
+	}
+	if err := ds.history.Save(context.Background(), s); err != nil {
+		log.Print(err)
+	}
+}
+
 // recordHistory takes the day's snapshot — the book, the customers, the
 // NIM and the base rate — for the caller to store (saveSnapshot, off the
 // lock). Must be called with ds.mu held.
-func (ds *DemoState) recordHistory() DailySnapshot {
+func (ds *DemoState) recordHistory() history.Snapshot {
 	savings, lending := ds.book.Savings, ds.book.Lending
 	// Today's interest in minor units, from the engine's exact accrual (rate math for the NIM ratio, not storage).
 	totalDepInt := float64(ds.dayAccrualSavings) / gbp.AccrualDenominator
@@ -280,7 +295,7 @@ func (ds *DemoState) recordHistory() DailySnapshot {
 		nimBps = (totalLoanInt + dailyBoeInt - totalDepInt) / float64(savings) * 365.0 * 10000.0
 	}
 	ds.nimBps = nimBps
-	return DailySnapshot{Day: ds.currentDay, Savings: savings, Lending: lending, Customers: ds.nCustomers, NIMBps: nimBps, BoERate: ds.boeRate}
+	return history.Snapshot{Day: ds.currentDay, Savings: savings, Lending: lending, Customers: ds.nCustomers, NIMBps: nimBps, BoERate: ds.boeRate}
 }
 
 // --- Bank simulation ---
@@ -377,8 +392,6 @@ func (ds *DemoState) startDay(ledger *luca.SQLLedger) time.Time {
 	// closed; the pass accrues the new day from zero.
 	snapshot := ds.recordHistory()
 	ds.dayAccrualSavings, ds.dayAccrualLending = 0, 0
-
-	db := ds.db
 	ds.mu.Unlock()
 
 	ds.progress.begin(day)
@@ -400,7 +413,7 @@ func (ds *DemoState) startDay(ledger *luca.SQLLedger) time.Time {
 	}
 	// The day's snapshot is the bank's record of having begun it: a
 	// restart from here resumes it.
-	saveSnapshot(db, snapshot)
+	ds.saveSnapshot(snapshot)
 	return day
 }
 
@@ -579,7 +592,7 @@ func (ds *DemoState) Reset() {
 	if ds.sim.DayLengthRecorded() { // the console's setting outlives the run it was made in
 		saveDayLength(ds.db, ds.sim.Settings().DayLength)
 	}
-	saveSnapshot(ds.db, ds.recordHistory())
+	ds.saveSnapshot(ds.recordHistory())
 }
 
 // position is the bank's position (core.Position) read under one lock.
@@ -625,12 +638,6 @@ func (ds *DemoState) profitAndLoss() core.ProfitAndLoss {
 		DepositInterestExpense: depositExpense,
 		OperatingCosts:         opCosts,
 	}
-}
-
-// history is the daily series (core.History), read from the stored
-// snapshots.
-func (ds *DemoState) history() core.History {
-	return historyOf(loadSnapshots(ds.DB()))
 }
 
 // SimStatus is the simulation console's own state: what is running and

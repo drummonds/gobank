@@ -116,7 +116,7 @@ func TestBaseRateComesFromTheSource(t *testing.T) {
 	if want := 0.01 + float64(pos.Day.Day())/1000; pos.BoERate != want {
 		t.Errorf("BoE rate %v on %v, want the source's %v", pos.BoERate, pos.Day, want)
 	}
-	if latest, ok := latestSnapshot(ds.db); !ok || latest.BoERate != pos.BoERate {
+	if latest, ok, err := ds.history.Latest(context.Background()); err != nil || !ok || latest.BoERate != pos.BoERate {
 		t.Errorf("day's snapshot rate %v, want the source's %v", latest.BoERate, pos.BoERate)
 	}
 }
