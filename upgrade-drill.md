@@ -6,18 +6,23 @@ running Hetzner demo, with the downtime recorded and the rollback rehearsed
 drill; it is each story's acceptance. N is the release running, N+1 the
 one under test.
 
+The drill runs on **preprod**, never on prod. Prod is promoted to N+1 only
+once the drill has finished on preprod (step 9). Slow, but the upgrade
+path gets sorted out where a failure costs nothing.
+
 ## Steps
 
 | # | Step | Where | Evidence |
 |---|---|---|---|
 | 1 | Set a day length long enough for an upgrade to land mid-day (`2h`) and let the run go | demo settings page | dashboard day tile counting down |
 | 2 | Note the day, customers, savings and lending | demo dashboard | the position before |
-| 3 | Release N+1 (`tp release` on `main` once the story's PR is merged); its `post_release` fetches the binaries into the store | laptop | release printed; `gobank-deploy status prod` shows N+1 as the next deploy |
-| 4 | Redeploy prod | gobank-deploy page on hydrogen | job log: `systemctl restart`, then `Model Bank N+1` |
+| 3 | Release N+1 (`tp release` on `main` once the story's PR is merged); its `post_release` fetches the binaries into the store | laptop | release printed; `gobank-deploy status preprod` shows N+1 as the next deploy |
+| 4 | Redeploy preprod | gobank-deploy page on hydrogen | job log: `systemctl restart`, then `Model Bank N+1` |
 | 5 | Read the newest row of the restart record | demo settings page, Restarts | downtime; previous version N with a stop time; day and customers at stop → start equal |
 | 6 | Check the position against step 2 | demo dashboard | the same day or the next (the stop finishes the day in progress and a restart begins a new one); customers, savings, lending the same |
 | 7 | Roll back: make N the store's latest and redeploy | `curl -X POST https://gobank-deploy.lan.drummonds.net/fetch?tag=N`, then Redeploy | `Model Bank N` serving; the run resumes |
 | 8 | Forward again: fetch N+1, redeploy | as 7 with N+1 | restart record: a row following an *unrecorded* process (N kept no record), downtime from the run row's last write; position as in step 6 |
+| 9 | Promote prod: redeploy prod to N+1, the drill done | gobank-deploy page on hydrogen | `Model Bank N+1` serving on prod; its restart record shows N stopped cleanly |
 
 ## What the record says
 
@@ -31,7 +36,7 @@ one under test.
 ## Running it from gobank-deploy
 
 [gobank-deploy](https://gobank-deploy.docs.bytestone.uk/) runs steps 2 to
-8 as a workflow: the **Drill** button on an environment's row observes the
+8 as a workflow on preprod: the **Drill** button on an environment's row observes the
 position and the restart record at `/about.json` before and after each
 hop (upgrade, rollback, forward), gates each hop on the version serving,
 a clean previous stop with a known downtime and an intact handover, and
@@ -42,8 +47,8 @@ the setting is made again after each hop, since a release before v0.10.3
 forgets it on restart. A hop may land one day on at the stop and one
 more after the start; further than that is the run going on at full
 speed, and the hop fails.
-Step 3, the release, stays yours. The drill page there gives the line
-for the record below.
+Step 3, the release, and step 9, promoting prod, stay yours. The drill
+page there gives the line for the record below.
 
 ## Record the result
 

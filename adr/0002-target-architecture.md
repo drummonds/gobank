@@ -75,12 +75,18 @@ rest of the day is idle, as a bank's overnight run does (amended
 the margin, not an even load). Projection is one day ahead only: that gives
 a day to do each day's work, and optimisations can project further later.
 
-**Events and the clock.** Everything the bank does is in response to an
-event: a customer action through the BFF, an incoming payment, the start of
-a day. In a real deployment events come from clients and payment schemes,
-and the clock is the wall clock. In simulation, generators produce the
-events (a population, its behaviour, payment traffic) and the clock is
-warped forward; the console that drives them is part of the staff web app.
+**Events, the clock and market data.** Everything the bank does is in
+response to an event: a customer action through the BFF, an incoming
+payment, the start of a day. In a real deployment events come from clients
+and payment schemes, the clock is the wall clock and market data (the base
+rate) is a feed. In simulation, generators produce the events (a
+population, its behaviour, payment traffic), the clock is warped forward
+and market data is a historical series replayed (amended 2026-10-06: the
+base rate is an outside source of the same kind as the clock, injected the
+same way); the console that drives them is part of the staff web app. The
+bank reads its business date and stamps every banking fact from the
+injected clock; operational records (restarts, schema versions) keep the
+wall clock.
 Generators enter through the same entry points as real events, so the
 simulation exercises exactly what a real deployment runs. They become the
 scenario test framework, and a real bank simply has none.
@@ -97,7 +103,7 @@ database, both handles are the same.
 | No end-of-day spike: a start-of-day workflow projects every account one day ahead, and a read takes the projection for the day it wants | reads never wait on a batch; the work runs at the start of the day with the day as headroom |
 | The core is a library that the BFF embeds; the database is the only shared state | one codebase for every topology, with no core service to operate |
 | Queries use the read handle, commands the write handle | read/write separation is a wiring choice, not a rewrite |
-| Simulation differs from production only in event sources and the clock | the simulation tests the real system and can be removed from it |
+| Simulation differs from production only in event sources, the clock and market data | the simulation tests the real system and can be removed from it |
 | Topology lives only in `cmd/` wiring | the same packages run in every topology |
 
 ### Topologies
@@ -142,7 +148,7 @@ next starts.
 | 1. Seams | Define the core's commands and queries as Go interfaces in a root-module package. `DemoState` implements them through an adapter; the web UI and the BFF, run in the demo process, call only through them. Nothing moves yet. | Contract tests run against the interfaces; the demo binary serves the app with real data |
 | 2. Stored truth | Customer transactions become a ledger projection, replacing `txLog`; chart histories become stored daily snapshots; sessions move to the database. | Restarting the demo on Postgres resumes with the same transactions and charts |
 | 3. Pipelined accruals | The end-of-day sweep becomes a start-of-day workflow that writes each account's next-day projection (go-luca write-time projections), with interest application as product code inside it; events rewrite the projection of the account they touch; reads take the projection for their day; the engine works on the account in hand. Needs gobank-products changes. | Reads during a day never wait on the workflow; the workflow runs at the start of the day at the system's capacity and resumes after a restart |
-| 4. Events and clock | Split `DemoState` into the bank and the simulation. Generators feed events through the stage 1 entry points; the clock is an injected source, warped in simulation. | No simulation code touches bank internals, and a test enforces it |
+| 4. Events and clock | Split `DemoState` into the bank and the simulation. Generators feed events through the stage 1 entry points; the clock and the base rate are injected sources, warped and replayed in simulation. The simulation becomes a package of its own that imports only `core`. | No simulation code touches bank internals: the compiler enforces it and a test checks the package's imports |
 | 5. Core into packages | Move one component at a time (ledger, customers, products, payments, treasury) into root-module packages behind its API. Go's package boundary takes over ADR-0001's rule. | `cmd/demo` holds only wiring, generators and the UI |
 | 6. One BFF | The staff UI renders through the BFF; the customer web renders through `screen`, replacing the demo's phone frame and its open `/api/customer/` endpoints. | The app and both web apps are served by the BFF; WASM runs it in the tab |
 | 7. Read/write split | The core takes separate read and write handles; queries serve from a replica; a session reads its own writes. | Tests pass with one database and with two |

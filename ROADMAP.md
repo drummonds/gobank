@@ -253,7 +253,33 @@ root module, `cmd/bff` is the service binary, and `app/` is the Flutter shell.
         map and the end-of-day sweep go. Done-when of the stage; drilled
         with a restart mid-pass
    4. Events and clock — bank and simulation split; generators and an
-      injected clock
+      injected clock. The simulation differs from the bank in where its
+      events come from and in the clock and market data it reads, nothing
+      else; the stage ends with the simulation a package of its own that
+      knows the bank only through `core`. Stories:
+      - [ ] (a) entry points — `core.CustomerCommands.OpenCustomer` (record,
+        PII, opening deposits and loan disbursements, with the lending
+        headroom a bank rule that trims or refuses the loan) and
+        `core.DayCommands.StartDay`; the generators and the console reach
+        the bank through these and `Transfer` only, and the daily
+        new-customer roll leaves `startDay` for the run loop. Drops
+        `accrual_state`, retired since v0.11.0
+      - [ ] (b) the clock — `core.Clock` injected into the bank, which takes
+        its business date and every banking timestamp (payments, value
+        times, join dates) from it; the simulation supplies a warped clock
+        (day D begins at slot start, the day length sets the warp, flat out
+        steps a day at a time) and the run row keeps day and slot start so
+        a resume rebuilds it. Operational records (restarts, schema
+        versions, session expiry) stay on the wall clock. The base-rate
+        series becomes a second injected source, market data the bank
+        reads and the simulation replays
+      - [ ] (c) the split — the simulation moves into `cmd/demo/sim`, built
+        on `core` alone: run loop, generators, settings, rate series and
+        console status; it drives the bank through `core.Commands` and
+        reads it through `core.StaffQueries`. Reset becomes wiring (a fresh
+        bank over a wiped database); separate locks replace the shared
+        `ds.mu`. Done-when of the stage: the compiler is the enforcement
+        and a test checks the package's imports
    5. Core into packages — one component at a time
    6. One BFF — staff UI and customer web through the BFF (absorbs item 2)
    7. Read/write split — separate read and write handles
