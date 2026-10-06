@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+## [0.13.0] - 2026-10-06
+
+ - Stage 4 story (a): OpenCustomer and StartDay are core commands; the generators reach the bank through commands alone; accrual_state dropped
+
  - Stage 4 story (a): opening a customer and starting a day are core commands; the generators reach the bank through commands alone; accrual_state dropped
 
 ### Changed
