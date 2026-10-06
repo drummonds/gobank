@@ -245,41 +245,6 @@ func lastPaymentID(db *sql.DB) int {
 	return id
 }
 
-// SendPayment is the payments generator: it picks two customers and an
-// amount at random and asks the bank to transfer it. Picking is the
-// simulation's; the transfer itself is the core's command.
-func (ds *DemoState) SendPayment() {
-	ds.mu.Lock()
-	if ds.nCustomers < 2 {
-		ds.mu.Unlock()
-		return
-	}
-	fromID := ds.randomCustomerID()
-	toID := ds.randomCustomerID()
-	for toID == fromID {
-		toID = ds.randomCustomerID()
-	}
-	amount := luca.Amount(ds.rng.Intn(99901) + 100) // 100..100000 pence
-	ds.mu.Unlock()
-
-	// Pay from the sender's first savings account, within its balance.
-	from, ok := ds.customerByID(fromID)
-	if !ok {
-		return
-	}
-	fromAcc := firstSavingsAccount(from.Accounts)
-	if fromAcc == nil {
-		return
-	}
-	amount = min(amount, fromAcc.Balance)
-	if amount < 100 {
-		return
-	}
-	// The recipient may be missing (its persist failed) or hold no savings
-	// account; the generator just moves on.
-	ds.transfer(core.Transfer{From: fromID, To: toID, Amount: amount})
-}
-
 // transfer is the core's Transfer command (ADR-0002 stage 1): it moves
 // amount between the two customers' first savings accounts, records the
 // movement in the ledger and the engine, the customer-facing entries, and
@@ -348,13 +313,6 @@ func (ds *DemoState) transfer(t core.Transfer) (Payment, error) {
 	return p, nil
 }
 
-// randomCustomerID picks a customer ID uniformly from those generated so
-// far. The ID may be missing (its persist failed); callers skip those.
-// Must be called with ds.mu held.
-func (ds *DemoState) randomCustomerID() string {
-	return fmt.Sprintf("cust-%03d", 1+ds.rng.Intn(ds.nextCustSeq-1))
-}
-
 // firstSavingsAccount returns the customer's first savings account, or nil.
 func firstSavingsAccount(accounts []CustomerAccount) *CustomerAccount {
 	for i := range accounts {
@@ -363,55 +321,6 @@ func firstSavingsAccount(accounts []CustomerAccount) *CustomerAccount {
 		}
 	}
 	return nil
-}
-
-// StartPayments begins auto-generating payments.
-func (ds *DemoState) StartPayments() {
-	ds.mu.Lock()
-	if ds.payRunning {
-		ds.mu.Unlock()
-		return
-	}
-	ctx, cancel := context.WithCancel(context.Background())
-	ds.payCancel = cancel
-	ds.payRunning = true
-	ds.mu.Unlock()
-
-	go func() {
-		// Self-pace (wait after completion) rather than a fixed-rate ticker —
-		// see Start(): in WASM a ticker that can't keep up starves the JS
-		// event loop and freezes the page.
-		ds.SendPayment()
-		for {
-			select {
-			case <-ctx.Done():
-				return
-			case <-time.After(2 * time.Second):
-				ds.SendPayment()
-			}
-		}
-	}()
-}
-
-// StopPayments halts auto-generation.
-func (ds *DemoState) StopPayments() {
-	ds.mu.Lock()
-	defer ds.mu.Unlock()
-	if !ds.payRunning {
-		return
-	}
-	ds.payRunning = false
-	if ds.payCancel != nil {
-		ds.payCancel()
-		ds.payCancel = nil
-	}
-}
-
-// IsPaymentsRunning returns whether auto-generation is active.
-func (ds *DemoState) IsPaymentsRunning() bool {
-	ds.mu.Lock()
-	defer ds.mu.Unlock()
-	return ds.payRunning
 }
 
 // ResetPayments clears all payments and stops auto-generation.

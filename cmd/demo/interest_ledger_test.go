@@ -251,7 +251,7 @@ func assertPositionsAreTheTruth(t *testing.T, ds *DemoState) {
 // TestPositionsAreTheTruth verifies the daily pass projects every account's
 // position (mid-month and across a month-end application) so the ledger
 // alone carries the balance and accrued-but-unapplied interest, and that
-// the retired accrual_state table is left alone.
+// the retired accrual_state table is gone.
 func TestPositionsAreTheTruth(t *testing.T) {
 	ds := NewDemoState()
 	addFundedCustomer(ds)
@@ -269,12 +269,9 @@ func TestPositionsAreTheTruth(t *testing.T) {
 	ds.mu.Lock()
 	defer ds.mu.Unlock()
 	assertPositionsAreTheTruth(t, ds)
-	var rows int
-	if err := ds.db.QueryRow(`SELECT COUNT(*) FROM accrual_state`).Scan(&rows); err != nil {
-		t.Fatalf("accrual_state: %v", err)
-	}
-	if rows != 0 {
-		t.Errorf("accrual_state has %d rows; nothing writes it any more", rows)
+	if rows, err := ds.db.Query(`SELECT 1 FROM accrual_state`); err == nil {
+		rows.Close()
+		t.Error("accrual_state still exists; the products component owns no table")
 	}
 }
 

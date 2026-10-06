@@ -8,6 +8,7 @@ package core
 import (
 	"context"
 	"errors"
+	"fmt"
 
 	luca "git.bytestone.uk/hum3/go-luca"
 )
@@ -17,6 +18,10 @@ var (
 	ErrNotFound       = errors.New("core: not found")
 	ErrBadCredentials = errors.New("core: bad credentials")
 )
+
+// CustomerID is the ID the register gives its nth customer: customers are
+// numbered in the order they open, from one.
+func CustomerID(n int) string { return fmt.Sprintf("cust-%03d", n) }
 
 // Customer identifies a logged-in customer.
 type Customer struct {

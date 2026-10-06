@@ -9,6 +9,7 @@ import (
 
 	luca "git.bytestone.uk/hum3/go-luca"
 	gbp "git.bytestone.uk/hum3/gobank-products"
+	"git.bytestone.uk/hum3/gobank/core"
 	customers "git.bytestone.uk/hum3/gobanks-customers"
 )
 
@@ -39,37 +40,75 @@ type customerFunding struct {
 	payment Payment
 }
 
-// createCustomer generates, persists, registers and funds one customer.
-// Must not be called with ds.mu held.
-func (ds *DemoState) createCustomer() {
+// openCustomer is the core's OpenCustomer command (ADR-0002 stage 4): it
+// checks the request, plans the customer under ds.mu, persists them in one
+// transaction, and returns the ID the register gave them. Must not be
+// called with ds.mu held.
+func (ds *DemoState) openCustomer(c core.NewCustomer) (string, error) {
+	if len(c.Accounts) == 0 {
+		return "", core.ErrInvalidAmount
+	}
+	for _, a := range c.Accounts {
+		if a.Opening < 0 {
+			return "", core.ErrInvalidAmount
+		}
+		if _, ok := ds.productByID(a.ProductID); !ok {
+			return "", core.ErrNotFound
+		}
+	}
 	ds.mu.Lock()
-	p := ds.planCustomerLocked()
+	p := ds.planCustomerLocked(c)
 	ds.mu.Unlock()
-	ds.persistCustomerPlan(p)
+	if err := ds.persistCustomerPlan(p); err != nil {
+		return "", err
+	}
+	return p.cust.ID, nil
 }
 
-// planCustomerLocked generates the next customer and decides its funding,
-// putting it on the books. Must be called with ds.mu held.
-func (ds *DemoState) planCustomerLocked() customerPlan {
-	cust, pii := generateCustomer(ds.rng, ds.nextCustSeq, ds.products, ds.currentDay)
+// planCustomerLocked gives the customer the register's next ID, their
+// accounts their bank details, and decides the funding: a deposit as
+// asked, a loan within the bank's lending headroom, down to nothing. The
+// customer goes on the books here. Must be called with ds.mu held.
+func (ds *DemoState) planCustomerLocked(c core.NewCustomer) customerPlan {
+	day := ds.currentDay
+	lastCheck := c.KYC.LastCheck
+	if lastCheck.IsZero() {
+		lastCheck = day
+	}
+	cust := CustomerRecord{
+		ID:        core.CustomerID(ds.nextCustSeq),
+		JoinDate:  day,
+		KYCStatus: KYCStatus{Verified: c.KYC.Verified, LastCheckDate: lastCheck, RiskRating: c.KYC.RiskRating},
+	}
 	ds.nextCustSeq++
+	for _, a := range c.Accounts {
+		product, _ := ds.productByID(a.ProductID) // checked by openCustomer
+		cust.Accounts = append(cust.Accounts, CustomerAccount{
+			ProductID:   product.ID,
+			ProductName: product.Name,
+			Family:      product.Family,
+			Currency:    product.Currency,
+			Rate:        product.Rate,
+			OpenDate:    day,
+			SortCode:    bankSortCode,
+			AccountNum:  fmt.Sprintf("%08d", ds.rng.Intn(100000000)),
+		})
+	}
 	p := customerPlan{
-		epoch: ds.epoch, cust: cust, pii: pii, day: ds.currentDay,
-		db: ds.db, ledger: ds.ledger, store: ds.custStore, equityID: ds.equityAccountID,
+		epoch: ds.epoch, cust: cust, day: day,
+		pii: PIIInput{Name: c.PII.Name, NI: c.PII.NI, DOB: c.PII.DOB, Address: c.PII.Address, Email: c.PII.Email, Phone: c.PII.Phone},
+		db:  ds.db, ledger: ds.ledger, store: ds.custStore, equityID: ds.equityAccountID,
 	}
 	for i := range p.cust.Accounts {
 		a := &p.cust.Accounts[i]
-		var amount luca.Amount
+		amount := c.Accounts[i].Opening
 		ptype, from := PayDeposit, "EXTERNAL"
-		if a.Family == gbp.FamilySavings {
-			amount = luca.Amount(500+ds.rng.Intn(9500)) * 100
-		} else {
-			headroom := ds.lendingHeadroom()
-			if headroom <= 0 {
-				continue
-			}
-			amount = min(luca.Amount(1000+ds.rng.Intn(49000))*100, headroom)
+		if a.Family == gbp.FamilyLending {
+			amount = min(amount, ds.lendingHeadroom())
 			ptype, from = PayLoanDisbursement, "BANK"
+		}
+		if amount <= 0 {
+			continue
 		}
 		a.Balance = amount
 		ds.addToBook(a.Family, amount)
@@ -78,6 +117,8 @@ func (ds *DemoState) planCustomerLocked() customerPlan {
 	ds.nCustomers++
 	return p
 }
+
+const bankSortCode = "30-90-01"
 
 // newPaymentLocked allocates a payment that settles immediately. Must be
 // called with ds.mu held.
@@ -95,9 +136,9 @@ func (ds *DemoState) newPaymentLocked(ptype PaymentType, fromID, toID string, am
 // persistCustomerPlan writes a planned customer — record, ledger accounts,
 // register, funding payments and movements — in one transaction, so each
 // customer is one commit. A customer the database refuses is taken back off
-// the books; later failures are logged and the customer kept, as before the
-// split. Must not be called with ds.mu held.
-func (ds *DemoState) persistCustomerPlan(p customerPlan) {
+// the books and the refusal returned; later failures are logged and the
+// customer kept, as before the split. Must not be called with ds.mu held.
+func (ds *DemoState) persistCustomerPlan(p customerPlan) error {
 	store, ledger := p.store, p.ledger
 	var tx *sql.Tx
 	if p.db != nil && p.ledger != nil {
@@ -126,7 +167,7 @@ func (ds *DemoState) persistCustomerPlan(p customerPlan) {
 		ds.mu.Lock()
 		ds.abandonPlanLocked(p)
 		ds.mu.Unlock()
-		return
+		return fmt.Errorf("open customer %s: %w", p.cust.ID, err)
 	}
 	ds.addCustomerToLedger(ledger, &p.cust)
 	// Funding rewrites the equity account's position and the new accounts'
@@ -180,7 +221,7 @@ func (ds *DemoState) persistCustomerPlan(p customerPlan) {
 			_ = tx.Rollback()
 		}
 	}
-
+	return nil
 }
 
 // abandonPlanLocked takes a planned customer the database refused back off

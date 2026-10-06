@@ -26,8 +26,8 @@ var components = []Component{
 	},
 	{
 		Name:    "simulation",
-		Purpose: "The run's place in time (the day the bank is on, whether the run loop is going, so a restart resumes) and the restart record: each process start against the stop before it, for an upgrade's downtime.",
-		Files:   []string{"run.go", "restarts.go"},
+		Purpose: "The run's place in time (the day the bank is on, whether the run loop is going, so a restart resumes), the restart record (each process start against the stop before it, for an upgrade's downtime) and the generators: the population and its payments, raised on the bank through the core's commands.",
+		Files:   []string{"run.go", "restarts.go", "sim_customers.go", "sim_payments.go"},
 		Tables:  []string{"sim_run", "restarts"},
 	},
 	{
@@ -44,7 +44,7 @@ var components = []Component{
 		Name:    "customers",
 		Purpose: "Who the bank's customers are, their KYC status, and the accounts each holds.",
 		Library: "gobanks-customers",
-		Files:   []string{"customers.go", "customer_register.go", "customer_gen.go", "pii_store.go", "transactions.go"},
+		Files:   []string{"customers.go", "customer_register.go", "customer_create.go", "pii_store.go", "transactions.go"},
 		Tables:  []string{"cust_customers", "cust_pii", "customer_accounts"},
 		Views:   []string{"contract_customer_accounts"},
 	},
@@ -53,7 +53,6 @@ var components = []Component{
 		Purpose: "The product catalogue and the interest rules, run for one account at a time by the start-of-day pass and by every event that moves a balance; positions live in the ledger.",
 		Library: "gobank-products",
 		Files:   []string{"products.go", "accrual.go", "pass.go"},
-		Tables:  []string{"accrual_state"}, // retired and unwritten; kept one release for a rollback to v0.10, dropped next
 	},
 	{
 		Name:    "payments",

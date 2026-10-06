@@ -358,6 +358,136 @@ func runCommands(t *testing.T, f Fixture) {
 		}
 	})
 
+	t.Run("open customer puts them on the register, funded", func(t *testing.T) {
+		products, err := s.Products(ctx)
+		if err != nil {
+			t.Fatal(err)
+		}
+		var savings, lending core.Product
+		for _, p := range products {
+			switch {
+			case p.Family == "Savings" && savings.ID == "":
+				savings = p
+			case p.Family == "Lending" && lending.ID == "":
+				lending = p
+			}
+		}
+		if savings.ID == "" || lending.ID == "" {
+			t.Fatalf("fixture catalogue needs a savings and a lending product, got %+v", products)
+		}
+		before, _ := s.Position(ctx)
+		register, _ := s.CustomerPage(ctx, 1)
+
+		const deposit, loan luca.Amount = 500_00, 1_000_00
+		rec, err := c.OpenCustomer(ctx, core.NewCustomer{
+			KYC:      core.KYC{Verified: true, LastCheck: before.Day, RiskRating: "Low"},
+			PII:      core.PII{Name: "Opened By Contract", NI: "QQ123456C", DOB: "1980-01-02", Address: "1 Test Street", Email: "opened@example.com", Phone: "07000 000000"},
+			Accounts: []core.NewAccount{{ProductID: savings.ID, Opening: deposit}, {ProductID: lending.ID, Opening: loan}},
+		})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if rec.ID == "" || !rec.JoinDate.Equal(before.Day) || !rec.KYC.Verified || rec.KYC.RiskRating != "Low" {
+			t.Errorf("OpenCustomer returned %+v; want an ID, joined on the business day %s, with the KYC given", rec, before.Day.Format("2006-01-02"))
+		}
+		if len(rec.Accounts) != 2 {
+			t.Fatalf("OpenCustomer returned %d accounts, want 2", len(rec.Accounts))
+		}
+		sv, ln := rec.Accounts[0], rec.Accounts[1]
+		// The day's interest accrues on the balance from the day the account
+		// opens; nothing has been applied yet.
+		if sv.ProductName != savings.Name || sv.Balance != deposit || sv.Interest != 0 || sv.AccruedE7 < 0 || sv.SortCode == "" || sv.AccountNum == "" || sv.OpenDate != before.Day.Format("2006-01-02") {
+			t.Errorf("savings account %+v; want %s holding the deposit %d, nothing applied, opened today", sv, savings.Name, deposit)
+		}
+		if ln.ProductName != lending.Name || ln.Balance < 0 || ln.Balance > loan || ln.Interest != 0 {
+			t.Errorf("lending account %+v; want %s lent at most %d", ln, lending.Name, loan)
+		}
+		got, err := s.CustomerRecord(ctx, rec.ID)
+		if err != nil || got.ID != rec.ID || len(got.Accounts) != 2 || got.Accounts[0].Balance != deposit || got.Accounts[1].Balance != ln.Balance {
+			t.Errorf("CustomerRecord(%s) = %+v, %v; want what OpenCustomer returned", rec.ID, got, err)
+		}
+		if pii, err := s.CustomerPII(ctx, rec.ID); err != nil || pii.Name != "Opened By Contract" || pii.NI != "QQ123456C" {
+			t.Errorf("CustomerPII(%s) = %+v, %v; want the PII given", rec.ID, pii, err)
+		}
+		if name, _ := s.CustomerName(ctx, rec.ID); name != "Opened By Contract" {
+			t.Errorf("CustomerName(%s) = %q", rec.ID, name)
+		}
+		payments, _ := s.PaymentsOf(ctx, rec.ID)
+		var deposits, loans int
+		for _, p := range payments {
+			switch {
+			case p.Type == core.PaymentDeposit && p.To == rec.ID && p.Amount == deposit && p.Status == core.PaymentCompleted:
+				deposits++
+			case p.Type == core.PaymentLoan && p.To == rec.ID && p.Amount == ln.Balance && p.Status == core.PaymentCompleted:
+				loans++
+			}
+		}
+		wantLoans := 0
+		if ln.Balance > 0 {
+			wantLoans = 1
+		}
+		if deposits != 1 || loans != wantLoans || len(payments) != 1+wantLoans {
+			t.Errorf("PaymentsOf(%s) = %+v; want one completed deposit of %d and %d loan payment(s)", rec.ID, payments, deposit, wantLoans)
+		}
+		page, err := s.Transactions(ctx, rec.ID, 1)
+		if err != nil || len(page.Entries) != 1+wantLoans {
+			t.Fatalf("Transactions(%s) = %+v, %v; want the opening fundings", rec.ID, page, err)
+		}
+		var sawDeposit bool
+		for _, tx := range page.Entries {
+			if tx.Type == "Deposit" && tx.Amount == deposit && tx.ProductName == savings.Name && tx.Balance == deposit {
+				sawDeposit = true
+			}
+		}
+		if !sawDeposit {
+			t.Errorf("Transactions(%s) = %+v; want the deposit on the savings account", rec.ID, page.Entries)
+		}
+		after, _ := s.Position(ctx)
+		if after.Customers != before.Customers+1 || after.Savings != before.Savings+deposit || after.Lending != before.Lending+ln.Balance {
+			t.Errorf("position after opening = %+v; want one more customer, savings +%d, lending +%d on %+v", after, deposit, ln.Balance, before)
+		}
+		if again, _ := s.CustomerPage(ctx, 1); again.Total != register.Total+1 {
+			t.Errorf("register total %d after opening, want %d", again.Total, register.Total+1)
+		}
+	})
+
+	t.Run("open customer refuses what the bank cannot do", func(t *testing.T) {
+		products, _ := s.Products(ctx)
+		register, _ := s.CustomerPage(ctx, 1)
+		pii := core.PII{Name: "Refused"}
+		for _, tc := range []struct {
+			name string
+			c    core.NewCustomer
+			err  error
+		}{
+			{"no accounts", core.NewCustomer{PII: pii}, core.ErrInvalidAmount},
+			{"negative opening", core.NewCustomer{PII: pii, Accounts: []core.NewAccount{{ProductID: products[0].ID, Opening: -1}}}, core.ErrInvalidAmount},
+			{"unknown product", core.NewCustomer{PII: pii, Accounts: []core.NewAccount{{ProductID: "no-such-product", Opening: 1_00}}}, core.ErrNotFound},
+		} {
+			if _, err := c.OpenCustomer(ctx, tc.c); !errors.Is(err, tc.err) {
+				t.Errorf("%s: err = %v, want %v", tc.name, err, tc.err)
+			}
+		}
+		if again, _ := s.CustomerPage(ctx, 1); again.Total != register.Total {
+			t.Errorf("a refused customer is on the register: total %d -> %d", register.Total, again.Total)
+		}
+	})
+
+	t.Run("start day moves the bank on a business day", func(t *testing.T) {
+		before, _ := s.Position(ctx)
+		day, err := c.StartDay(ctx)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if want := before.Day.AddDate(0, 0, 1); !day.Equal(want) {
+			t.Errorf("StartDay returned %s, want %s", day.Format("2006-01-02"), want.Format("2006-01-02"))
+		}
+		after, _ := s.Position(ctx)
+		if !after.Day.Equal(day) || after.DayCount != before.DayCount+1 || after.Customers != before.Customers {
+			t.Errorf("position after StartDay = %+v; want day %s, count %d, the same customers as %+v", after, day.Format("2006-01-02"), before.DayCount+1, before)
+		}
+	})
+
 	t.Run("buy gilt adds a holding", func(t *testing.T) {
 		yields, _ := s.GiltYields(ctx)
 		before, _ := s.GiltHoldings(ctx)

@@ -2,9 +2,28 @@
 
 ## [Unreleased]
 
- - First Hetzner performance row: small (cx23) at v0.12.0, 142 customers/s and 18.4M account days per 12h
+ - Stage 4 story (a): opening a customer and starting a day are core commands; the generators reach the bank through commands alone; accrual_state dropped
 
 ### Changed
+- ADR-0002 stage 4 story (a), the entry points. `core.Commands` gains
+  `OpenCustomer` (a customer with their KYC standing, PII and accounts,
+  each with its opening money; the bank allocates the ID, dates the record
+  on its business day, funds each account by a payment on record and keeps
+  a loan within its lending headroom, down to nothing) and `StartDay` (the
+  bank moves on a business day and runs the day's pass, resuming one cut
+  short). The generators are simulation files of their own
+  (`sim_customers.go`, `sim_payments.go`) that raise events on the bank
+  through these commands and `Transfer`, and decide them from the staff
+  queries; a test holds them to it until story (c) moves them into a
+  package. The daily chance of a new customer leaves the bank's start of
+  day for the simulation's run loop. The contract suite checks the two
+  commands on every implementation. `core.CustomerID(n)` names the
+  register's numbering.
+- The `accrual_state` table, unwritten since v0.11.0, is dropped (products
+  schema version 2); the products component owns no table.
+- The upgrade drill runs on preprod, never on prod; prod is promoted once
+  the drill has finished there (`upgrade-drill.md` step 9). ADR-0002 names
+  market data (the base rate) an injected source alongside the clock.
 - `benchmark.md` carries the first Hetzner run, small scale: 60,000
   customers reached at 142.1/s, 18,388,121 account days per 12h, the
   last day 4m41s over 119,794 accounts. The rows are now written by

@@ -66,7 +66,7 @@ func TestRuntimeShowsSchemaVersionPerComponent(t *testing.T) {
 	html := ds.BuildRuntimeHTML()
 	for _, want := range []string{
 		`<tr><th>Schema: simulation</th><td>3</td></tr>`,
-		`<tr><th>Schema: products</th><td>1</td></tr>`,
+		`<tr><th>Schema: products</th><td>2</td></tr>`,
 	} {
 		if !strings.Contains(html, want) {
 			t.Errorf("runtime page should show %s:\n%s", want, html)

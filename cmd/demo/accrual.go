@@ -17,29 +17,18 @@ import (
 // event that moves the balance. gobank-products holds the rules; this file
 // runs them for one account.
 
-// productsSchema: accrual_state held accrued-but-unapplied interest before
-// positions did (gobank ≤ v0.10). Nothing reads or writes it now; the table
-// stays one release so a rollback to v0.10 finds it, and the release after
-// drops it.
+// productsSchema: the component owns no table. accrual_state held
+// accrued-but-unapplied interest before positions did (gobank ≤ v0.10);
+// v0.11 stopped writing it and version 2 drops it.
 var productsSchema = componentSchema{component: "products", migrations: []migration{
 	{1, []string{`CREATE TABLE IF NOT EXISTS accrual_state (
 		account_id VARCHAR(64) PRIMARY KEY,
 		numerator BIGINT NOT NULL,
-		accrued_pounds_e7 BIGINT NOT NULL DEFAULT 0, -- accrual as 7dp pounds (rounded view; numerator is canonical)
+		accrued_pounds_e7 BIGINT NOT NULL DEFAULT 0,
 		as_of TIMESTAMP NOT NULL
 	)`}},
+	{2, []string{`DROP TABLE IF EXISTS accrual_state`}},
 }}
-
-// clearAccrualLocked removes what the retired table still holds, e.g. on
-// reset of a durable database. Must be called with ds.mu held.
-func (ds *DemoState) clearAccrualLocked() {
-	if ds.db == nil {
-		return
-	}
-	if _, err := ds.db.Exec(`DELETE FROM accrual_state`); err != nil {
-		log.Printf("clearAccrual: %v", err)
-	}
-}
 
 // accountLocks serialises the work on one account. An in-day event
 // (a transfer, a funding) and the daily pass each rewrite the account's

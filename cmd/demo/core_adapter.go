@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"crypto/subtle"
+	"time"
 
 	luca "git.bytestone.uk/hum3/go-luca"
 	gbp "git.bytestone.uk/hum3/gobank-products"
@@ -303,6 +304,21 @@ func (a *coreAdapter) GiltHoldings(context.Context) ([]core.GiltHolding, error) 
 }
 
 // --- Commands ---
+
+// OpenCustomer implements core.CustomerCommands.
+func (a *coreAdapter) OpenCustomer(ctx context.Context, c core.NewCustomer) (core.CustomerRecord, error) {
+	id, err := a.ds.openCustomer(c)
+	if err != nil {
+		return core.CustomerRecord{}, err
+	}
+	return a.CustomerRecord(ctx, id)
+}
+
+// StartDay implements core.DayCommands.
+func (a *coreAdapter) StartDay(ctx context.Context) (time.Time, error) {
+	a.ds.advanceDayCtx(ctx)
+	return a.ds.position().Day, ctx.Err()
+}
 
 // Transfer implements core.PaymentCommands.
 func (a *coreAdapter) Transfer(_ context.Context, t core.Transfer) (core.Payment, error) {

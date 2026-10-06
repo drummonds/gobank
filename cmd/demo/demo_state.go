@@ -66,6 +66,8 @@ type DemoState struct {
 	progress            dayProgress      // the day being processed, for the runtime page
 	now                 func() time.Time // wall clock, injectable for tests
 	passHook            func()           // called after each account the pass visits; tests only
+	bank                coreBank         // the core as the generators reach it (sim_customers.go, sim_payments.go)
+	catalogue           []core.Product   // the generators' copy of the product catalogue, read once (mu)
 	dayLengthChanged    chan struct{}    // a console change of the day length, for the run loop's idle wait (one pending at most)
 	nimBps              float64          // the latest snapshot's NIM, for the position (mu)
 	boeAccruedNumerator int64            // BoE interest on excess reserves, numerator units over gbp.AccrualDenominator
@@ -187,6 +189,7 @@ func newDemoState() *DemoState {
 		memoryLimit:      defaultMemoryLimit,
 		dayLengthChanged: make(chan struct{}, 1),
 	}
+	ds.bank = newCoreAdapter(ds, "") // the generators' handle; app login goes through main's own adapter
 	return ds
 }
 
@@ -340,7 +343,9 @@ func (ds *DemoState) advanceDayCtx(ctx context.Context) {
 // BoE interest accrues on the excess reserves yesterday closed with and is
 // projected on the reserve account; the date and the base rate move on;
 // the day's snapshot and the run row are written, so a restart from here
-// resumes this day. Returns the new day. Must be called WITHOUT ds.mu held.
+// resumes this day. Returns the new day. Who joins the bank on the new day
+// is the simulation's business (rollNewCustomer), not the bank's. Must be
+// called WITHOUT ds.mu held.
 func (ds *DemoState) startDay(ledger *luca.SQLLedger) time.Time {
 	ds.mu.Lock()
 	closed := ds.currentDay
@@ -359,27 +364,6 @@ func (ds *DemoState) startDay(ledger *luca.SQLLedger) time.Time {
 	ds.dayCount++
 	ds.boeRate = lookupBoERate(ds.currentDay)
 	day := ds.currentDay
-
-	var newCustomer *customerPlan // today's new customer, persisted once ds.mu is released
-	if ds.nCustomers < ds.settings.Get().MaxCustomers {
-		boeRate := ds.boeRate
-		avgSavings := averageRate(ds.products, gbp.FamilySavings)
-		avgLending := averageRate(ds.products, gbp.FamilyLending)
-
-		savingsAttract := 0.0
-		lendingAttract := 0.0
-		if boeRate > 0 {
-			savingsAttract = (avgSavings - boeRate) / boeRate
-			lendingAttract = (boeRate - avgLending) / boeRate
-		}
-		attractiveness := clamp((savingsAttract+lendingAttract)/2, 0, 1)
-		dailyProb := 0.10 + attractiveness*0.20
-
-		if ds.rng.Float64() < dailyProb {
-			p := ds.planCustomerLocked()
-			newCustomer = &p
-		}
-	}
 
 	// The snapshot is the day the bank starts, with the NIM of the day just
 	// closed; the pass accrues the new day from zero.
@@ -417,9 +401,6 @@ func (ds *DemoState) startDay(ledger *luca.SQLLedger) time.Time {
 			}
 			unlock()
 		}
-	}
-	if newCustomer != nil {
-		ds.persistCustomerPlan(*newCustomer)
 	}
 	saveSnapshot(db, snapshot)
 	// The day is on record before its pass begins: a restart from here
@@ -522,8 +503,11 @@ func (ds *DemoState) boeInterestTotal() luca.Amount {
 	return ds.boeInterestApplied + luca.Amount(ds.boeAccruedNumerator/gbp.AccrualDenominator)
 }
 
+// AdvanceDay is the console's step: one day of the simulation, the bank's
+// start of day and then the generators' roll for a new customer.
 func (ds *DemoState) AdvanceDay() {
 	ds.advanceDay()
+	ds.rollNewCustomer(context.Background())
 }
 
 // refreshFromLedger reads the bank's position back from the database,
@@ -605,6 +589,9 @@ func (ds *DemoState) Start() {
 				dayLength := ds.settings.Get().DayLength
 				ds.setDayEnd(start, dayLength)
 				ds.advanceDayCtx(ctx)
+				if ctx.Err() == nil {
+					ds.rollNewCustomer(ctx)
+				}
 				wait = nextDayDelay(dayLength, ds.now().Sub(start))
 			}
 		}
@@ -674,79 +661,6 @@ func (ds *DemoState) IsRunning() bool {
 	return ds.running
 }
 
-// AddCustomersBatch starts adding n customers in the background, with one
-// worker per database writer. Each worker holds ds.mu only to plan a
-// customer, so other operations proceed while customers are persisted.
-func (ds *DemoState) AddCustomersBatch(n int) {
-	ds.mu.Lock()
-	if ds.addingCustRunning {
-		ds.mu.Unlock()
-		return
-	}
-	ctx, cancel := context.WithCancel(context.Background())
-	ds.addingCustRunning = true
-	ds.addingCustCancel = cancel
-	ds.addingCustProgress = 0
-	ds.addingCustTarget = n
-	ds.addingCustStart = ds.now()
-	workers := ds.dbWriters()
-	ds.mu.Unlock()
-
-	claimed := 0 // customers planned by this batch (mu)
-	go func() {
-		defer cancel()
-		var wg sync.WaitGroup
-		for range workers {
-			wg.Go(func() {
-				for ctx.Err() == nil {
-					ds.mu.Lock()
-					if claimed >= n || ds.nCustomers >= ds.settings.Get().MaxCustomers {
-						ds.mu.Unlock()
-						return
-					}
-					claimed++
-					p := ds.planCustomerLocked()
-					ds.mu.Unlock()
-
-					ds.persistCustomerPlan(p)
-
-					ds.mu.Lock()
-					if ctx.Err() == nil {
-						ds.addingCustProgress++
-					}
-					ds.mu.Unlock()
-					yieldToBrowser()
-				}
-			})
-		}
-		wg.Wait()
-		ds.mu.Lock()
-		if ctx.Err() == nil { // a Reset has already finished a cancelled batch
-			ds.finishAddingLocked()
-		}
-		ds.mu.Unlock()
-	}()
-}
-
-// finishAddingLocked ends a batch add, keeping its customers/s for the
-// dashboard. Must be called with ds.mu held.
-func (ds *DemoState) finishAddingLocked() {
-	if ds.addingCustProgress > 0 {
-		ds.lastAddRate = perSecond(ds.addingCustProgress, ds.now().Sub(ds.addingCustStart))
-	}
-	ds.addingCustRunning = false
-	ds.addingCustCancel = nil
-	ds.addingCustProgress = 0
-	ds.addingCustTarget = 0
-}
-
-// IsAddingCustomers returns true if a batch add is in progress.
-func (ds *DemoState) IsAddingCustomers() bool {
-	ds.mu.Lock()
-	defer ds.mu.Unlock()
-	return ds.addingCustRunning
-}
-
 func (ds *DemoState) Reset() {
 	ds.mu.Lock()
 	defer ds.mu.Unlock()
@@ -793,7 +707,6 @@ func (ds *DemoState) Reset() {
 	// Clear persisted numerators so a durable (postgres) DB doesn't carry
 	// accrual rows from before the reset.
 	ds.clearRegisterLocked()
-	ds.clearAccrualLocked()
 	ds.dayEndsAt = time.Time{}
 	ds.shuttingDown = false
 	ds.resumedRunning = false
