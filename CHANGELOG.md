@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+## [0.14.0] - 2026-10-06
+
+ - Stage 4 story (b): the bank reads the time and the base rate from injected sources; the simulation clock is warped by the day length and resumes mid-day
+
  - Stage 4 story (b): the bank reads the time and the base rate from injected sources; the simulation's clock is warped by the day length and resumes mid-day
 
 ### Changed
