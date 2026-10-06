@@ -78,8 +78,8 @@ type Payment struct {
 // The payments component owns the payments table. Other code reads
 // payments through the contract_payments view or the API below (ADR-0001).
 
-var paymentsSchema = componentSchema{component: "payments", migrations: []migration{
-	{1, []string{
+var paymentsSchema = componentSchema{Name: "payments", Migrations: []migration{
+	{Version: 1, Statements: []string{
 		`CREATE TABLE IF NOT EXISTS payments (
 			id INTEGER PRIMARY KEY,
 			type SMALLINT NOT NULL,

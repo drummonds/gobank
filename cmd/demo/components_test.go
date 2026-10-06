@@ -63,12 +63,18 @@ func TestEveryTableHasOneOwner(t *testing.T) {
 	}
 }
 
-// Every file a component claims exists, and no file is claimed twice.
+// Every package and file a component claims exists, and no file is claimed
+// twice.
 func TestComponentFilesExist(t *testing.T) {
 	seen := map[string]string{}
 	for _, c := range components {
 		if c.Name == "" || c.Purpose == "" {
 			t.Errorf("component %+v needs a name and purpose", c)
+		}
+		if c.Package != "" {
+			if _, err := os.Stat(filepath.Join("../..", c.Package)); err != nil {
+				t.Errorf("component %s claims package %s: %v", c.Name, c.Package, err)
+			}
 		}
 		for _, f := range c.Files {
 			if _, err := os.Stat(f); err != nil {
@@ -102,6 +108,12 @@ func TestContractViewRule(t *testing.T) {
 		for _, f := range c.Files {
 			fileOwner[f] = c.Name
 		}
+		if c.Package != "" {
+			pkgFiles, _ := filepath.Glob(filepath.Join("../..", c.Package, "*.go"))
+			for _, f := range pkgFiles {
+				fileOwner[f] = c.Name
+			}
+		}
 	}
 	baseline := map[crossRead]bool{}
 	for _, d := range contractDebt {
@@ -110,8 +122,9 @@ func TestContractViewRule(t *testing.T) {
 	seenDebt := map[crossRead]bool{}
 
 	files, _ := filepath.Glob("*.go")
+	bankFiles, _ := filepath.Glob("../../bank/*/*.go")
 	fset := token.NewFileSet()
-	for _, file := range files {
+	for _, file := range append(files, bankFiles...) {
 		if strings.HasSuffix(file, "_test.go") {
 			continue
 		}

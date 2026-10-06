@@ -36,9 +36,9 @@ func appliedVersions(t *testing.T, db *sql.DB, component string) []int {
 // nothing; a version added later is the only one applied next time.
 func TestMigrationsApplyOnceInOrder(t *testing.T) {
 	db := openTestDB(t)
-	widgets := componentSchema{component: "widgets", migrations: []migration{
-		{1, []string{`CREATE TABLE widgets (id INTEGER PRIMARY KEY)`}},
-		{2, []string{`ALTER TABLE widgets ADD COLUMN colour VARCHAR(20)`}},
+	widgets := componentSchema{Name: "widgets", Migrations: []migration{
+		{Version: 1, Statements: []string{`CREATE TABLE widgets (id INTEGER PRIMARY KEY)`}},
+		{Version: 2, Statements: []string{`ALTER TABLE widgets ADD COLUMN colour VARCHAR(20)`}},
 	}}
 	if err := migrate(db, []componentSchema{widgets}); err != nil {
 		t.Fatal(err)
@@ -56,7 +56,7 @@ func TestMigrationsApplyOnceInOrder(t *testing.T) {
 	}
 
 	// A new version applies on its own.
-	widgets.migrations = append(widgets.migrations, migration{3, []string{`ALTER TABLE widgets ADD COLUMN size INTEGER`}})
+	widgets.Migrations = append(widgets.Migrations, migration{Version: 3, Statements: []string{`ALTER TABLE widgets ADD COLUMN size INTEGER`}})
 	if err := migrate(db, []componentSchema{widgets}); err != nil {
 		t.Fatal(err)
 	}
@@ -72,9 +72,9 @@ func TestMigrationsApplyOnceInOrder(t *testing.T) {
 // the list is refused before anything runs.
 func TestMigrationsRefuseUnorderedVersions(t *testing.T) {
 	db := openTestDB(t)
-	bad := componentSchema{component: "widgets", migrations: []migration{
-		{1, []string{`CREATE TABLE widgets (id INTEGER PRIMARY KEY)`}},
-		{3, []string{`ALTER TABLE widgets ADD COLUMN colour VARCHAR(20)`}},
+	bad := componentSchema{Name: "widgets", Migrations: []migration{
+		{Version: 1, Statements: []string{`CREATE TABLE widgets (id INTEGER PRIMARY KEY)`}},
+		{Version: 3, Statements: []string{`ALTER TABLE widgets ADD COLUMN colour VARCHAR(20)`}},
 	}}
 	if err := migrate(db, []componentSchema{bad}); err == nil {
 		t.Fatal("a gap in the version list should be refused")
@@ -96,14 +96,14 @@ func TestSchemasCreateOnlyTheirOwnTables(t *testing.T) {
 		}
 	}
 	for _, s := range demoSchemas() {
-		if !registered[s.component] {
-			t.Errorf("schema %s: no such component in the registry", s.component)
+		if !registered[s.Name] {
+			t.Errorf("schema %s: no such component in the registry", s.Name)
 		}
-		for _, m := range s.migrations {
-			for _, stmt := range m.stmts {
+		for _, m := range s.Migrations {
+			for _, stmt := range m.Statements {
 				for _, tbl := range sqlTables(stmt, owner) {
-					if owner[tbl] != s.component {
-						t.Errorf("schema %s v%d touches %s, a table of %s", s.component, m.version, tbl, owner[tbl])
+					if owner[tbl] != s.Name {
+						t.Errorf("schema %s v%d touches %s, a table of %s", s.Name, m.Version, tbl, owner[tbl])
 					}
 				}
 			}

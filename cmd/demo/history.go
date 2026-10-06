@@ -17,8 +17,8 @@ import (
 // day — and is never rewritten, so a restart shows the same charts. The
 // migration only adds the table: the previous release runs on the same
 // database and a rollback is possible.
-var historySchema = componentSchema{component: "history", migrations: []migration{
-	{1, []string{`CREATE TABLE IF NOT EXISTS daily_snapshots (
+var historySchema = componentSchema{Name: "history", Migrations: []migration{
+	{Version: 1, Statements: []string{`CREATE TABLE IF NOT EXISTS daily_snapshots (
 		day TIMESTAMP PRIMARY KEY,
 		savings BIGINT NOT NULL,
 		lending BIGINT NOT NULL,

@@ -7,6 +7,6 @@ import "git.bytestone.uk/hum3/gobank/bff"
 // upgrade keeps customers logged in. The BFF owns the table's code
 // (bff.SQLSessions); the demo registers its schema so the table is
 // versioned with the rest. The migration only adds the table.
-var sessionsSchema = componentSchema{component: "sessions", migrations: []migration{
-	{1, bff.SessionsSchema},
+var sessionsSchema = componentSchema{Name: "sessions", Migrations: []migration{
+	{Version: 1, Statements: bff.SessionsSchema},
 }}

@@ -13,8 +13,8 @@ import (
 // overwritten at the end of every day and when the loop starts or stops,
 // so a restart picks the run up where it was (ADR-0003: the run resumes).
 
-var simulationSchema = componentSchema{component: "simulation", migrations: []migration{
-	{1, []string{`CREATE TABLE IF NOT EXISTS sim_run (
+var simulationSchema = componentSchema{Name: "simulation", Migrations: []migration{
+	{Version: 1, Statements: []string{`CREATE TABLE IF NOT EXISTS sim_run (
 		id INTEGER PRIMARY KEY,
 		current_day TIMESTAMP NOT NULL,
 		day_count INTEGER NOT NULL,
@@ -25,11 +25,11 @@ var simulationSchema = componentSchema{component: "simulation", migrations: []mi
 	// The day length set on the console is the run's: recorded so the next
 	// process resumes at it (ADR-0003: an upgrade lands mid-day). NULL is
 	// a run that never set one and takes the environment's.
-	{3, []string{`ALTER TABLE sim_run ADD COLUMN day_length VARCHAR(20) NULL`}},
+	{Version: 3, Statements: []string{`ALTER TABLE sim_run ADD COLUMN day_length VARCHAR(20) NULL`}},
 	// When the simulated day in progress began, by the wall clock, so the
 	// next process resumes the clock mid-day (stage 4: the simulation's
 	// clock). NULL is a run from before the clock.
-	{4, []string{`ALTER TABLE sim_run ADD COLUMN slot_start TIMESTAMP NULL`}},
+	{Version: 4, Statements: []string{`ALTER TABLE sim_run ADD COLUMN slot_start TIMESTAMP NULL`}},
 }}
 
 // runState is where the run is: the simulated day the bank is on, how

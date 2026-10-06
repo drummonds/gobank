@@ -18,8 +18,8 @@ import (
 // idx is the account's position in the customer's account list; the bank
 // app and admin pages address accounts by (customer, index).
 
-var customersSchema = componentSchema{component: "customers", migrations: []migration{
-	{1, []string{`CREATE TABLE IF NOT EXISTS customer_accounts (
+var customersSchema = componentSchema{Name: "customers", Migrations: []migration{
+	{Version: 1, Statements: []string{`CREATE TABLE IF NOT EXISTS customer_accounts (
 		customer_id VARCHAR(20) NOT NULL,
 		idx INTEGER NOT NULL,
 		ledger_account_id VARCHAR(64) NOT NULL UNIQUE,

@@ -133,8 +133,12 @@ func (a *coreAdapter) ProfitAndLoss(context.Context) (core.ProfitAndLoss, error)
 // BalanceSheet implements core.BookQueries.
 func (a *coreAdapter) BalanceSheet(ctx context.Context) (core.BalanceSheet, error) {
 	pos, pl := a.ds.position(), a.ds.profitAndLoss()
+	holdings, err := a.ds.treasury.Holdings(ctx)
+	if err != nil {
+		return core.BalanceSheet{}, err
+	}
 	var gilts luca.Amount
-	for _, h := range a.ds.getGiltHoldings() {
+	for _, h := range holdings {
 		gilts += h.FaceValue
 	}
 	retained := pl.NetProfit()
@@ -294,13 +298,13 @@ func (a *coreAdapter) Products(context.Context) ([]core.Product, error) {
 // --- Treasury ---
 
 // GiltYields implements core.TreasuryQueries.
-func (a *coreAdapter) GiltYields(context.Context) ([]core.GiltYield, error) {
-	return a.ds.getGiltYields(), nil
+func (a *coreAdapter) GiltYields(ctx context.Context) ([]core.GiltYield, error) {
+	return a.ds.treasury.Yields(ctx)
 }
 
 // GiltHoldings implements core.TreasuryQueries.
-func (a *coreAdapter) GiltHoldings(context.Context) ([]core.GiltHolding, error) {
-	return a.ds.getGiltHoldings(), nil
+func (a *coreAdapter) GiltHoldings(ctx context.Context) ([]core.GiltHolding, error) {
+	return a.ds.treasury.Holdings(ctx)
 }
 
 // --- Commands ---
@@ -330,8 +334,8 @@ func (a *coreAdapter) Transfer(_ context.Context, t core.Transfer) (core.Payment
 }
 
 // BuyGilt implements core.TreasuryCommands.
-func (a *coreAdapter) BuyGilt(_ context.Context, tenor string, faceValue luca.Amount) error {
-	return a.ds.BuyGilt(tenor, faceValue)
+func (a *coreAdapter) BuyGilt(ctx context.Context, tenor string, faceValue luca.Amount) error {
+	return a.ds.treasury.Buy(ctx, tenor, faceValue)
 }
 
 var (

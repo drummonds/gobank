@@ -3,6 +3,8 @@ package main
 import (
 	"database/sql"
 	"fmt"
+	"git.bytestone.uk/hum3/gobank/bank/schema"
+	"git.bytestone.uk/hum3/gobank/bank/treasury"
 	"log"
 	"time"
 )
@@ -17,21 +19,15 @@ import (
 
 // migration is one step of a component's schema: the statements that take
 // it from version-1 to version, applied in one transaction.
-type migration struct {
-	version int
-	stmts   []string
-}
+type migration = schema.Migration
 
 // componentSchema is a component's migrations in version order, 1, 2, 3…
-type componentSchema struct {
-	component  string
-	migrations []migration
-}
+type componentSchema = schema.Component
 
 // demoSchemas is every component's schema. Libraries (the ledger, the
 // customer store) create their own tables and are not listed.
 func demoSchemas() []componentSchema {
-	return []componentSchema{simulationSchema, productsSchema, customersSchema, paymentsSchema, treasurySchema, historySchema, sessionsSchema}
+	return []componentSchema{simulationSchema, productsSchema, customersSchema, paymentsSchema, treasury.Schema, historySchema, sessionsSchema}
 }
 
 // migrate brings every component's tables up to its latest version,
@@ -39,9 +35,9 @@ func demoSchemas() []componentSchema {
 // gap or a repeat is a mistake in the code and nothing is applied.
 func migrate(db *sql.DB, schemas []componentSchema) error {
 	for _, s := range schemas {
-		for i, m := range s.migrations {
-			if m.version != i+1 {
-				return fmt.Errorf("schema %s: migration %d listed where version %d is due", s.component, m.version, i+1)
+		for i, m := range s.Migrations {
+			if m.Version != i+1 {
+				return fmt.Errorf("schema %s: migration %d listed where version %d is due", s.Name, m.Version, i+1)
 			}
 		}
 	}
@@ -55,17 +51,17 @@ func migrate(db *sql.DB, schemas []componentSchema) error {
 	}
 	for _, s := range schemas {
 		var current int
-		if err := db.QueryRow(`SELECT COALESCE(MAX(version), 0) FROM schema_versions WHERE component = $1`, s.component).Scan(&current); err != nil {
-			return fmt.Errorf("schema %s: current version: %w", s.component, err)
+		if err := db.QueryRow(`SELECT COALESCE(MAX(version), 0) FROM schema_versions WHERE component = $1`, s.Name).Scan(&current); err != nil {
+			return fmt.Errorf("schema %s: current version: %w", s.Name, err)
 		}
-		for _, m := range s.migrations {
-			if m.version <= current {
+		for _, m := range s.Migrations {
+			if m.Version <= current {
 				continue
 			}
-			if err := apply(db, s.component, m); err != nil {
+			if err := apply(db, s.Name, m); err != nil {
 				return err
 			}
-			log.Printf("schema: %s at version %d", s.component, m.version)
+			log.Printf("schema: %s at version %d", s.Name, m.Version)
 		}
 	}
 	return nil
@@ -75,18 +71,18 @@ func migrate(db *sql.DB, schemas []componentSchema) error {
 func apply(db *sql.DB, component string, m migration) error {
 	tx, err := db.Begin()
 	if err != nil {
-		return fmt.Errorf("schema %s v%d: begin: %w", component, m.version, err)
+		return fmt.Errorf("schema %s v%d: begin: %w", component, m.Version, err)
 	}
-	for _, stmt := range m.stmts {
+	for _, stmt := range m.Statements {
 		if _, err := tx.Exec(stmt); err != nil {
 			tx.Rollback()
-			return fmt.Errorf("schema %s v%d: %w", component, m.version, err)
+			return fmt.Errorf("schema %s v%d: %w", component, m.Version, err)
 		}
 	}
 	if _, err := tx.Exec(`INSERT INTO schema_versions (component, version, applied_at) VALUES ($1, $2, $3)`,
-		component, m.version, time.Now().UTC()); err != nil {
+		component, m.Version, time.Now().UTC()); err != nil {
 		tx.Rollback()
-		return fmt.Errorf("schema %s v%d: record: %w", component, m.version, err)
+		return fmt.Errorf("schema %s v%d: record: %w", component, m.Version, err)
 	}
 	return tx.Commit()
 }

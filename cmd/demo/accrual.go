@@ -20,14 +20,14 @@ import (
 // productsSchema: the component owns no table. accrual_state held
 // accrued-but-unapplied interest before positions did (gobank ≤ v0.10);
 // v0.11 stopped writing it and version 2 drops it.
-var productsSchema = componentSchema{component: "products", migrations: []migration{
-	{1, []string{`CREATE TABLE IF NOT EXISTS accrual_state (
+var productsSchema = componentSchema{Name: "products", Migrations: []migration{
+	{Version: 1, Statements: []string{`CREATE TABLE IF NOT EXISTS accrual_state (
 		account_id VARCHAR(64) PRIMARY KEY,
 		numerator BIGINT NOT NULL,
 		accrued_pounds_e7 BIGINT NOT NULL DEFAULT 0,
 		as_of TIMESTAMP NOT NULL
 	)`}},
-	{2, []string{`DROP TABLE IF EXISTS accrual_state`}},
+	{Version: 2, Statements: []string{`DROP TABLE IF EXISTS accrual_state`}},
 }}
 
 // accountLocks serialises the work on one account. An in-day event

@@ -26,12 +26,16 @@ func BuildDocsHTML() string {
 	s.WriteString(`<div class="box"><h3 class="title is-5">Components</h3>`)
 	s.WriteString(`<p class="has-text-grey mb-3">Each component owns its tables. Other code reads them only through the component's contract views or API (<a href="/about/docs/adr/contract-views">ADR-0001</a>).</p>`)
 	s.WriteString(`<div class="table-container"><table class="table is-fullwidth is-striped">
-<thead><tr><th>Component</th><th>Purpose</th><th>Internal tables</th><th>Contract views</th><th>Files</th><th>Library</th></tr></thead><tbody>`)
+<thead><tr><th>Component</th><th>Purpose</th><th>Internal tables</th><th>Contract views</th><th>Package or files</th><th>Library</th></tr></thead><tbody>`)
 	for _, c := range components {
+		where := c.Files
+		if c.Package != "" {
+			where = append([]string{c.Package}, c.Files...)
+		}
 		s.WriteString(fmt.Sprintf(`<tr><td><strong>%s</strong></td><td>%s</td><td>%s</td><td>%s</td><td>%s</td><td>%s</td></tr>`,
 			html.EscapeString(c.Name), html.EscapeString(c.Purpose),
 			codeList(c.Tables, "none yet"), codeList(c.Views, "none yet"),
-			codeList(c.Files, "library only"), html.EscapeString(c.Library)))
+			codeList(where, "library only"), html.EscapeString(c.Library)))
 	}
 	s.WriteString(`</tbody></table></div></div>`)
 

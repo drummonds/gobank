@@ -170,7 +170,7 @@ func TestNoFloatMoneyStorage(t *testing.T) {
 		_ luca.Amount = TxEntry{}.Balance
 		_ luca.Amount = BalancePoint{}.Savings
 		_ luca.Amount = BalancePoint{}.Lending
-		_ luca.Amount = GiltHolding{}.FaceValue
+		_ luca.Amount = core.GiltHolding{}.FaceValue
 		_ int64       = CustomerAccount{}.AccruedE7
 		_ int64       = luca.Position{}.Accrued.Num
 		_ int64       = dayResult{}.accrued

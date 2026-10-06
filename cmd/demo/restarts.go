@@ -17,7 +17,7 @@ import (
 // previous stop to this start, and the run on both sides of the gap says
 // whether anything was lost. The migration only adds the table, so the
 // previous release runs on the same database and a rollback is possible.
-var restartsMigration = migration{2, []string{`CREATE TABLE IF NOT EXISTS restarts (
+var restartsMigration = migration{Version: 2, Statements: []string{`CREATE TABLE IF NOT EXISTS restarts (
 	id SERIAL PRIMARY KEY,
 	version VARCHAR(50) NOT NULL,
 	started_at TIMESTAMP NOT NULL,

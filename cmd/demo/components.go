@@ -7,11 +7,13 @@ package main
 
 import "slices"
 
-// Component is one function of the bank.
+// Component is one function of the bank: a package under bank/ once it has
+// moved there (ADR-0002 stage 5), a set of files in this package until then.
 type Component struct {
 	Name    string   // domain name, e.g. "payments"
 	Purpose string   // one line
 	Library string   // external module that owns the schema, if any
+	Package string   // the root-module package the component is, e.g. "bank/treasury" (ADR-0002 stage 5); "" while it is still files here
 	Files   []string // source files in this package the component owns
 	Tables  []string // internal tables: only this component's code touches them
 	Views   []string // contract views (contract_*) other code reads
@@ -77,7 +79,7 @@ var components = []Component{
 	{
 		Name:    "treasury",
 		Purpose: "Gilt yields and holdings: where the bank places its liquidity.",
-		Files:   []string{"treasury.go"},
+		Package: "bank/treasury",
 		Tables:  []string{"gilt_yields", "gilt_holdings"},
 	},
 }

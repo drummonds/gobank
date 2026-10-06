@@ -1,5 +1,9 @@
 package main
 
+// The treasury pages: cash position, capital and gilt purchases, rendered
+// from the core's book and treasury queries (the desk itself is
+// bank/treasury).
+
 import (
 	"context"
 	"fmt"
@@ -9,81 +13,6 @@ import (
 	luca "git.bytestone.uk/hum3/go-luca"
 	"git.bytestone.uk/hum3/gobank/core"
 )
-
-// The treasury's rows are the core's types (ADR-0002 stage 1).
-type (
-	GiltYield   = core.GiltYield
-	GiltHolding = core.GiltHolding
-)
-
-// getGiltYields reads current gilt yields from the DB.
-func (ds *DemoState) getGiltYields() []GiltYield {
-	db := ds.DB()
-	if db == nil {
-		return nil
-	}
-	rows, err := db.Query(`SELECT tenor, rate FROM gilt_yields ORDER BY tenor`)
-	if err != nil {
-		return nil
-	}
-	defer rows.Close()
-	var yields []GiltYield
-	for rows.Next() {
-		var y GiltYield
-		if err := rows.Scan(&y.Tenor, &y.Rate); err == nil {
-			yields = append(yields, y)
-		}
-	}
-	return yields
-}
-
-// getGiltHoldings reads gilt holdings from the DB.
-func (ds *DemoState) getGiltHoldings() []GiltHolding {
-	db := ds.DB()
-	if db == nil {
-		return nil
-	}
-	rows, err := db.Query(`SELECT id, tenor, face_value, purchase_date, yield FROM gilt_holdings ORDER BY id`)
-	if err != nil {
-		return nil
-	}
-	defer rows.Close()
-	var holdings []GiltHolding
-	for rows.Next() {
-		var h GiltHolding
-		if err := rows.Scan(&h.ID, &h.Tenor, &h.FaceValue, &h.PurchaseDate, &h.Yield); err == nil {
-			holdings = append(holdings, h)
-		}
-	}
-	return holdings
-}
-
-// BuyGilt is the core's BuyGilt command (ADR-0002 stage 1): it buys
-// faceValue of gilts of the given tenor at today's yield and records the
-// holding.
-func (ds *DemoState) BuyGilt(tenor string, faceValue luca.Amount) error {
-	if faceValue < core.MinGiltPurchase {
-		return core.ErrInvalidAmount
-	}
-	db := ds.DB()
-	if db == nil {
-		return fmt.Errorf("database not available")
-	}
-
-	// Look up current yield
-	var rate float64
-	if err := db.QueryRow(`SELECT rate FROM gilt_yields WHERE tenor = $1`, tenor).Scan(&rate); err != nil {
-		return fmt.Errorf("tenor %q: %w", tenor, core.ErrNotFound)
-	}
-
-	ds.mu.Lock()
-	purchaseDate := ds.currentDay
-	ds.mu.Unlock()
-
-	_, err := db.Exec(`INSERT INTO gilt_holdings (tenor, face_value, purchase_date, yield) VALUES ($1, $2, $3, $4)`,
-		tenor, faceValue, purchaseDate, rate)
-	return err
-}
 
 // --- Cash Position Page ---
 
@@ -302,7 +231,7 @@ func tenorYears(tenor string) float64 {
 }
 
 // buildYieldCurveSVG renders the gilt yield curve as an SVG chart.
-func buildYieldCurveSVG(yields []GiltYield) string {
+func buildYieldCurveSVG(yields []core.GiltYield) string {
 	if len(yields) == 0 {
 		return `<p class="has-text-grey">No yield data.</p>`
 	}
@@ -377,25 +306,3 @@ func buildYieldCurveSVG(yields []GiltYield) string {
 	s.WriteString(`</svg>`)
 	return s.String()
 }
-
-// treasurySchema: gilt yields (seeded once with the opening curve) and the
-// bank's gilt holdings.
-var treasurySchema = componentSchema{component: "treasury", migrations: []migration{
-	{1, []string{
-		`CREATE TABLE IF NOT EXISTS gilt_yields (
-			tenor VARCHAR(10) PRIMARY KEY,
-			rate REAL NOT NULL,
-			effective_date TIMESTAMP DEFAULT NOW()
-		)`,
-		`CREATE TABLE IF NOT EXISTS gilt_holdings (
-			id SERIAL PRIMARY KEY,
-			tenor VARCHAR(10) NOT NULL,
-			face_value BIGINT NOT NULL, -- minor units (pence)
-			purchase_date TIMESTAMP NOT NULL,
-			yield REAL NOT NULL
-		)`,
-		`INSERT INTO gilt_yields (tenor, rate) VALUES
-			('1Y', 0.0435), ('2Y', 0.0410), ('5Y', 0.0395), ('10Y', 0.0405), ('30Y', 0.0445)
-			ON CONFLICT (tenor) DO NOTHING`,
-	}},
-}}

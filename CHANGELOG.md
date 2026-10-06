@@ -2,6 +2,27 @@
 
 ## [Unreleased]
 
+ - Stage 5 story 1.5.1: the treasury is the first bank component in a package of its own, `bank/treasury`
+
+### Changed
+- ADR-0002 stage 5 story 1.5.1, treasury. The gilt desk is the package
+  `bank/treasury`: it owns `gilt_yields` and `gilt_holdings` and their
+  migrations (`treasury.Schema`), quotes the yield curve, lists the
+  holdings and books a purchase on the bank's business day, which is the
+  only thing it reads of the rest of the bank. The demo's `coreAdapter`
+  forwards `GiltYields`, `GiltHoldings` and `BuyGilt` to it; the treasury
+  pages stay in the demo as UI (`treasury_pages.go`) reading through the
+  core. A component may now be a package: the registry's `Package` field
+  names it, the documentation page shows it, and the contract-view rule
+  (ADR-0001) scans `bank/` as well as the demo. The bank packages are held
+  to the core, each other and the domain libraries by
+  `TestBankPackagesKnowOnlyTheCoreAndEachOther`: no UI, no simulation, no
+  demo wiring. No schema change: the drill is the restart alone.
+### Added
+- `bank/schema`: the shape of a component's migrations (`Migration`,
+  `Component`), so a package can publish its own schema for the wiring to
+  apply. The demo's `componentSchema` and `migration` are aliases of it.
+
 ## [0.15.0] - 2026-10-06
 
  - Stage 4 story (c), the simulation as a package of its own (the stage is done), and the customer app as designed: generated wireframe, access states, BFF journey

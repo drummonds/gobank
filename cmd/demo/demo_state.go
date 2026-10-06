@@ -15,6 +15,7 @@ import (
 
 	luca "git.bytestone.uk/hum3/go-luca"
 	gbp "git.bytestone.uk/hum3/gobank-products"
+	"git.bytestone.uk/hum3/gobank/bank/treasury"
 	"git.bytestone.uk/hum3/gobank/cmd/demo/sim"
 	"git.bytestone.uk/hum3/gobank/core"
 	customers "git.bytestone.uk/hum3/gobanks-customers"
@@ -64,6 +65,7 @@ type DemoState struct {
 	dbBackend           string // human-readable data store description, set by initDBWithDSN
 	dbIsPostgres        bool   // real PostgreSQL (pgx) rather than in-memory pglike
 	ledger              *luca.SQLLedger
+	treasury            *treasury.Treasury // the gilt desk (bank/treasury), opened on db
 	custStore           *customers.SQLCustomerStore
 	equityAccountID     string
 	expenseInterestID   string // ledger IDs the day's rules post against, resolved at start
@@ -135,6 +137,14 @@ func (ds *DemoState) openOn(db *sql.DB, dsn string) *DemoState {
 	ds.restartID = recordStart(ds.db, version, ds.dayCount, ds.nCustomers, run.SavedAt)
 	ds.mu.Unlock()
 	return ds
+}
+
+// businessDay is the day the bank is on, which a component books its
+// facts against.
+func (ds *DemoState) businessDay() time.Time {
+	ds.mu.Lock()
+	defer ds.mu.Unlock()
+	return ds.currentDay
 }
 
 // resumeBooks rebuilds the in-memory picture of the bank from the
