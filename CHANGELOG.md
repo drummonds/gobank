@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+## [0.16.0] - 2026-10-06
+
+ - Stage 5 story 1.5.1: the treasury is the first bank component in a package of its own, bank/treasury
+
  - Stage 5 story 1.5.1: the treasury is the first bank component in a package of its own, `bank/treasury`
 
 ### Changed
