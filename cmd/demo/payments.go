@@ -273,15 +273,17 @@ func (ds *DemoState) transfer(t core.Transfer) (Payment, error) {
 	}
 
 	ref := fmt.Sprintf("PAY-%06d", ds.nextPaymentID)
-	// The two accounts' positions are rewritten: take their locks so the
-	// daily pass and this event take turns on each of them.
-	unlock := ds.accountLocks.lock(fromAcc.LedgerAccountID, toAcc.LedgerAccountID)
-	defer unlock()
-	fromProduct, _ := ds.productByID(fromAcc.ProductID)
-	toProduct, _ := ds.productByID(toAcc.ProductID)
-	for _, r := range ds.postEvent(ds.ledger, ds.currentDay, fromAcc.LedgerAccountID, toAcc.LedgerAccountID, t.Amount, luca.CodeBookTransfer, ref,
-		dayAccount{id: fromAcc.LedgerAccountID, product: fromProduct}, dayAccount{id: toAcc.LedgerAccountID, product: toProduct}) {
-		ds.bookResultLocked(r)
+	if ds.ledger != nil {
+		// The two accounts' positions are rewritten: take their locks so
+		// the daily pass and this event take turns on each of them.
+		unlock := ds.ledger.Lock(fromAcc.LedgerAccountID, toAcc.LedgerAccountID)
+		defer unlock()
+		fromProduct, _ := ds.productByID(fromAcc.ProductID)
+		toProduct, _ := ds.productByID(toAcc.ProductID)
+		for _, r := range ds.postEvent(ds.ledger, ds.currentDay, fromAcc.LedgerAccountID, toAcc.LedgerAccountID, t.Amount, luca.CodeBookTransfer, ref,
+			dayAccount{id: fromAcc.LedgerAccountID, product: fromProduct}, dayAccount{id: toAcc.LedgerAccountID, product: toProduct}) {
+			ds.bookResultLocked(r)
+		}
 	}
 
 	p := Payment{

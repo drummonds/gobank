@@ -16,6 +16,7 @@ import (
 	luca "git.bytestone.uk/hum3/go-luca"
 	gbp "git.bytestone.uk/hum3/gobank-products"
 	"git.bytestone.uk/hum3/gobank/bank/history"
+	"git.bytestone.uk/hum3/gobank/bank/ledger"
 	"git.bytestone.uk/hum3/gobank/bank/treasury"
 	"git.bytestone.uk/hum3/gobank/cmd/demo/sim"
 	"git.bytestone.uk/hum3/gobank/core"
@@ -63,26 +64,19 @@ type DemoState struct {
 	nimBps              float64             // the latest snapshot's NIM, for the position (mu)
 	boeAccruedNumerator int64               // BoE interest on excess reserves, numerator units over gbp.AccrualDenominator
 	db                  *sql.DB
-	dbBackend           string // human-readable data store description, set by initDBWithDSN
-	dbIsPostgres        bool   // real PostgreSQL (pgx) rather than in-memory pglike
-	ledger              *luca.SQLLedger
+	dbBackend           string             // human-readable data store description, set by initDBWithDSN
+	dbIsPostgres        bool               // real PostgreSQL (pgx) rather than in-memory pglike
+	ledger              *ledger.Ledger     // the books of account (bank/ledger), opened on db with the chart resolved
 	treasury            *treasury.Treasury // the gilt desk (bank/treasury), opened on db
 	history             *history.History   // the daily snapshots (bank/history), opened on db
 	custStore           *customers.SQLCustomerStore
-	equityAccountID     string
-	expenseInterestID   string // ledger IDs the day's rules post against, resolved at start
-	incomeInterestID    string
-	incomeBoEID         string
-	accrBoEID           string
-	boeReservesID       string
-	boePostedPence      int64        // whole pence of BoE accrual posted to the ledger, not yet applied (mu)
-	boeInterestApplied  luca.Amount  // cumulative BoE interest applied into Asset:BoEReserves (mu)
-	accountLocks        accountLocks // one lock per ledger account: an in-day event and the daily pass take turns on it
-	memoryExceeded      bool         // true when heap > memoryLimit; simulation pauses
-	memoryLimit         uint64       // auto-stop threshold, see SetMemoryLimit
-	book                bookTotals   // running customer savings/lending totals, see book.go (mu)
-	dayAccrualSavings   int64        // interest accrued today on savings, numerator units over gbp.AccrualDenominator (mu)
-	dayAccrualLending   int64        // same for lending (mu)
+	boePostedPence      int64       // whole pence of BoE accrual posted to the ledger, not yet applied (mu)
+	boeInterestApplied  luca.Amount // cumulative BoE interest applied into Asset:BoEReserves (mu)
+	memoryExceeded      bool        // true when heap > memoryLimit; simulation pauses
+	memoryLimit         uint64      // auto-stop threshold, see SetMemoryLimit
+	book                bookTotals  // running customer savings/lending totals, see book.go (mu)
+	dayAccrualSavings   int64       // interest accrued today on savings, numerator units over gbp.AccrualDenominator (mu)
+	dayAccrualLending   int64       // same for lending (mu)
 }
 
 func NewDemoState() *DemoState {
@@ -202,63 +196,35 @@ func (ds *DemoState) wireSimulation() {
 	ds.boeRate = ds.rates.BaseRate(ds.currentDay)
 }
 
-// initLedger opens the go-luca ledger on ds.db and resolves the accounts
-// the day's rules post against.
+// initLedger opens the books (bank/ledger) on ds.db, with the chart of
+// accounts the day's rules post against resolved.
 func (ds *DemoState) initLedger() {
-	ds.expenseInterestID = ""
-	ds.incomeInterestID = ""
-	ds.incomeBoEID = ""
-	ds.accrBoEID = ""
-	ds.boeReservesID = ""
 	ds.boePostedPence = 0
 	ds.boeInterestApplied = 0
-	ledger, err := luca.NewSQLLedger(ds.db)
+	ds.ledger = nil
+	books, err := ledger.Open(ds.db)
 	if err != nil {
-		log.Printf("initLedger: open ledger: %v", err)
+		log.Printf("initLedger: %v", err)
 		return
 	}
-	ds.ledger = ledger
-	equityAcct, err := ensureLedgerAccount(ledger, equityCapitalPath) // already there on a resumed run
-	if err != nil {
-		log.Printf("initLedger: create equity: %v", err)
-		return
-	}
-	ds.equityAccountID = equityAcct.ID
-	ds.ensureAccrualAccounts()
+	ds.ledger = books
 }
 
-// ensureLedgerAccount returns the account at path, creating it if missing.
-func ensureLedgerAccount(ledger luca.Ledger, path string) (*luca.Account, error) {
-	acct, err := ledger.GetAccount(path)
-	if err != nil {
-		return nil, err
-	}
-	if acct != nil {
-		return acct, nil
-	}
-	return ledger.CreateAccount(path, "GBP", -2, 0)
-}
-
-// addCustomerToLedger opens a customer's accounts in the go-luca ledger.
+// addCustomerToLedger opens a customer's accounts on the ledger's chart.
 // The products engine is not involved: an account is its ledger account
 // and the product named on the register. Must be called with ds.mu held.
-func (ds *DemoState) addCustomerToLedger(ledger *luca.SQLLedger, cust *CustomerRecord) {
-	if ledger == nil {
+func (ds *DemoState) addCustomerToLedger(books *ledger.Ledger, cust *CustomerRecord) {
+	if books == nil {
 		return
 	}
 	for i := range cust.Accounts {
 		a := &cust.Accounts[i]
-		pathPrefix := "Liability:Savings"
-		if a.Family == gbp.FamilyLending {
-			pathPrefix = "Asset:Loans"
-		}
-		fullPath := fmt.Sprintf("%s:%s:%s", pathPrefix, cust.ID, a.ProductID)
-		acct, err := ledger.CreateAccount(fullPath, "GBP", -2, 0)
+		id, err := books.OpenCustomerAccount(cust.ID, a.ProductID, a.Family)
 		if err != nil {
-			log.Printf("ledger: open account %s: %v", fullPath, err)
+			log.Print(err)
 			continue
 		}
-		a.LedgerAccountID = acct.ID
+		a.LedgerAccountID = id
 	}
 }
 
@@ -368,7 +334,7 @@ func (ds *DemoState) advanceDayCtx(ctx context.Context) {
 // day. Returns the new day. Who joins the bank on the new day
 // is the simulation's business (rollNewCustomer), not the bank's. Must be
 // called WITHOUT ds.mu held.
-func (ds *DemoState) startDay(ledger *luca.SQLLedger) time.Time {
+func (ds *DemoState) startDay(books *ledger.Ledger) time.Time {
 	ds.mu.Lock()
 	closed := ds.currentDay
 	totalDeposits, totalLoans := ds.book.Savings, ds.book.Lending
@@ -380,7 +346,7 @@ func (ds *DemoState) startDay(ledger *luca.SQLLedger) time.Time {
 		ds.boeAccruedNumerator += int64(excessCash) * gbp.RateBps(ds.boeRate)
 	}
 	boeMovements := ds.collectBoEInterest(closed)
-	boeNumerator, boeReservesID := ds.boeAccruedNumerator, ds.boeReservesID
+	boeNumerator := ds.boeAccruedNumerator
 
 	ds.currentDay = closed.AddDate(0, 0, 1)
 	ds.dayCount++
@@ -396,20 +362,19 @@ func (ds *DemoState) startDay(ledger *luca.SQLLedger) time.Time {
 
 	ds.progress.begin(day)
 	ds.progress.phase("closing yesterday", 0)
-	if ledger != nil {
+	if books != nil {
 		for _, m := range boeMovements {
-			if _, err := ledger.RecordMovement(m.from, m.to, m.amount, m.code, m.at, m.description); err != nil {
+			if _, err := books.RecordMovement(m.from, m.to, m.amount, m.code, m.at, m.description); err != nil {
 				log.Printf("advanceDay: BoE interest: %v", err)
 			}
 		}
 		// The BoE reserves account's accrual is a position like any other.
-		if boeReservesID != "" {
-			unlock := ds.accountLocks.lock(boeReservesID)
-			if _, err := ledger.Project(boeReservesID, closed, luca.Fraction{Num: boeNumerator, Den: gbp.AccrualDenominator}); err != nil {
-				log.Printf("advanceDay: BoE reserves position: %v", err)
-			}
-			unlock()
+		reserves := books.Chart.BoEReserves
+		unlock := books.Lock(reserves)
+		if _, err := books.Project(reserves, closed, luca.Fraction{Num: boeNumerator, Den: gbp.AccrualDenominator}); err != nil {
+			log.Printf("advanceDay: BoE reserves position: %v", err)
 		}
+		unlock()
 	}
 	// The day's snapshot is the bank's record of having begun it: a
 	// restart from here resumes it.
@@ -422,36 +387,6 @@ func (ds *DemoState) startDay(ledger *luca.SQLLedger) time.Time {
 // (luca.CodeInterestAccrual). Customer accounts carry their accrual on
 // their positions and post nothing daily.
 const codeDailyAccrual = "LDAS:FTDP:ACRU"
-
-// ensureAccrualAccounts resolves (creating on first use) the P&L accounts
-// the day's rules post interest from and the BoE reserve's accounts.
-func (ds *DemoState) ensureAccrualAccounts() bool {
-	if ds.expenseInterestID != "" {
-		return true
-	}
-	if ds.ledger == nil {
-		return false
-	}
-	for _, t := range []struct {
-		path string
-		dst  *string
-	}{
-		{"Expense:Interest", &ds.expenseInterestID},
-		{"Income:Interest", &ds.incomeInterestID},
-		{"Income:Interest:BoE", &ds.incomeBoEID},
-		{"Asset:AccruedInterest:BoE", &ds.accrBoEID},
-		{"Asset:BoEReserves", &ds.boeReservesID},
-	} {
-		acct, err := ensureLedgerAccount(ds.ledger, t.path)
-		if err != nil {
-			log.Printf("ensureAccrualAccounts: %s: %v", t.path, err)
-			ds.expenseInterestID = ""
-			return false
-		}
-		*t.dst = acct.ID
-	}
-	return true
-}
 
 // dbWriters is how many connections write to the database at once when
 // adding customers. On PostgreSQL the writes spread across cores; the
@@ -482,20 +417,21 @@ type ledgerMovement struct {
 // failure is logged and the counters stay ahead of the ledger. Must be
 // called with ds.mu held.
 func (ds *DemoState) collectBoEInterest(day time.Time) []ledgerMovement {
-	if !ds.ensureAccrualAccounts() {
+	if ds.ledger == nil {
 		return nil
 	}
+	chart := ds.ledger.Chart
 	var out []ledgerMovement
 	valueTime := time.Date(day.Year(), day.Month(), day.Day(), 23, 59, 58, 0, day.Location())
 	if newPence := ds.boeAccruedNumerator/gbp.AccrualDenominator - ds.boePostedPence; newPence > 0 {
-		out = append(out, ledgerMovement{ds.incomeBoEID, ds.accrBoEID, luca.Amount(newPence),
+		out = append(out, ledgerMovement{chart.IncomeBoE, chart.AccruedBoE, luca.Amount(newPence),
 			codeDailyAccrual, valueTime, "Daily BoE reserve interest accrual"})
 		ds.boePostedPence += newPence
 	}
 	if monthEnd := day.Month() != day.AddDate(0, 0, 1).Month(); monthEnd && ds.boePostedPence > 0 {
 		desc := fmt.Sprintf("BoE reserve interest received for month ending %s", day.Format("2006-01-02"))
 		applyTime := time.Date(day.Year(), day.Month(), day.Day(), 23, 59, 59, 0, day.Location())
-		out = append(out, ledgerMovement{ds.accrBoEID, ds.boeReservesID, luca.Amount(ds.boePostedPence),
+		out = append(out, ledgerMovement{chart.AccruedBoE, chart.BoEReserves, luca.Amount(ds.boePostedPence),
 			luca.CodeInterestAccrual, applyTime, desc})
 		ds.boeAccruedNumerator -= ds.boePostedPence * gbp.AccrualDenominator
 		ds.boeInterestApplied += luca.Amount(ds.boePostedPence)
@@ -527,11 +463,11 @@ func (ds *DemoState) refreshFromLedger() {
 // and accrual is its ledger position, read where it is shown. Must be
 // called with ds.mu held.
 func (ds *DemoState) syncFromLedgerLocked() {
-	// The BoE reserves account must be known before its position is read.
-	if !ds.ensureAccrualAccounts() {
+	if ds.ledger == nil {
 		return
 	}
-	if p, err := ds.ledger.PositionAt(ds.boeReservesID, ds.currentDay); err != nil {
+	reserves := ds.ledger.Chart.BoEReserves
+	if p, err := ds.ledger.PositionAt(reserves, ds.currentDay); err != nil {
 		log.Printf("refreshFromLedger: BoE reserves position: %v", err)
 	} else if p != nil && p.Accrued.Den == gbp.AccrualDenominator {
 		ds.boeAccruedNumerator = p.Accrued.Num
@@ -541,7 +477,7 @@ func (ds *DemoState) syncFromLedgerLocked() {
 	}
 	ds.refreshBookTotals()
 	// Applied BoE interest is derivable from its ledger account balance.
-	if bal, err := ds.ledger.Balance(ds.boeReservesID); err == nil {
+	if bal, err := ds.ledger.Balance(reserves); err == nil {
 		ds.boeInterestApplied = bal
 	} else {
 		log.Printf("refreshFromLedger: BoE reserves balance: %v", err)

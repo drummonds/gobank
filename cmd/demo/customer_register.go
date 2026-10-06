@@ -203,10 +203,14 @@ func (ds *DemoState) accountsOf(customerID string) []CustomerAccount {
 // ledger's live position (the latest projection plus the day's movements
 // since) and its lifetime applied interest from the ledger's movements.
 func (ds *DemoState) fillAccountFigures(a *CustomerAccount) {
-	if p, ok := ds.livePosition(a.LedgerAccountID); ok {
-		a.Balance = p.balance
-		a.AccruedE7 = p.accruedE7
-		a.Accrued = poundsE7(p.accruedE7).Pence()
+	if ds.ledger != nil && a.LedgerAccountID != "" {
+		if p, err := ds.ledger.LivePosition(context.Background(), a.LedgerAccountID); err != nil {
+			log.Print(err)
+		} else {
+			a.Balance = p.Balance
+			a.AccruedE7 = p.AccruedE7
+			a.Accrued = poundsE7(p.AccruedE7).Pence()
+		}
 	}
 	a.Interest = ds.appliedInterest(a.LedgerAccountID)
 }

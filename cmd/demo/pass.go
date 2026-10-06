@@ -109,7 +109,7 @@ func (ds *DemoState) runPass(ctx context.Context, day time.Time) int {
 				log.Printf("pass: account %s is on unknown product %s", a.id, a.productID)
 				continue
 			}
-			unlock := ds.accountLocks.lock(a.id)
+			unlock := ds.ledger.Lock(a.id)
 			r, err := ds.accountDay(ds.ledger, dayAccount{id: a.id, product: product}, day)
 			unlock()
 			if err != nil {

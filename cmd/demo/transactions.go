@@ -8,6 +8,7 @@ import (
 
 	luca "git.bytestone.uk/hum3/go-luca"
 	gbp "git.bytestone.uk/hum3/gobank-products"
+	"git.bytestone.uk/hum3/gobank/bank/ledger"
 )
 
 // A customer's transactions are a projection of the ledger (ADR-0002 stage
@@ -66,11 +67,6 @@ type TxEntry struct {
 	known       time.Time   // when the ledger recorded it; orders lines within a day
 }
 
-// equityCapitalPath is the ledger account the bank's own money comes from:
-// a movement from it into a customer account is a deposit or a loan
-// drawdown, not a transfer.
-const equityCapitalPath = "Equity:Capital"
-
 // txTypeOf reads a movement on a customer account as a statement line:
 //
 //	| code             | counterparty   | direction | family  | reads as      |
@@ -89,7 +85,7 @@ func txTypeOf(code, counterparty string, in bool, family gbp.ProductFamily) TxTy
 			return TxInterestDebit
 		}
 		return TxInterestCredit
-	case counterparty == equityCapitalPath:
+	case counterparty == ledger.EquityCapital:
 		if lending {
 			return TxLoanDisbursement
 		}

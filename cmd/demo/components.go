@@ -36,7 +36,7 @@ var components = []Component{
 		Name:    "ledger",
 		Purpose: "Double-entry books of account: every balance is the sum of its movements.",
 		Library: "go-luca",
-		Files:   []string{"ledger.go"},
+		Package: "bank/ledger",
 		Views:   []string{"contract_ledger_movements", "contract_ledger_eod_positions", "contract_ledger_live_positions"},
 		Tables: []string{"accounts", "movements", "balances_live", "aliases", "data_points",
 			"movement_metadata", "commodities", "commodity_metadata", "customers",

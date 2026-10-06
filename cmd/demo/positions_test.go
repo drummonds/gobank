@@ -2,7 +2,6 @@ package main
 
 import (
 	"testing"
-	"time"
 
 	luca "git.bytestone.uk/hum3/go-luca"
 	"git.bytestone.uk/hum3/gobank/core"
@@ -25,33 +24,9 @@ func TestFundingProjectsAtOnce(t *testing.T) {
 			t.Errorf("%s: position right after funding = %+v, %v; want today at %d", a.ProductName, p, err, a.Balance)
 		}
 	}
-	p, err := ds.ledger.PositionAt(ds.equityAccountID, ds.currentDay)
+	p, err := ds.ledger.PositionAt(ds.ledger.Chart.EquityCapital, ds.currentDay)
 	if err != nil || p == nil || p.Balance != -funded {
 		t.Errorf("equity position = %+v, %v; want today at %d", p, err, -funded)
-	}
-}
-
-// The lock on an account is held by whoever is rewriting its position;
-// several are taken in one order, and the same account twice is one lock.
-func TestAccountLocksTakeTurns(t *testing.T) {
-	var locks accountLocks
-	unlock := locks.lock("b", "a", "b", "")
-	done := make(chan struct{})
-	go func() {
-		u := locks.lock("a", "c")
-		u()
-		close(done)
-	}()
-	select {
-	case <-done:
-		t.Fatal("a second holder got account a while the first held it")
-	case <-time.After(50 * time.Millisecond):
-	}
-	unlock()
-	select {
-	case <-done:
-	case <-time.After(time.Second):
-		t.Fatal("releasing the locks did not let the second holder in")
 	}
 }
 

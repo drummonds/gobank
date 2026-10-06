@@ -6,6 +6,7 @@ import (
 
 	luca "git.bytestone.uk/hum3/go-luca"
 	gbp "git.bytestone.uk/hum3/gobank-products"
+	"git.bytestone.uk/hum3/gobank/bank/ledger"
 	"git.bytestone.uk/hum3/gobank/core"
 )
 
@@ -178,8 +179,8 @@ func TestNoFloatMoneyStorage(t *testing.T) {
 		_ luca.Amount = core.Account{}.Balance
 		_ luca.Amount = core.Account{}.Interest
 		_ int64       = core.Account{}.AccruedE7
-		_ luca.Amount = livePosition{}.balance
-		_ int64       = livePosition{}.accruedE7
+		_ luca.Amount = ledger.Position{}.Balance
+		_ int64       = ledger.Position{}.AccruedE7
 		_ luca.Amount = core.Payment{}.Amount
 		_ luca.Amount = core.Position{}.Savings
 	)
@@ -240,7 +241,7 @@ func assertPositionsAreTheTruth(t *testing.T, ds *DemoState) {
 		}
 	}
 	closed := today.AddDate(0, 0, -1)
-	p, err := ds.ledger.PositionAt(ds.boeReservesID, closed)
+	p, err := ds.ledger.PositionAt(ds.ledger.Chart.BoEReserves, closed)
 	if err != nil || p == nil || !p.Day.Equal(closed) {
 		t.Fatalf("BoE reserves position for %s: %v %v", closed.Format("2006-01-02"), p, err)
 	}
@@ -299,21 +300,21 @@ func TestBoEInterestInLedger(t *testing.T) {
 		if ds.boePostedPence != ds.boeAccruedNumerator/gbp.AccrualDenominator {
 			t.Errorf("posted pence %d != floor(numerator) %d", ds.boePostedPence, ds.boeAccruedNumerator/gbp.AccrualDenominator)
 		}
-		holding, err := ds.ledger.Balance(ds.accrBoEID)
+		holding, err := ds.ledger.Balance(ds.ledger.Chart.AccruedBoE)
 		if err != nil {
 			t.Fatalf("holding balance: %v", err)
 		}
 		if holding != luca.Amount(ds.boePostedPence) {
 			t.Errorf("Asset:AccruedInterest:BoE balance %d != posted pence %d", holding, ds.boePostedPence)
 		}
-		reserves, err := ds.ledger.Balance(ds.boeReservesID)
+		reserves, err := ds.ledger.Balance(ds.ledger.Chart.BoEReserves)
 		if err != nil {
 			t.Fatalf("reserves balance: %v", err)
 		}
 		if reserves != ds.boeInterestApplied {
 			t.Errorf("Asset:BoEReserves balance %d != applied %d", reserves, ds.boeInterestApplied)
 		}
-		income, err := ds.ledger.Balance(ds.incomeBoEID)
+		income, err := ds.ledger.Balance(ds.ledger.Chart.IncomeBoE)
 		if err != nil {
 			t.Fatalf("income balance: %v", err)
 		}

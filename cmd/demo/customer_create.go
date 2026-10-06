@@ -9,6 +9,7 @@ import (
 
 	luca "git.bytestone.uk/hum3/go-luca"
 	gbp "git.bytestone.uk/hum3/gobank-products"
+	"git.bytestone.uk/hum3/gobank/bank/ledger"
 	"git.bytestone.uk/hum3/gobank/core"
 	customers "git.bytestone.uk/hum3/gobanks-customers"
 )
@@ -22,15 +23,14 @@ import (
 // customerPlan is one new customer decided under ds.mu, with the handles to
 // persist it.
 type customerPlan struct {
-	epoch    int // ds.epoch when planned; a Reset since then voids the plan
-	cust     CustomerRecord
-	pii      PIIInput
-	day      time.Time
-	funding  []customerFunding
-	db       *sql.DB
-	ledger   *luca.SQLLedger
-	store    *customers.SQLCustomerStore
-	equityID string
+	epoch   int // ds.epoch when planned; a Reset since then voids the plan
+	cust    CustomerRecord
+	pii     PIIInput
+	day     time.Time
+	funding []customerFunding
+	db      *sql.DB
+	books   *ledger.Ledger
+	store   *customers.SQLCustomerStore
 }
 
 // customerFunding is the opening deposit or loan disbursement for one of the
@@ -97,7 +97,7 @@ func (ds *DemoState) planCustomerLocked(c core.NewCustomer) customerPlan {
 	p := customerPlan{
 		epoch: ds.epoch, cust: cust, day: day,
 		pii: PIIInput{Name: c.PII.Name, NI: c.PII.NI, DOB: c.PII.DOB, Address: c.PII.Address, Email: c.PII.Email, Phone: c.PII.Phone},
-		db:  ds.db, ledger: ds.ledger, store: ds.custStore, equityID: ds.equityAccountID,
+		db:  ds.db, books: ds.ledger, store: ds.custStore,
 	}
 	for i := range p.cust.Accounts {
 		a := &p.cust.Accounts[i]
@@ -139,9 +139,9 @@ func (ds *DemoState) newPaymentLocked(ptype PaymentType, fromID, toID string, am
 // the books and the refusal returned; later failures are logged and the
 // customer kept, as before the split. Must not be called with ds.mu held.
 func (ds *DemoState) persistCustomerPlan(p customerPlan) error {
-	store, ledger := p.store, p.ledger
+	store, books := p.store, p.books
 	var tx *sql.Tx
-	if p.db != nil && p.ledger != nil {
+	if p.db != nil && books != nil {
 		var err error
 		if tx, err = p.db.Begin(); err != nil {
 			log.Printf("createCustomer: begin: %v", err)
@@ -152,8 +152,8 @@ func (ds *DemoState) persistCustomerPlan(p customerPlan) error {
 		if store != nil {
 			store = store.WithTx(tx)
 		}
-		if ledger != nil {
-			ledger = ledger.WithTx(tx)
+		if books != nil {
+			books = books.WithTx(tx)
 		}
 	}
 
@@ -169,17 +169,19 @@ func (ds *DemoState) persistCustomerPlan(p customerPlan) error {
 		ds.mu.Unlock()
 		return fmt.Errorf("open customer %s: %w", p.cust.ID, err)
 	}
-	ds.addCustomerToLedger(ledger, &p.cust)
+	ds.addCustomerToLedger(books, &p.cust)
 	// Funding rewrites the equity account's position and the new accounts'
 	// inside this transaction, so their locks are held until it commits:
 	// creators take turns on the equity account, and the daily pass waits
 	// for a new account's funding before projecting it.
-	locked := []string{p.equityID}
-	for _, a := range p.cust.Accounts {
-		locked = append(locked, a.LedgerAccountID)
+	if books != nil {
+		locked := []string{books.Chart.EquityCapital}
+		for _, a := range p.cust.Accounts {
+			locked = append(locked, a.LedgerAccountID)
+		}
+		unlock := books.Lock(locked...)
+		defer unlock()
 	}
-	unlock := ds.accountLocks.lock(locked...)
-	defer unlock()
 	var q execer = p.db
 	if tx != nil {
 		q = tx
@@ -198,8 +200,8 @@ func (ds *DemoState) persistCustomerPlan(p customerPlan) error {
 		// The movement carries the payment reference: it is the statement
 		// line the customer sees (transactions.go).
 		a := p.cust.Accounts[f.idx]
-		if ledger != nil && a.LedgerAccountID != "" {
-			ds.postEvent(ledger, p.day, p.equityID, a.LedgerAccountID, f.payment.Amount, luca.CodeBookTransfer, f.payment.Reference)
+		if books != nil && a.LedgerAccountID != "" {
+			ds.postEvent(books, p.day, books.Chart.EquityCapital, a.LedgerAccountID, f.payment.Amount, luca.CodeBookTransfer, f.payment.Reference)
 		}
 	}
 	// An account has a position from the day it opens, funded or not: the
@@ -207,11 +209,11 @@ func (ds *DemoState) persistCustomerPlan(p customerPlan) error {
 	// for it and a day is complete when every registered account has its
 	// position. A new account has nothing applied, so nothing is booked.
 	for _, a := range p.cust.Accounts {
-		if ledger == nil || a.LedgerAccountID == "" {
+		if books == nil || a.LedgerAccountID == "" {
 			continue
 		}
 		product, _ := ds.productByID(a.ProductID)
-		if _, err := ds.accountDay(ledger, dayAccount{id: a.LedgerAccountID, product: product}, p.day); err != nil {
+		if _, err := ds.accountDay(books, dayAccount{id: a.LedgerAccountID, product: product}, p.day); err != nil {
 			log.Printf("createCustomer: %s: %v", a.LedgerAccountID, err)
 		}
 	}

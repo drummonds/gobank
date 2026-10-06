@@ -5,6 +5,7 @@ import (
 
 	luca "git.bytestone.uk/hum3/go-luca"
 	gbp "git.bytestone.uk/hum3/gobank-products"
+	"git.bytestone.uk/hum3/gobank/bank/ledger"
 )
 
 // The bank's book: totals over every customer account, derived from the
@@ -30,12 +31,12 @@ func (ds *DemoState) refreshBookTotals() {
 		return
 	}
 	at := ds.currentDay.AddDate(0, 0, 1) // everything valued up to the end of today
-	savings, _, err := ds.ledger.BalanceByPath("Liability:Savings", at)
+	savings, _, err := ds.ledger.BalanceByPath(ledger.SavingsRoot, at)
 	if err != nil {
 		log.Printf("refreshBookTotals: savings: %v", err)
 		return
 	}
-	lending, _, err := ds.ledger.BalanceByPath("Asset:Loans", at)
+	lending, _, err := ds.ledger.BalanceByPath(ledger.LoansRoot, at)
 	if err != nil {
 		log.Printf("refreshBookTotals: lending: %v", err)
 		return
@@ -64,7 +65,7 @@ func (ds *DemoState) interestTotals() (loanIncome, depositExpense luca.Amount) {
 	if ds.ledger == nil {
 		return 0, 0
 	}
-	loanIncome, depositExpense = -ds.pathBalance("Income:Interest"), -ds.pathBalance("Expense:Interest")
+	loanIncome, depositExpense = -ds.pathBalance(ledger.IncomeInterest), -ds.pathBalance(ledger.ExpenseInterest)
 	accruedSavings, accruedLending := ds.accruedByFamily()
 	return loanIncome + accruedLending.Pence(), depositExpense + accruedSavings.Pence()
 }

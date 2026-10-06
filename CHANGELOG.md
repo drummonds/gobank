@@ -10,6 +10,20 @@
   the charts draw (`Series`, the newest `MaxPoints` days as
   `core.History`). The demo takes the snapshot (`recordHistory`) and the
   adapter's `History` reads the series from the package. No schema change.
+- ADR-0002 stage 5 story 1.5.3, ledger. The books of account are the
+  package `bank/ledger`: go-luca's ledger opened on the bank's database
+  with the chart of accounts resolved (`Open`, `Chart`: equity, the
+  interest P&L accounts, the BoE reserve's accounts; `Account` opens any
+  other path on first use), the customer account paths under the savings
+  and loans roots (`OpenCustomerAccount`), the striped account locks
+  (`Lock`, shared by a ledger bound to a transaction with `WithTx`), the
+  posting of an event with projections (`Post`) and the exact read of an
+  account's live position from the contract view (`LivePosition`).
+  go-luca still owns the tables and publishes the contract views. The
+  demo keeps what is the products' business until 1.5.4: `accountDay`
+  and `postEvent` run the day's rules on the accounts an event touched,
+  over the package. The six resolved account IDs leave `DemoState` for
+  the ledger's `Chart`. No schema change.
 
 ## [0.16.0] - 2026-10-06
 
