@@ -26,6 +26,10 @@
   when the bank is level with it and reports the day complete
   (`core.Position.DayComplete`), so a resumed pass finishes on its own
   day. Payments on the payments page now carry simulated times.
+- The dashboard shows the wall clock and the sim clock side by side, with
+  the warp between them (×12 at a two-hour day, flat out otherwise), so a
+  watcher gets a feel for the rate simulated time passes at; `/about.json`
+  `sim` gains `wall`, `clock` and `warp`.
 - The base-rate series (`boe_rates.csv`) is simulation data
   (`sim_rates.go`), replayed through the source the bank reads; a real
   deployment wires a feed in its place.

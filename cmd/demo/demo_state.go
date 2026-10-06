@@ -825,6 +825,9 @@ type SimStatus struct {
 	MemoryExceeded      bool
 	DayLength           time.Duration // wall-clock length of a simulated day; zero is flat out
 	DayEndsIn           time.Duration // what is left of the day in progress; zero when flat out or stopped
+	Wall                time.Time     // the wall clock now
+	Clock               time.Time     // the bank's clock now: simulated time
+	Warp                float64       // simulated seconds per wall second; zero when flat out
 }
 
 // SimStatus returns the console state under one lock.
@@ -839,7 +842,15 @@ func (ds *DemoState) SimStatus() SimStatus {
 	if ds.running && !ds.dayEndsAt.IsZero() {
 		dayEndsIn = max(ds.dayEndsAt.Sub(ds.now()), 0)
 	}
+	dayLength := ds.settings.Get().DayLength
+	warp := 0.0
+	if dayLength > 0 {
+		warp = float64(24*time.Hour) / float64(dayLength)
+	}
 	return SimStatus{
+		Wall:                ds.now(),
+		Clock:               ds.clock.Now(),
+		Warp:                warp,
 		DayEndsIn:           dayEndsIn,
 		Running:             ds.running,
 		AddingCust:          ds.addingCustRunning,
@@ -847,7 +858,7 @@ func (ds *DemoState) SimStatus() SimStatus {
 		AddingTarget:        ds.addingCustTarget,
 		CustomersPerSec:     addRate,
 		LastCustomersPerSec: ds.lastAddRate,
-		DayLength:           ds.settings.Get().DayLength,
+		DayLength:           dayLength,
 		AccountDaysPer12h:   ds.passRate.per(passWindow),
 		MemoryExceeded:      ds.memoryExceeded,
 	}
@@ -890,6 +901,14 @@ func renderDashContent(d DashData) string {
 		countdown = fmt.Sprintf(`<p class="heading">ends in %s</p>`, d.Sim.DayEndsIn.Round(time.Second))
 	}
 	s.WriteString(fmt.Sprintf(`<div class="level-item has-text-centered"><div><p class="heading">Day</p><p class="title is-5">%d &mdash; %s</p>%s</div></div>`, d.Bank.DayCount, dateStr, countdown))
+	// The two clocks side by side give a feel for the rate simulated time
+	// passes at.
+	warp := `<p class="heading">flat out</p>`
+	if d.Sim.Warp > 0 {
+		warp = fmt.Sprintf(`<p class="heading">&times;%s wall pace</p>`, strconv.FormatFloat(d.Sim.Warp, 'f', -1, 64))
+	}
+	s.WriteString(fmt.Sprintf(`<div class="level-item has-text-centered"><div><p class="heading">Wall clock</p><p class="title is-5">%s</p></div></div>`, d.Sim.Wall.UTC().Format("15:04:05")))
+	s.WriteString(fmt.Sprintf(`<div class="level-item has-text-centered"><div><p class="heading">Sim clock</p><p class="title is-5">%s</p>%s</div></div>`, d.Sim.Clock.UTC().Format("2 Jan 2006 15:04:05"), warp))
 	s.WriteString(fmt.Sprintf(`<div class="level-item has-text-centered"><div><p class="heading">Customers</p><p class="title is-5">%d</p></div></div>`, d.Bank.Customers))
 	s.WriteString(fmt.Sprintf(`<div class="level-item has-text-centered"><div><p class="heading">NIM</p><p class="title is-5">%s</p></div></div>`, nimStr))
 	if d.Sim.DayLength > 0 {

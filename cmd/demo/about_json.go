@@ -39,6 +39,9 @@ type AboutSettings struct {
 // whole-day rate, with the last day it is made of.
 type AboutSim struct {
 	Running           bool    `json:"running"`
+	Wall              string  `json:"wall"`        // the wall clock now, RFC 3339 UTC
+	Clock             string  `json:"clock"`       // the bank's clock now (simulated time), RFC 3339 UTC
+	Warp              float64 `json:"warp"`        // simulated seconds per wall second; 0 when flat out
 	DayEndsIn         string  `json:"day_ends_in"` // Go duration; "0s" when flat out or stopped
 	AddingCustomers   bool    `json:"adding_customers"`
 	CustomersPerSec   float64 `json:"customers_per_sec"`
@@ -97,6 +100,7 @@ func aboutStatus(q core.BookQueries, ds *DemoState) AboutStatus {
 func aboutSim(sim SimStatus, last DayProgress) AboutSim {
 	a := AboutSim{
 		Running: sim.Running, DayEndsIn: sim.DayEndsIn.Round(time.Second).String(),
+		Wall: sim.Wall.UTC().Format(time.RFC3339), Clock: sim.Clock.UTC().Format(time.RFC3339), Warp: sim.Warp,
 		AddingCustomers: sim.AddingCust, CustomersPerSec: sim.LastCustomersPerSec, AccountDaysPer12h: sim.AccountDaysPer12h,
 		LastDayAccounts: last.LastAccounts,
 	}
