@@ -305,7 +305,46 @@ root module, `cmd/bff` is the service binary, and `app/` is the Flutter shell.
   dissolves `coreAdapter`; book and about read through `core`. Stories
   1.5.4 to 1.5.7 of the original breakdown, taken together and released
   once; the stage's done-when
-- **1.6** One BFF — staff UI and customer web through the BFF (absorbs item 2)
+- **1.6** One BFF — the staff UI and the customer web render through the
+  BFF, which becomes the demo's one handler, and the WASM build serves that
+  handler in the tab (ADR-0002 stage 6; absorbs item 5 and the HTML half of
+  item 8, passkeys excluded). The BFF keeps no state of its own: the console
+  it serves is an interface the demo implements. Out of scope: a staff
+  login (the role switch stays), staff sessions in the database (1.8 needs
+  them), the audience split, and the screens app.md draws (its stories
+  1 to 4). Done-when of the stage: `cmd/demo` holds no HTML and no handler,
+  only wiring, the simulation and the console. Stories:
+- **1.6.1** one handler, in the tab — the demo's routes become one
+  `http.Handler` built over the state (no default mux, no closures in
+  `main`); the server listens on it and the WASM build serves the same
+  handler in the tab through lofigui's service worker (`wasmhttp.Serve`,
+  lofigui examples 06 and 07), replacing the forty `goRender*` exports, the
+  page switch in `app.js` and the WASM-only `index.html` with the layout,
+  HTMX polling and links the server already has. A pure move for the
+  server. Spike first: the session cookie through a service worker (the
+  browser drops Set-Cookie on a synthetic response) and the `/demo/` scope
+  on docs.bytestone.uk (redirects need `lofigui.WASMScopePath`).
+  Done-when: `main_wasm.go` registers the handler and nothing else;
+  `test:wasm` drives pages through fetch; the docs demo looks the same
+- **1.6.2** customer web through the BFF — the hand-rendered phone frame
+  (`/app/`, `bankapp_*.go`, `LayoutBankApp`) and the open `/api/customers`
+  and `/api/customer/` endpoints are retired; the demo's Bank App link
+  opens the BFF's HTML at `/v1/screen/login`, whose phone frame is the
+  demo's customer web; the WASM build logs in with a fixed demo password
+  the login screen states. Item 5, app.md story 5, the HTML half of item 8.
+  Done-when: no customer data is served without a session; app and browser
+  render from one screen tree
+- **1.6.3** staff pages through the BFF — the layout, the role switch, PII
+  authorisation and the pages that read the core (dashboard data,
+  accounting, products, customers, payments, treasury, reports, about and
+  docs) move to `bff/staff`, mounted by `bff.Server`; the BFF is the
+  demo's handler. Pure move over `core.StaffQueries` and `core.Commands`
+- **1.6.4** the console through the BFF — the dashboard controls, settings,
+  runtime, restarts, export and import and the DB explorer move to
+  `bff/staff` over a `Console` interface (start, stop, advance, reset, add
+  customers, settings, restarts, export, import, explorer) that
+  `DemoState` implements. Done-when of the stage; the import-rule test
+  covers `bff/`
 - **1.7** Read/write split — separate read and write handles
 - **1.8** Many processes — several BFFs, a generator and one workflow runner;
   deploys go blue-green (deployment level 3), ending the downtime
