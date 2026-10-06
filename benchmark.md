@@ -24,9 +24,6 @@ Performance page.
 |---|---|---|---|---|---|---|---|---|
 | 2026-10-06 | v0.12.0 | small | cx23: 4 GB | 60,000 | 142.1 | 3 | 18,388,121 | 4m41s over 119,794 accounts |
 | 2026-10-06 | v0.12.0-1-g479cbf4 | large | ccx33: 32 GB | 60,000 | 251.3 | 5 | 40,914,910 | 1m52s over 119,794 accounts |
-| 2026-10-06 | v0.12.0 | small | cx23: 4 GB | 60,000 | 142.1 | 3 | 18,388,121 | 4m41s over 119,794 accounts |
-| 2026-10-06 | v0.12.0 | small | cx23: 4 GB | 60,000 | 142.1 | 3 | 18,388,121 | 4m41s over 119,794 accounts |
-| 2026-10-06 | v0.12.0-1-g479cbf4 | large | ccx33: 32 GB | 60,000 | 251.3 | 5 | 40,914,910 | 1m52s over 119,794 accounts |
 
 For comparison, the Hetzner demo of 2026-10-01 (300k customers, v0.3.x,
 one accrual posting per account per day) took over ten minutes a
@@ -34,8 +31,10 @@ simulated day at about 1.2k postings/s.
 
 ## Laptop baseline (pglike)
 
-Run on Intel Core Ultra 7 165H, Linux, Go 1.25.3, pglike (SQLite `:memory:`) backend.
-(These results predate the move to Go 1.26.0 — re-run to refresh.)
+Run 2026-10-06 on Intel Core Ultra 7 165H, Linux, Go 1.26.0, pglike (SQLite
+`:memory:`) backend, at the stage 4 (c) branch (what became v0.15.0):
+positions as the truth, the start-of-day pass, the simulation a package
+of its own. `task bench:days` and `task bench:baseline` reproduce them.
 
 ## Day-scaling (real customer pipeline, pglike)
 
@@ -45,59 +44,72 @@ BoE rate lookup, history recording, and go-luca ledger movements.
 
 | Customers | Accounts | Days | Total | us/day | acct-days/sec | Allocs |
 |-----------|----------|------|---------|---------|---------------|--------|
-| 1 | 3 | 7 | 50ms | 7,262 | 413 | 16K |
-| 1 | 3 | 30 | 58ms | 1,943 | 1,544 | 67K |
-| 1 | 3 | 60 | 200ms | 3,335 | 900 | 135K |
-| 1 | 3 | 180 | 615ms | 3,417 | 878 | 405K |
-| 1 | 3 | 365 | 1.4s | 3,721 | 806 | 820K |
-| 10 | 20 | 7 | 140ms | 20,092 | 995 | 84K |
-| 10 | 20 | 60 | 1.0s | 17,445 | 1,146 | 719K |
-| 10 | 20 | 365 | 7.0s | 19,246 | 1,039 | 4.4M |
-| 100 | 199 | 7 | 1.4s | 203,752 | 977 | 834K |
-| 100 | 199 | 60 | 11.4s | 190,591 | 1,044 | 7.1M |
-| 100 | 199 | 365 | 77s | 211,220 | 942 | 43.5M |
+| 1 | 3 | 7 | 27ms | 3,898 | 770 | 94K |
+| 1 | 3 | 30 | 124ms | 4,147 | 723 | 405K |
+| 1 | 3 | 60 | 255ms | 4,256 | 705 | 823K |
+| 1 | 3 | 180 | 755ms | 4,199 | 715 | 2.5M |
+| 1 | 3 | 365 | 1.5s | 4,157 | 722 | 5.0M |
+| 10 | 22 | 7 | 128ms | 18,353 | 1,199 | 456K |
+| 10 | 22 | 30 | 573ms | 19,116 | 1,151 | 2.0M |
+| 10 | 22 | 60 | 1.1s | 18,403 | 1,195 | 4.0M |
+| 10 | 22 | 180 | 3.3s | 18,315 | 1,201 | 11.9M |
+| 10 | 22 | 365 | 6.5s | 17,728 | 1,241 | 24.1M |
+| 100 | 198 | 7 | 1.0s | 143,921 | 1,376 | 3.8M |
+| 100 | 198 | 30 | 4.2s | 140,028 | 1,414 | 16.2M |
+| 100 | 198 | 60 | 8.1s | 135,512 | 1,461 | 33.0M |
+| 100 | 198 | 180 | 22.0s | 122,222 | 1,620 | 98.7M |
+| 100 | 198 | 365 | 41.6s | 114,049 | 1,736 | 200.5M |
 
-**~1000 acct-days/sec**, consistent across all sizes — linear scaling, no degradation over time.
+A day has a fixed cost (closing the bank's books, the snapshot, the
+unprojected-accounts query) of about 4 ms, so a book of three accounts
+runs at ~700 acct-days/sec and the rate climbs with the book: ~1,200 at
+22 accounts, ~1,700 at 198, and 41.6s for a hundred customers' year
+against 77s before positions became the truth. The Hetzner rows above
+are the figure at scale.
 
 ## HTTP overhead
 
-1 customer, 3 accounts, 60 days via httptest POST /advance:
+1 customer, 3 accounts, 60 days, three runs each:
 
 | Mode | Total | us/day |
 |------|-------|--------|
-| Direct | 200ms | 3,335 |
-| HTTP | ~76ms | 1,276 |
+| Direct | 247–256ms | 4,130–4,269 |
+| HTTP (httptest POST /advance) | 269–276ms | 4,488–4,615 |
 
-HTTP overhead is small relative to the simulation cost.
+HTTP adds about 7% to a day of three accounts; at any real size it is
+noise.
 
 ## Dashboard render
 
-~1ms per render (1 customer, 60 days of history).
+~0.26ms per render (1 customer, 60 days of history), 2,251 allocations.
 
 ## Bottleneck
 
-The dominant cost is go-luca's per-account-per-day SQL round-trips through go-postgres:
+Profiled 2026-10-06 (`BenchmarkDayScale/pglike/c100/d60`, CPU profile):
+the pass is 54% of samples and every account's day is a handful of SQL
+statements through go-luca:
 
-1. `GetAccountByID` — fetch account details
-2. `validateSameExponent` / `BalanceAt` — query closing balance
-3. `RecordMovement` — insert interest movement
+1. `PositionAt` yesterday — one query
+2. `Apply` postings at a cycle end — a movement insert and a reprojection, monthly
+3. `Balance` — one query
+4. `Project` today — a reprojection and a position upsert
 
-That's 3 SQL operations per account per day. Each query passes through go-postgres's
-PG→SQLite translation layer (~15 regex passes per query).
-
-### go-postgres translation overhead
-
-CPU profiling shows `go-postgres.Translate` at ~13% of runtime. Memory profiling shows
-the `translate*` functions (Tokenize, translateInterval, translateNow, translateCast,
-translateSerial, etc.) allocating ~800MB cumulatively per benchmark run.
+`SQLLedger.Project` alone is 40% of samples (`reproject` 29%,
+`upsertPosition` 15%). Below it, go-postgres's PG→SQLite translation is
+20% (`Translate`, `translateTokens`, `Tokenize`), because every statement
+is re-translated at prepare time, and the garbage collector is 32%, the
+translation's token slices being the bulk of what it collects.
 
 ### Optimisation paths
 
-1. **Batch interest in go-luca** — single bulk query for all balances, bulk insert for
-   movements (eliminates per-account round-trips)
-2. **Real PostgreSQL** — bypasses the go-postgres translation layer entirely
-3. **Query caching in go-postgres** — cache translated SQL to avoid re-translating
-   identical prepared statements
+1. **Cache translated statements in go-postgres** — the pass issues the
+   same few statements with different arguments; translating each once
+   would take most of the 20% and much of the GC with it
+2. **Project without re-reading** — `Project` re-sums to reproject; the
+   pass already holds yesterday's position and today's balance, so a
+   write-only projection would halve its queries
+3. **Real PostgreSQL** — bypasses the translation layer entirely; the
+   Hetzner rows above are on it
 
 ## Notes on memory
 
