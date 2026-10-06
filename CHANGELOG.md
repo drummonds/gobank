@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+## [0.18.0] - 2026-10-07
+
+ - Stage 5 story 1.5.4: products, customers, payments and the bank itself are packages; the core is in packages and the demo is wiring, console and UI (ADR-0004 applied)
+
 ## [0.17.0] - 2026-10-06
 
  - Stage 5 stories 1.5.2 and 1.5.3: the daily snapshots and the books of account are the packages bank/history and bank/ledger
