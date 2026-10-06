@@ -24,6 +24,8 @@ Performance page.
 |---|---|---|---|---|---|---|---|---|
 | 2026-10-06 | v0.12.0 | small | cx23: 4 GB | 60,000 | 142.1 | 3 | 18,388,121 | 4m41s over 119,794 accounts |
 | 2026-10-06 | v0.12.0-1-g479cbf4 | large | ccx33: 32 GB | 60,000 | 251.3 | 5 | 40,914,910 | 1m52s over 119,794 accounts |
+| 2026-10-06 | v0.12.0 | small | cx23: 4 GB | 60,000 | 142.1 | 3 | 18,388,121 | 4m41s over 119,794 accounts |
+| 2026-10-06 | v0.12.0-1-g479cbf4 | large | ccx33: 32 GB | 60,000 | 251.3 | 5 | 40,914,910 | 1m52s over 119,794 accounts |
 
 For comparison, the Hetzner demo of 2026-10-01 (300k customers, v0.3.x,
 one accrual posting per account per day) took over ten minutes a
