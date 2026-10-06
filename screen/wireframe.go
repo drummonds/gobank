@@ -269,11 +269,12 @@ func wireComponent(c Component, indent string) string {
 	}
 	switch c.Type {
 	case TypeHero:
-		md := fmt.Sprintf("%s\n\n# %s", d2Text(c.Title), d2Text(c.Value))
+		var md strings.Builder
+		md.WriteString(fmt.Sprintf("%s\n\n# %s", d2Text(c.Title), d2Text(c.Value)))
 		for _, p := range c.Pairs {
-			md += fmt.Sprintf("\n\n%s **%s**", d2Text(p.Label), d2Text(p.Value))
+			md.WriteString(fmt.Sprintf("\n\n%s **%s**", d2Text(p.Label), d2Text(p.Value)))
 		}
-		return box(toneFill(c.Tone), toneStroke(c.Tone), md)
+		return box(toneFill(c.Tone), toneStroke(c.Tone), md.String())
 	case TypeRow:
 		md := fmt.Sprintf("%s **%s** %s › **%s**", glyphText(c.Icon), d2Text(c.Title), d2Text(c.Value), d2Text(c.Subtitle))
 		if c.Note != "" {
@@ -287,22 +288,23 @@ func wireComponent(c Component, indent string) string {
 	case TypeText:
 		return fmt.Sprintf("\"%s\" {\n%s  shape: text\n%s  style.italic: true\n%s  style.font-color: \"%s\"\n%s}", d2Text(c.Text), indent, indent, indent, toneStroke(c.Tone), indent)
 	case TypeDetails:
-		md := "**" + d2Text(c.Title) + "**"
+		var md strings.Builder
+		md.WriteString("**" + d2Text(c.Title) + "**")
 		for _, p := range c.Pairs {
-			md += fmt.Sprintf("\n\n%s  %s", d2Text(p.Label), d2Text(p.Value))
+			md.WriteString(fmt.Sprintf("\n\n%s  %s", d2Text(p.Label), d2Text(p.Value)))
 		}
-		return box("#ffffff", "#bdbdbd", md)
+		return box("#ffffff", "#bdbdbd", md.String())
 	case TypeForm:
-		md := ""
+		var md strings.Builder
 		for _, f := range c.Fields {
 			label := f.Label
 			if label == "" {
 				label = f.Name
 			}
-			md += fmt.Sprintf("%s\n\n`[ %s ]`\n\n", d2Text(label), d2Text(f.Placeholder))
+			md.WriteString(fmt.Sprintf("%s\n\n`[ %s ]`\n\n", d2Text(label), d2Text(f.Placeholder)))
 		}
-		md += fmt.Sprintf("**[ %s ]**", d2Text(c.Title))
-		return box("#ffffff", "#009688", md)
+		md.WriteString(fmt.Sprintf("**[ %s ]**", d2Text(c.Title)))
+		return box("#ffffff", "#009688", md.String())
 	case TypeButton:
 		return fmt.Sprintf("\"%s\" {\n%s  shape: oval\n%s  style.fill: \"%s\"\n%s  style.stroke: \"%s\"\n%s}", d2Text(c.Title), indent, indent, toneFill(c.Tone), indent, toneStroke(c.Tone), indent)
 	}
