@@ -11,79 +11,8 @@ import (
 	"git.bytestone.uk/hum3/gobank/core"
 )
 
-// lookupName returns the decrypted customer name from the SQL store, falling back to id.
-func (ds *DemoState) lookupName(id string) string {
-	if ds.custStore != nil {
-		name, err := ds.custStore.GetNameByID(context.Background(), id)
-		if err == nil && name != "" {
-			return name
-		}
-	}
-	return id
-}
-
-// lookupPII returns decrypted PII from the SQL store for a customer.
-func (ds *DemoState) lookupPII(id string) PIIData {
-	if ds.custStore != nil {
-		pii, err := ds.custStore.GetPIIByID(context.Background(), id)
-		if err == nil && pii != nil {
-			return PIIData{
-				Name:    pii.Name,
-				NI:      pii.NI,
-				DOB:     pii.DOB,
-				Address: pii.Address,
-				Email:   pii.Email,
-				Phone:   pii.Phone,
-			}
-		}
-	}
-	return PIIData{NI: "unavailable", DOB: "unavailable", Address: "unavailable", Email: "unavailable", Phone: "unavailable"}
-}
-
-// custStoreCount returns the count of customers in the SQL store.
-func (ds *DemoState) custStoreCount() int {
-	if ds.custStore != nil {
-		n, err := ds.custStore.Count(context.Background())
-		if err == nil {
-			return n
-		}
-	}
-	return 0
-}
-
-// KYCStatus tracks Know Your Customer verification state.
-type KYCStatus struct {
-	Verified      bool
-	LastCheckDate time.Time
-	RiskRating    string // "Low", "Standard", "Medium"
-}
-
-// CustomerRecord holds non-sensitive account data. PII (name, NI, DOB, etc.)
-// is stored separately in the encrypted PIIStore.
-type CustomerRecord struct {
-	ID        string
-	Accounts  []CustomerAccount
-	JoinDate  time.Time
-	KYCStatus KYCStatus
-}
-
-type CustomerAccount struct {
-	ProductID       string
-	ProductName     string
-	Family          gbp.ProductFamily
-	Currency        string      // ISO 4217, from the product
-	Balance         luca.Amount // minor units (pence); principal plus applied interest
-	Rate            float64     // annual rate (a rate, not money)
-	Interest        luca.Amount // minor units; lifetime interest applied to the balance
-	Accrued         luca.Amount // minor units; accrued-but-unapplied interest, whole pence
-	AccruedE7       int64       // the same accrual to 7 decimal places of a pound, from the ledger's live position
-	OpenDate        time.Time
-	SortCode        string
-	AccountNum      string
-	LedgerAccountID string // go-luca account ID for dual-write
-}
-
-const customersPerPage = 50
+// The customers pages: the register, a customer and one of their
+// accounts, read through the core.
 
 // fmtISODate shows a core date (2006-01-02) as the staff pages do.
 func fmtISODate(iso string) string {

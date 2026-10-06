@@ -1,9 +1,15 @@
 package main
 
 import (
+	"context"
+
 	luca "git.bytestone.uk/hum3/go-luca"
 	gbp "git.bytestone.uk/hum3/gobank-products"
+	"git.bytestone.uk/hum3/gobank/core"
 )
+
+// The bank app's data: what the phone screens and the JSON API show, read
+// through the core's customer-facing queries.
 
 // --- API response types (shared by HTML views and JSON API) ---
 
@@ -68,44 +74,38 @@ type apiProductDetail struct {
 const txPerPage = 20
 
 // customerExists reports whether a customer with the given ID exists.
-func (ds *DemoState) customerExists(id string) bool {
-	_, ok := ds.customerByID(id)
-	return ok
+func customerExists(q core.CustomerQueries, id string) bool {
+	_, err := q.Customer(context.Background(), id)
+	return err == nil
 }
 
-func (ds *DemoState) bankAppCustomerList() []apiCustomer {
-	customers, _ := ds.customerPage(1)
-
-	result := make([]apiCustomer, len(customers))
-	for i, c := range customers {
-		result[i] = apiCustomer{
-			ID:   c.ID,
-			Name: ds.lookupName(c.ID),
-		}
+func bankAppCustomerList(q core.StaffQueries) []apiCustomer {
+	ctx := context.Background()
+	page, _ := q.CustomerPage(ctx, 1)
+	result := make([]apiCustomer, 0, len(page.Customers))
+	for _, c := range page.Customers {
+		name, _ := q.CustomerName(ctx, c.ID)
+		result = append(result, apiCustomer{ID: c.ID, Name: name})
 	}
 	return result
 }
 
-func (ds *DemoState) bankAppAccounts(custID string) *apiAccountsResponse {
-	cust, ok := ds.customerByID(custID)
-	if !ok {
+func bankAppAccounts(q core.CustomerQueries, custID string) *apiAccountsResponse {
+	ctx := context.Background()
+	cust, err := q.Customer(ctx, custID)
+	if err != nil {
 		return nil
 	}
-
-	resp := &apiAccountsResponse{
-		CustomerID:   cust.ID,
-		CustomerName: ds.lookupName(cust.ID),
+	accounts, err := q.Accounts(ctx, custID)
+	if err != nil {
+		return nil
 	}
-	for _, a := range cust.Accounts {
+	resp := &apiAccountsResponse{CustomerID: cust.ID, CustomerName: cust.Name}
+	for _, a := range accounts {
 		resp.Accounts = append(resp.Accounts, apiAccount{
-			ProductName: a.ProductName,
-			Family:      string(a.Family),
-			Currency:    a.Currency,
-			Rate:        a.Rate,
-			Balance:     a.Balance,
-			Interest:    a.Interest,
+			ProductName: a.ProductName, Family: a.Family, Currency: a.Currency, Rate: a.Rate, Balance: a.Balance, Interest: a.Interest,
 		})
-		if a.Family == gbp.FamilySavings {
+		if a.Family == string(gbp.FamilySavings) {
 			resp.TotalSavings += a.Balance
 		} else {
 			resp.TotalLending += a.Balance
@@ -114,73 +114,41 @@ func (ds *DemoState) bankAppAccounts(custID string) *apiAccountsResponse {
 	return resp
 }
 
-func (ds *DemoState) bankAppTransactions(custID string, page int) apiTransactionsResponse {
-	entries, total := ds.CustomerTransactions(custID, page, txPerPage)
-	apiEntries := make([]apiTxEntry, len(entries))
-	for i, tx := range entries {
-		apiEntries[i] = apiTxEntry{
-			ID:          tx.ID,
-			Date:        tx.Date.Format("2006-01-02"),
-			ProductName: tx.ProductName,
-			Type:        tx.Type.String(),
-			Currency:    tx.Currency,
-			Amount:      tx.Amount,
-			Balance:     tx.Balance,
-			Reference:   tx.Reference,
+func apiEntries(page core.TransactionPage) []apiTxEntry {
+	out := make([]apiTxEntry, len(page.Entries))
+	for i, tx := range page.Entries {
+		out[i] = apiTxEntry{
+			ID: tx.ID, Date: tx.Date, ProductName: tx.ProductName, Type: tx.Type, Currency: tx.Currency,
+			Amount: tx.Amount, Balance: tx.Balance, Reference: tx.Reference,
 		}
 	}
-	return apiTransactionsResponse{
-		CustomerID: custID,
-		Page:       page,
-		TotalCount: total,
-		PerPage:    txPerPage,
-		Entries:    apiEntries,
-	}
+	return out
 }
 
-func (ds *DemoState) bankAppProductDetail(custID string, accountIdx int) *apiProductDetail {
-	cust, ok := ds.customerByID(custID)
-	if !ok || accountIdx < 0 || accountIdx >= len(cust.Accounts) {
+func bankAppTransactions(q core.CustomerQueries, custID string, page int) apiTransactionsResponse {
+	tp, _ := q.Transactions(context.Background(), custID, page)
+	return apiTransactionsResponse{CustomerID: custID, Page: max(page, 1), TotalCount: tp.Total, PerPage: txPerPage, Entries: apiEntries(tp)}
+}
+
+func bankAppProductDetail(q core.CustomerQueries, custID string, accountIdx int) *apiProductDetail {
+	ctx := context.Background()
+	cust, err := q.Customer(ctx, custID)
+	if err != nil {
 		return nil
 	}
-
-	a := cust.Accounts[accountIdx]
+	accounts, err := q.Accounts(ctx, custID)
+	if err != nil || accountIdx < 0 || accountIdx >= len(accounts) {
+		return nil
+	}
+	a := accounts[accountIdx]
 	return &apiProductDetail{
-		CustomerID:   cust.ID,
-		CustomerName: ds.lookupName(cust.ID),
-		AccountIndex: accountIdx,
-		ProductName:  a.ProductName,
-		Family:       string(a.Family),
-		Currency:     a.Currency,
-		Rate:         a.Rate,
-		Balance:      a.Balance,
-		Interest:     a.Interest,
-		SortCode:     a.SortCode,
-		AccountNum:   a.AccountNum,
-		OpenDate:     a.OpenDate.Format("2006-01-02"),
+		CustomerID: cust.ID, CustomerName: cust.Name, AccountIndex: accountIdx,
+		ProductName: a.ProductName, Family: a.Family, Currency: a.Currency, Rate: a.Rate,
+		Balance: a.Balance, Interest: a.Interest, SortCode: a.SortCode, AccountNum: a.AccountNum, OpenDate: a.OpenDate,
 	}
 }
 
-func (ds *DemoState) bankAppProductTransactions(custID string, accountIdx, page int) apiTransactionsResponse {
-	entries, total := ds.ProductTransactions(custID, accountIdx, page, txPerPage)
-	apiEntries := make([]apiTxEntry, len(entries))
-	for i, tx := range entries {
-		apiEntries[i] = apiTxEntry{
-			ID:          tx.ID,
-			Date:        tx.Date.Format("2006-01-02"),
-			ProductName: tx.ProductName,
-			Type:        tx.Type.String(),
-			Currency:    tx.Currency,
-			Amount:      tx.Amount,
-			Balance:     tx.Balance,
-			Reference:   tx.Reference,
-		}
-	}
-	return apiTransactionsResponse{
-		CustomerID: custID,
-		Page:       page,
-		TotalCount: total,
-		PerPage:    txPerPage,
-		Entries:    apiEntries,
-	}
+func bankAppProductTransactions(q core.CustomerQueries, custID string, accountIdx, page int) apiTransactionsResponse {
+	tp, _ := q.AccountTransactions(context.Background(), custID, accountIdx, page)
+	return apiTransactionsResponse{CustomerID: custID, Page: max(page, 1), TotalCount: tp.Total, PerPage: txPerPage, Entries: apiEntries(tp)}
 }

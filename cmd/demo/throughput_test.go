@@ -26,37 +26,11 @@ func fixedBankClock(ds *DemoState) core.Clock {
 	return core.ClockFunc(func() time.Time { return at })
 }
 
-func TestPassThroughputRollingWindow(t *testing.T) {
-	var tp passThroughput
-	if got := tp.per(passWindow); got != 0 {
-		t.Fatalf("no samples: %d", got)
-	}
-	tp.record(100, time.Second)
-	if got := tp.per(passWindow); got != 100*43200 {
-		t.Errorf("one day at 100/s: %d, want %d", got, 100*43200)
-	}
-	tp.record(300, 3*time.Second) // still 100/s overall
-	if got := tp.per(passWindow); got != 100*43200 {
-		t.Errorf("two days: %d", got)
-	}
-	// Only the most recent throughputDays count.
-	for range throughputDays {
-		tp.record(10, time.Second)
-	}
-	if got := tp.per(passWindow); got != 10*43200 {
-		t.Errorf("window should have rolled past the fast days: %d", got)
-	}
-	tp.record(5, 0)
-	if got := tp.per(passWindow); got <= 0 {
-		t.Errorf("a zero-length sample must not zero the rate: %d", got)
-	}
-}
-
 func TestDashboardReportsAccountDaysPer12h(t *testing.T) {
 	ds := NewDemoState()
 	clock := steppingClock(time.Date(2026, 1, 1, 9, 0, 0, 0, time.UTC))
 	ds.sim.SetWall(clock)
-	ds.progress.now = clock
+	ds.SetProgressClock(clock)
 	addFundedCustomer(ds)
 
 	if got := ds.SimStatus().AccountDaysPer12h; got != 0 {
@@ -74,7 +48,7 @@ func TestDashboardReportsAccountDaysPer12h(t *testing.T) {
 	// The rate is quoted over the whole day — closing yesterday's books and
 	// the pass over every account — the same span the runtime page reports
 	// as the last day's duration.
-	last := ds.progress.snapshot()
+	last := ds.Progress()
 	if last.LastDuration <= 0 {
 		t.Fatalf("last day took %v", last.LastDuration)
 	}

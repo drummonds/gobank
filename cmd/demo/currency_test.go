@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"git.bytestone.uk/hum3/gobank/bank/products"
 	"strings"
 	"testing"
 )
@@ -11,14 +12,14 @@ import (
 // from it: a GBP savings account shows a pound note, never the dollar
 // sign the renderers used to hard-code.
 func TestCurrencyComesFromTheProduct(t *testing.T) {
-	for _, p := range AllProducts() {
+	for _, p := range products.Catalogue() {
 		if p.Currency != "GBP" {
 			t.Errorf("product %s has currency %q, want GBP", p.ID, p.Currency)
 		}
 	}
 	ds := NewDemoState()
 	addFundedCustomer(ds)
-	a := newCoreAdapter(ds, "")
+	a := ds.Bank
 	ctx := context.Background()
 	accounts, err := a.Accounts(ctx, "cust-001")
 	if err != nil || len(accounts) == 0 {
@@ -47,15 +48,15 @@ func TestCurrencyComesFromTheProduct(t *testing.T) {
 
 	const dollar, pound = "&#128178;", "&#128183;"
 	for what, html := range map[string]string{
-		"balance":      ds.buildAppBalanceHTML("cust-001"),
-		"transactions": ds.buildAppTransactionsHTML("cust-001", 1),
-		"product":      ds.buildAppProductHTML("cust-001", 0, 1),
+		"balance":      buildAppBalanceHTML(ds.Bank, "cust-001"),
+		"transactions": buildAppTransactionsHTML(ds.Bank, "cust-001", 1),
+		"product":      buildAppProductHTML(ds.Bank, "cust-001", 0, 1),
 	} {
 		if strings.Contains(html, dollar) {
 			t.Errorf("app %s page shows the dollar sign", what)
 		}
 	}
-	if !strings.Contains(ds.buildAppBalanceHTML("cust-001"), pound) {
+	if !strings.Contains(buildAppBalanceHTML(ds.Bank, "cust-001"), pound) {
 		t.Error("app balance page shows no pound note for a GBP savings account")
 	}
 }

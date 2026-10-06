@@ -8,11 +8,12 @@ import (
 	"strconv"
 	"strings"
 
+	"git.bytestone.uk/hum3/gobank/core"
 	"git.bytestone.uk/hum3/lofigui"
 )
 
 // registerBankAppRoutes wires up the phone UI HTML routes.
-func registerBankAppRoutes(state *DemoState, appCtrl *lofigui.Controller) {
+func registerBankAppRoutes(bank core.StaffQueries, appCtrl *lofigui.Controller) {
 	appPage := func(w http.ResponseWriter, content string) {
 		appCtrl.RenderTemplate(w, lofigui.TemplateContext{
 			"results": template.HTML(content),
@@ -27,7 +28,7 @@ func registerBankAppRoutes(state *DemoState, appCtrl *lofigui.Controller) {
 		if path == "login" && r.Method == "POST" {
 			r.ParseForm()
 			custID := r.FormValue("customer_id")
-			if custID == "" || !state.customerExists(custID) {
+			if custID == "" || !customerExists(bank, custID) {
 				http.Redirect(w, r, "/app/?err=nf", http.StatusSeeOther)
 				return
 			}
@@ -42,7 +43,7 @@ func registerBankAppRoutes(state *DemoState, appCtrl *lofigui.Controller) {
 
 		// /app/ — login screen
 		if path == "" {
-			appPage(w, state.buildAppLoginHTML(r.URL.Query().Get("err") == "nf"))
+			appPage(w, buildAppLoginHTML(bank, r.URL.Query().Get("err") == "nf"))
 			return
 		}
 
@@ -66,13 +67,13 @@ func registerBankAppRoutes(state *DemoState, appCtrl *lofigui.Controller) {
 
 		switch {
 		case sub == "":
-			appPage(w, state.buildAppBalanceHTML(custID))
+			appPage(w, buildAppBalanceHTML(bank, custID))
 		case sub == "transactions":
 			page, _ := strconv.Atoi(r.URL.Query().Get("page"))
 			if page < 1 {
 				page = 1
 			}
-			appPage(w, state.buildAppTransactionsHTML(custID, page))
+			appPage(w, buildAppTransactionsHTML(bank, custID, page))
 		case strings.HasPrefix(sub, "product/"):
 			productRest := strings.TrimPrefix(sub, "product/")
 			idx, err := strconv.Atoi(productRest)
@@ -84,7 +85,7 @@ func registerBankAppRoutes(state *DemoState, appCtrl *lofigui.Controller) {
 			if txPage < 1 {
 				txPage = 1
 			}
-			appPage(w, state.buildAppProductHTML(custID, idx, txPage))
+			appPage(w, buildAppProductHTML(bank, custID, idx, txPage))
 		default:
 			http.NotFound(w, r)
 		}

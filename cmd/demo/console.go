@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"log"
 	"time"
 
 	"git.bytestone.uk/hum3/gobank/cmd/demo/sim"
@@ -26,6 +27,14 @@ func (ds *DemoState) SendPayment()                       { ds.sim.SendPayment() 
 func (ds *DemoState) StartPayments()                     { ds.sim.StartPayments() }
 func (ds *DemoState) StopPayments()                      { ds.sim.StopPayments() }
 func (ds *DemoState) IsPaymentsRunning() bool            { return ds.sim.IsPaymentsRunning() }
+
+// ResetPayments clears all payments and stops auto-generation.
+func (ds *DemoState) ResetPayments() {
+	ds.StopPayments()
+	if err := ds.ClearPayments(context.Background()); err != nil {
+		log.Print(err)
+	}
+}
 
 // UpdateSettings sets the population cap, within the console's bounds.
 func (ds *DemoState) UpdateSettings(maxCust int) {

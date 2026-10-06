@@ -25,7 +25,7 @@ func TestAboutJSONReportsTheProcessForAnotherProgram(t *testing.T) {
 	second := newDemoStateOn(first.db, "")
 	second.SetDayLength(2 * time.Hour)
 
-	got := aboutStatus(newCoreAdapter(second, ""), second)
+	got := aboutStatus(second.Bank, second)
 	if got.Version != "v2" || got.Settings.DayLength != "2h0m0s" {
 		t.Errorf("version %q day length %q", got.Version, got.Settings.DayLength)
 	}
@@ -69,10 +69,10 @@ func TestAboutJSONReportsTheRates(t *testing.T) {
 	ds := NewDemoState()
 	clock := steppingClock(time.Date(2026, 1, 1, 9, 0, 0, 0, time.UTC))
 	ds.sim.SetWall(clock)
-	ds.progress.now = clock
+	ds.SetProgressClock(clock)
 	ds.clock = fixedBankClock(ds) // banking stamps must not step the wall clock
 
-	got := aboutStatus(newCoreAdapter(ds, ""), ds)
+	got := aboutStatus(ds.Bank, ds)
 	if got.Sim.CustomersPerSec != 0 || got.Sim.AccountDaysPer12h != 0 || got.Sim.AddingCustomers {
 		t.Fatalf("before anything: %+v", got.Sim)
 	}
@@ -85,11 +85,11 @@ func TestAboutJSONReportsTheRates(t *testing.T) {
 	ds.clock = ds.sim.Clock() // the day follows the simulation's clock again
 	ds.AdvanceDay()
 
-	got = aboutStatus(newCoreAdapter(ds, ""), ds)
+	got = aboutStatus(ds.Bank, ds)
 	if got.Sim.AddingCustomers || got.Sim.CustomersPerSec != 5 { // batch start and end are the only clock readings: 5 customers in 1s
 		t.Errorf("after a batch add: adding %v, %v customers/s; want not adding at 5/s", got.Sim.AddingCustomers, got.Sim.CustomersPerSec)
 	}
-	last := ds.progress.snapshot()
+	last := ds.Progress()
 	want := int64(float64(last.LastAccounts) * float64(passWindow) / float64(last.LastDuration))
 	if got.Sim.AccountDaysPer12h != want || want == 0 {
 		t.Errorf("account days per 12h = %d, want %d", got.Sim.AccountDaysPer12h, want)

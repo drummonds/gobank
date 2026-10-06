@@ -10,7 +10,7 @@ import (
 // series is the daily series as the bank's record gives them.
 func series(t *testing.T, ds *DemoState) core.History {
 	t.Helper()
-	h, err := ds.history.Series(context.Background())
+	h, err := ds.History(context.Background())
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"git.bytestone.uk/hum3/gobank/bank/payments"
 	"testing"
 	"time"
 
@@ -16,7 +17,7 @@ func TestBankingFactsAreStampedByTheClock(t *testing.T) {
 	defer ds.db.Close()
 	at := time.Date(2020, 1, 1, 10, 30, 0, 0, time.UTC)
 	ds.clock = core.ClockFunc(func() time.Time { return at })
-	bank := newCoreAdapter(ds, "")
+	bank := ds.Bank
 	ctx := context.Background()
 
 	twoFundedCustomers(ds)
@@ -44,7 +45,7 @@ func TestBankingFactsAreStampedByTheClock(t *testing.T) {
 	deadline := time.Now().Add(5 * time.Second)
 	for {
 		settled, _ := ds.paymentByID(p.ID)
-		if settled.Status == PaymentCompleted {
+		if settled.Status == payments.Completed {
 			if !settled.SettledAt.Equal(at) {
 				t.Errorf("transfer settled %v, want the clock's %v", settled.SettledAt, at)
 			}
@@ -70,7 +71,7 @@ func TestStartDayCatchesUpWithTheClock(t *testing.T) {
 	defer ds.db.Close()
 	at := time.Date(2020, 1, 1, 9, 0, 0, 0, time.UTC)
 	ds.clock = core.ClockFunc(func() time.Time { return at })
-	bank := newCoreAdapter(ds, "")
+	bank := ds.Bank
 	ctx := context.Background()
 	addFundedCustomer(ds)
 
@@ -95,7 +96,7 @@ func TestStartDayCatchesUpWithTheClock(t *testing.T) {
 	if len(hist.Balances) != 3 {
 		t.Errorf("%d daily points after catching up two days, want 3 (opening day and each day started)", len(hist.Balances))
 	}
-	if pending, _ := anyUnprojected(ds.db, day); pending {
+	if pending, _ := anyUnprojected(ds, day); pending {
 		t.Error("the caught-up day's pass is not complete")
 	}
 
@@ -116,8 +117,8 @@ func TestBaseRateComesFromTheSource(t *testing.T) {
 	if want := 0.01 + float64(pos.Day.Day())/1000; pos.BoERate != want {
 		t.Errorf("BoE rate %v on %v, want the source's %v", pos.BoERate, pos.Day, want)
 	}
-	if latest, ok, err := ds.history.Latest(context.Background()); err != nil || !ok || latest.BoERate != pos.BoERate {
-		t.Errorf("day's snapshot rate %v, want the source's %v", latest.BoERate, pos.BoERate)
+	if h, err := ds.History(context.Background()); err != nil || len(h.BoERate) == 0 || h.BoERate[len(h.BoERate)-1].Rate != pos.BoERate {
+		t.Errorf("day's snapshot rate %+v, want the source's %v", h.BoERate, pos.BoERate)
 	}
 }
 

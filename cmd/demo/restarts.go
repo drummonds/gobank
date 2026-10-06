@@ -30,6 +30,10 @@ var restartsMigration = migration{Version: 2, Statements: []string{`CREATE TABLE
 	stop_customers INTEGER NULL
 )`}}
 
+func nullTime(t time.Time) sql.NullTime {
+	return sql.NullTime{Time: t.UTC(), Valid: !t.IsZero()}
+}
+
 // Restart is one process's time over the database.
 type Restart struct {
 	Version   string
@@ -162,10 +166,11 @@ func (ds *DemoState) Restarts(n int) []Restart { return listRestarts(ds.db, n) }
 // RecordStop is the process's last write: it stopped cleanly, leaving the
 // run here. serve calls it after the HTTP server has drained.
 func (ds *DemoState) RecordStop() {
+	pos := ds.position()
 	ds.mu.Lock()
-	db, id, day, customers := ds.db, ds.restartID, ds.dayCount, ds.nCustomers
+	db, id := ds.db, ds.restartID
 	ds.mu.Unlock()
-	recordStop(db, id, day, customers)
+	recordStop(db, id, pos.DayCount, pos.Customers)
 }
 
 // renderRestarts is the settings page's restart record: each start

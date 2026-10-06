@@ -76,12 +76,12 @@ const memCheckInterval = 10
 // is over the run stops and the console says so.
 func (ds *DemoState) memoryPause() bool {
 	ds.mu.Lock()
-	limit, exceeded, dayCount := ds.memoryLimit, ds.memoryExceeded, ds.dayCount
+	limit, exceeded := ds.memoryLimit, ds.memoryExceeded
 	ds.mu.Unlock()
 	if exceeded {
 		return true
 	}
-	if dayCount%memCheckInterval != 0 || !heapExceeds(limit) {
+	if ds.position().DayCount%memCheckInterval != 0 || !heapExceeds(limit) {
 		return false
 	}
 	ds.mu.Lock()

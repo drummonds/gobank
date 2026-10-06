@@ -1,6 +1,7 @@
 package main
 
 import (
+	"git.bytestone.uk/hum3/gobank/bank/customers"
 	"testing"
 
 	luca "git.bytestone.uk/hum3/go-luca"
@@ -19,12 +20,12 @@ func TestFundingProjectsAtOnce(t *testing.T) {
 			continue
 		}
 		funded += a.Balance
-		p, err := ds.ledger.PositionAt(a.LedgerAccountID, ds.currentDay)
-		if err != nil || p == nil || !p.Day.Equal(ds.currentDay) || p.Balance != a.Balance {
+		p, err := ds.Ledger().PositionAt(a.LedgerAccountID, ds.position().Day)
+		if err != nil || p == nil || !p.Day.Equal(ds.position().Day) || p.Balance != a.Balance {
 			t.Errorf("%s: position right after funding = %+v, %v; want today at %d", a.ProductName, p, err, a.Balance)
 		}
 	}
-	p, err := ds.ledger.PositionAt(ds.ledger.Chart.EquityCapital, ds.currentDay)
+	p, err := ds.Ledger().PositionAt(ds.Ledger().Chart.EquityCapital, ds.position().Day)
 	if err != nil || p == nil || p.Balance != -funded {
 		t.Errorf("equity position = %+v, %v; want today at %d", p, err, -funded)
 	}
@@ -40,7 +41,7 @@ func TestTransferRewritesTheDaysPositions(t *testing.T) {
 
 	from, _ := ds.customerByID("cust-001")
 	to, _ := ds.customerByID("cust-002")
-	fromAcc, toAcc := firstSavingsAccount(from.Accounts), firstSavingsAccount(to.Accounts)
+	fromAcc, toAcc := customers.FirstSavings(from.Accounts), customers.FirstSavings(to.Accounts)
 	if fromAcc == nil || toAcc == nil || fromAcc.Balance < 1000 {
 		t.Fatalf("need two funded savings accounts, got %+v and %+v", fromAcc, toAcc)
 	}
@@ -50,18 +51,18 @@ func TestTransferRewritesTheDaysPositions(t *testing.T) {
 	}
 
 	after, _ := ds.customerByID("cust-001")
-	if got := firstSavingsAccount(after.Accounts).Balance; got != fromAcc.Balance-1000 {
+	if got := customers.FirstSavings(after.Accounts).Balance; got != fromAcc.Balance-1000 {
 		t.Errorf("payer balance %d, want %d from the live position", got, fromAcc.Balance-1000)
 	}
 	for _, c := range []struct {
 		id   string
 		want int64
 	}{{fromAcc.LedgerAccountID, int64(fromAcc.Balance) - 1000}, {toAcc.LedgerAccountID, int64(toAcc.Balance) + 1000}} {
-		p, err := ds.ledger.PositionAt(c.id, ds.currentDay)
+		p, err := ds.Ledger().PositionAt(c.id, ds.position().Day)
 		if err != nil || p == nil {
 			t.Fatalf("position %s: %v %v", c.id, p, err)
 		}
-		if !p.Day.Equal(ds.currentDay) || int64(p.Balance) != c.want {
+		if !p.Day.Equal(ds.position().Day) || int64(p.Balance) != c.want {
 			t.Errorf("position %s = %s %d, want today at %d", c.id, p.Day.Format("2006-01-02"), p.Balance, c.want)
 		}
 	}

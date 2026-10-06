@@ -6,8 +6,6 @@ import (
 	"bytes"
 	"io"
 	"net/http"
-
-	luca "git.bytestone.uk/hum3/go-luca"
 )
 
 func (ds *DemoState) handleExport(w http.ResponseWriter, r *http.Request) {
@@ -16,10 +14,7 @@ func (ds *DemoState) handleExport(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	var buf bytes.Buffer
-	ds.mu.Lock()
-	err := ds.ledger.Export(&buf)
-	ds.mu.Unlock()
-	if err != nil {
+	if err := ds.Export(&buf); err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
@@ -46,16 +41,7 @@ func (ds *DemoState) handleImport(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	ds.mu.Lock()
-	err = ds.ledger.Import(bytes.NewReader(data), &luca.ImportOptions{
-		AutoCreateAccounts: true,
-		DefaultCommodity:   "GBP",
-	})
-	if err == nil {
-		ds.refreshFromLedger()
-	}
-	ds.mu.Unlock()
-	if err != nil {
+	if err := ds.Import(bytes.NewReader(data)); err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}

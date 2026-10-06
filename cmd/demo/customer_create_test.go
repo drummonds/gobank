@@ -7,7 +7,8 @@ import (
 	"testing"
 	"time"
 
-	customers "git.bytestone.uk/hum3/gobanks-customers"
+	"git.bytestone.uk/hum3/gobank/bank/payments"
+	store "git.bytestone.uk/hum3/gobanks-customers"
 )
 
 // TestCreateCustomerRefusedLeavesBookUnchanged: a customer the database
@@ -17,19 +18,16 @@ func TestCreateCustomerRefusedLeavesBookUnchanged(t *testing.T) {
 	ds := NewDemoState()
 	defer ds.db.Close()
 	// Occupy cust-001 so persisting the first generated customer fails.
-	if err := ds.custStore.Create(context.Background(),
-		customers.CustomerRecord{ID: "cust-001", Ref: "cust-001", JoinDate: ds.currentDay},
-		customers.PIIInput{Name: "Squatter"}); err != nil {
+	if err := ds.Customers().Store().Create(context.Background(),
+		store.CustomerRecord{ID: "cust-001", Ref: "cust-001", JoinDate: ds.position().Day},
+		store.PIIInput{Name: "Squatter"}); err != nil {
 		t.Fatal(err)
 	}
 
 	ds.createCustomer()
 
-	ds.mu.Lock()
-	n, book := ds.nCustomers, ds.book
-	ds.mu.Unlock()
-	if n != 0 || book != (bookTotals{}) {
-		t.Fatalf("refused customer left nCustomers=%d book=%+v", n, book)
+	if n, p := ds.customerCount(), ds.position(); n != 1 || p.Savings != 0 || p.Lending != 0 { // the squatter alone
+		t.Fatalf("refused customer left %d customers, position %+v", n, p)
 	}
 	if p := ds.paymentCount(); p != 0 {
 		t.Fatalf("refused customer left %d payments", p)
@@ -41,8 +39,8 @@ func TestCreateCustomerRefusedLeavesBookUnchanged(t *testing.T) {
 	}
 }
 
-// TestCreateCustomerReleasesLockDuringPersist: ds.mu is free while a
-// customer's database writes are in flight, so the day loop, dashboard and
+// TestCreateCustomerReleasesLockDuringPersist: the bank answers reads
+// while a customer's database writes are in flight, so the dashboard and
 // other creators are not stuck behind its round trips.
 // Set GOBANK_PG_DSN to run.
 func TestCreateCustomerReleasesLockDuringPersist(t *testing.T) {
@@ -70,15 +68,15 @@ func TestCreateCustomerReleasesLockDuringPersist(t *testing.T) {
 	done := make(chan struct{})
 	go func() { ds.createCustomer(); close(done) }()
 
-	deadline := time.Now().Add(2 * time.Second)
-	for !ds.mu.TryLock() {
-		if time.Now().After(deadline) {
-			_ = btx.Rollback()
-			t.Fatal("ds.mu held while the customer's writes are blocked")
-		}
-		time.Sleep(5 * time.Millisecond)
+	time.Sleep(100 * time.Millisecond) // long enough for the creator to be blocked on the table lock
+	answered := make(chan struct{})
+	go func() { ds.position(); close(answered) }()
+	select {
+	case <-answered:
+	case <-time.After(2 * time.Second):
+		_ = btx.Rollback()
+		t.Fatal("the bank did not answer a read while the customer's writes are blocked")
 	}
-	ds.mu.Unlock()
 	select {
 	case <-done:
 		t.Fatal("customer finished despite its writes being blocked")
@@ -121,17 +119,15 @@ func TestAddCustomersBatchParallelMatchesBook(t *testing.T) {
 	if got := ds.customerCount(); got != n {
 		t.Fatalf("customers in database %d, want %d", got, n)
 	}
-	ds.mu.Lock()
-	nCust, book := ds.nCustomers, ds.book
-	ds.mu.Unlock()
-	if nCust != n {
-		t.Errorf("nCustomers %d, want %d", nCust, n)
+	book := ds.position()
+	if book.Customers != n {
+		t.Errorf("customers on the position %d, want %d", book.Customers, n)
 	}
 	var deposits, loans int64
 	if err := ds.db.QueryRow(`SELECT
 		COALESCE(SUM(CASE WHEN type = $1 THEN amount END), 0),
 		COALESCE(SUM(CASE WHEN type = $2 THEN amount END), 0) FROM contract_payments`,
-		int(PayDeposit), int(PayLoanDisbursement)).Scan(&deposits, &loans); err != nil {
+		int(payments.Deposit), int(payments.LoanDisbursement)).Scan(&deposits, &loans); err != nil {
 		t.Fatal(err)
 	}
 	if int64(book.Savings) != deposits || int64(book.Lending) != loans {

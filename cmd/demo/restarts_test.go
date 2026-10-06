@@ -137,7 +137,7 @@ func TestSettingsPageListsRestarts(t *testing.T) {
 	first.RecordStop()
 	version = "v2"
 	second := newDemoStateOn(first.db, "")
-	html := buildSettingsHTML(newCoreAdapter(second, ""), second.Settings(), false, second.Restarts(10))
+	html := buildSettingsHTML(second.Bank, second.Settings(), false, second.Restarts(10))
 	i2, i1 := strings.Index(html, "v2"), strings.Index(html, "v1")
 	if !strings.Contains(html, "Restarts") || i2 < 0 || i1 < 0 || i2 > i1 {
 		t.Errorf("settings page should list restarts newest first; got v2 at %d, v1 at %d", i2, i1)

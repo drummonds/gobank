@@ -8,9 +8,6 @@ import (
 	"strings"
 
 	_ "git.bytestone.uk/hum3/go-postgres"
-	"git.bytestone.uk/hum3/gobank/bank/history"
-	"git.bytestone.uk/hum3/gobank/bank/treasury"
-	customers "git.bytestone.uk/hum3/gobanks-customers"
 	_ "github.com/jackc/pgx/v5/stdlib"
 )
 
@@ -24,12 +21,6 @@ func describeBackend(dsn string) string {
 		return fmt.Sprintf("PostgreSQL (pgx) — %s/%s", u.Host, strings.TrimPrefix(u.Path, "/"))
 	}
 	return "PostgreSQL (pgx)"
-}
-
-// piiKeyProvider is the default key for PII encryption in the demo.
-// WASM uses this hardcoded key; server mode could use EnvKeyProvider.
-var piiKeyProvider customers.KeyProvider = customers.FixedKeyProvider{
-	Key: []byte("gobank-demo-pii-key-32bytes!!!!!"),
 }
 
 // dropAllPublicTables removes all tables from a postgres database.
@@ -117,18 +108,19 @@ func openDB(dsn string) *sql.DB {
 }
 
 // attachDB takes db as the demo's database. Its tables are kept: every
-// component's schema is migrated to the current version and the contract
-// views are refreshed, and whatever run the rows describe is there to be
-// resumed (ADR-0003). The one exception is a database from before schema
-// versions, written by a demo that dropped every table at start: it is
-// started fresh, as that demo would have.
+// component's schema is migrated to the current version, and whatever run
+// the rows describe is there for the bank to resume (ADR-0003). The one
+// exception is a database from before schema versions, written by a demo
+// that dropped every table at start: it is started fresh, as that demo
+// would have. The contract views are the components' to refresh when the
+// bank opens.
 func (ds *DemoState) attachDB(db *sql.DB, dsn string) {
 	ds.db = db
 	ds.dsn = dsn
 	ds.dbBackend = describeBackend(dsn)
 	ds.dbIsPostgres = dsn != ""
 	if db == nil {
-		return
+		log.Fatalf("initDB: no database")
 	}
 	if ds.dbIsPostgres && isLegacyDatabase(db) {
 		log.Printf("initDB: database predates schema versions; starting it fresh")
@@ -136,18 +128,6 @@ func (ds *DemoState) attachDB(db *sql.DB, dsn string) {
 	}
 	if err := migrate(db, demoSchemas()); err != nil {
 		log.Fatalf("initDB: %v", err)
-	}
-	ds.createCustomerAccountsView()
-	ds.createPaymentsView()
-	ds.treasury = treasury.New(db, ds.businessDay)
-	ds.history = history.New(db)
-
-	// Create customer store (shares same DB)
-	custStore, err := customers.NewSQLCustomerStore(db, piiKeyProvider)
-	if err != nil {
-		log.Printf("initDB: customer store: %v", err)
-	} else {
-		ds.custStore = custStore
 	}
 }
 

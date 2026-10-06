@@ -7,9 +7,9 @@ import (
 
 // TestDayWaitsForDatabaseWithoutStateLock: when the day has to wait for
 // the database (another writer holds pglike's single write lock, e.g. a
-// customer mid-transaction), it must not hold ds.mu while it waits — the
-// dashboard and the customer app read under ds.mu, and that writer may
-// itself need ds.mu to finish.
+// customer mid-transaction), the bank still answers reads that need no
+// database — the position from its cache — so the dashboard is never
+// stuck behind the wait.
 func TestDayWaitsForDatabaseWithoutStateLock(t *testing.T) {
 	ds := NewDemoState()
 	defer ds.db.Close()
@@ -27,7 +27,7 @@ func TestDayWaitsForDatabaseWithoutStateLock(t *testing.T) {
 	go func() { ds.advanceDay(); close(done) }()
 
 	deadline := time.Now().Add(3 * time.Second)
-	for !ds.progress.snapshot().Active { // the day has begun and is at its first write
+	for !ds.Progress().Active { // the day has begun and is at its first write
 		if time.Now().After(deadline) {
 			_ = tx.Rollback()
 			t.Fatal("the day never began")
@@ -41,11 +41,14 @@ func TestDayWaitsForDatabaseWithoutStateLock(t *testing.T) {
 		t.Fatal("day finished while the database write lock was held elsewhere")
 	default:
 	}
-	if !ds.mu.TryLock() {
+	answered := make(chan struct{})
+	go func() { ds.position(); close(answered) }()
+	select {
+	case <-answered:
+	case <-time.After(time.Second):
 		_ = tx.Rollback()
-		t.Fatal("ds.mu held while the day waits for the database")
+		t.Fatal("the position did not answer while the day waits for the database")
 	}
-	ds.mu.Unlock()
 	if err := tx.Rollback(); err != nil {
 		t.Fatal(err)
 	}

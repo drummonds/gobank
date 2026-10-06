@@ -1,6 +1,7 @@
 package main
 
 import (
+	"git.bytestone.uk/hum3/gobank/bank/customers"
 	"testing"
 
 	luca "git.bytestone.uk/hum3/go-luca"
@@ -18,7 +19,7 @@ func TestCustomerReadableFromDatabase(t *testing.T) {
 	if !ok {
 		t.Fatal("cust-001 not found")
 	}
-	if cust.ID != "cust-001" || cust.JoinDate.IsZero() || !cust.KYCStatus.Verified || cust.KYCStatus.RiskRating == "" {
+	if cust.ID != "cust-001" || cust.JoinDate.IsZero() || !cust.KYC.Verified || cust.KYC.RiskRating == "" {
 		t.Errorf("customer identity/KYC not loaded: %+v", cust)
 	}
 	if len(cust.Accounts) == 0 {
@@ -29,7 +30,7 @@ func TestCustomerReadableFromDatabase(t *testing.T) {
 			a.SortCode == "" || a.AccountNum == "" || a.LedgerAccountID == "" || a.OpenDate.IsZero() {
 			t.Errorf("account %d incomplete: %+v", i, a)
 		}
-		bal, err := ds.ledger.Balance(a.LedgerAccountID)
+		bal, err := ds.Ledger().Balance(a.LedgerAccountID)
 		if err != nil {
 			t.Fatalf("account %d: ledger balance: %v", i, err)
 		}
@@ -103,7 +104,7 @@ func TestContractCustomerAccountsView(t *testing.T) {
 	defer rows.Close()
 	n := 0
 	for rows.Next() {
-		var a CustomerAccount
+		var a customers.Account
 		var id string
 		var idx int
 		if err := rows.Scan(&id, &idx, &a.LedgerAccountID, &a.ProductID, &a.SortCode, &a.AccountNum, &a.OpenDate); err != nil {

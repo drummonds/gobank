@@ -33,6 +33,34 @@
   so every page is still exercised. `task check` is ~25s quicker.
 - Roadmap: stories 1.5.4 to 1.5.7 (products, customers, payments, the
   bank composite) are one story, released once.
+- ADR-0002 stage 5 story 1.5.4, the rest of the core into packages; the
+  stage's done-when. `bank/products` is the catalogue, the day's rules
+  for one account (`AccountDay`), the posting of an event with the rules
+  rerun on the accounts it touched (`PostEvent`) and the start-of-day
+  pass (`RunPass`). `bank/customers` is the customer store, the account
+  register and its contract view, the read model (balances and accrual
+  from the ledger's live positions), opening a customer (`Plan`,
+  `Persist`) and the statement lines. `bank/payments` is the payments
+  table, its view and a payment's lifecycle. `bank/refs` is the one
+  allocator the customers' and the payments' numbers come from
+  (ADR-0004). `bank` is the bank: the composition root that implements
+  `core.Commands` and `core.StaffQueries`, owns the business day and its
+  start, the BoE reserve's accounting, the position, the profit and loss
+  and the balance sheet, and reopens itself over a wiped database on a
+  reset. The demo's `coreAdapter` is gone: `DemoState` embeds the bank
+  and is wiring (the database, the simulation, the restart record, the
+  console, the memory limit); the app's login is `appLogin` in the demo.
+  The staff pages, the bank app and the runtime page read through the
+  core. `internal/yield` moves to the root module. No schema change.
+- ADR-0004 (identity, references and shared state across topologies) is
+  applied: the dashboard's book and customer count are a read model over
+  the ledger's and the customers' contract views, cached for two seconds
+  and invalidated by every command, in place of running totals under a
+  lock; one mutex guards the day-start transition and the BoE close; the
+  ledger's account lock is a local courtesy. A figure on the dashboard
+  can lag a command from elsewhere by up to two seconds.
+### Added
+- ADR-0004: identity, references and shared state across topologies.
 
 ## [0.16.0] - 2026-10-06
 

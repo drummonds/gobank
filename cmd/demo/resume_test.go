@@ -71,7 +71,7 @@ func TestRestartResumesTheRun(t *testing.T) {
 		t.Errorf("customers after one more = %d; want %d (a colliding ID is dropped)", n, before.Customers+1)
 	}
 	second.SendPayment()
-	page, _ := newCoreAdapter(second, "").PaymentPage(context.Background(), 1)
+	page, _ := second.Bank.PaymentPage(context.Background(), 1)
 	if page.Total < 2 {
 		t.Errorf("payments after restart and one more = %d; want at least 2", page.Total)
 	}

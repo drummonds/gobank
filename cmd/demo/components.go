@@ -1,7 +1,8 @@
 package main
 
-// The component registry: which function of the bank owns which source
-// files and tables, and what it publishes. It is the single source for the
+// The component registry: which function of the bank owns which package
+// (or source files, for the demo's own components) and tables, and what
+// it publishes. It is the single source for the
 // documentation page (docs.go), the contract-view rule (ADR-0001, enforced
 // by TestContractViewRule) and the explorer's component catalog.
 
@@ -46,7 +47,7 @@ var components = []Component{
 		Name:    "customers",
 		Purpose: "Who the bank's customers are, their KYC status, and the accounts each holds.",
 		Library: "gobanks-customers",
-		Files:   []string{"customers.go", "customer_register.go", "customer_create.go", "pii_store.go", "transactions.go"},
+		Package: "bank/customers",
 		Tables:  []string{"cust_customers", "cust_pii", "customer_accounts"},
 		Views:   []string{"contract_customer_accounts"},
 	},
@@ -54,12 +55,12 @@ var components = []Component{
 		Name:    "products",
 		Purpose: "The product catalogue and the interest rules, run for one account at a time by the start-of-day pass and by every event that moves a balance; positions live in the ledger.",
 		Library: "gobank-products",
-		Files:   []string{"products.go", "accrual.go", "pass.go"},
+		Package: "bank/products",
 	},
 	{
 		Name:    "payments",
 		Purpose: "Moving money between customer accounts and to or from the outside world.",
-		Files:   []string{"payments.go"},
+		Package: "bank/payments",
 		Tables:  []string{"payments"},
 		Views:   []string{"contract_payments"},
 	},

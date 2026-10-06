@@ -11,7 +11,7 @@ import (
 func TestCustomerPagesHideNameWithoutPII(t *testing.T) {
 	ds := NewDemoState()
 	addFundedCustomer(ds)
-	q := newCoreAdapter(ds, "")
+	q := ds.Bank
 	name := ds.lookupName("cust-001")
 	if name == "" {
 		t.Fatal("the funded customer has no name")

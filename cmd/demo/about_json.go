@@ -4,6 +4,7 @@ import (
 	"context"
 	"time"
 
+	"git.bytestone.uk/hum3/gobank/bank"
 	"git.bytestone.uk/hum3/gobank/core"
 )
 
@@ -83,7 +84,7 @@ func aboutStatus(q core.BookQueries, ds *DemoState) AboutStatus {
 		Version:  version,
 		Schema:   appliedSchemaVersions(ds.db),
 		Settings: AboutSettings{DayLength: settings.DayLength.String(), MaxCustomers: settings.MaxCustomers},
-		Sim:      aboutSim(sim, ds.progress.snapshot()),
+		Sim:      aboutSim(sim, ds.Progress()),
 		Position: AboutPosition{Day: pos.Day.Format("2006-01-02"), DayCount: pos.DayCount, Customers: pos.Customers, Savings: fmtMoney(pos.Savings), Lending: fmtMoney(pos.Lending)},
 	}
 	restarts := ds.Restarts(10)
@@ -97,7 +98,7 @@ func aboutStatus(q core.BookQueries, ds *DemoState) AboutStatus {
 	return st
 }
 
-func aboutSim(sim SimStatus, last DayProgress) AboutSim {
+func aboutSim(sim SimStatus, last bank.DayProgress) AboutSim {
 	a := AboutSim{
 		Running: sim.Running, DayEndsIn: sim.DayEndsIn.Round(time.Second).String(),
 		Wall: sim.Wall.UTC().Format(time.RFC3339), Clock: sim.Clock.UTC().Format(time.RFC3339), Warp: sim.Warp,

@@ -297,7 +297,7 @@ root module, `cmd/bff` is the service binary, and `app/` is the Flutter shell.
 - **1.5.2** [x] history — `bank/history`: the daily snapshots
 - **1.5.3** [x] ledger — `bank/ledger`: the go-luca wrapper, the chart of
   accounts, the account locks and `postEvent`
-- **1.5.4** [ ] products, customers, payments and the bank, as one story:
+- **1.5.4** [x] products, customers, payments and the bank, as one story:
   `bank/products` (the catalogue, the pass and the accrual over the
   ledger), `bank/customers` (the store, the register, opening and
   transactions, over ledger and products), `bank/payments` over all of

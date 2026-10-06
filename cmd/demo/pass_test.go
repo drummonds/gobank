@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"git.bytestone.uk/hum3/gobank/bank/customers"
 	"testing"
 	"time"
 
@@ -23,7 +24,7 @@ func TestEventRewritesTheProvisionalAccrual(t *testing.T) {
 
 	from, _ := ds.customerByID("cust-001")
 	to, _ := ds.customerByID("cust-002")
-	fromAcc, toAcc := firstSavingsAccount(from.Accounts), firstSavingsAccount(to.Accounts)
+	fromAcc, toAcc := customers.FirstSavings(from.Accounts), customers.FirstSavings(to.Accounts)
 	if fromAcc == nil || toAcc == nil || fromAcc.Balance < 1000 {
 		t.Fatalf("need two funded savings accounts, got %+v and %+v", fromAcc, toAcc)
 	}
@@ -32,14 +33,14 @@ func TestEventRewritesTheProvisionalAccrual(t *testing.T) {
 	}
 
 	for _, c := range []struct {
-		acc   *CustomerAccount
+		acc   *customers.Account
 		delta luca.Amount
 	}{{fromAcc, -1000}, {toAcc, 1000}} {
-		prev, err := ds.ledger.PositionAt(c.acc.LedgerAccountID, day.AddDate(0, 0, -1))
+		prev, err := ds.Ledger().PositionAt(c.acc.LedgerAccountID, day.AddDate(0, 0, -1))
 		if err != nil || prev == nil {
 			t.Fatalf("%s: yesterday's position: %v %v", c.acc.ProductName, prev, err)
 		}
-		now, err := ds.ledger.PositionAt(c.acc.LedgerAccountID, day)
+		now, err := ds.Ledger().PositionAt(c.acc.LedgerAccountID, day)
 		if err != nil || now == nil {
 			t.Fatalf("%s: today's position: %v %v", c.acc.ProductName, now, err)
 		}
@@ -71,16 +72,16 @@ func TestPassResumesFromProjectionsAfterRestart(t *testing.T) {
 	// accounts in.
 	ctx, cancel := context.WithCancel(context.Background())
 	visited := 0
-	first.passHook = func() {
+	first.SetPassHook(func() {
 		if visited++; visited == 2 {
 			cancel()
 		}
-	}
+	})
 	first.nextDayCtx(ctx)
 	if p := first.position(); !p.Day.Equal(feb1) || p.DayCount != 31 {
 		t.Fatalf("after the interrupted day: %s (%d), want 1 Feb (31)", p.Day.Format("2006-01-02"), p.DayCount)
 	}
-	if pending, _ := anyUnprojected(first.db, feb1); !pending {
+	if pending, _ := anyUnprojected(first, feb1); !pending {
 		t.Fatal("the interrupted pass left no account unprojected; the test would be vacuous")
 	}
 
@@ -93,7 +94,7 @@ func TestPassResumesFromProjectionsAfterRestart(t *testing.T) {
 	if p := second.position(); !p.Day.Equal(feb1) || p.DayCount != 31 {
 		t.Fatalf("after finishing the day: %s (%d), want still 1 Feb (31)", p.Day.Format("2006-01-02"), p.DayCount)
 	}
-	if pending, err := anyUnprojected(second.db, feb1); pending || err != nil {
+	if pending, err := anyUnprojected(second, feb1); pending || err != nil {
 		t.Fatalf("accounts still unprojected after the resumed pass (err %v)", err)
 	}
 
@@ -101,11 +102,11 @@ func TestPassResumesFromProjectionsAfterRestart(t *testing.T) {
 	appliedAt := time.Date(2020, 1, 31, 23, 59, 59, 0, time.UTC)
 	for _, c := range allCustomers(t, second) {
 		for _, a := range c.Accounts {
-			prev, err := second.ledger.PositionAt(a.LedgerAccountID, jan31)
+			prev, err := second.Ledger().PositionAt(a.LedgerAccountID, jan31)
 			if err != nil || prev == nil || !prev.Day.Equal(jan31) {
 				t.Fatalf("%s %s: 31 Jan position: %v %v", c.ID, a.ProductName, prev, err)
 			}
-			now, err := second.ledger.PositionAt(a.LedgerAccountID, feb1)
+			now, err := second.Ledger().PositionAt(a.LedgerAccountID, feb1)
 			if err != nil || now == nil || !now.Day.Equal(feb1) {
 				t.Fatalf("%s %s: 1 Feb position: %v %v", c.ID, a.ProductName, now, err)
 			}
@@ -148,9 +149,9 @@ func TestPassRunsFlatOutWhateverTheDayLength(t *testing.T) {
 	defer ds.Stop()
 
 	deadline := time.Now().Add(3 * time.Second)
-	for ds.progress.snapshot().LastDay.IsZero() {
+	for ds.Progress().LastDay.IsZero() {
 		if time.Now().After(deadline) {
-			t.Fatalf("the first day's pass did not finish within 3s of a 2h day: %+v", ds.progress.snapshot())
+			t.Fatalf("the first day's pass did not finish within 3s of a 2h day: %+v", ds.Progress())
 		}
 		time.Sleep(10 * time.Millisecond)
 	}

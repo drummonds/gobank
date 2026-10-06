@@ -3,16 +3,11 @@ package main
 import (
 	"context"
 	"fmt"
+	"git.bytestone.uk/hum3/gobank/bank/payments"
 	"strings"
 	"testing"
 	"time"
 )
-
-// twoFundedCustomers gives SendPayment a sender and a recipient.
-func twoFundedCustomers(ds *DemoState) {
-	addFundedCustomer(ds)
-	addFundedCustomer(ds)
-}
 
 // Payments are read back from the database, not from a list held in
 // memory: funding payments from customer creation and transfers alike.
@@ -24,7 +19,7 @@ func TestPaymentReadableFromDatabase(t *testing.T) {
 		t.Fatal("funding two customers produced no payments")
 	}
 	first, ok := ds.paymentByID(1)
-	if !ok || first.Type != PayDeposit || first.Status != PaymentCompleted || first.SettledAt.IsZero() {
+	if !ok || first.Type != payments.Deposit || first.Status != payments.Completed || first.SettledAt.IsZero() {
 		t.Errorf("first funding payment = %+v, want a completed deposit", first)
 	}
 
@@ -37,7 +32,7 @@ func TestPaymentReadableFromDatabase(t *testing.T) {
 		t.Fatalf("paymentPage(1) = %d of %d, want all %d", len(page), total, funding+1)
 	}
 	p := page[0] // newest first
-	if p.Type != PayTransfer || p.ID != funding+1 {
+	if p.Type != payments.Transfer || p.ID != funding+1 {
 		t.Fatalf("newest payment = %+v, want the transfer", p)
 	}
 	got, ok := ds.paymentByID(p.ID)
@@ -46,7 +41,7 @@ func TestPaymentReadableFromDatabase(t *testing.T) {
 	}
 	if got.Reference != fmt.Sprintf("PAY-%06d", p.ID) || got.FromID == got.ToID ||
 		!strings.HasPrefix(got.FromID, "cust-") || !strings.HasPrefix(got.ToID, "cust-") ||
-		got.Amount < 100 || got.Status != PaymentPending || got.CreatedAt.IsZero() || !got.SettledAt.IsZero() {
+		got.Amount < 100 || got.Status != payments.Pending || got.CreatedAt.IsZero() || !got.SettledAt.IsZero() {
 		t.Errorf("transfer read back incomplete: %+v", got)
 	}
 	for _, id := range []string{got.FromID, got.ToID} {
@@ -69,7 +64,7 @@ func TestPaymentReadableFromDatabase(t *testing.T) {
 		t.Errorf("paymentCount = %d after reset, want 0", n)
 	}
 	ds.SendPayment()
-	if p, ok := ds.paymentByID(1); !ok || p.Type != PayTransfer {
+	if p, ok := ds.paymentByID(1); !ok || p.Type != payments.Transfer {
 		t.Errorf("numbering does not restart after reset: %+v", p)
 	}
 }
@@ -82,15 +77,15 @@ func TestPaymentSettlementRecorded(t *testing.T) {
 	page, _ := ds.paymentPage(1)
 	id := page[0].ID
 
-	ds.setPaymentStatus(id, PaymentProcessing, time.Time{})
+	ds.setPaymentStatus(id, payments.Processing, time.Time{})
 	p, _ := ds.paymentByID(id)
-	if p.Status != PaymentProcessing || !p.SettledAt.IsZero() {
+	if p.Status != payments.Processing || !p.SettledAt.IsZero() {
 		t.Errorf("after processing: %+v", p)
 	}
 	at := time.Date(2026, 9, 26, 12, 0, 0, 0, time.UTC)
-	ds.setPaymentStatus(id, PaymentCompleted, at)
+	ds.setPaymentStatus(id, payments.Completed, at)
 	p, _ = ds.paymentByID(id)
-	if p.Status != PaymentCompleted || !p.SettledAt.Equal(at) {
+	if p.Status != payments.Completed || !p.SettledAt.Equal(at) {
 		t.Errorf("after completion: %+v", p)
 	}
 }
@@ -108,7 +103,7 @@ func TestContractPaymentsView(t *testing.T) {
 	defer rows.Close()
 	n := 0
 	for rows.Next() {
-		var got Payment
+		var got payments.Payment
 		if err := rows.Scan(&got.ID, &got.Reference, &got.Type, &got.FromID, &got.ToID, &got.Amount, &got.Status); err != nil {
 			t.Fatal(err)
 		}
@@ -134,7 +129,7 @@ func TestPaymentTimesAreUTCDatetimes(t *testing.T) {
 	ds := NewDemoState()
 	twoFundedCustomers(ds)
 	ds.SendPayment()
-	q := newCoreAdapter(ds, "")
+	q := ds.Bank
 	page, err := q.PaymentPage(context.Background(), 1)
 	if err != nil || len(page.Payments) == 0 {
 		t.Fatalf("PaymentPage: %v, %d entries", err, len(page.Payments))

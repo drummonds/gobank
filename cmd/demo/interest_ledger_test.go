@@ -1,7 +1,10 @@
 package main
 
 import (
-	"context"
+	"git.bytestone.uk/hum3/gobank/bank"
+	"git.bytestone.uk/hum3/gobank/bank/customers"
+	"git.bytestone.uk/hum3/gobank/bank/payments"
+	"git.bytestone.uk/hum3/gobank/bank/products"
 	"testing"
 
 	luca "git.bytestone.uk/hum3/go-luca"
@@ -9,32 +12,6 @@ import (
 	"git.bytestone.uk/hum3/gobank/bank/ledger"
 	"git.bytestone.uk/hum3/gobank/core"
 )
-
-// addFundedCustomer adds one customer through the real pipeline.
-func addFundedCustomer(ds *DemoState) {
-	ds.createCustomer()
-}
-
-// firstCustomerAccounts reads cust-001's accounts through the read model.
-func firstCustomerAccounts(t *testing.T, ds *DemoState) []CustomerAccount {
-	t.Helper()
-	cust, ok := ds.customerByID("cust-001")
-	if !ok {
-		t.Fatal("cust-001 not found")
-	}
-	return cust.Accounts
-}
-
-// allCustomers reads every customer through the read model (tests keep to
-// one page).
-func allCustomers(t *testing.T, ds *DemoState) []CustomerRecord {
-	t.Helper()
-	page, total := ds.customerPage(1)
-	if total != len(page) {
-		t.Fatalf("allCustomers: %d of %d on the first page", len(page), total)
-	}
-	return page
-}
 
 // TestInterestAccruesDaily verifies the pass accrues interest every day
 // with visible accrued amounts, and that no application movements appear
@@ -68,7 +45,7 @@ func TestInterestAccruesDaily(t *testing.T) {
 		t.Errorf("daily accrual should not write application movements, found %d", count)
 	}
 	var customerAccruals int
-	if err := ds.db.QueryRow(`SELECT COUNT(*) FROM movements WHERE code = $1 AND description = 'Daily interest accrual'`, codeDailyAccrual).Scan(&customerAccruals); err != nil {
+	if err := ds.db.QueryRow(`SELECT COUNT(*) FROM movements WHERE code = $1 AND description = 'Daily interest accrual'`, bank.CodeDailyAccrual).Scan(&customerAccruals); err != nil {
 		t.Fatalf("query movements: %v", err)
 	}
 	if customerAccruals != 0 {
@@ -138,7 +115,7 @@ func TestInterestAppliedMonthly(t *testing.T) {
 		if a.Rate > 0 && a.Balance > 0 && a.Interest == 0 {
 			t.Errorf("%s: no interest applied after month end (balance %d, rate %v)", a.ProductName, a.Balance, a.Rate)
 		}
-		bal, err := ds.ledger.Balance(a.LedgerAccountID)
+		bal, err := ds.Ledger().Balance(a.LedgerAccountID)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -163,19 +140,19 @@ func TestInterestAppliedMonthly(t *testing.T) {
 // account, payment, and history money fields must be integer minor units.
 func TestNoFloatMoneyStorage(t *testing.T) {
 	var (
-		_ luca.Amount = CustomerAccount{}.Balance
-		_ luca.Amount = CustomerAccount{}.Interest
-		_ luca.Amount = CustomerAccount{}.Accrued
-		_ luca.Amount = Payment{}.Amount
-		_ luca.Amount = TxEntry{}.Amount
-		_ luca.Amount = TxEntry{}.Balance
+		_ luca.Amount = customers.Account{}.Balance
+		_ luca.Amount = customers.Account{}.Interest
+		_ luca.Amount = customers.Account{}.Accrued
+		_ luca.Amount = payments.Payment{}.Amount
+		_ luca.Amount = core.Transaction{}.Amount
+		_ luca.Amount = core.Transaction{}.Balance
 		_ luca.Amount = BalancePoint{}.Savings
 		_ luca.Amount = BalancePoint{}.Lending
 		_ luca.Amount = core.GiltHolding{}.FaceValue
-		_ int64       = CustomerAccount{}.AccruedE7
+		_ int64       = customers.Account{}.AccruedE7
 		_ int64       = luca.Position{}.Accrued.Num
-		_ int64       = dayResult{}.accrued
-		_ luca.Amount = dayResult{}.applied
+		_ int64       = products.DayResult{}.Accrued
+		_ luca.Amount = products.DayResult{}.Applied
 		_ luca.Amount = core.Account{}.Balance
 		_ luca.Amount = core.Account{}.Interest
 		_ int64       = core.Account{}.AccruedE7
@@ -184,9 +161,6 @@ func TestNoFloatMoneyStorage(t *testing.T) {
 		_ luca.Amount = core.Payment{}.Amount
 		_ luca.Amount = core.Position{}.Savings
 	)
-	var ds DemoState
-	var _ int64 = ds.boePostedPence
-	var _ luca.Amount = ds.boeInterestApplied
 }
 
 // TestPoundsE7 pins the 7dp-pounds accrual model: numerator-to-7dp conversion
@@ -213,169 +187,5 @@ func TestPoundsE7(t *testing.T) {
 	}
 	if got := poundsE7(-12_345_678_900_000).String(); got != "-£1,234,567.8900000" {
 		t.Errorf("String() = %q, want -£1,234,567.8900000", got)
-	}
-}
-
-// assertPositionsAreTheTruth checks every account's position for today
-// is what the read model shows, and that the BoE reserves position for
-// the day just closed carries ds.boeAccruedNumerator. Caller holds ds.mu.
-func assertPositionsAreTheTruth(t *testing.T, ds *DemoState) {
-	t.Helper()
-	today := ds.currentDay
-	for _, a := range firstCustomerAccounts(t, ds) {
-		p, err := ds.ledger.PositionAt(a.LedgerAccountID, today)
-		if err != nil || p == nil {
-			t.Fatalf("%s: position for %s: %v %v", a.ProductName, today.Format("2006-01-02"), p, err)
-		}
-		if !p.Day.Equal(today) {
-			t.Errorf("%s: latest position is %s, want %s", a.ProductName, p.Day.Format("2006-01-02"), today.Format("2006-01-02"))
-		}
-		if p.Accrued.Den != gbp.AccrualDenominator {
-			t.Errorf("%s: accrual denominator %d, want %d", a.ProductName, p.Accrued.Den, gbp.AccrualDenominator)
-		}
-		if a.AccruedE7 != int64(accrualPoundsE7(p.Accrued.Num)) {
-			t.Errorf("%s: read model accrual %d != position's %d at 7dp", a.ProductName, a.AccruedE7, accrualPoundsE7(p.Accrued.Num))
-		}
-		if a.Balance != p.Balance {
-			t.Errorf("%s: read model balance %d != position's %d", a.ProductName, a.Balance, p.Balance)
-		}
-	}
-	closed := today.AddDate(0, 0, -1)
-	p, err := ds.ledger.PositionAt(ds.ledger.Chart.BoEReserves, closed)
-	if err != nil || p == nil || !p.Day.Equal(closed) {
-		t.Fatalf("BoE reserves position for %s: %v %v", closed.Format("2006-01-02"), p, err)
-	}
-	if p.Accrued.Num != ds.boeAccruedNumerator {
-		t.Errorf("stored BoE numerator %d != state %d", p.Accrued.Num, ds.boeAccruedNumerator)
-	}
-}
-
-// TestPositionsAreTheTruth verifies the daily pass projects every account's
-// position (mid-month and across a month-end application) so the ledger
-// alone carries the balance and accrued-but-unapplied interest, and that
-// the retired accrual_state table is gone.
-func TestPositionsAreTheTruth(t *testing.T) {
-	ds := NewDemoState()
-	addFundedCustomer(ds)
-
-	for range 5 { // mid-month: pure accrual, nothing applied
-		ds.AdvanceDay()
-	}
-	ds.mu.Lock()
-	assertPositionsAreTheTruth(t, ds)
-	ds.mu.Unlock()
-
-	for range 30 { // crosses the 31 Jan month end: numerators drop to remainders
-		ds.AdvanceDay()
-	}
-	ds.mu.Lock()
-	defer ds.mu.Unlock()
-	assertPositionsAreTheTruth(t, ds)
-	if rows, err := ds.db.Query(`SELECT 1 FROM accrual_state`); err == nil {
-		rows.Close()
-		t.Error("accrual_state still exists; the products component owns no table")
-	}
-}
-
-// TestBoEInterestInLedger verifies BoE reserve interest is modelled in
-// accounts: income recognised daily into an accrual receivable, moved into
-// Asset:BoEReserves at month end, with the sub-penny remainder carried in the
-// numerator (invariant: posted pence == floor(numerator/denominator)).
-func TestBoEInterestInLedger(t *testing.T) {
-	ds := NewDemoState()
-	for range 8 {
-		addFundedCustomer(ds)
-	}
-	// A savings-only customer makes the book savings-heavy whatever the
-	// generator dealt, so excess cash accrues BoE interest.
-	if _, err := newCoreAdapter(ds, "").OpenCustomer(context.Background(), core.NewCustomer{
-		PII:      core.PII{Name: "Saver"},
-		Accounts: []core.NewAccount{{ProductID: gbp.EasyAccess().ID, Opening: 50_000_00}},
-	}); err != nil {
-		t.Fatal(err)
-	}
-
-	assertBoE := func(applied bool) {
-		t.Helper()
-		if ds.boePostedPence != ds.boeAccruedNumerator/gbp.AccrualDenominator {
-			t.Errorf("posted pence %d != floor(numerator) %d", ds.boePostedPence, ds.boeAccruedNumerator/gbp.AccrualDenominator)
-		}
-		holding, err := ds.ledger.Balance(ds.ledger.Chart.AccruedBoE)
-		if err != nil {
-			t.Fatalf("holding balance: %v", err)
-		}
-		if holding != luca.Amount(ds.boePostedPence) {
-			t.Errorf("Asset:AccruedInterest:BoE balance %d != posted pence %d", holding, ds.boePostedPence)
-		}
-		reserves, err := ds.ledger.Balance(ds.ledger.Chart.BoEReserves)
-		if err != nil {
-			t.Fatalf("reserves balance: %v", err)
-		}
-		if reserves != ds.boeInterestApplied {
-			t.Errorf("Asset:BoEReserves balance %d != applied %d", reserves, ds.boeInterestApplied)
-		}
-		income, err := ds.ledger.Balance(ds.ledger.Chart.IncomeBoE)
-		if err != nil {
-			t.Fatalf("income balance: %v", err)
-		}
-		if want := -(ds.boeInterestApplied + luca.Amount(ds.boePostedPence)); income != want {
-			t.Errorf("Income:Interest:BoE balance %d != %d", income, want)
-		}
-		if applied && ds.boeInterestApplied <= 0 {
-			t.Error("no BoE interest applied after month end")
-		}
-	}
-
-	for range 5 { // mid-month: accrual only
-		ds.AdvanceDay()
-	}
-	ds.mu.Lock()
-	if ds.boeAccruedNumerator <= 0 {
-		t.Fatal("no BoE interest accrued — book not savings-heavy?")
-	}
-	assertBoE(false)
-	if ds.boeInterestApplied != 0 {
-		t.Errorf("BoE interest applied before month end: %d", ds.boeInterestApplied)
-	}
-	ds.mu.Unlock()
-
-	for range 30 { // crosses the 31 Jan month end
-		ds.AdvanceDay()
-	}
-	ds.mu.Lock()
-	defer ds.mu.Unlock()
-	assertBoE(true)
-}
-
-// TestBoEInterestRestored verifies the BoE fields rehydrate from the DB:
-// numerator and posted-pence from the reserve account's position, applied
-// from its balance.
-func TestBoEInterestRestored(t *testing.T) {
-	ds := NewDemoState()
-	for range 8 {
-		addFundedCustomer(ds)
-	}
-	for range 35 {
-		ds.AdvanceDay()
-	}
-
-	ds.mu.Lock()
-	defer ds.mu.Unlock()
-	wantNum, wantPosted, wantApplied := ds.boeAccruedNumerator, ds.boePostedPence, ds.boeInterestApplied
-	if wantApplied <= 0 {
-		t.Fatal("no applied BoE interest to restore — test would be vacuous")
-	}
-	ds.boeAccruedNumerator, ds.boePostedPence, ds.boeInterestApplied = 0, 0, 0
-
-	ds.refreshFromLedger()
-
-	if ds.boeAccruedNumerator != wantNum {
-		t.Errorf("numerator not restored: got %d, want %d", ds.boeAccruedNumerator, wantNum)
-	}
-	if ds.boePostedPence != wantPosted {
-		t.Errorf("posted pence not restored: got %d, want %d", ds.boePostedPence, wantPosted)
-	}
-	if ds.boeInterestApplied != wantApplied {
-		t.Errorf("applied not restored: got %d, want %d", ds.boeInterestApplied, wantApplied)
 	}
 }

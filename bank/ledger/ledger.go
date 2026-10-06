@@ -35,10 +35,12 @@ const (
 	LoansRoot       = "Asset:Loans"               // LoansRoot:<customer>:<product>
 )
 
-// Every account the bank opens is GBP in pence.
+// Every account the bank opens is GBP in pence: Unit minor units to the
+// major unit.
 const (
 	Currency = "GBP"
 	Exponent = -2
+	Unit     = 100
 )
 
 // positionScale is the decimal places the views give accrued interest.

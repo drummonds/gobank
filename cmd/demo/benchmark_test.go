@@ -189,7 +189,7 @@ func BenchmarkBaselineDashboardRender(b *testing.B) {
 
 	b.ResetTimer()
 	for b.Loop() {
-		_ = buildDashboardHTML(newCoreAdapter(ds, ""), ds)
+		_ = buildDashboardHTML(ds.Bank, ds)
 	}
 	b.StopTimer()
 	ds.db.Close()
@@ -280,10 +280,10 @@ func benchBuildMux(ds *DemoState) *http.ServeMux {
 	// JSON API — lightweight reads
 	mux.HandleFunc("GET /api/customers", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(ds.bankAppCustomerList())
+		json.NewEncoder(w).Encode(bankAppCustomerList(ds.Bank))
 	})
 	mux.HandleFunc("GET /api/customer/{id}/accounts", func(w http.ResponseWriter, r *http.Request) {
-		resp := ds.bankAppAccounts(r.PathValue("id"))
+		resp := bankAppAccounts(ds.Bank, r.PathValue("id"))
 		w.Header().Set("Content-Type", "application/json")
 		if resp == nil {
 			w.WriteHeader(404)
@@ -293,27 +293,27 @@ func benchBuildMux(ds *DemoState) *http.ServeMux {
 	})
 	mux.HandleFunc("GET /api/customer/{id}/transactions", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(ds.bankAppTransactions(r.PathValue("id"), 1))
+		json.NewEncoder(w).Encode(bankAppTransactions(ds.Bank, r.PathValue("id"), 1))
 	})
 
 	// HTML renders — heavier, hold renderMu
 	mux.HandleFunc("GET /dashboard", func(w http.ResponseWriter, r *http.Request) {
 		renderMu.Lock()
-		html := buildDashboardHTML(newCoreAdapter(ds, ""), ds)
+		html := buildDashboardHTML(ds.Bank, ds)
 		renderMu.Unlock()
 		w.Header().Set("Content-Type", "text/html")
 		io.WriteString(w, html)
 	})
 	mux.HandleFunc("GET /accounting/pnl", func(w http.ResponseWriter, r *http.Request) {
 		renderMu.Lock()
-		html := buildPnLHTML(newCoreAdapter(ds, ""))
+		html := buildPnLHTML(ds.Bank)
 		renderMu.Unlock()
 		w.Header().Set("Content-Type", "text/html")
 		io.WriteString(w, html)
 	})
 	mux.HandleFunc("GET /customers", func(w http.ResponseWriter, r *http.Request) {
 		renderMu.Lock()
-		html := buildCustomersHTML(newCoreAdapter(ds, ""), 1, false)
+		html := buildCustomersHTML(ds.Bank, 1, false)
 		renderMu.Unlock()
 		w.Header().Set("Content-Type", "text/html")
 		io.WriteString(w, html)

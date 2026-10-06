@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"database/sql"
 	"fmt"
 	"html"
@@ -15,28 +16,24 @@ func (ds *DemoState) BuildRuntimeHTML() string {
 	var m runtime.MemStats
 	runtime.ReadMemStats(&m)
 
-	ds.mu.Lock()
-	currentDay := ds.currentDay.Format("2 Jan 2006")
-	dayCount := ds.dayCount
-	customerCount := ds.nCustomers
-	productCount := len(ds.products)
-	boeRate := ds.boeRate * 100
-	piiCount := ds.custStoreCount()
+	ctx := context.Background()
+	pos := ds.position()
+	currentDay := pos.Day.Format("2 Jan 2006")
+	dayCount := pos.DayCount
+	customerCount := pos.Customers
+	productCount := len(ds.Catalogue().All())
+	boeRate := pos.BoERate * 100
 	dbBackend := ds.dbBackend
-	if dbBackend == "" {
-		dbBackend = "none (open failed)"
-	}
 	var dbStats sql.DBStats
 	if ds.db != nil {
 		dbStats = ds.db.Stats()
 	}
-	ds.mu.Unlock()
-
-	// Live database queries — after the unlock so a slow database can
-	// never stall other pages on ds.mu.
 	dbConfig := ds.dbConfigRows()
 	schema := appliedSchemaVersions(ds.db)
-	paymentCount := ds.paymentCount()
+	paymentCount := 0
+	if pp, err := ds.PaymentPage(ctx, 1); err == nil {
+		paymentCount = pp.Total
+	}
 
 	var s strings.Builder
 
@@ -93,7 +90,7 @@ func (ds *DemoState) BuildRuntimeHTML() string {
 	for _, r := range dbConfig {
 		s.WriteString(fmt.Sprintf(`<tr><th>%s</th><td>%s</td></tr>`, html.EscapeString(r[0]), html.EscapeString(r[1])))
 	}
-	s.WriteString(fmt.Sprintf(`<tr><th>PII records (encrypted)</th><td>%d</td></tr>`, piiCount))
+	s.WriteString(fmt.Sprintf(`<tr><th>PII records (encrypted)</th><td>%d</td></tr>`, customerCount))
 	s.WriteString(fmt.Sprintf(`<tr><th>Max open connections</th><td>%d</td></tr>`, dbStats.MaxOpenConnections))
 	s.WriteString(fmt.Sprintf(`<tr><th>Open connections</th><td>%d</td><td class="has-text-grey">In use: %d, Idle: %d</td></tr>`, dbStats.OpenConnections, dbStats.InUse, dbStats.Idle))
 	s.WriteString(fmt.Sprintf(`<tr><th>Wait count</th><td>%d</td><td class="has-text-grey">Connections waited for due to pool limit</td></tr>`, dbStats.WaitCount))
@@ -108,7 +105,7 @@ func (ds *DemoState) BuildRuntimeHTML() string {
 	s.WriteString(`<table class="table is-fullwidth">`)
 	s.WriteString(fmt.Sprintf(`<tr><th>Current day</th><td>%s</td></tr>`, currentDay))
 	s.WriteString(fmt.Sprintf(`<tr><th>Days elapsed</th><td>%d</td></tr>`, dayCount))
-	s.WriteString(ds.progress.snapshot().runtimeRow())
+	s.WriteString(progressRow(ds.Progress()))
 	s.WriteString(fmt.Sprintf(`<tr><th>Customers</th><td>%d</td></tr>`, customerCount))
 	s.WriteString(fmt.Sprintf(`<tr><th>Products</th><td>%d</td></tr>`, productCount))
 	s.WriteString(fmt.Sprintf(`<tr><th>Payments</th><td>%d</td></tr>`, paymentCount))

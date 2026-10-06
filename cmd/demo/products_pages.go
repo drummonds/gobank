@@ -10,26 +10,6 @@ import (
 	"git.bytestone.uk/hum3/gobank/core"
 )
 
-// Product wraps a gbp.Product with demo-specific UI fields.
-type Product struct {
-	*gbp.Product
-	Currency    string  // ISO 4217 code of the product's money; every product is GBP today
-	Rate        float64 // annual rate as decimal (cached from Defaults)
-	Terms       string
-	Description string
-}
-
-func AllProducts() []Product {
-	return []Product{
-		{Product: gbp.EasyAccess(), Currency: "GBP", Rate: 0.015, Terms: "No notice", Description: "Instant access savings with competitive rate"},
-		{Product: gbp.FixedTerm(), Currency: "GBP", Rate: 0.040, Terms: "2 year fixed", Description: "Higher rate for locking funds for 2 years"},
-		{Product: gbp.ISA(), Currency: "GBP", Rate: 0.035, Terms: "Annual allowance", Description: "Tax-free savings up to annual ISA allowance"},
-		{Product: gbp.PersonalLoan(), Currency: "GBP", Rate: 0.069, Terms: "1-5 years", Description: "Unsecured personal loan for any purpose"},
-		{Product: gbp.Mortgage(), Currency: "GBP", Rate: 0.045, Terms: "25 year", Description: "Residential mortgage with fixed rate period"},
-		{Product: gbp.Overdraft(), Currency: "GBP", Rate: 0.159, Terms: "Revolving", Description: "Arranged overdraft facility on current account"},
-	}
-}
-
 // buildProductsHTML renders product cards for a given family, with each
 // product's book from the core. For savings, appends the BoE base rate
 // history graph.

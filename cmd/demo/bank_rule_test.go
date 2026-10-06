@@ -8,8 +8,9 @@ import (
 	"testing"
 )
 
-// The bank's components are packages under bank/ (ADR-0002 stage 5). A
-// component knows the core, the other bank packages and the domain
+// The bank's components are packages under bank/, and the bank itself is
+// package bank (ADR-0002 stage 5). A component knows the core, the other
+// bank packages, the root module's internal helpers and the domain
 // libraries it is built on; it knows nothing of the UI, the simulation or
 // the demo's wiring, which are in package main and cmd/demo/sim. The
 // compiler keeps the demo out (a main package cannot be imported); this
@@ -19,9 +20,12 @@ func TestBankPackagesKnowOnlyTheCoreAndEachOther(t *testing.T) {
 	if err != nil || len(files) == 0 {
 		t.Fatalf("no bank packages at bank/: %v", err)
 	}
+	composite, _ := filepath.Glob("../../bank/*.go")
+	files = append(files, composite...)
 	allowed := []string{
 		"git.bytestone.uk/hum3/gobank/core",
 		"git.bytestone.uk/hum3/gobank/bank/",
+		"git.bytestone.uk/hum3/gobank/internal/",
 		"git.bytestone.uk/hum3/go-luca",
 		"git.bytestone.uk/hum3/gobank-products",
 		"git.bytestone.uk/hum3/gobanks-customers",

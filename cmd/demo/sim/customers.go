@@ -10,8 +10,8 @@ import (
 	"time"
 
 	luca "git.bytestone.uk/hum3/go-luca"
-	"git.bytestone.uk/hum3/gobank/cmd/demo/internal/yield"
 	"git.bytestone.uk/hum3/gobank/core"
+	"git.bytestone.uk/hum3/gobank/internal/yield"
 )
 
 // The population generator: who joins the bank and when.

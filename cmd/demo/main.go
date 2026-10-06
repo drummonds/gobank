@@ -197,13 +197,13 @@ func main() {
 	app := lofigui.NewApp()
 	app.Version = "Model Bank " + version
 
-	// The core as the demo implements it (ADR-0002 stage 1): the BFF and
-	// every staff page read and write the bank through it.
+	// The bank (ADR-0002 stage 5): the BFF and every staff page read and
+	// write it through the core.
 	appPassword := os.Getenv("GOBANK_APP_PASSWORD")
-	bank := newCoreAdapter(state, appPassword)
+	bank := state.Bank
 
 	// The customer BFF, on this port under /v1/.
-	appBFF := newAppBFF(bank, state.DB(), slog.Default())
+	appBFF := newAppBFF(bank, newAppLogin(bank, appPassword), state.DB(), slog.Default())
 	http.Handle("/v1/", appBFF)
 	go func() {
 		for range time.Tick(time.Minute) {
@@ -234,8 +234,8 @@ func main() {
 	}
 
 	// Register bank app routes
-	registerBankAppAPI(state)
-	registerBankAppRoutes(state, appCtrl)
+	registerBankAppAPI(bank)
+	registerBankAppRoutes(bank, appCtrl)
 
 	// renderPage renders the layout around content; polling "Running" makes
 	// the layout re-fetch the whole page every second.

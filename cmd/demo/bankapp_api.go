@@ -4,6 +4,7 @@ package main
 
 import (
 	"encoding/json"
+	"git.bytestone.uk/hum3/gobank/core"
 	"net/http"
 	"strconv"
 	"strings"
@@ -11,14 +12,14 @@ import (
 
 // --- JSON HTTP handlers ---
 
-func registerBankAppAPI(state *DemoState) {
+func registerBankAppAPI(bank core.StaffQueries) {
 	http.HandleFunc("/api/customers", func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != "GET" {
 			http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 			return
 		}
 		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(state.bankAppCustomerList())
+		json.NewEncoder(w).Encode(bankAppCustomerList(bank))
 	})
 
 	http.HandleFunc("/api/customer/", func(w http.ResponseWriter, r *http.Request) {
@@ -42,7 +43,7 @@ func registerBankAppAPI(state *DemoState) {
 		w.Header().Set("Content-Type", "application/json")
 		switch {
 		case sub == "accounts":
-			resp := state.bankAppAccounts(custID)
+			resp := bankAppAccounts(bank, custID)
 			if resp == nil {
 				http.NotFound(w, r)
 				return
@@ -53,7 +54,7 @@ func registerBankAppAPI(state *DemoState) {
 			if page < 1 {
 				page = 1
 			}
-			json.NewEncoder(w).Encode(state.bankAppTransactions(custID, page))
+			json.NewEncoder(w).Encode(bankAppTransactions(bank, custID, page))
 		case strings.HasPrefix(sub, "product/"):
 			productRest := strings.TrimPrefix(sub, "product/")
 			productParts := strings.SplitN(productRest, "/", 2)
@@ -68,7 +69,7 @@ func registerBankAppAPI(state *DemoState) {
 			}
 			switch productSub {
 			case "":
-				resp := state.bankAppProductDetail(custID, idx)
+				resp := bankAppProductDetail(bank, custID, idx)
 				if resp == nil {
 					http.NotFound(w, r)
 					return
@@ -79,7 +80,7 @@ func registerBankAppAPI(state *DemoState) {
 				if page < 1 {
 					page = 1
 				}
-				json.NewEncoder(w).Encode(state.bankAppProductTransactions(custID, idx, page))
+				json.NewEncoder(w).Encode(bankAppProductTransactions(bank, custID, idx, page))
 			default:
 				http.NotFound(w, r)
 			}

@@ -1,11 +1,19 @@
 package main
 
 import (
+	"context"
 	"testing"
 
 	luca "git.bytestone.uk/hum3/go-luca"
 	gbp "git.bytestone.uk/hum3/gobank-products"
 )
+
+// productTotal is the number of accounts on a product and their combined
+// balance, as the test sums them.
+type productTotal struct {
+	Accounts int
+	Balance  luca.Amount
+}
 
 // sumCustomerFigures totals balances and interest over every customer via
 // the read model, as an independent check on the book-level derivations.
@@ -41,6 +49,8 @@ func sumCustomerFigures(t *testing.T, ds *DemoState) (savings, lending, loanInte
 	return
 }
 
+// The position's book, the P&L's interest and the products' books are
+// readings of the ledger: they agree with the accounts summed one by one.
 func TestBookTotalsFollowTheLedger(t *testing.T) {
 	ds := NewDemoState()
 	for range 5 {
@@ -56,18 +66,16 @@ func TestBookTotalsFollowTheLedger(t *testing.T) {
 		t.Fatalf("test needs funded savings and lending: %d, %d", savings, lending)
 	}
 
-	ds.mu.Lock()
-	got := ds.bookTotals()
-	ds.mu.Unlock()
+	got := ds.position()
 	if got.Savings != savings || got.Lending != lending {
-		t.Errorf("bookTotals = %+v, want savings %d lending %d", got, savings, lending)
+		t.Errorf("position = savings %d lending %d, want %d, %d", got.Savings, got.Lending, savings, lending)
 	}
-	ledgerSavings, _, err := ds.ledger.BalanceByPath("Liability:Savings", ds.currentDay.AddDate(0, 0, 1))
+	ledgerSavings, _, err := ds.Ledger().BalanceByPath("Liability:Savings", got.Day.AddDate(0, 0, 1))
 	if err != nil {
 		t.Fatal(err)
 	}
 	if got.Savings != ledgerSavings {
-		t.Errorf("bookTotals savings %d != ledger %d", got.Savings, ledgerSavings)
+		t.Errorf("position savings %d != ledger %d", got.Savings, ledgerSavings)
 	}
 
 	income, expense := ds.interestTotals()
@@ -75,10 +83,10 @@ func TestBookTotalsFollowTheLedger(t *testing.T) {
 		t.Errorf("interestTotals = %d, %d; want loan %d deposit %d", income, expense, loanInterest, depositInterest)
 	}
 
-	gotProducts := ds.productTotals()
-	for id, want := range perProduct {
-		if gotProducts[id] != want {
-			t.Errorf("productTotals[%s] = %+v, want %+v", id, gotProducts[id], want)
+	gotProducts, _ := ds.Products(context.Background())
+	for _, p := range gotProducts {
+		if want := perProduct[p.ID]; p.Accounts != want.Accounts || p.Balance != want.Balance {
+			t.Errorf("product %s = %d accounts, %d; want %+v", p.ID, p.Accounts, p.Balance, want)
 		}
 	}
 }

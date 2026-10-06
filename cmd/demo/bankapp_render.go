@@ -2,6 +2,7 @@ package main
 
 import (
 	"fmt"
+	"git.bytestone.uk/hum3/gobank/core"
 	"strings"
 
 	"git.bytestone.uk/hum3/gobank/bff"
@@ -49,7 +50,7 @@ func phoneNav(custID, activeTab string) string {
 // customer data: like a real internet-banking front door, entry requires a
 // customer ID (any password — this is a model). notFound shows an error after
 // a failed login attempt.
-func (ds *DemoState) buildAppLoginHTML(notFound bool) string {
+func buildAppLoginHTML(q core.CustomerQueries, notFound bool) string {
 	var s strings.Builder
 	s.WriteString(`<div class="phone-header" style="padding:24px 16px 20px;text-align:center">`)
 	s.WriteString(`<div style="width:56px;height:56px;border-radius:50%;background:rgba(255,255,255,0.2);margin:0 auto 8px;display:flex;align-items:center;justify-content:center;font-size:1.8rem">&#127974;</div>`)
@@ -77,8 +78,8 @@ func (ds *DemoState) buildAppLoginHTML(notFound bool) string {
 	return s.String()
 }
 
-func (ds *DemoState) buildAppBalanceHTML(custID string) string {
-	resp := ds.bankAppAccounts(custID)
+func buildAppBalanceHTML(q core.CustomerQueries, custID string) string {
+	resp := bankAppAccounts(q, custID)
 	if resp == nil {
 		return phoneHeader("Model Bank", "") +
 			`<div class="phone-body"><p style="color:#cc0000;text-align:center;margin-top:2rem">Customer not found.</p></div>`
@@ -124,14 +125,14 @@ func (ds *DemoState) buildAppBalanceHTML(custID string) string {
 	return s.String()
 }
 
-func (ds *DemoState) buildAppTransactionsHTML(custID string, page int) string {
-	resp := ds.bankAppAccounts(custID)
+func buildAppTransactionsHTML(q core.CustomerQueries, custID string, page int) string {
+	resp := bankAppAccounts(q, custID)
 	if resp == nil {
 		return phoneHeader("Model Bank", "") +
 			`<div class="phone-body"><p style="color:#cc0000;text-align:center;margin-top:2rem">Customer not found.</p></div>`
 	}
 
-	txResp := ds.bankAppTransactions(custID, page)
+	txResp := bankAppTransactions(q, custID, page)
 
 	var s strings.Builder
 	s.WriteString(phoneHeader("Activity", resp.CustomerName))
@@ -188,8 +189,8 @@ func (ds *DemoState) buildAppTransactionsHTML(custID string, page int) string {
 	return s.String()
 }
 
-func (ds *DemoState) buildAppProductHTML(custID string, accountIdx, txPage int) string {
-	detail := ds.bankAppProductDetail(custID, accountIdx)
+func buildAppProductHTML(q core.CustomerQueries, custID string, accountIdx, txPage int) string {
+	detail := bankAppProductDetail(q, custID, accountIdx)
 	if detail == nil {
 		return phoneHeader("Model Bank", "") +
 			`<div class="phone-body"><p style="color:#cc0000;text-align:center;margin-top:2rem">Product not found.</p></div>`
@@ -231,7 +232,7 @@ func (ds *DemoState) buildAppProductHTML(custID string, accountIdx, txPage int) 
 	if txPage < 1 {
 		txPage = 1
 	}
-	txResp := ds.bankAppProductTransactions(custID, accountIdx, txPage)
+	txResp := bankAppProductTransactions(q, custID, accountIdx, txPage)
 
 	s.WriteString(`<p style="font-size:0.85rem;font-weight:600;margin-bottom:8px">Recent Activity</p>`)
 

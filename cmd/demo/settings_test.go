@@ -20,7 +20,7 @@ func TestResetKeepsConsoleSettings(t *testing.T) {
 // is wiped before Save. Only the status line polls, and only when asked.
 func TestSettingsFormIsStaticWhileStatusPolls(t *testing.T) {
 	ds := NewDemoState()
-	bank := newCoreAdapter(ds, "")
+	bank := ds.Bank
 
 	polled := buildSettingsHTML(bank, ds.Settings(), true, nil)
 	found := strings.Contains(polled, `id="settings-status"`)
