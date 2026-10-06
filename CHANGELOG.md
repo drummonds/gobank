@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+## [0.17.0] - 2026-10-06
+
+ - Stage 5 stories 1.5.2 and 1.5.3: the daily snapshots and the books of account are the packages bank/history and bank/ledger
+
 ### Changed
 - ADR-0002 stage 5 story 1.5.2, history. The daily snapshots are the
   package `bank/history`: it owns `daily_snapshots` and its migration
