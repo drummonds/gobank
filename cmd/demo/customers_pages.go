@@ -63,12 +63,12 @@ func buildCustomersHTML(q core.StaffQueries, page int, piiAuth bool) string {
 			name, _ := q.CustomerName(ctx, c.ID)
 			s.WriteString(fmt.Sprintf(`<tr>
   <td><code>%s</code></td><td>%s</td><td>%d</td><td>%s</td><td>%s</td>
-  <td><a href="/customers/%s" class="button is-small is-link is-light">View</a></td>
+  <td><a href="customers/%s" class="button is-small is-link is-light">View</a></td>
 </tr>`, c.ID, name, c.Accounts, fmtMoney(c.Savings), fmtMoney(c.Lending), c.ID))
 		} else {
 			s.WriteString(fmt.Sprintf(`<tr>
   <td><code>%s</code></td><td>%d</td><td>%s</td><td>%s</td>
-  <td><a href="/customers/%s" class="button is-small is-link is-light">View</a></td>
+  <td><a href="customers/%s" class="button is-small is-link is-light">View</a></td>
 </tr>`, c.ID, c.Accounts, fmtMoney(c.Savings), fmtMoney(c.Lending), c.ID))
 		}
 	}
@@ -79,12 +79,12 @@ func buildCustomersHTML(q core.StaffQueries, page int, piiAuth bool) string {
 	if totalPages > 1 {
 		s.WriteString(`<nav class="pagination is-small mt-4" role="navigation">`)
 		if page > 1 {
-			s.WriteString(fmt.Sprintf(`<a class="pagination-previous" href="/customers?page=%d">Previous</a>`, page-1))
+			s.WriteString(fmt.Sprintf(`<a class="pagination-previous" href="customers?page=%d">Previous</a>`, page-1))
 		} else {
 			s.WriteString(`<a class="pagination-previous" disabled>Previous</a>`)
 		}
 		if page < totalPages {
-			s.WriteString(fmt.Sprintf(`<a class="pagination-next" href="/customers?page=%d">Next</a>`, page+1))
+			s.WriteString(fmt.Sprintf(`<a class="pagination-next" href="customers?page=%d">Next</a>`, page+1))
 		} else {
 			s.WriteString(`<a class="pagination-next" disabled>Next</a>`)
 		}
@@ -141,7 +141,7 @@ func buildCustomerDetailHTML(q core.StaffQueries, id string, piiAuthorized bool,
 
 	var s strings.Builder
 
-	s.WriteString(fmt.Sprintf(`<div class="level"><div class="level-left"><div class="level-item"><h2 class="title is-4 mb-0">%s</h2></div><div class="level-item"><a href="/app/customer/%s" target="_blank" class="button is-small is-success is-outlined">Bank App</a></div></div></div>`, name, cust.ID))
+	s.WriteString(fmt.Sprintf(`<div class="level"><div class="level-left"><div class="level-item"><h2 class="title is-4 mb-0">%s</h2></div><div class="level-item"><a href="app/customer/%s" target="_blank" class="button is-small is-success is-outlined">Bank App</a></div></div></div>`, name, cust.ID))
 	s.WriteString(fmt.Sprintf(`<p class="subtitle is-6 has-text-grey">ID: %s</p>`, cust.ID))
 
 	// A. Summary panel (no PII)
@@ -173,8 +173,8 @@ func buildCustomerDetailHTML(q core.StaffQueries, id string, piiAuthorized bool,
 		s.WriteString(fmt.Sprintf(`<div class="notification is-warning">
   <h3 class="title is-6">PII Access Required</h3>
   <p>Personal information is protected. Authorize to view.</p>
-  <form action="/auth/authorize" method="post" class="mt-2">
-    <input type="hidden" name="redirect" value="/customers/%s">
+  <form action="auth/authorize" method="post" class="mt-2">
+    <input type="hidden" name="redirect" value="customers/%s">
     <button class="button is-warning is-small">Confirm PII Access</button>
   </form>
 </div>`, cust.ID))
@@ -207,7 +207,7 @@ func buildCustomerDetailHTML(q core.StaffQueries, id string, piiAuthorized bool,
 	for i, a := range cust.Accounts {
 		s.WriteString(fmt.Sprintf(`<tr>
   <td>%s</td><td>%s</td><td><code>%s</code></td><td><code>%s</code></td><td>%.1f%%</td><td>%s</td><td>%s</td><td>%s</td>
-  <td><a href="/customers/%s/account/%d" class="button is-small is-link is-light">View</a></td>
+  <td><a href="customers/%s/account/%d" class="button is-small is-link is-light">View</a></td>
 </tr>`, a.ProductName, familyTag(a.Family), a.SortCode, a.AccountNum, a.Rate*100, fmtMoney(a.Balance), fmtMoney(a.Interest), fmtISODate(a.OpenDate), cust.ID, i))
 	}
 	s.WriteString(`</tbody></table></div>`)
@@ -234,12 +234,12 @@ func buildCustomerAccountHTML(q core.StaffQueries, custID string, accountIdx int
 	// Breadcrumb
 	s.WriteString(`<div class="level"><div class="level-left"><div class="level-item">`)
 	s.WriteString(`<nav class="breadcrumb mb-0" aria-label="breadcrumbs"><ul>`)
-	s.WriteString(`<li><a href="/customers">Customers</a></li>`)
-	s.WriteString(fmt.Sprintf(`<li><a href="/customers/%s">%s</a></li>`, cust.ID, name))
-	s.WriteString(fmt.Sprintf(`<li class="is-active"><a href="#">%s</a></li>`, a.ProductName))
+	s.WriteString(`<li><a href="customers">Customers</a></li>`)
+	s.WriteString(fmt.Sprintf(`<li><a href="customers/%s">%s</a></li>`, cust.ID, name))
+	s.WriteString(fmt.Sprintf(`<li class="is-active"><a aria-current="page">%s</a></li>`, a.ProductName))
 	s.WriteString(`</ul></nav>`)
 	s.WriteString(`</div><div class="level-item">`)
-	s.WriteString(fmt.Sprintf(`<a href="/app/customer/%s/product/%d" target="_blank" class="button is-small is-success is-outlined">Bank App</a>`, cust.ID, accountIdx))
+	s.WriteString(fmt.Sprintf(`<a href="app/customer/%s/product/%d" target="_blank" class="button is-small is-success is-outlined">Bank App</a>`, cust.ID, accountIdx))
 	s.WriteString(`</div></div></div>`)
 
 	// Account detail card
@@ -277,12 +277,12 @@ func buildCustomerAccountHTML(q core.StaffQueries, custID string, accountIdx int
 		if txTotalPages > 1 {
 			s.WriteString(`<nav class="pagination is-small mt-4" role="navigation">`)
 			if txPage > 1 {
-				s.WriteString(fmt.Sprintf(`<a class="pagination-previous" href="/customers/%s/account/%d?txpage=%d">Previous</a>`, cust.ID, accountIdx, txPage-1))
+				s.WriteString(fmt.Sprintf(`<a class="pagination-previous" href="customers/%s/account/%d?txpage=%d">Previous</a>`, cust.ID, accountIdx, txPage-1))
 			} else {
 				s.WriteString(`<a class="pagination-previous" disabled>Previous</a>`)
 			}
 			if txPage < txTotalPages {
-				s.WriteString(fmt.Sprintf(`<a class="pagination-next" href="/customers/%s/account/%d?txpage=%d">Next</a>`, cust.ID, accountIdx, txPage+1))
+				s.WriteString(fmt.Sprintf(`<a class="pagination-next" href="customers/%s/account/%d?txpage=%d">Next</a>`, cust.ID, accountIdx, txPage+1))
 			} else {
 				s.WriteString(`<a class="pagination-next" disabled>Next</a>`)
 			}

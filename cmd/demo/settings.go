@@ -21,7 +21,7 @@ func buildSettingsHTML(q core.BookQueries, settings sim.Settings, polling bool, 
 	s.WriteString(`<h2 class="title is-4">Settings</h2>`)
 	s.WriteString(renderSettingsStatus(q, polling))
 
-	s.WriteString(`<form action="/settings" method="post">`)
+	s.WriteString(`<form action="settings" method="post">`)
 	s.WriteString(`<div class="box">`)
 
 	// Max Customers
@@ -78,7 +78,7 @@ func renderSettingsStatus(q core.BookQueries, polling bool) string {
 	var s strings.Builder
 	s.WriteString(`<div id="settings-status"`)
 	if polling {
-		s.WriteString(` hx-get="/settings/status" hx-trigger="every 1s" hx-swap="outerHTML"`)
+		s.WriteString(` hx-get="settings/status" hx-trigger="every 1s" hx-swap="outerHTML"`)
 	}
 	s.WriteString(fmt.Sprintf(`><p class="subtitle is-6 has-text-grey">Current customers: %d | Sim date: %s</p></div>`,
 		pos.Customers, pos.Day.Format("2 Jan 2006")))

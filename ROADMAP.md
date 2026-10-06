@@ -314,18 +314,20 @@ root module, `cmd/bff` is the service binary, and `app/` is the Flutter shell.
   them), the audience split, and the screens app.md draws (its stories
   1 to 4). Done-when of the stage: `cmd/demo` holds no HTML and no handler,
   only wiring, the simulation and the console. Stories:
-- **1.6.1** one handler, in the tab — the demo's routes become one
+- **1.6.1** [x] one handler, in the tab — the demo's routes become one
   `http.Handler` built over the state (no default mux, no closures in
   `main`); the server listens on it and the WASM build serves the same
   handler in the tab through lofigui's service worker (`wasmhttp.Serve`,
   lofigui examples 06 and 07), replacing the forty `goRender*` exports, the
   page switch in `app.js` and the WASM-only `index.html` with the layout,
   HTMX polling and links the server already has. A pure move for the
-  server. Spike first: the session cookie through a service worker (the
-  browser drops Set-Cookie on a synthetic response) and the `/demo/` scope
-  on docs.bytestone.uk (redirects need `lofigui.WASMScopePath`).
-  Done-when: `main_wasm.go` registers the handler and nothing else;
-  `test:wasm` drives pages through fetch; the docs demo looks the same
+  server. Settled: the staff session in the tab is a fixed ID (the
+  browser drops Set-Cookie on a service worker's response); pages are
+  scope-relative against a `<base>` so the demo runs at `/` on a server
+  and at `/demo/` on the docs site, with redirects carrying the scope.
+  Done: `main_wasm.go` registers the handler and nothing else; `test:wasm`
+  drives the binary over the worker's own Request/Response protocol under
+  `/demo/`; the docs demo serves the server's pages
 - **1.6.2** customer web through the BFF — the hand-rendered phone frame
   (`/app/`, `bankapp_*.go`, `LayoutBankApp`) and the open `/api/customers`
   and `/api/customer/` endpoints are retired; the demo's Bank App link

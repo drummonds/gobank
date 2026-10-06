@@ -1,37 +1,16 @@
-// WASM integration test — exercises the gobank WASM binary via Node.js.
+// WASM integration test — drives the gobank WASM binary the way the
+// service worker does (ADR-0002 stage 6, story 1.6.1): the binary serves
+// the demo's one handler through go-wasm-http-server, so the test hands it
+// Requests and reads Responses, exactly what sw.js does in the browser.
 // Run: node wasm_test.js <path-to-docs/demo>
 // Exit 0 on success, 1 on failure.
 
 'use strict';
 
-const fs = require('fs');
-const path = require('path');
-const { webcrypto } = require('crypto');
-
-// Polyfill for wasm_exec.js on older Node (modern Node has a getter-only
-// globalThis.crypto that must not be assigned).
-if (typeof globalThis.crypto === 'undefined') {
-	globalThis.crypto = webcrypto;
-}
-
-const demoDir = path.resolve(process.argv[2] || path.join(__dirname, '..', '..', 'docs', 'demo'));
-require(path.join(demoDir, 'wasm_exec.js'));
+const { loadWASM, Demo } = require('./wasm_harness.js');
 
 let failures = 0;
 let passes = 0;
-
-// Intercept Go panic exit — wasm_exec.js calls process.exit(2) on panic.
-// Override to print results before dying.
-const origExit = process.exit;
-process.exit = function (code) {
-    if (code === 2) {
-        // Go panic — report what we have so far.
-        console.error('\nGo panic detected (exit code 2)');
-        console.log('\n=== Results (partial): ' + passes + ' passed, ' + (failures + 1) + ' failed ===');
-        origExit.call(process, 1);
-    }
-    origExit.call(process, code);
-};
 
 function assert(cond, msg) {
     if (!cond) {
@@ -42,141 +21,92 @@ function assert(cond, msg) {
     }
 }
 
-function assertHTML(val, label) {
-    assert(typeof val === 'string' && val.length > 10, label + ' returns non-trivial HTML (got ' + (typeof val === 'string' ? val.length : typeof val) + ' chars)');
+// assertPage asserts a GET answered 200 with a document inside the scope.
+function assertPage(res, label) {
+    assert(res.status === 200, label + ': status ' + res.status);
+    assert(res.body.length > 10, label + ' returns non-trivial HTML (' + res.body.length + ' chars)');
+    assert(res.body.includes('<base href="' + Demo.scope + '">'), label + ' carries the scope as its <base>');
 }
 
-async function loadWASM() {
-    const go = new Go();
-    const wasmPath = path.join(demoDir, 'main.wasm');
-    const buf = fs.readFileSync(wasmPath);
-    console.log('Loading WASM (' + (buf.length / 1024 / 1024).toFixed(1) + ' MB)...');
-
-    return new Promise((resolve, reject) => {
-        const timeout = setTimeout(() => reject(new Error('wasmReady not called within 60s')), 60000);
-
-        globalThis.wasmReady = function () {
-            clearTimeout(timeout);
-            resolve();
-        };
-
-        WebAssembly.instantiate(buf, go.importObject).then(result => {
-            go.run(result.instance);
-        }).catch(reject);
-    });
-}
-
-// --- Test suites ---
-
-function testStartup() {
-    console.log('\n--- Startup ---');
-    // If we got here, wasmReady was called.
-    assert(typeof globalThis.goRender === 'function', 'goRender exported');
-    assert(typeof globalThis.goAddCustomers === 'function', 'goAddCustomers exported');
-    assert(typeof globalThis.goAdvanceDay === 'function', 'goAdvanceDay exported');
-    assert(typeof globalThis.goRenderPnL === 'function', 'goRenderPnL exported');
-    assert(typeof globalThis.goRenderBalanceSheet === 'function', 'goRenderBalanceSheet exported');
-    assert(typeof globalThis.goRenderCustomers === 'function', 'goRenderCustomers exported');
-    assert(typeof globalThis.goRenderPayments === 'function', 'goRenderPayments exported');
-    assert(typeof globalThis.goRenderSettings === 'function', 'goRenderSettings exported');
-    assert(typeof globalThis.goRenderAbout === 'function', 'goRenderAbout exported');
-    assert(typeof globalThis.goIsRunning === 'function', 'goIsRunning exported');
-}
-
-function testInitialRender() {
+async function testInitialRender(demo) {
     console.log('\n--- Initial render (day 0, 0 customers) ---');
-    assertHTML(goRender(), 'dashboard');
-    assertHTML(goRenderPnL(), 'P&L');
-    assertHTML(goRenderBalanceSheet(), 'balance sheet');
-    assertHTML(goRenderCustomers(), 'customers');
-    assertHTML(goRenderPayments(), 'payments');
-    assertHTML(goRenderSettings(), 'settings');
-    assertHTML(goRenderAbout(), 'about');
-    assertHTML(goRenderProducts('savings'), 'savings products');
-    assertHTML(goRenderProducts('lending'), 'lending products');
-    assertHTML(goRenderTreasuryCash(), 'treasury cash');
-    assertHTML(goRenderTreasuryCapital(), 'treasury capital');
-    assertHTML(goRenderTreasuryGilts(), 'treasury gilts');
-    assertHTML(goRenderModels(), 'models');
-    assert(goIsRunning() === false, 'not running initially');
+    for (const page of ['/', '/accounting/pnl', '/accounting/balance-sheet', '/customers', '/payments',
+        '/settings', '/about', '/products/savings', '/products/lending', '/treasury/cash',
+        '/treasury/capital', '/treasury/gilts', '/about/models', '/about/runtime', '/app/']) {
+        assertPage(await demo.get(page), page);
+    }
+    const dash = await demo.get('/');
+    assert(dash.body.includes('>Run<'), 'not running initially');
 }
 
-function testShortRun(nCustomers, nDays) {
+async function testShortRun(demo, nCustomers, nDays) {
     console.log('\n--- Short run: ' + nCustomers + ' customers, ' + nDays + ' days ---');
-    goReset();
-    goUpdateSettings(nCustomers); // fix customer count
-    goAddCustomers(nCustomers);
-    const custHTML = goRenderCustomers();
-    assertHTML(custHTML, 'customers after add');
+    await demo.post('/reset');
+    await demo.post('/settings', { max_customers: nCustomers, day_length: '' });
+    await demo.addCustomers(nCustomers);
+    assertPage(await demo.get('/customers'), 'customers after add');
 
     for (let d = 0; d < nDays; d++) {
-        goAdvanceDay();
+        const res = await demo.post('/advance');
+        assert(res.status === 303 && res.location === Demo.scope, 'advance redirects to the dashboard (got ' + res.status + ' ' + res.location + ')');
     }
 
-    const dash = goRender();
-    assertHTML(dash, 'dashboard after ' + nDays + ' days');
-    assertHTML(goRenderPnL(), 'P&L after ' + nDays + ' days');
-    assertHTML(goRenderBalanceSheet(), 'balance sheet after ' + nDays + ' days');
-    assertHTML(goRenderCustomers(), 'customers after ' + nDays + ' days');
-    assertHTML(goRenderTreasuryCash(), 'treasury cash after ' + nDays + ' days');
-    assertHTML(goRenderTreasuryCapital(), 'treasury capital after ' + nDays + ' days');
-    assertHTML(goRenderBBSI(), 'BBSI report after ' + nDays + ' days');
+    for (const page of ['/', '/accounting/pnl', '/accounting/balance-sheet', '/customers',
+        '/treasury/cash', '/treasury/capital', '/reports/bbsi']) {
+        assertPage(await demo.get(page), page + ' after ' + nDays + ' days');
+    }
 
-    // The explorer bridge takes a link's href whole, so an FK link's filter
-    // reaches the explorer.
-    const filtered = goRenderExplorerTable('/internal/explorer/customer_accounts?filter=customer_id&value=cust-001');
-    assert(filtered.includes('Filter: customer_id = cust-001'), 'explorer FK filter honoured in WASM');
+    // The explorer takes the request URL whole, so an FK link's filter
+    // reaches it, and its links carry the scope.
+    const filtered = await demo.get('/internal/explorer/customer_accounts?filter=customer_id&value=cust-001');
+    assert(filtered.body.includes('Filter: customer_id = cust-001'), 'explorer FK filter honoured in WASM');
+    assert(filtered.body.includes('href="' + Demo.scope + 'internal/explorer'), 'explorer links carry the scope');
 
     console.log('  ' + nDays + ' days advanced OK');
 }
 
-function testPayments() {
+async function testPayments(demo) {
     console.log('\n--- Payments ---');
-    goResetPayments();
-    goSendPayment();
-    goSendPayment();
-    goSendPayment();
-    assertHTML(goRenderPayments(), 'payments after sends');
+    for (let i = 0; i < 3; i++) {
+        await demo.post('/payments/send');
+    }
+    assertPage(await demo.get('/payments'), 'payments after sends');
 }
 
-function testExportImport() {
-    console.log('\n--- Export/Import ---');
-    let data;
-    try {
-        data = goExport();
-    } catch (err) {
-        // Go panic kills the WASM instance; catch what we can.
-        console.error('  FAIL: goExport() threw:', err.message || err);
-        failures++;
-        return;
-    }
-    if (data === undefined || data === null) {
-        console.error('  FAIL: goExport() returned', data, '(likely Go panic — ledger not initialised)');
-        failures++;
-        return;
-    }
-    assert(typeof data === 'string' && data.length > 0, 'export produces data (' + data.length + ' bytes)');
-    assert(!data.startsWith('error:'), 'export has no error: ' + data.substring(0, 80));
+async function testRoleAndPII(demo) {
+    console.log('\n--- Role and PII (one session per tab) ---');
+    let res = await demo.post('/role', { role: 'readonly', redirect: 'customers' });
+    assert(res.location === Demo.scope + 'customers', 'role change returns to the page (got ' + res.location + ')');
+    res = await demo.get('/');
+    assert(!res.body.includes('>Run<'), 'read-only role sees no simulation controls');
+    await demo.post('/role', { role: 'admin', redirect: '' });
+    res = await demo.get('/');
+    assert(res.body.includes('>Run<'), 'admin role sees the simulation controls again');
 }
 
-// --- Main ---
+async function testExport(demo) {
+    console.log('\n--- Export ---');
+    const res = await demo.get('/export.goluca');
+    assert(res.status === 200, 'export answers 200 (got ' + res.status + ')');
+    assert(res.body.length > 0, 'export produces data (' + res.body.length + ' bytes)');
+    assert((res.headers.get('content-disposition') || '').includes('gobank.goluca'), 'export is an attachment');
+}
 
 (async function main() {
+    let demo;
     try {
-        await loadWASM();
-        console.log('WASM loaded OK');
+        demo = await loadWASM();
+        console.log('WASM loaded OK, serving under ' + Demo.scope);
     } catch (err) {
         console.error('FATAL: WASM failed to load:', err.message);
         process.exit(1);
     }
 
-    testStartup();
-    testInitialRender();
-    testShortRun(10, 7);
-    testPayments();
-    // Export/Import last — depends on ledger which may not init in WASM yet.
-    // A Go panic here kills the process, so keep it at the end.
-    testExportImport();
+    await testInitialRender(demo);
+    await testShortRun(demo, 10, 7);
+    await testPayments(demo);
+    await testRoleAndPII(demo);
+    await testExport(demo);
 
     console.log('\n=== Results: ' + passes + ' passed, ' + failures + ' failed ===');
     process.exit(failures > 0 ? 1 : 0);

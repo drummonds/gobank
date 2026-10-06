@@ -10,10 +10,12 @@ import (
 // explorer returns the DB explorer (extracted to go-dbexplorer) bound to
 // the demo's database and mounted under /internal/explorer, divided into
 // the bank's components so it can be scoped to one (/c/{component}).
-func (ds *DemoState) explorer() *dbexplorer.Explorer {
+// scope is the path the demo is mounted under; the explorer's links are
+// absolute, so they carry it.
+func (ds *DemoState) explorer(scope string) *dbexplorer.Explorer {
 	return &dbexplorer.Explorer{
 		DB:       ds.DB(),
-		BasePath: "/internal/explorer",
+		BasePath: scope + "internal/explorer",
 		Catalog:  explorerCatalog,
 		Annotate: contractBadge,
 		Authoriser: dbexplorer.AuthoriserFunc(func(ctx context.Context, component string) bool {
@@ -35,10 +37,10 @@ var explorerCatalog = func() dbexplorer.StaticCatalog {
 // index for /internal/explorer, a table for /internal/explorer/<table> —
 // honouring every query parameter the explorer's own links carry (page,
 // sort, dir, trunc, filter, value). ctx carries the viewer's role (see
-// withRole), which decides the components shown. Server and WASM both route
-// through it.
-func (ds *DemoState) BuildExplorerPage(ctx context.Context, rawURL string) string {
-	return ds.explorer().Render(ctx, rawURL)
+// withRole), which decides the components shown; rawURL is scope-relative
+// as the handler saw it.
+func (ds *DemoState) BuildExplorerPage(ctx context.Context, scope, rawURL string) string {
+	return ds.explorer(scope).Render(ctx, scope+strings.TrimPrefix(rawURL, "/"))
 }
 
 // contractBadge marks a contract view (ADR-0001); the explorer itself tags

@@ -60,8 +60,8 @@ func buildBBSIHTML(q core.StaffQueries, piiAuthorized bool) string {
 		s.WriteString(`<div class="notification is-warning">
   <h3 class="title is-6">PII Access Required</h3>
   <p>This report contains personally identifiable information (names and NI numbers).</p>
-  <form action="/auth/authorize" method="post" class="mt-2">
-    <input type="hidden" name="redirect" value="/reports/bbsi">
+  <form action="auth/authorize" method="post" class="mt-2">
+    <input type="hidden" name="redirect" value="reports/bbsi">
     <button class="button is-warning is-small">Confirm PII Access</button>
   </form>
 </div>`)
@@ -118,8 +118,8 @@ func buildCustomerViewHTML(q core.StaffQueries, id string, piiAuthorized bool) s
 		s.WriteString(fmt.Sprintf(`<div class="notification is-warning">
   <h3 class="title is-6">PII Access Required</h3>
   <p>This report contains personally identifiable information.</p>
-  <form action="/auth/authorize" method="post" class="mt-2">
-    <input type="hidden" name="redirect" value="/reports/customer-view?id=%s">
+  <form action="auth/authorize" method="post" class="mt-2">
+    <input type="hidden" name="redirect" value="reports/customer-view?id=%s">
     <button class="button is-warning is-small">Confirm PII Access</button>
   </form>
 </div>`, cust.ID))

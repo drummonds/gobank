@@ -28,7 +28,7 @@ require (
 	github.com/ncruces/go-sqlite3 v0.35.6 // indirect
 	github.com/ncruces/julianday v1.0.0 // indirect
 	github.com/nlepage/go-js-promise v1.1.0 // indirect
-	github.com/nlepage/go-wasm-http-server/v2 v2.2.1 // indirect
+	github.com/nlepage/go-wasm-http-server/v2 v2.2.1
 	github.com/russross/blackfriday/v2 v2.1.0 // indirect
 	github.com/shopspring/decimal v1.4.0 // indirect
 	golang.org/x/sync v0.23.0 // indirect

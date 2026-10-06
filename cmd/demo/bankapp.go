@@ -1,5 +1,3 @@
-//go:build !(js && wasm)
-
 package main
 
 import (
@@ -13,14 +11,15 @@ import (
 )
 
 // registerBankAppRoutes wires up the phone UI HTML routes.
-func registerBankAppRoutes(bank core.StaffQueries, appCtrl *lofigui.Controller) {
+func registerBankAppRoutes(mux *http.ServeMux, bank core.StaffQueries, appCtrl *lofigui.Controller, scope string, redirect func(http.ResponseWriter, *http.Request, string)) {
 	appPage := func(w http.ResponseWriter, content string) {
 		appCtrl.RenderTemplate(w, lofigui.TemplateContext{
 			"results": template.HTML(content),
+			"scope":   scope,
 		})
 	}
 
-	http.HandleFunc("/app/", func(w http.ResponseWriter, r *http.Request) {
+	mux.HandleFunc("/app/", func(w http.ResponseWriter, r *http.Request) {
 		path := strings.TrimPrefix(r.URL.Path, "/app/")
 
 		// POST /app/login — simulated login redirect (any password accepted;
@@ -29,10 +28,10 @@ func registerBankAppRoutes(bank core.StaffQueries, appCtrl *lofigui.Controller) 
 			r.ParseForm()
 			custID := r.FormValue("customer_id")
 			if custID == "" || !customerExists(bank, custID) {
-				http.Redirect(w, r, "/app/?err=nf", http.StatusSeeOther)
+				redirect(w, r, "app/?err=nf")
 				return
 			}
-			http.Redirect(w, r, "/app/customer/"+custID, http.StatusSeeOther)
+			redirect(w, r, "app/customer/"+custID)
 			return
 		}
 

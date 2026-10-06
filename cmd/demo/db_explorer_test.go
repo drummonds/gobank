@@ -11,7 +11,7 @@ import (
 func TestExplorerListsTablesOnPglike(t *testing.T) {
 	ds := NewDemoState()
 	addFundedCustomer(ds)
-	page := ds.BuildExplorerPage(t.Context(), "/internal/explorer")
+	page := ds.BuildExplorerPage(t.Context(), "/", "/internal/explorer")
 	for _, want := range []string{"customer_accounts", "movements", "contract_payments", `href="/internal/explorer/c/customers">customers</a>`} {
 		if !strings.Contains(page, want) {
 			t.Errorf("explorer index on pglike missing %q", want)
@@ -28,7 +28,7 @@ func TestExplorerListsTablesOnPostgres(t *testing.T) {
 	}
 	ds := NewDemoStateWithDSN(dsn)
 	addFundedCustomer(ds)
-	page := ds.BuildExplorerPage(t.Context(), "/internal/explorer")
+	page := ds.BuildExplorerPage(t.Context(), "/", "/internal/explorer")
 	for _, want := range []string{"customer_accounts", "movements", "contract_payments", `href="/internal/explorer/c/customers">customers</a>`} {
 		if !strings.Contains(page, want) {
 			t.Errorf("explorer index on PostgreSQL missing %q", want)
@@ -45,7 +45,7 @@ func TestExplorerPageHonoursFilter(t *testing.T) {
 	ds := NewDemoState()
 	addFundedCustomer(ds)
 	addFundedCustomer(ds)
-	page := ds.BuildExplorerPage(t.Context(), "/internal/explorer/customer_accounts?filter=customer_id&value=cust-002")
+	page := ds.BuildExplorerPage(t.Context(), "/", "/internal/explorer/customer_accounts?filter=customer_id&value=cust-002")
 	if !strings.Contains(page, "Filter: customer_id = cust-002") {
 		t.Errorf("filtered page does not show the filter: %.300s", page)
 	}
@@ -84,13 +84,13 @@ func TestRoleCanViewComponent(t *testing.T) {
 func TestExplorerHidesPIIFromReadOnly(t *testing.T) {
 	ds := NewDemoState()
 	readOnly := withRole(t.Context(), RoleReadOnly)
-	if page := ds.BuildExplorerPage(readOnly, "/internal/explorer"); strings.Contains(page, ">cust_pii</a>") || !strings.Contains(page, ">payments</a>") {
+	if page := ds.BuildExplorerPage(readOnly, "/", "/internal/explorer"); strings.Contains(page, ">cust_pii</a>") || !strings.Contains(page, ">payments</a>") {
 		t.Error("read-only index should hide the customers component and keep the rest")
 	}
-	if page := ds.BuildExplorerPage(readOnly, "/internal/explorer/cust_pii"); !strings.Contains(page, "Access denied") {
+	if page := ds.BuildExplorerPage(readOnly, "/", "/internal/explorer/cust_pii"); !strings.Contains(page, "Access denied") {
 		t.Error("read-only should be denied cust_pii")
 	}
-	if page := ds.BuildExplorerPage(withRole(t.Context(), RoleAuditor), "/internal/explorer"); !strings.Contains(page, ">cust_pii</a>") {
+	if page := ds.BuildExplorerPage(withRole(t.Context(), RoleAuditor), "/", "/internal/explorer"); !strings.Contains(page, ">cust_pii</a>") {
 		t.Error("auditor should see the customers component")
 	}
 }

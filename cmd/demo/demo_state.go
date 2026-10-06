@@ -39,7 +39,6 @@ type DemoState struct {
 	rates          core.BaseRateSource // where the bank reads the base rate
 	memoryLimit    uint64              // auto-stop threshold, see SetMemoryLimit (mu)
 	memoryExceeded bool                // true when heap > memoryLimit; simulation pauses (mu)
-	piiAuthorized  bool                // the in-page demo's PII authorisation (WASM; mu)
 }
 
 func NewDemoState() *DemoState {
@@ -149,7 +148,6 @@ func (ds *DemoState) dbWriters() int {
 func (ds *DemoState) Reset() {
 	ds.sim.Reset(sim.OpeningDay)
 	ds.mu.Lock()
-	ds.piiAuthorized = false
 	ds.memoryExceeded = false
 	ds.mu.Unlock()
 	if ds.dbIsPostgres {

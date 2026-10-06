@@ -1,5 +1,3 @@
-//go:build !(js && wasm)
-
 package main
 
 import (
@@ -12,8 +10,8 @@ import (
 
 // --- JSON HTTP handlers ---
 
-func registerBankAppAPI(bank core.StaffQueries) {
-	http.HandleFunc("/api/customers", func(w http.ResponseWriter, r *http.Request) {
+func registerBankAppAPI(mux *http.ServeMux, bank core.StaffQueries) {
+	mux.HandleFunc("/api/customers", func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != "GET" {
 			http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 			return
@@ -22,7 +20,7 @@ func registerBankAppAPI(bank core.StaffQueries) {
 		json.NewEncoder(w).Encode(bankAppCustomerList(bank))
 	})
 
-	http.HandleFunc("/api/customer/", func(w http.ResponseWriter, r *http.Request) {
+	mux.HandleFunc("/api/customer/", func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != "GET" {
 			http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 			return

@@ -158,10 +158,9 @@ tasks:
       - task: diagrams
       - mkdir -p docs/demo
       - cd cmd/demo && GOOS=js GOARCH=wasm go build -ldflags "-X main.version={{.GIT_TAG}}" -o main.wasm .
-      - cp "$(find $(go env GOROOT) -name wasm_exec.js -print -quit)" docs/demo/
-      - cp cmd/demo/main.wasm docs/demo/
-      - sed 's/Model Bank WASM/Model Bank {{.GIT_TAG}}/' cmd/demo/templates/index.html > docs/demo/index.html
-      - cp cmd/demo/templates/app.js docs/demo/
+      # The demo runs in the tab from a service worker (ADR-0002 stage 6): wasm-deploy writes
+      # the bootstrap index.html, sw.js and the go-wasm-http-server runtime next to main.wasm.
+      - cd cmd/demo && go run git.bytestone.uk/hum3/lofigui/cmd/wasm-deploy -dir ../../docs/demo -title "Model Bank" -wasm main.wasm -build-version "Model Bank {{.GIT_TAG}}"
       - cp cmd/demo/templates/favicon.svg docs/
       - cp cmd/demo/templates/favicon.svg docs/demo/
       - rm cmd/demo/main.wasm

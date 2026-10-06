@@ -175,7 +175,7 @@ func buildGiltsHTML(q core.TreasuryQueries) string {
 	// Buy form
 	s.WriteString(`<div class="box">`)
 	s.WriteString(`<h3 class="title is-5">Buy Gilt</h3>`)
-	s.WriteString(`<form action="/treasury/gilts/buy" method="post">`)
+	s.WriteString(`<form action="treasury/gilts/buy" method="post">`)
 	s.WriteString(`<div class="field is-horizontal"><div class="field-label is-normal"><label class="label">Tenor</label></div>`)
 	s.WriteString(`<div class="field-body"><div class="field"><div class="control"><div class="select">`)
 	s.WriteString(`<select name="tenor">`)

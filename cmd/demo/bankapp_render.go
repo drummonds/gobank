@@ -29,9 +29,9 @@ func phoneNav(custID, activeTab string) string {
 	tabs := []struct {
 		Icon, Label, Href, Key string
 	}{
-		{"&#127968;", "Home", "/app/", "home"},
-		{"&#128179;", "Accounts", fmt.Sprintf("/app/customer/%s", custID), "accounts"},
-		{"&#128196;", "Activity", fmt.Sprintf("/app/customer/%s/transactions", custID), "transactions"},
+		{"&#127968;", "Home", "app/", "home"},
+		{"&#128179;", "Accounts", fmt.Sprintf("app/customer/%s", custID), "accounts"},
+		{"&#128196;", "Activity", fmt.Sprintf("app/customer/%s/transactions", custID), "transactions"},
 	}
 	for _, t := range tabs {
 		cls := ""
@@ -63,7 +63,7 @@ func buildAppLoginHTML(q core.CustomerQueries, notFound bool) string {
 		s.WriteString(`<div style="background:#feecf0;color:#cc0f35;border-radius:10px;padding:10px 14px;font-size:0.8rem;margin-bottom:12px">Unknown customer ID. Check the ID and try again.</div>`)
 	}
 
-	s.WriteString(`<form method="POST" action="/app/login" style="margin-top:1rem">
+	s.WriteString(`<form method="POST" action="app/login" style="margin-top:1rem">
   <label style="display:block;font-size:0.75rem;color:#7a7a7a;margin-bottom:4px">Customer ID</label>
   <input name="customer_id" placeholder="e.g. cust-001" required autocomplete="off"
     style="width:100%;padding:10px 14px;border:1px solid #dbdbdb;border-radius:10px;font-size:0.9rem;margin-bottom:12px">
@@ -107,7 +107,7 @@ func buildAppBalanceHTML(q core.CustomerQueries, custID string) string {
 			familyIcon = screen.Glyph(screen.IconLending, a.Currency)
 			familyColor = "#3e8ed0"
 		}
-		fmt.Fprintf(&s, `<a href="/app/customer/%s/product/%d" style="display:block;text-decoration:none;color:inherit;margin-bottom:8px">
+		fmt.Fprintf(&s, `<a href="app/customer/%s/product/%d" style="display:block;text-decoration:none;color:inherit;margin-bottom:8px">
 <div style="background:#fafafa;border-radius:10px;padding:14px 16px;border-left:4px solid %s">
   <div style="display:flex;justify-content:space-between;align-items:center">
     <div><span>%s</span> <strong>%s</strong><br><span style="font-size:0.75rem;color:#7a7a7a">%.2f%% APR</span></div>
@@ -179,7 +179,7 @@ func buildAppTransactionsHTML(q core.CustomerQueries, custID string, page int) s
 		totalPages := (txResp.TotalCount + txPerPage - 1) / txPerPage
 		if page < totalPages {
 			fmt.Fprintf(&s, `<div style="text-align:center;margin:16px 0">
-  <a href="/app/customer/%s/transactions?page=%d" style="color:#00947e;font-size:0.85rem;text-decoration:none">Load more</a>
+  <a href="app/customer/%s/transactions?page=%d" style="color:#00947e;font-size:0.85rem;text-decoration:none">Load more</a>
 </div>`, custID, page+1)
 		}
 	}
@@ -200,7 +200,7 @@ func buildAppProductHTML(q core.CustomerQueries, custID string, accountIdx, txPa
 
 	// Header with back link
 	s.WriteString(`<div class="phone-header" style="text-align:left;padding:8px 16px 12px">`)
-	fmt.Fprintf(&s, `<a href="/app/customer/%s" style="color:rgba(255,255,255,0.8);text-decoration:none;font-size:0.8rem">&#8249; Back</a>`, custID)
+	fmt.Fprintf(&s, `<a href="app/customer/%s" style="color:rgba(255,255,255,0.8);text-decoration:none;font-size:0.8rem">&#8249; Back</a>`, custID)
 	fmt.Fprintf(&s, `<p class="title" style="margin-top:4px">%s</p>`, detail.ProductName)
 	fmt.Fprintf(&s, `<p class="subtitle">%s</p>`, detail.Family)
 	s.WriteString(`</div>`)
@@ -277,7 +277,7 @@ func buildAppProductHTML(q core.CustomerQueries, custID string, accountIdx, txPa
 		totalPages := (txResp.TotalCount + txPerPage - 1) / txPerPage
 		if txPage < totalPages {
 			fmt.Fprintf(&s, `<div style="text-align:center;margin:16px 0">
-  <a href="/app/customer/%s/product/%d?page=%d" style="color:#00947e;font-size:0.85rem;text-decoration:none">Load more</a>
+  <a href="app/customer/%s/product/%d?page=%d" style="color:#00947e;font-size:0.85rem;text-decoration:none">Load more</a>
 </div>`, custID, accountIdx, txPage+1)
 		}
 	}

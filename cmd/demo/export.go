@@ -1,5 +1,3 @@
-//go:build !(js && wasm)
-
 package main
 
 import (
@@ -23,7 +21,7 @@ func (ds *DemoState) handleExport(w http.ResponseWriter, r *http.Request) {
 	w.Write(buf.Bytes())
 }
 
-func (ds *DemoState) handleImport(w http.ResponseWriter, r *http.Request) {
+func (ds *DemoState) handleImport(w http.ResponseWriter, r *http.Request, redirect func(http.ResponseWriter, *http.Request, string)) {
 	if r.Method != "POST" {
 		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 		return
@@ -45,5 +43,5 @@ func (ds *DemoState) handleImport(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
-	http.Redirect(w, r, "/", http.StatusSeeOther)
+	redirect(w, r, "")
 }

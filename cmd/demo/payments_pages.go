@@ -100,7 +100,7 @@ func buildPaymentsHTML(q core.StaffQueries, piiAuth bool, page int, running bool
   <td>%d</td><td><span class="tag %s">%s</span></td><td>%s</td><td>%s</td><td>%s</td><td><code>%s</code></td>
   <td><span class="tag %s">%s</span></td>
   <td>%s</td>
-  <td><a href="/payments/%d" class="button is-small is-link is-light">Detail</a></td>
+  <td><a href="payments/%d" class="button is-small is-link is-light">Detail</a></td>
 </tr>`, p.ID, paymentTypeTag(p.Type), p.Type, from, to, fmtMoney(p.Amount), p.Reference, paymentStatusTag(p.Status), p.Status, fmtUTC(p.CreatedAt), p.ID))
 		}
 
@@ -110,12 +110,12 @@ func buildPaymentsHTML(q core.StaffQueries, piiAuth bool, page int, running bool
 		if totalPages > 1 {
 			s.WriteString(`<nav class="pagination is-small mt-4" role="navigation">`)
 			if page > 1 {
-				s.WriteString(fmt.Sprintf(`<a class="pagination-previous" href="/payments?page=%d">Previous</a>`, page-1))
+				s.WriteString(fmt.Sprintf(`<a class="pagination-previous" href="payments?page=%d">Previous</a>`, page-1))
 			} else {
 				s.WriteString(`<a class="pagination-previous" disabled>Previous</a>`)
 			}
 			if page < totalPages {
-				s.WriteString(fmt.Sprintf(`<a class="pagination-next" href="/payments?page=%d">Next</a>`, page+1))
+				s.WriteString(fmt.Sprintf(`<a class="pagination-next" href="payments?page=%d">Next</a>`, page+1))
 			} else {
 				s.WriteString(`<a class="pagination-next" disabled>Next</a>`)
 			}

@@ -2,6 +2,23 @@
 
 ## [Unreleased]
 
+### Changed
+- ADR-0002 stage 6 story 1.6.1, one handler in the tab. The demo's routes
+  are one `http.Handler` built over its state (`newHandler`, cmd/demo/
+  routes.go): the server listens on it and the WASM build serves the same
+  handler from a service worker (lofigui's wasm-deploy bootstrap over
+  go-wasm-http-server), replacing the forty `goRender*` exports, the page
+  switch in `app.js` and the WASM-only `index.html`. The WASM demo now has
+  the server's layout, HTMX polling, forms and links. Pages are
+  scope-relative: every document carries the path it is served under as
+  its `<base>`, links and form actions are relative to it and redirects
+  carry it, so the demo runs unchanged at `/` on a server and at `/demo/`
+  on the docs site; a form's redirect target is honoured only when it is
+  such a path. The staff session in the tab is a fixed ID (a service
+  worker's response cannot set a cookie). `test:wasm` and `bench:wasm`
+  drive the binary over the same Request/Response protocol the worker
+  uses (`wasm_harness.js`), under the `/demo/` scope.
+
 ## [0.18.0] - 2026-10-07
 
  - Stage 5 story 1.5.4: products, customers, payments and the bank itself are packages; the core is in packages and the demo is wiring, console and UI (ADR-0004 applied)
