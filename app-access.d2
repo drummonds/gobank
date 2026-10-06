@@ -1,0 +1,48 @@
+direction: right
+
+title: Customer app · access states {
+  shape: text
+  style.font-size: 22
+  style.bold: true
+  near: top-center
+}
+
+# One view, one question: how does a customer get into the app, stay in,
+# and get out? The screens each state shows are in the wireframe
+# (docs/app-wireframe.svg); the rules are the decision table in app.md.
+
+logged_out: Logged out {
+  style.fill: "#fafafa"
+}
+locked_out: Locked out {
+  style.fill: "#ffebee"
+  style.stroke: "#c62828"
+}
+logged_in: Logged in {
+  style.fill: "#e0f2f1"
+  style.stroke: "#009688"
+}
+signed_out: Signed out {
+  style.fill: "#fafafa"
+}
+applying: Applying {
+  style.fill: "#fff3e0"
+  style.stroke: "#ff9800"
+}
+checking: Checking {
+  style.fill: "#fff3e0"
+  style.stroke: "#ff9800"
+}
+
+logged_out -> logged_in: log in with customer ID and password
+logged_out -> logged_out: wrong password (notice)
+logged_out -> locked_out: too many failures (per customer and per IP)
+locked_out -> logged_out: lock-out window passes
+logged_in -> signed_out: log out
+logged_in -> signed_out: session idle too long (expired notice)
+signed_out -> logged_out: log in again
+logged_out -> applying: open an account
+applying -> checking: details and identity submitted
+applying -> logged_out: back
+checking -> logged_out: account open, customer ID sent (text message)
+checking -> logged_out: declined (notice)

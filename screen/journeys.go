@@ -15,6 +15,12 @@ type Journeys struct {
 	// Endpoints names non-screen POST targets (e.g. "/v1/login") and the
 	// screen each leads to on success, so form submits show as journeys too.
 	Endpoints map[string]string
+	// Groups names the state a screen belongs to (logged out, logged in,
+	// onboarding), by NodeID; the wireframe draws a container per group.
+	Groups map[string]string
+	// Proposed marks screens, by NodeID, that are designed but not yet
+	// served; the wireframe draws them dashed.
+	Proposed map[string]bool
 }
 
 // Edge is one navigation link between two nodes of the journey graph.

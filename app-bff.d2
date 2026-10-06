@@ -1,0 +1,40 @@
+shape: sequence_diagram
+
+title: Customer app · one journey through the BFF {
+  shape: text
+  style.font-size: 22
+  style.bold: true
+  near: top-center
+}
+
+# One view, one question: who talks to whom when a customer logs in, lands
+# on the summary, pays someone and logs out. The client renders screen
+# trees and follows their actions; the BFF holds no banking logic and no
+# state of its own but the session; the core is the bank (ADR-0002).
+
+client: App or web client
+bff: BFF
+core: Core (the bank)
+
+client -> bff: GET /v1/screen/login
+bff -> client: login screen
+client -> bff: POST /v1/login (customer ID, password)
+bff -> core: Authenticate
+core -> bff: customer
+bff -> bff: create session (token for the app, cookie for the web)
+bff -> client: 303 to /v1/screen/home (web) · token + home screen (app)
+client -> bff: GET /v1/screen/home
+bff -> core: Customer · Accounts · Transactions
+core -> bff: position and recent movements
+bff -> client: home screen tree (summary)
+client -> bff: tap "Pay someone" · GET /v1/screen/pay
+bff -> client: pay screen (form)
+client -> bff: POST /v1/pay (to, amount, reference)
+bff -> core: Transfer
+core -> bff: payment on record
+bff -> client: payment-sent screen
+client -> bff: GET /v1/screen/accounts (session idle too long)
+bff -> client: 401 · signed-out screen with notice
+client -> bff: POST /v1/logout
+bff -> bff: revoke session
+bff -> client: signed-out screen
