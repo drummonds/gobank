@@ -14,7 +14,7 @@ func TestDayEndsInCountsDownWhileRunning(t *testing.T) {
 	ds := NewDemoState()
 	var clock sync.Mutex // the run loop reads the clock while the test moves it
 	now := time.Date(2026, 10, 3, 12, 0, 0, 0, time.UTC)
-	ds.now = func() time.Time { clock.Lock(); defer clock.Unlock(); return now }
+	ds.sim.SetWall(func() time.Time { clock.Lock(); defer clock.Unlock(); return now })
 	advance := func(d time.Duration) { clock.Lock(); defer clock.Unlock(); now = now.Add(d) }
 	if got := ds.SimStatus().DayEndsIn; got != 0 {
 		t.Fatalf("stopped: DayEndsIn = %v; want 0", got)

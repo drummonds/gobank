@@ -3,6 +3,7 @@ package main
 import (
 	"database/sql"
 	"errors"
+	"git.bytestone.uk/hum3/gobank/cmd/demo/sim"
 	"log"
 	"time"
 )
@@ -94,7 +95,7 @@ func loadRun(db *sql.DB) (r runState, ok bool) {
 		return runState{}, false
 	}
 	if dayLength.Valid {
-		if d, err := parseDayLength(dayLength.String); err == nil {
+		if d, err := sim.ParseDayLength(dayLength.String); err == nil {
 			r.DayLength, r.DayLengthSet = d, true
 		}
 	}

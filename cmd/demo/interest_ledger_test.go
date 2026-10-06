@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"testing"
 
 	luca "git.bytestone.uk/hum3/go-luca"
@@ -281,8 +282,16 @@ func TestPositionsAreTheTruth(t *testing.T) {
 // numerator (invariant: posted pence == floor(numerator/denominator)).
 func TestBoEInterestInLedger(t *testing.T) {
 	ds := NewDemoState()
-	for range 8 { // savings-heavy book so excess cash accrues BoE interest
+	for range 8 {
 		addFundedCustomer(ds)
+	}
+	// A savings-only customer makes the book savings-heavy whatever the
+	// generator dealt, so excess cash accrues BoE interest.
+	if _, err := newCoreAdapter(ds, "").OpenCustomer(context.Background(), core.NewCustomer{
+		PII:      core.PII{Name: "Saver"},
+		Accounts: []core.NewAccount{{ProductID: gbp.EasyAccess().ID, Opening: 50_000_00}},
+	}); err != nil {
+		t.Fatal(err)
 	}
 
 	assertBoE := func(applied bool) {

@@ -1,4 +1,4 @@
-package main
+package sim
 
 import (
 	"context"
@@ -10,30 +10,28 @@ import (
 	"git.bytestone.uk/hum3/gobank/core"
 )
 
-// The payments generator (ADR-0002 stage 4): customers paying each other.
-// Simulation, not bank: it raises Transfer on the bank and reads the
-// bank through its staff queries (TestGeneratorsReachTheBankOnlyThroughCommands).
+// The payments generator: customers paying each other.
 
 // SendPayment picks two customers and an amount and asks the bank to move
 // it, from the sender's first savings account within its balance. The
 // sender may be missing (the bank refused them) or hold no savings
 // account, and the recipient likewise; the generator just moves on.
-func (ds *DemoState) SendPayment() {
+func (s *Simulation) SendPayment() {
 	ctx := context.Background()
-	pos, err := ds.bank.Position(ctx)
+	pos, err := s.bank.Position(ctx)
 	if err != nil || pos.Customers < 2 {
 		return
 	}
-	ds.mu.Lock()
-	fromID := randomCustomerID(ds.rng, pos.Customers)
-	toID := randomCustomerID(ds.rng, pos.Customers)
+	s.mu.Lock()
+	fromID := randomCustomerID(s.rng, pos.Customers)
+	toID := randomCustomerID(s.rng, pos.Customers)
 	for toID == fromID {
-		toID = randomCustomerID(ds.rng, pos.Customers)
+		toID = randomCustomerID(s.rng, pos.Customers)
 	}
-	amount := luca.Amount(ds.rng.Intn(99901) + 100) // 100..100000 pence
-	ds.mu.Unlock()
+	amount := luca.Amount(s.rng.Intn(99901) + 100) // 100..100000 pence
+	s.mu.Unlock()
 
-	accounts, err := ds.bank.Accounts(ctx, fromID)
+	accounts, err := s.bank.Accounts(ctx, fromID)
 	if err != nil {
 		return
 	}
@@ -51,7 +49,7 @@ func (ds *DemoState) SendPayment() {
 	if amount < 100 {
 		return
 	}
-	if _, err := ds.bank.Transfer(ctx, core.Transfer{From: fromID, To: toID, Amount: amount}); err != nil && err != core.ErrNotFound {
+	if _, err := s.bank.Transfer(ctx, core.Transfer{From: fromID, To: toID, Amount: amount}); err != nil && err != core.ErrNotFound {
 		log.Printf("generator: transfer: %v", err)
 	}
 }
@@ -62,50 +60,50 @@ func randomCustomerID(rng *rand.Rand, n int) string {
 }
 
 // StartPayments begins auto-generating payments.
-func (ds *DemoState) StartPayments() {
-	ds.mu.Lock()
-	if ds.payRunning {
-		ds.mu.Unlock()
+func (s *Simulation) StartPayments() {
+	s.mu.Lock()
+	if s.payRunning {
+		s.mu.Unlock()
 		return
 	}
 	ctx, cancel := context.WithCancel(context.Background())
-	ds.payCancel = cancel
-	ds.payRunning = true
-	ds.mu.Unlock()
+	s.payCancel = cancel
+	s.payRunning = true
+	s.mu.Unlock()
 
 	go func() {
 		// Self-pace (wait after completion) rather than a fixed-rate ticker —
 		// see Start(): in WASM a ticker that can't keep up starves the JS
 		// event loop and freezes the page.
-		ds.SendPayment()
+		s.SendPayment()
 		for {
 			select {
 			case <-ctx.Done():
 				return
 			case <-time.After(2 * time.Second):
-				ds.SendPayment()
+				s.SendPayment()
 			}
 		}
 	}()
 }
 
 // StopPayments halts auto-generation.
-func (ds *DemoState) StopPayments() {
-	ds.mu.Lock()
-	defer ds.mu.Unlock()
-	if !ds.payRunning {
+func (s *Simulation) StopPayments() {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if !s.payRunning {
 		return
 	}
-	ds.payRunning = false
-	if ds.payCancel != nil {
-		ds.payCancel()
-		ds.payCancel = nil
+	s.payRunning = false
+	if s.payCancel != nil {
+		s.payCancel()
+		s.payCancel = nil
 	}
 }
 
 // IsPaymentsRunning returns whether auto-generation is active.
-func (ds *DemoState) IsPaymentsRunning() bool {
-	ds.mu.Lock()
-	defer ds.mu.Unlock()
-	return ds.payRunning
+func (s *Simulation) IsPaymentsRunning() bool {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.payRunning
 }

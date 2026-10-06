@@ -6,6 +6,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"git.bytestone.uk/hum3/gobank/cmd/demo/sim"
 	"html/template"
 	"log"
 	"log/slog"
@@ -611,7 +612,7 @@ func main() {
 			r.ParseForm()
 			maxCust, _ := strconv.Atoi(r.FormValue("max_customers"))
 			state.UpdateSettings(maxCust)
-			if dayLength, err := parseDayLength(r.FormValue("day_length")); err == nil {
+			if dayLength, err := sim.ParseDayLength(r.FormValue("day_length")); err == nil {
 				state.SetDayLength(dayLength)
 			}
 			http.Redirect(w, r, "/settings", http.StatusSeeOther)

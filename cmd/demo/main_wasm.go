@@ -5,6 +5,7 @@ package main
 import (
 	"bytes"
 	"context"
+	"git.bytestone.uk/hum3/gobank/cmd/demo/sim"
 	"syscall/js"
 
 	luca "git.bytestone.uk/hum3/go-luca"
@@ -350,7 +351,7 @@ func goUpdateSettings(this js.Value, args []js.Value) any {
 		state.UpdateSettings(maxCust)
 	}
 	if len(args) >= 2 { // day length as a duration string; invalid is ignored
-		if dayLength, err := parseDayLength(args[1].String()); err == nil {
+		if dayLength, err := sim.ParseDayLength(args[1].String()); err == nil {
 			state.SetDayLength(dayLength)
 		}
 	}

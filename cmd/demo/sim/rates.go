@@ -1,4 +1,4 @@
-package main
+package sim
 
 import (
 	_ "embed"
@@ -6,6 +6,8 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	"git.bytestone.uk/hum3/gobank/core"
 )
 
 // The Bank of England base rate as the simulation replays it (ADR-0002
@@ -16,18 +18,18 @@ import (
 //go:embed boe_rates.csv
 var boeRatesCSV string
 
-// rateSeries is a base-rate history, oldest first: a core.BaseRateSource.
-type rateSeries []RatePoint
+// RateSeries is a base-rate history, oldest first: a core.BaseRateSource.
+type RateSeries []core.RatePoint
 
-// boeRateHistory is the parsed historical rate data, populated by init.
-var boeRateHistory rateSeries
+// BoERates is the historical series, parsed at start.
+var BoERates RateSeries
 
 func init() {
-	boeRateHistory = parseBoeRates(boeRatesCSV)
+	BoERates = parseBoeRates(boeRatesCSV)
 }
 
-func parseBoeRates(csv string) rateSeries {
-	var pts rateSeries
+func parseBoeRates(csv string) RateSeries {
+	var pts RateSeries
 	for line := range strings.SplitSeq(strings.TrimSpace(csv), "\n") {
 		line = strings.TrimSpace(line)
 		if line == "" {
@@ -45,7 +47,7 @@ func parseBoeRates(csv string) rateSeries {
 		if err != nil {
 			continue
 		}
-		pts = append(pts, RatePoint{Date: t, Rate: rate})
+		pts = append(pts, core.RatePoint{Date: t, Rate: rate})
 	}
 	sort.Slice(pts, func(i, j int) bool { return pts[i].Date.Before(pts[j].Date) })
 	return pts
@@ -53,7 +55,7 @@ func parseBoeRates(csv string) rateSeries {
 
 // BaseRate implements core.BaseRateSource: the rate in effect on day is
 // the most recent change on or before it.
-func (s rateSeries) BaseRate(day time.Time) float64 {
+func (s RateSeries) BaseRate(day time.Time) float64 {
 	if len(s) == 0 {
 		return 0.0525 // fallback
 	}

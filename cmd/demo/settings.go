@@ -4,55 +4,17 @@ import (
 	"context"
 	"fmt"
 	"strings"
-	"sync"
-	"time"
 
+	"git.bytestone.uk/hum3/gobank/cmd/demo/sim"
 	"git.bytestone.uk/hum3/gobank/core"
 )
-
-// Settings are the simulation console's knobs: what an operator sets on the
-// settings page or in the environment. The bank's own parameters (BoE rate,
-// reserve ratio) are bank state on DemoState, not settings.
-type Settings struct {
-	MaxCustomers int
-	DayLength    time.Duration // wall-clock length of a simulated day; zero is flat out
-}
-
-func DefaultSettings() Settings {
-	return Settings{MaxCustomers: 1_000_000}
-}
-
-// simSettings holds the console settings behind Get and Update. Readers (the
-// run loop, the generators, the pages) take a snapshot and never wait on
-// ds.mu; the lock is this type's own business.
-type simSettings struct {
-	mu sync.Mutex
-	v  Settings
-}
-
-// Get is a snapshot of the settings as they are now.
-func (s *simSettings) Get() Settings {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	return s.v
-}
-
-// Update applies fn to the settings; fn changes only the fields it names.
-func (s *simSettings) Update(fn func(*Settings)) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	fn(&s.v)
-}
-
-// Settings is a snapshot of the console settings.
-func (ds *DemoState) Settings() Settings { return ds.settings.Get() }
 
 // buildSettingsHTML renders the settings page: a status line that polls
 // while the simulation runs, then the form, which is static so a value
 // being typed is never wiped before Save (as the dashboard's controls
 // are). The bank's parameters come from the core, the console's settings
 // from the simulation; the restart record follows the form.
-func buildSettingsHTML(q core.BookQueries, settings Settings, polling bool, restarts []Restart) string {
+func buildSettingsHTML(q core.BookQueries, settings sim.Settings, polling bool, restarts []Restart) string {
 	pos, _ := q.Position(context.Background())
 
 	var s strings.Builder
@@ -124,9 +86,3 @@ func renderSettingsStatus(q core.BookQueries, polling bool) string {
 }
 
 // UpdateSettings sets the customer ceiling; out-of-range values are refused.
-func (ds *DemoState) UpdateSettings(maxCust int) {
-	if maxCust < 3 || maxCust > 1_000_000 {
-		return
-	}
-	ds.settings.Update(func(s *Settings) { s.MaxCustomers = maxCust })
-}

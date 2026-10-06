@@ -2,6 +2,29 @@
 
 ## [Unreleased]
 
+ - Stage 4 story (c): the simulation is a package of its own, built on the core alone; the stage's done-when
+
+### Changed
+- ADR-0002 stage 4 story (c), the split, and the stage's done-when. The
+  simulation is `cmd/demo/sim`: the warped clock the bank reads, the
+  replayed base rate, the generators for the population and its payments,
+  the run loop and the console knobs. It imports nothing of the bank but
+  `core` (and go-luca for the money type), so the compiler is the
+  enforcement that no simulation code touches bank internals, and
+  `TestSimulationImportsOnlyTheCore` checks the package's imports. The
+  simulation drives the bank through `core.Commands` and reads it through
+  `core.StaffQueries`; its own lock replaces its share of `DemoState.mu`;
+  the run is recorded through a store the wiring implements over the
+  simulation component's table. `DemoState` is now the demo application:
+  the bank, wired to the simulation and the console, whose methods
+  forward to the simulation (`console.go`). Reset is wiring: the
+  simulation stops and its clock goes back to the opening day, then the
+  bank's tables go. The memory limit is the process's: the simulation asks
+  before each day whether to pause.
+- The bank no longer writes the run row at the start of a day; its own
+  record of having begun a day is the day's snapshot. The simulation
+  records the run after the bank has begun the day.
+
 ## [0.14.0] - 2026-10-06
 
  - Stage 4 story (b): the bank reads the time and the base rate from injected sources; the simulation clock is warped by the day length and resumes mid-day

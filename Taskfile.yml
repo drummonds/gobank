@@ -166,7 +166,7 @@ tasks:
   boe:fetch:
     desc: Fetch BoE base rate history and write CSV
     cmds:
-      - cd cmd/boefetch && go run . -o ../demo/boe_rates.csv
+      - cd cmd/boefetch && go run . -o ../demo/sim/boe_rates.csv
 
   demo:
     desc: Run the Model Bank demo locally (server mode)

@@ -26,8 +26,8 @@ var components = []Component{
 	},
 	{
 		Name:    "simulation",
-		Purpose: "The run's place in time (the day the bank is on, whether the run loop is going, so a restart resumes), the restart record (each process start against the stop before it, for an upgrade's downtime) and the generators: the population and its payments, raised on the bank through the core's commands.",
-		Files:   []string{"run.go", "restarts.go", "sim_customers.go", "sim_payments.go", "sim_clock.go", "sim_rates.go"},
+		Purpose: "The run's place in time (the day the bank is on, whether the run loop is going, so a restart resumes), the restart record (each process start against the stop before it, for an upgrade's downtime) and the simulation (package sim): the warped clock the bank reads, the replayed base rate, the generators for the population and its payments, and the run loop, all reaching the bank through the core alone.",
+		Files:   []string{"run.go", "restarts.go", "console.go", "sim/sim.go", "sim/clock.go", "sim/customers.go", "sim/payments.go", "sim/rates.go", "sim/daylength.go"},
 		Tables:  []string{"sim_run", "restarts"},
 	},
 	{

@@ -264,7 +264,7 @@ root module, `cmd/bff` is the service binary, and `app/` is the Flutter shell.
         the bank through these and `Transfer` only, and the daily
         new-customer roll leaves `startDay` for the run loop. Drops
         `accrual_state`, retired since v0.11.0. Drilled on preprod 2026-10-06
-      - [ ] (b) the clock — `core.Clock` injected into the bank, which takes
+      - [x] (v0.14.0) (b) the clock — `core.Clock` injected into the bank, which takes
         its business date and every banking timestamp (payments, value
         times, join dates) from it; the simulation supplies a warped clock
         (day D begins at slot start, the day length sets the warp, flat out
@@ -275,7 +275,8 @@ root module, `cmd/bff` is the service binary, and `app/` is the Flutter shell.
         reads and the simulation replays. `StartDay` follows the clock
         (nothing to do while it stands still; catches up a day at a time)
         and the position says whether the day's pass is complete, which is
-        what lets the simulation step its clock
+        what lets the simulation step its clock. The dashboard shows the
+        wall clock and the sim clock with the warp between them
       - [ ] (c) the split — the simulation moves into `cmd/demo/sim`, built
         on `core` alone: run loop, generators, settings, rate series and
         console status; it drives the bank through `core.Commands` and

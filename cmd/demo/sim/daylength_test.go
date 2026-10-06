@@ -1,0 +1,51 @@
+package sim
+
+import (
+	"testing"
+	"time"
+)
+
+func TestParseDayLength(t *testing.T) {
+	cases := []struct {
+		in   string
+		want time.Duration
+	}{
+		{"", 0},
+		{"0", 0},
+		{"2h", 2 * time.Hour},
+		{"90m", 90 * time.Minute},
+		{"1h30m", 90 * time.Minute},
+	}
+	for _, c := range cases {
+		got, err := ParseDayLength(c.in)
+		if err != nil || got != c.want {
+			t.Errorf("ParseDayLength(%q) = %v, %v; want %v", c.in, got, err, c.want)
+		}
+	}
+	for _, bad := range []string{"fast", "-1h", "2 hours"} {
+		if _, err := ParseDayLength(bad); err == nil {
+			t.Errorf("ParseDayLength(%q) should fail", bad)
+		}
+	}
+}
+
+// nextDayDelay is the wait after a day completes, given the day length and
+// how long the day's work took.
+func TestNextDayDelay(t *testing.T) {
+	cases := []struct {
+		name      string
+		dayLength time.Duration
+		elapsed   time.Duration
+		want      time.Duration
+	}{
+		{"flat out", 0, 50 * time.Millisecond, minDayGap},
+		{"two hour day, work took a minute", 2 * time.Hour, time.Minute, 2*time.Hour - time.Minute},
+		{"work took longer than the day", time.Second, 2 * time.Second, minDayGap},
+		{"work nearly filled the day", time.Second, time.Second - time.Millisecond, minDayGap},
+	}
+	for _, c := range cases {
+		if got := nextDayDelay(c.dayLength, c.elapsed); got != c.want {
+			t.Errorf("%s: nextDayDelay(%v, %v) = %v; want %v", c.name, c.dayLength, c.elapsed, got, c.want)
+		}
+	}
+}

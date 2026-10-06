@@ -15,7 +15,7 @@ func TestDashboardShowsBothClocks(t *testing.T) {
 	ds := NewDemoState()
 	defer ds.db.Close()
 	wall := time.Date(2026, 10, 6, 14, 5, 9, 0, time.UTC)
-	ds.now = func() time.Time { return wall }
+	ds.sim.SetWall(func() time.Time { return wall })
 	ds.clock = core.ClockFunc(func() time.Time { return time.Date(2020, 3, 4, 11, 30, 0, 0, time.UTC) })
 	ds.SetDayLength(2 * time.Hour)
 
@@ -40,7 +40,7 @@ func TestDashboardShowsBothClocks(t *testing.T) {
 func TestAboutJSONCarriesBothClocks(t *testing.T) {
 	ds := NewDemoState()
 	defer ds.db.Close()
-	ds.now = func() time.Time { return time.Date(2026, 10, 6, 14, 5, 9, 0, time.UTC) }
+	ds.sim.SetWall(func() time.Time { return time.Date(2026, 10, 6, 14, 5, 9, 0, time.UTC) })
 	ds.clock = core.ClockFunc(func() time.Time { return time.Date(2020, 3, 4, 11, 30, 0, 0, time.UTC) })
 	ds.SetDayLength(2 * time.Hour)
 	got := aboutStatus(newCoreAdapter(ds, ""), ds)

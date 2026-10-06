@@ -1,4 +1,4 @@
-package main
+package sim
 
 import (
 	"context"
@@ -10,20 +10,11 @@ import (
 	"time"
 
 	luca "git.bytestone.uk/hum3/go-luca"
+	"git.bytestone.uk/hum3/gobank/cmd/demo/internal/yield"
 	"git.bytestone.uk/hum3/gobank/core"
 )
 
-// The population generator (ADR-0002 stage 4): who joins the bank and when.
-// It is simulation, not bank: it raises OpenCustomer on the bank and reads
-// the bank through its staff queries, and touches nothing of the bank's
-// own (TestGeneratorsReachTheBankOnlyThroughCommands).
-
-// coreBank is the core as the generators see it: commands to raise events,
-// staff queries to decide them.
-type coreBank interface {
-	core.Commands
-	core.StaffQueries
-}
+// The population generator: who joins the bank and when.
 
 var firstNames = []string{
 	"Amelia", "Benjamin", "Charlotte", "Daniel", "Eleanor",
@@ -61,11 +52,11 @@ var postcodeAreas = []string{
 	"M1", "B1", "LS1", "BS1", "S1", "L1", "NE1", "NG1",
 }
 
-// generateCustomer is a random customer joining on day: identity, a KYC
+// GenerateCustomer is a random customer joining on day: identity, a KYC
 // standing, and one to three accounts across the catalogue, each with its
 // opening money — a deposit of £500 to £9,999, or a loan asked of £1,000
 // to £49,999 that the bank lends within its headroom.
-func generateCustomer(rng *rand.Rand, catalogue []core.Product, day time.Time) core.NewCustomer {
+func GenerateCustomer(rng *rand.Rand, catalogue []core.Product, day time.Time) core.NewCustomer {
 	first := firstNames[rng.Intn(len(firstNames))]
 	last := lastNames[rng.Intn(len(lastNames))]
 	ni := fmt.Sprintf("%s%06dC", niPrefixes[rng.Intn(len(niPrefixes))], 100000+rng.Intn(900000))
@@ -115,57 +106,51 @@ func generateCustomer(rng *rand.Rand, catalogue []core.Product, day time.Time) c
 
 // productCatalogue is the bank's catalogue as the generators draw from it,
 // read once: the products do not change, their books do.
-func (ds *DemoState) productCatalogue(ctx context.Context) []core.Product {
-	ds.mu.Lock()
-	catalogue := ds.catalogue
-	ds.mu.Unlock()
+func (s *Simulation) productCatalogue(ctx context.Context) []core.Product {
+	s.mu.Lock()
+	catalogue := s.catalogue
+	s.mu.Unlock()
 	if catalogue != nil {
 		return catalogue
 	}
-	catalogue, err := ds.bank.Products(ctx)
+	catalogue, err := s.bank.Products(ctx)
 	if err != nil {
 		log.Printf("generator: catalogue: %v", err)
 		return nil
 	}
-	ds.mu.Lock()
-	ds.catalogue = catalogue
-	ds.mu.Unlock()
+	s.mu.Lock()
+	s.catalogue = catalogue
+	s.mu.Unlock()
 	return catalogue
 }
 
-// openGenerated generates one customer and opens them on the bank,
+// OpenCustomer generates one customer and opens them on the bank,
 // reporting whether the bank took them.
-func (ds *DemoState) openGenerated(ctx context.Context) bool {
-	catalogue := ds.productCatalogue(ctx)
-	pos, err := ds.bank.Position(ctx)
+func (s *Simulation) OpenCustomer(ctx context.Context) bool {
+	catalogue := s.productCatalogue(ctx)
+	pos, err := s.bank.Position(ctx)
 	if err != nil || len(catalogue) == 0 {
 		return false
 	}
-	ds.mu.Lock()
-	c := generateCustomer(ds.rng, catalogue, pos.Day)
-	ds.mu.Unlock()
-	if _, err := ds.bank.OpenCustomer(ctx, c); err != nil {
+	s.mu.Lock()
+	c := GenerateCustomer(s.rng, catalogue, pos.Day)
+	s.mu.Unlock()
+	if _, err := s.bank.OpenCustomer(ctx, c); err != nil {
 		log.Printf("generator: open customer: %v", err)
 		return false
 	}
 	return true
 }
 
-// createCustomer generates and opens one customer. Must not be called with
-// ds.mu held.
-func (ds *DemoState) createCustomer() {
-	ds.openGenerated(context.Background())
-}
-
 // rollNewCustomer is the day's chance of a new customer: the more
 // attractive the bank's rates against the base rate, the likelier someone
 // joins, up to the population cap.
-func (ds *DemoState) rollNewCustomer(ctx context.Context) {
-	pos, err := ds.bank.Position(ctx)
-	if err != nil || pos.Customers >= ds.settings.Get().MaxCustomers {
+func (s *Simulation) rollNewCustomer(ctx context.Context) {
+	pos, err := s.bank.Position(ctx)
+	if err != nil || pos.Customers >= s.settings.Get().MaxCustomers {
 		return
 	}
-	catalogue := ds.productCatalogue(ctx)
+	catalogue := s.productCatalogue(ctx)
 	avgSavings := averageRate(catalogue, "Savings")
 	avgLending := averageRate(catalogue, "Lending")
 
@@ -177,31 +162,32 @@ func (ds *DemoState) rollNewCustomer(ctx context.Context) {
 	attractiveness := clamp((savingsAttract+lendingAttract)/2, 0, 1)
 	dailyProb := 0.10 + attractiveness*0.20
 
-	ds.mu.Lock()
-	roll := ds.rng.Float64()
-	ds.mu.Unlock()
+	s.mu.Lock()
+	roll := s.rng.Float64()
+	s.mu.Unlock()
 	if roll < dailyProb {
-		ds.openGenerated(ctx)
+		s.OpenCustomer(ctx)
 	}
 }
 
 // AddCustomersBatch starts adding n customers in the background, with one
-// worker per database writer. Each worker holds ds.mu only to generate a
-// customer, so other operations proceed while the bank opens them.
-func (ds *DemoState) AddCustomersBatch(n int) {
-	ds.mu.Lock()
-	if ds.addingCustRunning {
-		ds.mu.Unlock()
+// worker per database writer. Each worker holds the simulation's lock only
+// to generate a customer, so other operations proceed while the bank opens
+// them.
+func (s *Simulation) AddCustomersBatch(n int) {
+	s.mu.Lock()
+	if s.addingCustRunning {
+		s.mu.Unlock()
 		return
 	}
 	ctx, cancel := context.WithCancel(context.Background())
-	ds.addingCustRunning = true
-	ds.addingCustCancel = cancel
-	ds.addingCustProgress = 0
-	ds.addingCustTarget = n
-	ds.addingCustStart = ds.now()
-	workers := ds.dbWriters()
-	ds.mu.Unlock()
+	s.addingCustRunning = true
+	s.addingCustCancel = cancel
+	s.addingCustProgress = 0
+	s.addingCustTarget = n
+	s.addingCustStart = s.wall()
+	workers := s.workers
+	s.mu.Unlock()
 
 	claimed := 0 // customers this batch has set out to open (mu)
 	go func() {
@@ -210,52 +196,52 @@ func (ds *DemoState) AddCustomersBatch(n int) {
 		for range workers {
 			wg.Go(func() {
 				for ctx.Err() == nil {
-					pos, err := ds.bank.Position(ctx)
-					ds.mu.Lock()
-					if err != nil || claimed >= n || pos.Customers >= ds.settings.Get().MaxCustomers {
-						ds.mu.Unlock()
+					pos, err := s.bank.Position(ctx)
+					s.mu.Lock()
+					if err != nil || claimed >= n || pos.Customers >= s.settings.Get().MaxCustomers {
+						s.mu.Unlock()
 						return
 					}
 					claimed++
-					ds.mu.Unlock()
+					s.mu.Unlock()
 
-					opened := ds.openGenerated(ctx)
+					opened := s.OpenCustomer(ctx)
 
-					ds.mu.Lock()
+					s.mu.Lock()
 					if opened && ctx.Err() == nil {
-						ds.addingCustProgress++
+						s.addingCustProgress++
 					}
-					ds.mu.Unlock()
-					yieldToBrowser()
+					s.mu.Unlock()
+					yield.ToBrowser()
 				}
 			})
 		}
 		wg.Wait()
-		ds.mu.Lock()
+		s.mu.Lock()
 		if ctx.Err() == nil { // a Reset has already finished a cancelled batch
-			ds.finishAddingLocked()
+			s.finishAddingLocked()
 		}
-		ds.mu.Unlock()
+		s.mu.Unlock()
 	}()
 }
 
 // finishAddingLocked ends a batch add, keeping its customers/s for the
-// dashboard. Must be called with ds.mu held.
-func (ds *DemoState) finishAddingLocked() {
-	if ds.addingCustProgress > 0 {
-		ds.lastAddRate = perSecond(ds.addingCustProgress, ds.now().Sub(ds.addingCustStart))
+// dashboard. Must be called with s.mu held.
+func (s *Simulation) finishAddingLocked() {
+	if s.addingCustProgress > 0 {
+		s.lastAddRate = perSecond(s.addingCustProgress, s.wall().Sub(s.addingCustStart))
 	}
-	ds.addingCustRunning = false
-	ds.addingCustCancel = nil
-	ds.addingCustProgress = 0
-	ds.addingCustTarget = 0
+	s.addingCustRunning = false
+	s.addingCustCancel = nil
+	s.addingCustProgress = 0
+	s.addingCustTarget = 0
 }
 
 // IsAddingCustomers returns true if a batch add is in progress.
-func (ds *DemoState) IsAddingCustomers() bool {
-	ds.mu.Lock()
-	defer ds.mu.Unlock()
-	return ds.addingCustRunning
+func (s *Simulation) IsAddingCustomers() bool {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.addingCustRunning
 }
 
 // averageRate is the mean rate of the catalogue's products of one family.

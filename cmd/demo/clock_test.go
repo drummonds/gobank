@@ -134,3 +134,27 @@ func TestRestartRecordKeepsTheWallClock(t *testing.T) {
 		t.Errorf("restart recorded at %v, want the wall clock (the simulated day is %v)", restarts[0].StartedAt, ds.position().Day)
 	}
 }
+
+// The simulation's clock's day and when it began are on the run row, so
+// the next process resumes the same simulated day and the bank is on it.
+func TestSimulatedClockResumesFromTheRunRow(t *testing.T) {
+	first := NewDemoState()
+	addFundedCustomer(first)
+	first.AdvanceDay()
+	first.AdvanceDay()
+	day := first.sim.Clock().Day()
+	if want := time.Date(2020, 1, 3, 0, 0, 0, 0, time.UTC); !day.Equal(want) {
+		t.Fatalf("clock day after two advances = %v, want %v", day, want)
+	}
+
+	second := newDemoStateOn(first.db, "")
+	if got := second.sim.Clock().Day(); !got.Equal(day) {
+		t.Errorf("resumed clock day %v, want %v", got, day)
+	}
+	if pos := second.position(); !pos.Day.Equal(day) || pos.DayCount != 2 {
+		t.Errorf("resumed bank position %+v, want day %v count 2", pos, day)
+	}
+	if now := second.sim.Clock().Now(); !now.After(day) || now.After(day.Add(24*time.Hour)) {
+		t.Errorf("resumed clock Now = %v, want inside %v", now, day)
+	}
+}

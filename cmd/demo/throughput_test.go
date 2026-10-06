@@ -55,7 +55,8 @@ func TestPassThroughputRollingWindow(t *testing.T) {
 func TestDashboardReportsAccountDaysPer12h(t *testing.T) {
 	ds := NewDemoState()
 	clock := steppingClock(time.Date(2026, 1, 1, 9, 0, 0, 0, time.UTC))
-	ds.now, ds.progress.now = clock, clock
+	ds.sim.SetWall(clock)
+	ds.progress.now = clock
 	addFundedCustomer(ds)
 
 	if got := ds.SimStatus().AccountDaysPer12h; got != 0 {
@@ -85,7 +86,7 @@ func TestDashboardReportsAccountDaysPer12h(t *testing.T) {
 
 func TestDashboardReportsCustomersAddedPerSecond(t *testing.T) {
 	ds := NewDemoState()
-	ds.now = steppingClock(time.Date(2026, 1, 1, 9, 0, 0, 0, time.UTC))
+	ds.sim.SetWall(steppingClock(time.Date(2026, 1, 1, 9, 0, 0, 0, time.UTC)))
 	ds.clock = fixedBankClock(ds)
 
 	ds.AddCustomersBatch(5)

@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
+	"git.bytestone.uk/hum3/gobank/cmd/demo/internal/yield"
 	"log"
 	"time"
 )
@@ -127,7 +128,7 @@ func (ds *DemoState) runPass(ctx context.Context, day time.Time) int {
 		}
 		ds.mu.Unlock()
 		ds.progress.add(len(results))
-		yieldToBrowser()
+		yield.ToBrowser()
 	}
 	return visited
 }
