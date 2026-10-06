@@ -140,210 +140,229 @@ root module, `cmd/bff` is the service binary, and `app/` is the Flutter shell.
 
 ### To Do (in order)
 
-1. **Transition to the target architecture** — [ADR-0002](adr/0002-target-architecture.md):
-   one BFF for app and web, a core library of components over a database
-   that holds every fact, accruals pipelined one day ahead by a start-of-day
-   workflow, and a simulation that differs from production only in event
-   sources and the clock. Nine stages, each leaving the demo running in
-   WASM, on a server and on Hetzner. Every story ends with a release
-   deployed to the Hetzner demo and sense-checked there before the next
-   starts:
-   1. [x] (v0.4.0) Seams — core commands/queries as interfaces; `DemoState` adapts to
-      them; the BFF runs in the demo process and the app shows real data.
-      Stories:
-      - [x] (v0.3.54) (a) customer contracts in `core`, contract suite,
-        demo adapter, BFF at `/v1/`
-      - [x] (b) gobank-deploy sets `GOBANK_APP_PASSWORD` per environment
-        and shows it (its story 1g, gobank-deploy v0.3.0)
-      - [x] (v0.4.0) (c) Android debug build — `app/android` and `app/ios`
-        generated and committed, cleartext traffic allowed in the debug
-        manifest only — then (a) sense-checked from a phone against
-        Hetzner (2026-10-03)
-      - [x] (v0.4.0) (d) staff queries — `core.StaffQueries`, one
-        interface per component (book, customer register, payments,
-        products, treasury), every staff page rendering from them
-      - [x] (v0.4.0) (e) commands — `core.Commands`: `Transfer` (the
-        payments generator calls it) and `BuyGilt` (the treasury page
-        calls it). Opening a customer stays inside the generator until
-        stage 4 splits generators from the bank
-   2. [x] (v0.9.0) Stored truth — transactions as a ledger projection, stored chart
-      snapshots, sessions in the database. From here every story is an
-      upgrade of the running Hetzner demo, downtime accepted and recorded
-      until stage 8 ([ADR-0003](adr/0003-upgrade-in-place-until-stage-8.md);
-      deployment level 2 on the manual's
-      [maturity ladder](https://man.bytestone.uk/maturity.html)), and
-      development moves to a branch per story merged by pull request on
-      the Forgejo (code level 1). Stories:
-      - [x] (v0.5.0) (a) simulated day length — a setting (`GOBANK_DAY_LENGTH`,
-        zero means flat out; shown and set on the simulation page) so a
-        day can take two hours and an upgrade lands mid-day
-      - [x] (v0.6.0) (b) resume — the demo stops dropping its tables at start and
-        rebuilds its state from the database, with a schema version table
-        and versioned migrations replacing the ad hoc `ALTER TABLE`. Also,
-        from (a)'s sense-check: the settings form is static under the page
-        poll (an HTMX status section polls, the form does not, as the
-        dashboard already does) so a value being typed is not wiped before
-        Save; and the dashboard's day tile counts down the seconds to the
-        end of the day
-      - [x] (v0.7.0) (c) upgrade drill — the demo keeps a restart
-        record (`restarts`, an expand-only migration of the simulation
-        component): each process start against the stop before it, with
-        the downtime and the run's day and customers on both sides, shown
-        on the settings page; `upgrade-drill.md` is the drill — redeploy
-        N to N+1 on Hetzner mid-day, read the downtime off the record,
-        roll back to N from the release store and forward again, confirm
-        nothing is lost — and every later story's acceptance. Needs
-        gobank-deploy story 1i (stop timeout, fetch a named tag)
-      - [x] (v0.8.0) about/runtime shows the schema version per
-        component, as `/about.json` already does
-      - [x] (v0.8.0) (d) transactions as a ledger projection replacing `txLog`
-      - [x] (v0.9.0) (e) chart histories as stored daily snapshots —
-        the `history` component, one row a day in `daily_snapshots`
-      - [x] (v0.9.0) (f) sessions in the database — `bff.Sessions`,
-        with a SQL store over the demo's database (the `sessions`
-        component)
-   3. Pipelined accruals — start-of-day workflow writes next-day
-      projections; interest application is product code inside it. A
-      projection is an account's position at the start of a day: its
-      balance and its accrued-but-unapplied interest. go-luca publishes
-      the position as contract views and decides how it is kept (stored
-      projections, sums over ranges); gobank-products holds the rules,
-      one account at a time, and stores nothing; the demo's products
-      component owns no table once `accrual_state` is retired. Numbers
-      cross the contract as NUMERIC, so how go-luca stores them
-      (integers, numerator and denominator) stays inside it. Stories:
-      - [x] (go-postgres v0.7.0) (a) enabler, go-postgres: NUMERIC in pglike — a `::numeric`
-        cast and arithmetic, rounding and comparison on it give exact
-        decimals with PostgreSQL's scale rules, so a contract view can
-        publish a NUMERIC column computed from integers on both drivers
-      - [x] (go-luca v0.3.0) (b) go-luca: two contract views — `contract_ledger_eod_positions`
-        (account, day, balance, accrued; the cheap one, from stored
-        projections written for both accounts of a movement, incrementally)
-        and `contract_ledger_live_positions` (today's row plus today's
-        movements; dearer, and said so) — with `contract_ledger_movements`
-        moving in from the demo, a projection-only write for the daily
-        pass, and `knowledge_time` stored on every write path (cold review
-        go-luca #6). Done with the cost measured: rows per account per
-        day at the Hetzner scale, and the two views benchmarked. Measured
-        on pglike at 1,000 accounts: 0.55 ms per account for the daily
-        pass, 0.34 ms for a one-account live read, 11 ms for a day of
-        every account from the end-of-day view; one row per account per
-        day. Found and filed go-postgres #21 (INTERVAL arithmetic on a
-        qualified column)
-      - [x] (gobank-products v0.2.0, gobank v0.10.0) (c) gobank-products: `Product.NextDay` — a pure function from
-        an account's projection and the day's balance to the next day's
-        projection and the ledger postings it calls for, with the
-        application cycle (daily, monthly, annual) a product parameter
-        and month-end application gone as a separate pass; the existing
-        sweep loops over it so the goldens hold
-      - [x] (v0.10.0) (d) projections are the truth — the demo writes each day's
-        pass as go-luca projections and posts customer movements with
-        projections; balance and accrued reads come from the views;
-        `accrual_state` goes (the BoE reserve's accrual becomes a
-        projection on its account). Shipped with `accrual_state` still
-        shadow-written so the drill's rollback loses nothing; (e) drops
-        it. Needed go-luca v0.3.1 (`Positions`, constant-cost movement
-        projection, accrual carried forward on a movement's new day)
-      - [x] (v0.11.0) (e) the start-of-day workflow — the date advances at the
-        start of the slot; the pass over every account runs at the start
-        of the day at the system's capacity (the day length is headroom,
-        the rest of the day idle) and resumes after a restart from the
-        projections already written; a transfer or funding rewrites
-        the touched account's next-day projection; the engine's account
-        map and the end-of-day sweep go. Done-when of the stage; drilled
-        with a restart mid-pass
-   4. Events and clock — bank and simulation split; generators and an
-      injected clock. The simulation differs from the bank in where its
-      events come from and in the clock and market data it reads, nothing
-      else; the stage ends with the simulation a package of its own that
-      knows the bank only through `core`. Stories:
-      - [x] (v0.13.0) (a) entry points — `core.CustomerCommands.OpenCustomer` (record,
-        PII, opening deposits and loan disbursements, with the lending
-        headroom a bank rule that trims or refuses the loan) and
-        `core.DayCommands.StartDay`; the generators and the console reach
-        the bank through these and `Transfer` only, and the daily
-        new-customer roll leaves `startDay` for the run loop. Drops
-        `accrual_state`, retired since v0.11.0. Drilled on preprod 2026-10-06
-      - [x] (v0.14.0) (b) the clock — `core.Clock` injected into the bank, which takes
-        its business date and every banking timestamp (payments, value
-        times, join dates) from it; the simulation supplies a warped clock
-        (day D begins at slot start, the day length sets the warp, flat out
-        steps a day at a time) and the run row keeps day and slot start so
-        a resume rebuilds it. Operational records (restarts, schema
-        versions, session expiry) stay on the wall clock. The base-rate
-        series becomes a second injected source, market data the bank
-        reads and the simulation replays. `StartDay` follows the clock
-        (nothing to do while it stands still; catches up a day at a time)
-        and the position says whether the day's pass is complete, which is
-        what lets the simulation step its clock. The dashboard shows the
-        wall clock and the sim clock with the warp between them
-      - [ ] (c) the split — the simulation moves into `cmd/demo/sim`, built
-        on `core` alone: run loop, generators, settings, rate series and
-        console status; it drives the bank through `core.Commands` and
-        reads it through `core.StaffQueries`. Reset becomes wiring (a fresh
-        bank over a wiped database); separate locks replace the shared
-        `ds.mu`. Done-when of the stage: the compiler is the enforcement
-        and a test checks the package's imports
-   5. Core into packages — one component at a time
-   6. One BFF — staff UI and customer web through the BFF (absorbs item 2)
-   7. Read/write split — separate read and write handles
-   8. Many processes — several BFFs, a generator and one workflow runner;
-      deploys go blue-green (deployment level 3), ending the downtime
-      accepted since stage 2
-   9. Simulation becomes tests
-2. **Multiple payment rails** — every payment records the rail it travelled
-   (internal book transfer, FPS, Bacs, CHAPS) and each rail is a scheme
-   adapter behind one interface with its own settlement timing, cut-offs,
-   limits and outage behaviour; a routing rule picks the rail from amount and
-   urgency. The payments component stays the one bank-level view (one
-   lifecycle, one list, filterable by rail) and gains a per-rail view:
-   volumes, queue depth, settlement position and scheme status. The existing
-   mock-fps and FPS stand-in items in Phase 1 become the FPS rail's stories,
-   and the adapter boundary is what Phase 3 unbundles. Out of scope: real scheme
-   messaging (ISO 20022), cards. Open: rail as a column on the one
-   `payments` table (the coherent view comes free) versus a table per rail
-   with a bank-level union view (each rail's data differs — Bacs has a
-   three-day cycle, CHAPS is same-day, FPS instant). The rails become real
-   with a **real rail**: one outbound payment from the demo bank to a real account
-   through a live bank API, credentials per environment via gobank-deploy,
-   sandbox first. Out of scope: inbound, bulk, cards. Open: Starling
-   (developer sandbox, personal access token, plain REST) versus Barclays
-   (Open Banking PIS, needs TPP registration and eIDAS certificates, likely
-   out of reach for a hobby project) — Starling sandbox first
-3. **Payee management** — a customer's saved payees (name, sort code and
-   account number, reference), created, edited and deleted in the app and
-   the customer web and offered by send money; a component with its own
-   table (ADR-0001) behind session-only BFF endpoints. Builds on #7.
-   Out of scope: international payees, a real Confirmation of Payee call
-   (stubbed behind an interface). Open: new-payee limits and cooling-off
-4. **KYC process** — onboarding as a lifecycle (pending → verified →
-   rejected → in review): identity capture, document and liveness checks
-   as pluggable verifiers with a stub provider in the demo, a risk rating,
-   and the record of how and when a customer was verified and of later
-   name and address changes (#25); an unverified customer transacts only
-   up to a cap. Out of scope: a real IDV provider (same interface as the
-   stub), AML transaction monitoring (belongs with the risk register).
-   Open: does the customer generator produce KYC outcomes, so the staff
-   view has a queue to work
-5. **Demo phone frame onto the screen layer** (ADR-0002 stage 6) — `cmd/demo/bankapp_render.go`
-   becomes a caller of `screen.HTML`, so browser and app show identical screens
-   from one source, and the open `/api/customer/` endpoints are retired
-6. **Native security plugin** — biometric-bound keys (Secure Enclave, StrongBox),
-   passkey registration and login, App Attest and Play Integrity token fetching,
-   certificate pinning, screenshot blocking and app-switcher blanking, jailbreak,
-   root and overlay detection; the BFF checks attestation before issuing tokens
-7. **Device-bound signing** — request signing for transactions, step-up
-   authentication (PSD2 SCA)
-8. **Web client on the BFF** — the HTML rendering of the same endpoints becomes
-   the customer web client; passkeys via WebAuthn in the browser
-9. **App-shielding SDK evaluation** — Promon, Guardsquare, Appdome, Zimperium;
-   chosen and integrated before any external pilot
-10. **Standalone RBAC module** — extract `Role`/`Can` from `cmd/demo` into its
-   own repo (not gobank-db) once the BFF is the second consumer; it then
-   implements go-dbexplorer's `Authoriser`
-11. **Native checkpoint** — after the first external pilot, a written list of what
-   Flutter cannot do; move to SwiftUI and Jetpack Compose only if the list is
-   non-empty
+- **1 Transition to the target architecture** — [ADR-0002](adr/0002-target-architecture.md):
+  one BFF for app and web, a core library of components over a database
+  that holds every fact, accruals pipelined one day ahead by a start-of-day
+  workflow, and a simulation that differs from production only in event
+  sources and the clock. Nine stages, each leaving the demo running in
+  WASM, on a server and on Hetzner. Every story ends with a release
+  deployed to the Hetzner demo and sense-checked there before the next
+  starts:
+- **1.1** [x] (v0.4.0) Seams — core commands/queries as interfaces; `DemoState` adapts to
+  them; the BFF runs in the demo process and the app shows real data.
+  Stories:
+- **1.1.1** [x] (v0.3.54) customer contracts in `core`, contract suite,
+  demo adapter, BFF at `/v1/`
+- **1.1.2** [x] gobank-deploy sets `GOBANK_APP_PASSWORD` per environment
+  and shows it (its story 1g, gobank-deploy v0.3.0)
+- **1.1.3** [x] (v0.4.0) Android debug build — `app/android` and `app/ios`
+  generated and committed, cleartext traffic allowed in the debug
+  manifest only — then (a) sense-checked from a phone against
+  Hetzner (2026-10-03)
+- **1.1.4** [x] (v0.4.0) staff queries — `core.StaffQueries`, one
+  interface per component (book, customer register, payments,
+  products, treasury), every staff page rendering from them
+- **1.1.5** [x] (v0.4.0) commands — `core.Commands`: `Transfer` (the
+  payments generator calls it) and `BuyGilt` (the treasury page
+  calls it). Opening a customer stays inside the generator until
+  stage 4 splits generators from the bank
+- **1.2** [x] (v0.9.0) Stored truth — transactions as a ledger projection, stored chart
+  snapshots, sessions in the database. From here every story is an
+  upgrade of the running Hetzner demo, downtime accepted and recorded
+  until stage 8 ([ADR-0003](adr/0003-upgrade-in-place-until-stage-8.md);
+  deployment level 2 on the manual's
+  [maturity ladder](https://man.bytestone.uk/maturity.html)), and
+  development moves to a branch per story merged by pull request on
+  the Forgejo (code level 1). Stories:
+- **1.2.1** [x] (v0.5.0) simulated day length — a setting (`GOBANK_DAY_LENGTH`,
+  zero means flat out; shown and set on the simulation page) so a
+  day can take two hours and an upgrade lands mid-day
+- **1.2.2** [x] (v0.6.0) resume — the demo stops dropping its tables at start and
+  rebuilds its state from the database, with a schema version table
+  and versioned migrations replacing the ad hoc `ALTER TABLE`. Also,
+  from (a)'s sense-check: the settings form is static under the page
+  poll (an HTMX status section polls, the form does not, as the
+  dashboard already does) so a value being typed is not wiped before
+  Save; and the dashboard's day tile counts down the seconds to the
+  end of the day
+- **1.2.3** [x] (v0.7.0) upgrade drill — the demo keeps a restart
+  record (`restarts`, an expand-only migration of the simulation
+  component): each process start against the stop before it, with
+  the downtime and the run's day and customers on both sides, shown
+  on the settings page; `upgrade-drill.md` is the drill — redeploy
+  N to N+1 on Hetzner mid-day, read the downtime off the record,
+  roll back to N from the release store and forward again, confirm
+  nothing is lost — and every later story's acceptance. Needs
+  gobank-deploy story 1i (stop timeout, fetch a named tag)
+- **1.2.4** [x] (v0.8.0) about/runtime shows the schema version per
+  component, as `/about.json` already does
+- **1.2.5** [x] (v0.8.0) transactions as a ledger projection replacing `txLog`
+- **1.2.6** [x] (v0.9.0) chart histories as stored daily snapshots —
+  the `history` component, one row a day in `daily_snapshots`
+- **1.2.7** [x] (v0.9.0) sessions in the database — `bff.Sessions`,
+  with a SQL store over the demo's database (the `sessions`
+  component)
+- **1.3** Pipelined accruals — start-of-day workflow writes next-day
+  projections; interest application is product code inside it. A
+  projection is an account's position at the start of a day: its
+  balance and its accrued-but-unapplied interest. go-luca publishes
+  the position as contract views and decides how it is kept (stored
+  projections, sums over ranges); gobank-products holds the rules,
+  one account at a time, and stores nothing; the demo's products
+  component owns no table once `accrual_state` is retired. Numbers
+  cross the contract as NUMERIC, so how go-luca stores them
+  (integers, numerator and denominator) stays inside it. Stories:
+- **1.3.1** [x] (go-postgres v0.7.0) enabler, go-postgres: NUMERIC in pglike — a `::numeric`
+  cast and arithmetic, rounding and comparison on it give exact
+  decimals with PostgreSQL's scale rules, so a contract view can
+  publish a NUMERIC column computed from integers on both drivers
+- **1.3.2** [x] (go-luca v0.3.0) go-luca: two contract views — `contract_ledger_eod_positions`
+  (account, day, balance, accrued; the cheap one, from stored
+  projections written for both accounts of a movement, incrementally)
+  and `contract_ledger_live_positions` (today's row plus today's
+  movements; dearer, and said so) — with `contract_ledger_movements`
+  moving in from the demo, a projection-only write for the daily
+  pass, and `knowledge_time` stored on every write path (cold review
+  go-luca #6). Done with the cost measured: rows per account per
+  day at the Hetzner scale, and the two views benchmarked. Measured
+  on pglike at 1,000 accounts: 0.55 ms per account for the daily
+  pass, 0.34 ms for a one-account live read, 11 ms for a day of
+  every account from the end-of-day view; one row per account per
+  day. Found and filed go-postgres #21 (INTERVAL arithmetic on a
+  qualified column)
+- **1.3.3** [x] (gobank-products v0.2.0, gobank v0.10.0) gobank-products: `Product.NextDay` — a pure function from
+  an account's projection and the day's balance to the next day's
+  projection and the ledger postings it calls for, with the
+  application cycle (daily, monthly, annual) a product parameter
+  and month-end application gone as a separate pass; the existing
+  sweep loops over it so the goldens hold
+- **1.3.4** [x] (v0.10.0) projections are the truth — the demo writes each day's
+  pass as go-luca projections and posts customer movements with
+  projections; balance and accrued reads come from the views;
+  `accrual_state` goes (the BoE reserve's accrual becomes a
+  projection on its account). Shipped with `accrual_state` still
+  shadow-written so the drill's rollback loses nothing; (e) drops
+  it. Needed go-luca v0.3.1 (`Positions`, constant-cost movement
+  projection, accrual carried forward on a movement's new day)
+- **1.3.5** [x] (v0.11.0) the start-of-day workflow — the date advances at the
+  start of the slot; the pass over every account runs at the start
+  of the day at the system's capacity (the day length is headroom,
+  the rest of the day idle) and resumes after a restart from the
+  projections already written; a transfer or funding rewrites
+  the touched account's next-day projection; the engine's account
+  map and the end-of-day sweep go. Done-when of the stage; drilled
+  with a restart mid-pass
+- **1.4** Events and clock — bank and simulation split; generators and an
+  injected clock. The simulation differs from the bank in where its
+  events come from and in the clock and market data it reads, nothing
+  else; the stage ends with the simulation a package of its own that
+  knows the bank only through `core`. Stories:
+- **1.4.1** [x] (v0.13.0) entry points — `core.CustomerCommands.OpenCustomer` (record,
+  PII, opening deposits and loan disbursements, with the lending
+  headroom a bank rule that trims or refuses the loan) and
+  `core.DayCommands.StartDay`; the generators and the console reach
+  the bank through these and `Transfer` only, and the daily
+  new-customer roll leaves `startDay` for the run loop. Drops
+  `accrual_state`, retired since v0.11.0. Drilled on preprod 2026-10-06
+- **1.4.2** [x] (v0.14.0) the clock — `core.Clock` injected into the bank, which takes
+  its business date and every banking timestamp (payments, value
+  times, join dates) from it; the simulation supplies a warped clock
+  (day D begins at slot start, the day length sets the warp, flat out
+  steps a day at a time) and the run row keeps day and slot start so
+  a resume rebuilds it. Operational records (restarts, schema
+  versions, session expiry) stay on the wall clock. The base-rate
+  series becomes a second injected source, market data the bank
+  reads and the simulation replays. `StartDay` follows the clock
+  (nothing to do while it stands still; catches up a day at a time)
+  and the position says whether the day's pass is complete, which is
+  what lets the simulation step its clock. The dashboard shows the
+  wall clock and the sim clock with the warp between them
+- **1.4.3** [x] (v0.15.0) the split — the simulation moves into `cmd/demo/sim`, built
+  on `core` alone: run loop, generators, settings, rate series and
+  console status; it drives the bank through `core.Commands` and
+  reads it through `core.StaffQueries`. Reset becomes wiring (a fresh
+  bank over a wiped database); separate locks replace the shared
+  `ds.mu`. Done-when of the stage: the compiler is the enforcement
+  and a test checks the package's imports
+- **1.5** Core into packages — one component at a time, into `bank/<component>`
+  packages of the root module, each owning its tables and migrations behind
+  its API, with `bank` the composition root that implements `core.Commands`
+  and `core.StaffQueries`. Smallest coupling first so the pattern (the
+  registry names a package, the contract-view test scans `bank/`, an
+  import test is the boundary) is proven before the entangled components
+  move. Every story is a pure move, no schema change. Done-when of the
+  stage: `cmd/demo` holds only wiring, the console and the UI. Stories:
+- **1.5.1** [ ] treasury — `bank/treasury`: gilt yields and holdings,
+  `Buy`; reads only the bank's business day
+- **1.5.2** [ ] history — `bank/history`: the daily snapshots
+- **1.5.3** [ ] ledger — `bank/ledger`: the go-luca wrapper, the chart of
+  accounts, the account locks and `postEvent`
+- **1.5.4** [ ] products — `bank/products`: the catalogue, the pass and
+  the accrual over the ledger
+- **1.5.5** [ ] customers — `bank/customers`: the store, the register,
+  opening and transactions, over ledger and products
+- **1.5.6** [ ] payments — `bank/payments`, over all of the above
+- **1.5.7** [ ] bank — the composite replaces `DemoState` and dissolves
+  `coreAdapter`; book and about read through `core`; the stage's done-when
+- **1.6** One BFF — staff UI and customer web through the BFF (absorbs item 2)
+- **1.7** Read/write split — separate read and write handles
+- **1.8** Many processes — several BFFs, a generator and one workflow runner;
+  deploys go blue-green (deployment level 3), ending the downtime
+  accepted since stage 2
+- **1.9** Simulation becomes tests
+- **2 Multiple payment rails** — every payment records the rail it travelled
+  (internal book transfer, FPS, Bacs, CHAPS) and each rail is a scheme
+  adapter behind one interface with its own settlement timing, cut-offs,
+  limits and outage behaviour; a routing rule picks the rail from amount and
+  urgency. The payments component stays the one bank-level view (one
+  lifecycle, one list, filterable by rail) and gains a per-rail view:
+  volumes, queue depth, settlement position and scheme status. The existing
+  mock-fps and FPS stand-in items in Phase 1 become the FPS rail's stories,
+  and the adapter boundary is what Phase 3 unbundles. Out of scope: real scheme
+  messaging (ISO 20022), cards. Open: rail as a column on the one
+  `payments` table (the coherent view comes free) versus a table per rail
+  with a bank-level union view (each rail's data differs — Bacs has a
+  three-day cycle, CHAPS is same-day, FPS instant). The rails become real
+  with a **real rail**: one outbound payment from the demo bank to a real account
+  through a live bank API, credentials per environment via gobank-deploy,
+  sandbox first. Out of scope: inbound, bulk, cards. Open: Starling
+  (developer sandbox, personal access token, plain REST) versus Barclays
+  (Open Banking PIS, needs TPP registration and eIDAS certificates, likely
+  out of reach for a hobby project) — Starling sandbox first
+- **3 Payee management** — a customer's saved payees (name, sort code and
+  account number, reference), created, edited and deleted in the app and
+  the customer web and offered by send money; a component with its own
+  table (ADR-0001) behind session-only BFF endpoints. Builds on #7.
+  Out of scope: international payees, a real Confirmation of Payee call
+  (stubbed behind an interface). Open: new-payee limits and cooling-off
+- **4 KYC process** — onboarding as a lifecycle (pending → verified →
+  rejected → in review): identity capture, document and liveness checks
+  as pluggable verifiers with a stub provider in the demo, a risk rating,
+  and the record of how and when a customer was verified and of later
+  name and address changes (#25); an unverified customer transacts only
+  up to a cap. Out of scope: a real IDV provider (same interface as the
+  stub), AML transaction monitoring (belongs with the risk register).
+  Open: does the customer generator produce KYC outcomes, so the staff
+  view has a queue to work
+- **5 Demo phone frame onto the screen layer** (ADR-0002 stage 6) — `cmd/demo/bankapp_render.go`
+  becomes a caller of `screen.HTML`, so browser and app show identical screens
+  from one source, and the open `/api/customer/` endpoints are retired
+- **6 Native security plugin** — biometric-bound keys (Secure Enclave, StrongBox),
+  passkey registration and login, App Attest and Play Integrity token fetching,
+  certificate pinning, screenshot blocking and app-switcher blanking, jailbreak,
+  root and overlay detection; the BFF checks attestation before issuing tokens
+- **7 Device-bound signing** — request signing for transactions, step-up
+  authentication (PSD2 SCA)
+- **8 Web client on the BFF** — the HTML rendering of the same endpoints becomes
+  the customer web client; passkeys via WebAuthn in the browser
+- **9 App-shielding SDK evaluation** — Promon, Guardsquare, Appdome, Zimperium;
+  chosen and integrated before any external pilot
+- **10 Standalone RBAC module** — extract `Role`/`Can` from `cmd/demo` into its
+  own repo (not gobank-db) once the BFF is the second consumer; it then
+  implements go-dbexplorer's `Authoriser`
+- **11 Native checkpoint** — after the first external pilot, a written list of what
+  Flutter cannot do; move to SwiftUI and Jetpack Compose only if the list is
+  non-empty
 
 ## Phase 3 — Kubernetes + AlloyDB
 
