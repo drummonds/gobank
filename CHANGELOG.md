@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+## [0.19.0] - 2026-10-07
+
+ - Stage 6 story 1.6.1: the demo is one handler, served in the tab by a service worker
+
 ### Changed
 - ADR-0002 stage 6 story 1.6.1, one handler in the tab. The demo's routes
   are one `http.Handler` built over its state (`newHandler`, cmd/demo/
