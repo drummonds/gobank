@@ -22,6 +22,60 @@ The browser-based model proves the banking core works end-to-end.
 
 ### To Do
 
+- **Workflow engine** — a `workflow` component (own tables, ADR-0001):
+  long-running processes made of steps, timers and human decisions,
+  durable so an instance resumes after a restart, with timers on the
+  bank clock (`core.Clock`) so a six-month wait runs inside a simulated
+  afternoon. First consumers: KYC journeys and sign-up (Phase 2 #4),
+  lending proposals, dormancy, licence promotion (below). Stage 1.8's
+  single workflow runner becomes this engine's runner. WASM runs it in
+  memory. Out of scope: a visual designer, BPMN, retries with backoff
+  beyond "try again next day". Open: definitions as Go code (steps are
+  named functions, the instance row records the step it is at) versus a
+  declarative definition table; whether the start-of-day pass itself
+  becomes an instance
+- **Bank licence trajectory** — the bank is an institution that grows
+  through tiers: a deposit-taker (savings products only, no lending, no
+  regulatory capital), a small bank once it has raised investment or
+  retained 5M, a regulated bank at 25M with capital rules. A tier is a set
+  of permissions the rest of the bank reads as rules: lending headroom
+  is nil at tier one, the reserve-ratio rule at tier two, capital-based
+  at tier three. A `licence` component (own table) holds the current
+  tier and the history of transitions — date, trigger (investment event,
+  earnings threshold crossed), the figures at the time, who approved —
+  and a staff page shows the trajectory: where the bank is, what the
+  next step needs, how far along. Promotion is a workflow with a staff
+  step; the simulation can inject an investment event. Thresholds are
+  data, not code. Out of scope: real PRA/FCA regimes (mobilisation,
+  Part 4A), ICAAP/ILAAP numbers (the risk register keeps those out too).
+  Open: the thresholds (5M and 25M are the model's own; UK mobilisation
+  is a £50k deposit cap) and whether a tier can be lost
+- **Lending gateway** — a loan is a proposal, not a disbursement: opening
+  a customer with a loan, or a later request, creates a lending proposal
+  that a workflow decides — refused at the deposit-taker tier, approved
+  within headroom at later tiers, with a staff approval step above a
+  size. Replaces the open-time trim in `planCustomerLocked`; the proposal
+  and its decision are records, so the staff view shows a queue and the
+  refusals. The generator keeps asking for loans at tier one so the
+  refusals are visible. Out of scope: credit scoring, affordability,
+  repayment schedules (products)
+- **Dormancy and the account-number lifecycle** — a savings account with
+  no customer movements for six months (interest credits do not count)
+  becomes dormant; dormant with a nil balance it is closed automatically,
+  with a balance it stays dormant and is reported. Closing returns the
+  account number to quarantine for a period before it can be reissued,
+  so numbers have a lifecycle: issued → open → closed → quarantined →
+  free. The sweep is a workflow timed from the last customer movement.
+  Out of scope: the Dormant Assets Scheme (15 years), a reactivation
+  journey. Open: the quarantine length; whether the number register is
+  its own component or part of customers. Real UK banks do not reuse
+  numbers; the model does so the register stays finite
+- **Treasury: cash at BoE and net interest margin** — the treasury view
+  gains the BoE balance over time (the reserve account's daily position
+  from the ledger) and, for a reporting period, the net interest margin:
+  interest earned (BoE reserves, gilts, loans) less interest paid
+  (savings), as money and as a rate over average earning assets. Builds
+  on period accounting reports
 - **Feature flag component** — a `flags` component (own table, ADR-0001)
   holding named on/off switches, read through a core query and flipped from
   a staff page; WASM keeps them in memory. Needed for the ADR-0002
@@ -50,8 +104,16 @@ The browser-based model proves the banking core works end-to-end.
 - **Working savings accounts** — full lifecycle: open, deposit, withdraw, accrue interest, close
 - **Import/export via luca files** — load and save simulation state as plain-text accounting files
 - **Export single savings account** — extract one account's history as a luca file
-- **Accurate P&L** — end-of-day and for arbitrary periods (monthly, quarterly, annual)
-- **Balance sheet** — end-of-day and for arbitrary periods
+- **Period accounting reports, produced and stored** — a reporting
+  period (month, year, tax year for BBSI) is a thing with a close: at
+  close the P&L, balance sheet and the period's returns (BBSI at tax
+  year end) are produced from the ledger as at that knowledge time and
+  stored as records, so what was reported stays what was reported if a
+  late posting changes the books; real time is a live view of the open
+  period, never stored. The reports page lists periods and their stored
+  reports; BBSI moves from a live build to the stored year-end report.
+  Needs go-luca `knowledge_time` (1.3.2). Open: a posting after close —
+  restate, or carry into the next period with a note
 - **Customer model** — confidence score, maximum aggregate balance, realistic switching behaviour
 - **Named customers behind customer wall** — PII-like data gated behind access control
 - **mock-fps integration** — compiled-in Faster Payments simulator for payment processing
@@ -382,8 +444,9 @@ root module, `cmd/bff` is the service binary, and `app/` is the Flutter shell.
   (stubbed behind an interface). Open: new-payee limits and cooling-off
 - **4 KYC process** — onboarding as a lifecycle (pending → verified →
   rejected → in review): identity capture, document and liveness checks
-  as pluggable verifiers with a stub provider in the demo, a risk rating,
-  and the record of how and when a customer was verified and of later
+  as pluggable verifiers with a stub provider in the demo, running as
+  a journey on the workflow engine (Phase 1), a risk rating, and the
+  record of how and when a customer was verified and of later
   name and address changes (#25); an unverified customer transacts only
   up to a cap. Out of scope: a real IDV provider (same interface as the
   stub), AML transaction monitoring (belongs with the risk register).
