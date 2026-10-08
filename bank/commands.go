@@ -416,11 +416,24 @@ func (b *Bank) ClearPayments(ctx context.Context) error {
 // --- Products ---
 
 // Products implements core.ProductQueries: the catalogue with each
-// product's open accounts and their balance.
+// product's share of the book — its open accounts and their balance —
+// from the same reading as the position, so the products page costs
+// what the dashboard does.
 func (b *Bank) Products(ctx context.Context) ([]core.Product, error) {
 	b.open.RLock()
 	defer b.open.RUnlock()
-	return b.products.Books(ctx)
+	k := b.book.get(ctx)
+	catalogue := b.products.All()
+	out := make([]core.Product, 0, len(catalogue))
+	for _, prod := range catalogue {
+		pb := k.products[prod.ID]
+		out = append(out, core.Product{
+			ID: prod.ID, Name: prod.Name, Family: string(prod.Family), Currency: prod.Currency,
+			Rate: prod.Rate, Terms: prod.Terms, Description: prod.Description,
+			Accounts: pb.accounts, Balance: pb.balance,
+		})
+	}
+	return out, nil
 }
 
 var (

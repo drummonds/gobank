@@ -93,6 +93,14 @@
   diagrams, the favicon and the project data the pages embed live under
   `bff/staff/`.
 
+### Fixed
+- The products pages took eight seconds on the Hetzner bank: each request
+  summed every ledger movement per product. The products are now the
+  catalogue over the book reading, which already groups the live
+  positions by product, so the savings and lending pages cost what the
+  dashboard does and are served from the same cached, background-refreshed
+  reading. `products.Books` is gone; `Bank.Products` composes it.
+
 ## [0.21.0] - 2026-10-08
 
  - Stage 6 story 1.6.2: the customer web is the BFF's HTML; the demo's phone frame and open customer API are retired

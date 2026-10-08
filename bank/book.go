@@ -24,16 +24,24 @@ import (
 // again.
 const bookTTL = 2 * time.Second
 
-// bookFigures is one reading of the book.
+// bookFigures is one reading of the book: the totals by family, each
+// product's share, and the customer count.
 type bookFigures struct {
 	savings, lending luca.Amount
+	products         map[string]productBook // by product ID
 	customers        int
+}
+
+// productBook is one product's share of the book.
+type productBook struct {
+	accounts int
+	balance  luca.Amount
 }
 
 // readBook is the read behind the book: the balances through the live
 // view and the customer count.
 func (b *Bank) readBook(ctx context.Context) (bookFigures, error) {
-	savings, lending, err := b.customerBalances(ctx)
+	products, err := b.productBooks(ctx)
 	if err != nil {
 		return bookFigures{}, err
 	}
@@ -41,7 +49,15 @@ func (b *Bank) readBook(ctx context.Context) (bookFigures, error) {
 	if err != nil {
 		return bookFigures{}, err
 	}
-	return bookFigures{savings: savings, lending: lending, customers: customers}, nil
+	k := bookFigures{products: products, customers: customers}
+	for id, pb := range products {
+		if p, ok := b.products.ByID(id); ok && p.Family == gbp.FamilyLending {
+			k.lending += pb.balance
+		} else {
+			k.savings += pb.balance
+		}
+	}
+	return k, nil
 }
 
 // freshBook is the book read now, in front of the caller: what a day's
@@ -51,33 +67,30 @@ func (b *Bank) freshBook(ctx context.Context) (savings, lending luca.Amount, cus
 	return k.savings, k.lending, k.customers
 }
 
-// customerBalances sums every customer account's live position — the
-// latest projection plus the movements valued after its day — per
-// family, through the customers' and the ledger's views. The views give
+// productBooks counts every customer account and sums its live position
+// — the latest projection plus the movements valued after its day — per
+// product, through the customers' and the ledger's views. The views give
 // money in major units as a NUMERIC; it is scaled to whole minor units
 // before summing so the sum is exact on both drivers.
-func (b *Bank) customerBalances(ctx context.Context) (savings, lending luca.Amount, err error) {
-	rows, err := b.db.QueryContext(ctx, fmt.Sprintf(`SELECT ca.product_id, COALESCE(SUM(CAST(ROUND(lp.balance * %d) AS BIGINT)), 0)
+func (b *Bank) productBooks(ctx context.Context) (map[string]productBook, error) {
+	rows, err := b.db.QueryContext(ctx, fmt.Sprintf(`SELECT ca.product_id, COUNT(*), COALESCE(SUM(CAST(ROUND(lp.balance * %d) AS BIGINT)), 0)
 		FROM contract_customer_accounts ca
 		JOIN contract_ledger_live_positions lp ON lp.account_id = ca.ledger_account_id
 		GROUP BY ca.product_id`, ledger.Unit))
 	if err != nil {
-		return 0, 0, fmt.Errorf("bank: book: %w", err)
+		return nil, fmt.Errorf("bank: book: %w", err)
 	}
 	defer rows.Close()
+	out := map[string]productBook{}
 	for rows.Next() {
 		var productID string
-		var amount luca.Amount
-		if err := rows.Scan(&productID, &amount); err != nil {
-			return 0, 0, fmt.Errorf("bank: book: %w", err)
+		var pb productBook
+		if err := rows.Scan(&productID, &pb.accounts, &pb.balance); err != nil {
+			return nil, fmt.Errorf("bank: book: %w", err)
 		}
-		if p, ok := b.products.ByID(productID); ok && p.Family == gbp.FamilyLending {
-			lending += amount
-		} else {
-			savings += amount
-		}
+		out[productID] = pb
 	}
-	return savings, lending, rows.Err()
+	return out, rows.Err()
 }
 
 // lendingHeadroom is how much more the bank can lend while keeping its

@@ -670,3 +670,40 @@ func TestStartDayAdvancesTheLedgersBusinessDay(t *testing.T) {
 		t.Errorf("ledger business day after a restart = %v, %v; want %s unchanged", bd, err, want.Format(time.DateOnly))
 	}
 }
+
+// The products are the catalogue with each product's share of the book:
+// the accounts open on it and their balance, agreeing with the position
+// by family.
+func TestProductsAreTheBookPerProduct(t *testing.T) {
+	f := open(t)
+	if _, err := f.bank.OpenCustomer(f.ctx, ada); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := f.bank.OpenCustomer(f.ctx, saver("Bob", 250_00)); err != nil {
+		t.Fatal(err)
+	}
+	products, err := f.bank.Products(f.ctx)
+	if err != nil || len(products) != 6 {
+		t.Fatalf("Products = %d, %v; want the 6 of the catalogue", len(products), err)
+	}
+	pos := f.position() // the loan is what the headroom allowed
+	want := map[string]struct {
+		accounts int
+		balance  luca.Amount
+	}{gbp.EasyAccess().ID: {2, 1250_00}, gbp.PersonalLoan().ID: {1, pos.Lending}}
+	var savings, lending luca.Amount
+	for _, p := range products {
+		w := want[p.ID]
+		if p.Accounts != w.accounts || p.Balance != w.balance {
+			t.Errorf("%s: %d accounts, balance %d; want %d, %d", p.ID, p.Accounts, p.Balance, w.accounts, w.balance)
+		}
+		if p.Family == string(gbp.FamilyLending) {
+			lending += p.Balance
+		} else {
+			savings += p.Balance
+		}
+	}
+	if savings != pos.Savings || lending != pos.Lending {
+		t.Errorf("products sum to %d savings, %d lending; the position is %d, %d", savings, lending, pos.Savings, pos.Lending)
+	}
+}

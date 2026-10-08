@@ -241,31 +241,6 @@ func TestPassVisitsEveryUnprojectedAccountAndResumes(t *testing.T) {
 	}
 }
 
-// The books per product count the registered accounts and sum their
-// movements.
-func TestBooksCountAccountsAndBalances(t *testing.T) {
-	p, books := open(t)
-	easy, _ := p.ByID(gbp.EasyAccess().ID)
-	register(t, p, books, easy, "cust-001", 1000_00, jan2)
-	register(t, p, books, easy, "cust-002", 250_00, jan2)
-	out, err := p.Books(context.Background())
-	if err != nil || len(out) != 6 {
-		t.Fatalf("Books = %d products, %v; want 6", len(out), err)
-	}
-	for _, prod := range out {
-		want := struct {
-			accounts int
-			balance  luca.Amount
-		}{0, 0}
-		if prod.ID == easy.ID {
-			want.accounts, want.balance = 2, 1250_00
-		}
-		if prod.Accounts != want.accounts || prod.Balance != want.balance {
-			t.Errorf("%s: %d accounts, balance %d; want %d, %d", prod.ID, prod.Accounts, prod.Balance, want.accounts, want.balance)
-		}
-	}
-}
-
 // The schema is the component's own: versions in order from 1.
 func TestSchemaVersionsRunFromOne(t *testing.T) {
 	if Schema.Name != "products" {

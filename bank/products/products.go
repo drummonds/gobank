@@ -8,7 +8,6 @@
 package products
 
 import (
-	"context"
 	"database/sql"
 	"fmt"
 	"time"
@@ -17,7 +16,6 @@ import (
 	gbp "git.bytestone.uk/hum3/gobank-products"
 	"git.bytestone.uk/hum3/gobank/bank/ledger"
 	"git.bytestone.uk/hum3/gobank/bank/schema"
-	"git.bytestone.uk/hum3/gobank/core"
 )
 
 // Product is a gobank-products product as the bank sells it.
@@ -63,57 +61,6 @@ func (p *Products) ByID(id string) (Product, bool) {
 		}
 	}
 	return Product{}, false
-}
-
-// Books is the catalogue with each product's book: the accounts open on
-// it and their combined balance, read through the customers' and the
-// ledger's contract views (core.ProductQueries).
-func (p *Products) Books(ctx context.Context) ([]core.Product, error) {
-	counts := map[string]int{}
-	rows, err := p.db.QueryContext(ctx, `SELECT product_id, COUNT(*) FROM contract_customer_accounts GROUP BY product_id`)
-	if err != nil {
-		return nil, fmt.Errorf("products: accounts: %w", err)
-	}
-	for rows.Next() {
-		var id string
-		var n int
-		if err := rows.Scan(&id, &n); err != nil {
-			rows.Close()
-			return nil, fmt.Errorf("products: accounts: %w", err)
-		}
-		counts[id] = n
-	}
-	rows.Close()
-
-	balances := map[string]luca.Amount{}
-	rows, err = p.db.QueryContext(ctx, `SELECT product_id, COALESCE(SUM(delta), 0) FROM (
-			SELECT ca.product_id, m.amount AS delta
-			  FROM contract_customer_accounts ca JOIN contract_ledger_movements m ON m.to_account_id = ca.ledger_account_id
-			UNION ALL
-			SELECT ca.product_id, -m.amount AS delta
-			  FROM contract_customer_accounts ca JOIN contract_ledger_movements m ON m.from_account_id = ca.ledger_account_id
-		) d GROUP BY product_id`)
-	if err != nil {
-		return nil, fmt.Errorf("products: balances: %w", err)
-	}
-	defer rows.Close()
-	for rows.Next() {
-		var id string
-		var bal luca.Amount
-		if err := rows.Scan(&id, &bal); err != nil {
-			return nil, fmt.Errorf("products: balances: %w", err)
-		}
-		balances[id] = bal
-	}
-	out := make([]core.Product, 0, len(p.catalogue))
-	for _, prod := range p.catalogue {
-		out = append(out, core.Product{
-			ID: prod.ID, Name: prod.Name, Family: string(prod.Family), Currency: prod.Currency,
-			Rate: prod.Rate, Terms: prod.Terms, Description: prod.Description,
-			Accounts: counts[prod.ID], Balance: balances[prod.ID],
-		})
-	}
-	return out, rows.Err()
 }
 
 // Schema: the component owns no table. accrual_state held
