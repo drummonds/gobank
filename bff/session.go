@@ -149,19 +149,22 @@ var SessionsSchema = []string{`CREATE TABLE IF NOT EXISTS sessions (
 // SQLSessions keeps sessions in a database table (SessionsSchema).
 type SQLSessions struct {
 	sessionPolicy
-	db  *sql.DB
+	db  func() *sql.DB
 	log *slog.Logger
 }
 
-// NewSQLSessions returns a store over db, whose sessions table exists.
-func NewSQLSessions(db *sql.DB, ttl, idle time.Duration, now func() time.Time) *SQLSessions {
+// NewSQLSessions returns a store over the database db gives, whose
+// sessions table exists. It is asked on each use: the program that owns
+// the database may replace it (the demo's reset and import), and the
+// sessions go with the run they belonged to.
+func NewSQLSessions(db func() *sql.DB, ttl, idle time.Duration, now func() time.Time) *SQLSessions {
 	return &SQLSessions{sessionPolicy: newPolicy(ttl, idle, now), db: db, log: slog.Default()}
 }
 
 func (s *SQLSessions) Create(customerID string) (token string, expires time.Time) {
 	token = s.mint()
 	t := s.now().UTC()
-	if _, err := s.db.Exec(`INSERT INTO sessions (token_hash, customer_id, created_at, last_seen_at) VALUES ($1, $2, $3, $4)`,
+	if _, err := s.db().Exec(`INSERT INTO sessions (token_hash, customer_id, created_at, last_seen_at) VALUES ($1, $2, $3, $4)`,
 		hashToken(token), customerID, t, t); err != nil {
 		s.log.Error("bff.sessions.create", "err", err)
 	}
@@ -175,7 +178,7 @@ func (s *SQLSessions) Lookup(token string) (customerID string, ok bool) {
 	key := hashToken(token)
 	t := s.now().UTC()
 	var created, lastSeen time.Time
-	err := s.db.QueryRow(`SELECT customer_id, created_at, last_seen_at FROM sessions WHERE token_hash = $1`, key).
+	err := s.db().QueryRow(`SELECT customer_id, created_at, last_seen_at FROM sessions WHERE token_hash = $1`, key).
 		Scan(&customerID, &created, &lastSeen)
 	switch {
 	case errors.Is(err, sql.ErrNoRows):
@@ -188,21 +191,21 @@ func (s *SQLSessions) Lookup(token string) (customerID string, ok bool) {
 		s.Revoke(token)
 		return "", false
 	}
-	if _, err := s.db.Exec(`UPDATE sessions SET last_seen_at = $1 WHERE token_hash = $2`, t, key); err != nil {
+	if _, err := s.db().Exec(`UPDATE sessions SET last_seen_at = $1 WHERE token_hash = $2`, t, key); err != nil {
 		s.log.Error("bff.sessions.touch", "err", err)
 	}
 	return customerID, true
 }
 
 func (s *SQLSessions) Revoke(token string) {
-	if _, err := s.db.Exec(`DELETE FROM sessions WHERE token_hash = $1`, hashToken(token)); err != nil {
+	if _, err := s.db().Exec(`DELETE FROM sessions WHERE token_hash = $1`, hashToken(token)); err != nil {
 		s.log.Error("bff.sessions.revoke", "err", err)
 	}
 }
 
 func (s *SQLSessions) Sweep() {
 	t := s.now().UTC()
-	if _, err := s.db.Exec(`DELETE FROM sessions WHERE created_at < $1 OR last_seen_at < $2`, t.Add(-s.ttl), t.Add(-s.idle)); err != nil {
+	if _, err := s.db().Exec(`DELETE FROM sessions WHERE created_at < $1 OR last_seen_at < $2`, t.Add(-s.ttl), t.Add(-s.idle)); err != nil {
 		s.log.Error("bff.sessions.sweep", "err", err)
 	}
 }

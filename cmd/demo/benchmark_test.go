@@ -5,9 +5,11 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"log/slog"
 	"net/http"
 	"net/http/httptest"
 	"os"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -277,24 +279,8 @@ func benchBuildMux(ds *DemoState) *http.ServeMux {
 	var renderMu sync.Mutex
 	mux := http.NewServeMux()
 
-	// JSON API — lightweight reads
-	mux.HandleFunc("GET /api/customers", func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(bankAppCustomerList(ds.Bank))
-	})
-	mux.HandleFunc("GET /api/customer/{id}/accounts", func(w http.ResponseWriter, r *http.Request) {
-		resp := bankAppAccounts(ds.Bank, r.PathValue("id"))
-		w.Header().Set("Content-Type", "application/json")
-		if resp == nil {
-			w.WriteHeader(404)
-			return
-		}
-		json.NewEncoder(w).Encode(resp)
-	})
-	mux.HandleFunc("GET /api/customer/{id}/transactions", func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(bankAppTransactions(ds.Bank, r.PathValue("id"), 1))
-	})
+	// The customer BFF — lightweight reads of one customer's screens
+	mux.Handle("/v1/", newAppBFF(ds.Bank, newAppLogin(ds.Bank, benchAppPassword), ds.DB, "/", "", slog.New(slog.NewTextHandler(io.Discard, nil))))
 
 	// HTML renders — heavier, hold renderMu
 	mux.HandleFunc("GET /dashboard", func(w http.ResponseWriter, r *http.Request) {
@@ -330,6 +316,25 @@ func benchBuildMux(ds *DemoState) *http.ServeMux {
 	return mux
 }
 
+// benchAppPassword is the app password the benchmark's BFF accepts.
+const benchAppPassword = "bench"
+
+// benchLogin logs the customer in to the BFF and returns the bearer token
+// the customer's reads carry.
+func benchLogin(b *testing.B, ts *httptest.Server, custID string) string {
+	body := fmt.Sprintf(`{"customer_id":%q,"password":%q}`, custID, benchAppPassword)
+	resp, err := ts.Client().Post(ts.URL+"/v1/login", "application/json", strings.NewReader(body))
+	if err != nil {
+		b.Fatal(err)
+	}
+	defer resp.Body.Close()
+	var m struct{ Token string }
+	if err := json.NewDecoder(resp.Body).Decode(&m); err != nil || m.Token == "" {
+		b.Fatalf("login: %d %v", resp.StatusCode, err)
+	}
+	return m.Token
+}
+
 // benchFirstCustomerID returns the ID of the first customer (for API calls).
 func benchFirstCustomerID(ds *DemoState) string {
 	page, _ := ds.customerPage(1)
@@ -347,31 +352,31 @@ type benchEndpoint struct {
 
 func benchReadEndpoints(custID string) []benchEndpoint {
 	return []benchEndpoint{
-		{"GET", "/api/customers"},
-		{"GET", "/api/customer/" + custID + "/accounts"},
-		{"GET", "/api/customer/" + custID + "/transactions"},
-		{"GET", "/api/customers"},
-		{"GET", "/api/customer/" + custID + "/accounts"},
-		{"GET", "/api/customer/" + custID + "/transactions"},
+		{"GET", "/v1/screen/accounts"},
+		{"GET", "/v1/screen/activity"},
+		{"GET", "/v1/screen/product/0"},
+		{"GET", "/v1/screen/accounts"},
+		{"GET", "/v1/screen/activity"},
+		{"GET", "/v1/screen/product/0"},
 		{"GET", "/dashboard"},
 		{"GET", "/accounting/pnl"},
 		{"GET", "/customers"},
-		{"GET", "/api/customer/" + custID + "/accounts"},
+		{"GET", "/v1/screen/accounts"},
 	}
 }
 
 func benchMixedEndpoints(custID string) []benchEndpoint {
 	// 70% reads, 20% light writes, 10% heavy writes.
 	// In production, advance fires at most once per 200ms from the auto-play
-	// ticker, while API reads happen on every page view.
+	// ticker, while the app's reads happen on every screen.
 	return []benchEndpoint{
-		{"GET", "/api/customers"},
-		{"GET", "/api/customer/" + custID + "/accounts"},
-		{"GET", "/api/customer/" + custID + "/transactions"},
+		{"GET", "/v1/screen/accounts"},
+		{"GET", "/v1/screen/activity"},
+		{"GET", "/v1/screen/product/0"},
 		{"GET", "/dashboard"},
 		{"GET", "/accounting/pnl"},
 		{"GET", "/customers"},
-		{"GET", "/api/customer/" + custID + "/accounts"},
+		{"GET", "/v1/screen/accounts"},
 		{"POST", "/payments/send"},
 		{"POST", "/payments/send"},
 		{"POST", "/advance"},
@@ -379,7 +384,7 @@ func benchMixedEndpoints(custID string) []benchEndpoint {
 }
 
 // benchRunLoad drives concurrent HTTP load for a fixed duration and reports metrics.
-func benchRunLoad(b *testing.B, ts *httptest.Server, endpoints []benchEndpoint, conc int, duration time.Duration, nAcct int) {
+func benchRunLoad(b *testing.B, ts *httptest.Server, endpoints []benchEndpoint, token string, conc int, duration time.Duration, nAcct int) {
 	var totalReqs atomic.Int64
 	var totalErrors atomic.Int64
 	var totalLatencyNs atomic.Int64
@@ -400,6 +405,7 @@ func benchRunLoad(b *testing.B, ts *httptest.Server, endpoints []benchEndpoint, 
 				i++
 				t0 := time.Now()
 				req, _ := http.NewRequest(ep.method, ts.URL+ep.path, nil)
+				req.Header.Set("Authorization", "Bearer "+token)
 				resp, err := client.Do(req)
 				latency := time.Since(t0)
 				if err != nil {
@@ -475,7 +481,7 @@ func BenchmarkAPILoad(b *testing.B) {
 				defer ds.db.Close()
 
 				endpoints := wl.endpoints(custID)
-				benchRunLoad(b, ts, endpoints, conc, loadDuration, nAcct)
+				benchRunLoad(b, ts, endpoints, benchLogin(b, ts, custID), conc, loadDuration, nAcct)
 			})
 		}
 	}
@@ -499,9 +505,9 @@ func BenchmarkAPIEndpoint(b *testing.B) {
 		method string
 		path   string
 	}{
-		{"api/customers", "GET", "/api/customers"},
-		{"api/accounts", "GET", "/api/customer/" + custID + "/accounts"},
-		{"api/transactions", "GET", "/api/customer/" + custID + "/transactions"},
+		{"app/accounts", "GET", "/v1/screen/accounts"},
+		{"app/activity", "GET", "/v1/screen/activity"},
+		{"app/product", "GET", "/v1/screen/product/0"},
 		{"dashboard", "GET", "/dashboard"},
 		{"pnl", "GET", "/accounting/pnl"},
 		{"customers", "GET", "/customers"},
@@ -510,10 +516,12 @@ func BenchmarkAPIEndpoint(b *testing.B) {
 	}
 
 	client := ts.Client()
+	token := benchLogin(b, ts, custID)
 	for _, ep := range endpoints {
 		b.Run(ep.name, func(b *testing.B) {
 			for b.Loop() {
 				req, _ := http.NewRequest(ep.method, ts.URL+ep.path, nil)
+				req.Header.Set("Authorization", "Bearer "+token)
 				resp, err := client.Do(req)
 				if err != nil {
 					b.Fatal(err)

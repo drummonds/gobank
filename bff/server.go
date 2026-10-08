@@ -32,16 +32,28 @@ type Config struct {
 	Bank core.CustomerQueries
 	Auth core.Authenticator
 
-	SessionTTL  time.Duration // absolute session lifetime; default 8h
-	SessionIdle time.Duration // idle timeout; default 15m
-	SessionDB   *sql.DB       // keep sessions in this database (its sessions table exists); nil keeps them in memory
+	SessionTTL  time.Duration  // absolute session lifetime; default 8h
+	SessionIdle time.Duration  // idle timeout; default 15m
+	SessionDB   func() *sql.DB // keep sessions in the database this gives, asked on each use (its sessions table exists); nil keeps them in memory
 
 	MaxLoginFailures int           // per customer ID and per client address; default 5
 	LoginWindow      time.Duration // sliding window for failures; default 15m
 
 	SecureCookies bool // set Secure on the session cookie (HTML clients); on unless serving plain HTTP
-	Logger        *slog.Logger
-	Now           func() time.Time
+
+	// Scope is the path the server is mounted under: "/" on its own server
+	// (the default), the service worker's scope in the tab. Its documents
+	// carry it as their <base>, and its redirects and session cookie carry
+	// it, so a browser never leaves the scope it was served from. The
+	// screen trees keep their paths absolute: a JSON client resolves them
+	// against the server it talks to.
+	Scope string
+	// LoginNote is the note under the login form; the default says where
+	// customer IDs are listed. The tab uses it to state the demo password.
+	LoginNote string
+
+	Logger *slog.Logger
+	Now    func() time.Time
 }
 
 // Server is the BFF HTTP handler.
@@ -76,6 +88,12 @@ func NewServer(cfg Config) *Server {
 	if cfg.Logger == nil {
 		cfg.Logger = slog.Default()
 	}
+	if cfg.Scope == "" {
+		cfg.Scope = "/"
+	}
+	if cfg.LoginNote == "" {
+		cfg.LoginNote = DefaultLoginNote
+	}
 	var sessions Sessions = NewSessionStore(cfg.SessionTTL, cfg.SessionIdle, cfg.Now)
 	if cfg.SessionDB != nil {
 		sessions = NewSQLSessions(cfg.SessionDB, cfg.SessionTTL, cfg.SessionIdle, cfg.Now)
@@ -102,6 +120,17 @@ func NewServer(cfg Config) *Server {
 
 // Sessions exposes the session store, e.g. for a periodic Sweep.
 func (s *Server) Sessions() Sessions { return s.sessions }
+
+// at is a root-relative path of the server's, inside its scope.
+func (s *Server) at(path string) string { return s.cfg.Scope + strings.TrimPrefix(path, "/") }
+
+// redirect sends a browser to one of the server's paths, inside its scope.
+func (s *Server) redirect(w http.ResponseWriter, r *http.Request, path string) {
+	http.Redirect(w, r, s.at(path), http.StatusSeeOther)
+}
+
+// frontDoor is the login screen with the deployment's note.
+func (s *Server) frontDoor(notice string) screen.Screen { return loginScreen(notice, s.cfg.LoginNote) }
 
 // ServeHTTP applies the security headers every response carries, then routes.
 func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
@@ -135,10 +164,10 @@ func (s *Server) authed(next http.HandlerFunc) http.HandlerFunc {
 		if !ok {
 			s.log.Info("bff.unauthenticated", "path", r.URL.Path, "ip", clientIP(r))
 			if wantsHTML(r) {
-				http.Redirect(w, r, PathScreenLogin, http.StatusSeeOther)
+				s.redirect(w, r, PathScreenLogin)
 				return
 			}
-			sc := LoginScreen("")
+			sc := s.frontDoor("")
 			s.writeError(w, r, http.StatusUnauthorized, "unauthenticated", "Log in to continue", &sc)
 			return
 		}
@@ -183,7 +212,7 @@ func (s *Server) health(w http.ResponseWriter, _ *http.Request) {
 }
 
 func (s *Server) loginScreen(w http.ResponseWriter, r *http.Request) {
-	s.writeScreen(w, r, http.StatusOK, LoginScreen(""))
+	s.writeScreen(w, r, http.StatusOK, s.frontDoor(""))
 }
 
 type loginRequest struct {
@@ -214,7 +243,7 @@ func (s *Server) login(w http.ResponseWriter, r *http.Request) {
 	ip := clientIP(r)
 	if req.CustomerID == "" || len(req.CustomerID) > 64 || len(req.Password) > 256 {
 		s.limiter.fail("ip:" + ip)
-		sc := LoginScreen("Enter your customer ID and password.")
+		sc := s.frontDoor("Enter your customer ID and password.")
 		s.writeError(w, r, http.StatusBadRequest, "bad_request", "Enter your customer ID and password.", &sc)
 		return
 	}
@@ -225,7 +254,7 @@ func (s *Server) login(w http.ResponseWriter, r *http.Request) {
 			mins := int(wait.Minutes()) + 1
 			msg := fmt.Sprintf("Too many attempts. Try again in %d minutes.", mins)
 			w.Header().Set("Retry-After", strconv.Itoa(int(wait.Seconds())+1))
-			sc := LoginScreen(msg)
+			sc := s.frontDoor(msg)
 			s.writeError(w, r, http.StatusTooManyRequests, "rate_limited", msg, &sc)
 			return
 		}
@@ -240,7 +269,7 @@ func (s *Server) login(w http.ResponseWriter, r *http.Request) {
 			s.log.Error("bff.login.error", "err", err)
 		}
 		const msg = "Unknown customer ID or wrong password."
-		sc := LoginScreen(msg)
+		sc := s.frontDoor(msg)
 		s.writeError(w, r, http.StatusUnauthorized, "bad_credentials", msg, &sc)
 		return
 	}
@@ -250,10 +279,10 @@ func (s *Server) login(w http.ResponseWriter, r *http.Request) {
 
 	if isForm || wantsHTML(r) {
 		http.SetCookie(w, &http.Cookie{
-			Name: cookieName, Value: token, Path: "/v1", HttpOnly: true,
+			Name: cookieName, Value: token, Path: s.at("/v1"), HttpOnly: true,
 			Secure: s.cfg.SecureCookies, SameSite: http.SameSiteStrictMode, Expires: expires,
 		})
-		http.Redirect(w, r, PathScreenHome, http.StatusSeeOther)
+		s.redirect(w, r, PathScreenHome)
 		return
 	}
 	home, err := s.buildAccounts(r.Context(), cust.ID)
@@ -275,12 +304,12 @@ func (s *Server) logout(w http.ResponseWriter, r *http.Request) {
 	s.sessions.Revoke(p.token)
 	s.log.Info("bff.logout", "customer", p.customerID)
 	if wantsHTML(r) {
-		http.SetCookie(w, &http.Cookie{Name: cookieName, Value: "", Path: "/v1", HttpOnly: true, MaxAge: -1})
-		http.Redirect(w, r, PathScreenLogin, http.StatusSeeOther)
+		http.SetCookie(w, &http.Cookie{Name: cookieName, Value: "", Path: s.at("/v1"), HttpOnly: true, MaxAge: -1})
+		s.redirect(w, r, PathScreenLogin)
 		return
 	}
 	w.Header().Set("Content-Type", "application/json")
-	_ = json.NewEncoder(w).Encode(map[string]any{"screen": LoginScreen("")})
+	_ = json.NewEncoder(w).Encode(map[string]any{"screen": s.frontDoor("")})
 }
 
 func (s *Server) buildAccounts(ctx context.Context, custID string) (screen.Screen, error) {
@@ -362,7 +391,7 @@ func (s *Server) writeScreen(w http.ResponseWriter, r *http.Request, status int,
 	if wantsHTML(r) {
 		w.Header().Set("Content-Type", "text/html; charset=utf-8")
 		w.WriteHeader(status)
-		_, _ = w.Write([]byte(screen.Document(sc)))
+		_, _ = w.Write([]byte(screen.Document(sc, s.cfg.Scope)))
 		return
 	}
 	w.Header().Set("Content-Type", "application/json")

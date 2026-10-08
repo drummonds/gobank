@@ -2,6 +2,34 @@
 
 ## [Unreleased]
 
+ - Stage 6 story 1.6.2: the customer web is the BFF's HTML; the demo's phone frame and open customer API are retired
+
+### Changed
+- ADR-0002 stage 6 story 1.6.2, customer web through the BFF. The demo's
+  hand-rendered phone frame (`/app/`, `bankapp_*.go`, `LayoutBankApp`)
+  and the open `/api/customers` and `/api/customer/` endpoints are gone:
+  the Bank App link opens the BFF's own HTML at `/v1/screen/login`, so
+  the browser and the app render from one screen tree and no customer
+  data is served without a session. The BFF takes the scope it is mounted
+  under (`bff.Config.Scope`, `/` on a server, the service worker's scope
+  in the tab): its documents carry it as their `<base>`, every link and
+  action is relative to it, and its redirects and session cookie carry
+  it. In the tab the demo keeps the session cookie the service worker's
+  response cannot set (`keepCookiesInTab`) and logs in with a fixed demo
+  password that the login screen states (`bff.Config.LoginNote`). The
+  API load benchmark reads the customer's screens through the BFF.
+
+### Fixed
+- The BFF's session store asks for its database on each use
+  (`bff.Config.SessionDB` is now a function) rather than holding the
+  handle it was built with. The demo closes and replaces its in-memory
+  database on a reset or an import, after which every login failed with
+  "database is closed"; the old run's sessions now go with it and the
+  new run's customers can log in.
+
+### Removed
+- `bff.TxIcon`, which served the phone frame alone.
+
 ## [0.20.0] - 2026-10-08
 
  - Demo pages no longer queue behind one slow page; dashboard, P&L and balance sheet served from background readings

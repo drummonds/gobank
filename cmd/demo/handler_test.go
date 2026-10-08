@@ -43,10 +43,7 @@ var staffPages = []string{
 	"/about/models",
 	"/about/docs",
 	"/about/docs/adr/contract-views",
-	"/app/",
-	"/app/customer/cust-001",
-	"/app/customer/cust-001/transactions",
-	"/app/customer/cust-001/product/0",
+	"/v1/screen/login",
 }
 
 // staffActions is every POST the staff UI makes, with its form body.
@@ -63,21 +60,27 @@ var staffActions = map[string]string{
 	"/auth/authorize":     "redirect=customers/cust-001",
 	"/auth/revoke":        "",
 	"/treasury/gilts/buy": "tenor=5Y&face_value=1000",
-	"/app/login":          "customer_id=cust-001",
+	"/v1/login":           "customer_id=cust-001&password=" + testAppPassword,
 }
+
+// testAppPassword is the app password the handler tests run with.
+const testAppPassword = "pw"
 
 // sameOriginURL matches an attribute carrying a same-origin absolute URL.
 var sameOriginURL = regexp.MustCompile(`(?:href|action|hx-get|hx-post|src|value)="(/[^"]*)"`)
 
 func TestHandlerStaysInScope(t *testing.T) {
 	const scope = "/demo/"
+	t.Setenv("GOBANK_APP_PASSWORD", testAppPassword)
 	ds := NewDemoState()
 	addFundedCustomer(ds)
 	h := newHandler(ds, "test", scope)
 
 	for _, page := range staffPages {
 		rr := httptest.NewRecorder()
-		h.ServeHTTP(rr, httptest.NewRequest("GET", page, nil))
+		req := httptest.NewRequest("GET", page, nil)
+		req.Header.Set("Accept", "text/html") // a browser's navigation
+		h.ServeHTTP(rr, req)
 		if rr.Code != http.StatusOK {
 			t.Errorf("GET %s: status %d", page, rr.Code)
 			continue
@@ -144,5 +147,104 @@ func TestRedirectTargetStaysOnSite(t *testing.T) {
 		if loc := rr.Header().Get("Location"); loc != "/demo/" {
 			t.Errorf("redirect=%q: Location %q, want /demo/", target, loc)
 		}
+	}
+}
+
+// The customer web is the BFF's HTML (ADR-0002 stage 6, story 1.6.2): no
+// customer data is served without a session, the open JSON API is gone,
+// and what the browser shows is the screen tree the app renders.
+func TestCustomerWebNeedsASession(t *testing.T) {
+	const scope = "/demo/"
+	t.Setenv("GOBANK_APP_PASSWORD", testAppPassword)
+	ds := NewDemoState()
+	addFundedCustomer(ds)
+	h := newHandler(ds, "test", scope)
+	get := func(path string, cookie *http.Cookie) *httptest.ResponseRecorder {
+		rr := httptest.NewRecorder()
+		req := httptest.NewRequest("GET", path, nil)
+		req.Header.Set("Accept", "text/html")
+		if cookie != nil {
+			req.AddCookie(cookie)
+		}
+		h.ServeHTTP(rr, req)
+		return rr
+	}
+
+	for _, gone := range []string{"/app/", "/app/customer/cust-001", "/api/customers", "/api/customer/cust-001/accounts"} {
+		if rr := get(gone, nil); rr.Code != http.StatusNotFound {
+			t.Errorf("GET %s: status %d, want 404 (retired)", gone, rr.Code)
+		}
+	}
+	for _, page := range []string{"/v1/screen/accounts", "/v1/screen/activity", "/v1/screen/product/0"} {
+		rr := get(page, nil)
+		if rr.Code != http.StatusSeeOther || rr.Header().Get("Location") != scope+"v1/screen/login" {
+			t.Errorf("GET %s without a session: %d %s, want 303 to the login screen in scope", page, rr.Code, rr.Header().Get("Location"))
+		}
+	}
+
+	rr := httptest.NewRecorder()
+	req := httptest.NewRequest("POST", "/v1/login", strings.NewReader("customer_id=cust-001&password="+testAppPassword))
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	req.Header.Set("Accept", "text/html")
+	h.ServeHTTP(rr, req)
+	if rr.Code != http.StatusSeeOther || rr.Header().Get("Location") != scope+"v1/screen/accounts" {
+		t.Fatalf("login: %d %s", rr.Code, rr.Header().Get("Location"))
+	}
+	var cookie *http.Cookie
+	for _, c := range rr.Result().Cookies() {
+		if c.Name == "mb_session" {
+			cookie = c
+		}
+	}
+	if cookie == nil || cookie.Path != scope+"v1" {
+		t.Fatalf("session cookie: %+v", cookie)
+	}
+
+	const dollar, pound = "&#128178;", "&#128183;"
+	for _, page := range []string{"/v1/screen/accounts", "/v1/screen/activity", "/v1/screen/product/0"} {
+		rr := get(page, cookie)
+		if rr.Code != http.StatusOK {
+			t.Errorf("GET %s with a session: %d", page, rr.Code)
+			continue
+		}
+		body := rr.Body.String()
+		if !strings.Contains(body, `<base href="`+scope+`">`) {
+			t.Errorf("GET %s: no <base href=%q>", page, scope)
+		}
+		for _, m := range sameOriginURL.FindAllStringSubmatch(body, -1) {
+			if !strings.HasPrefix(m[1], scope) {
+				t.Errorf("GET %s: absolute URL %q escapes the scope %q", page, m[1], scope)
+			}
+		}
+		if strings.Contains(body, dollar) {
+			t.Errorf("GET %s: shows the dollar sign for a GBP account", page)
+		}
+	}
+	if body := get("/v1/screen/accounts", cookie).Body.String(); !strings.Contains(body, pound) {
+		t.Error("accounts: no pound note for a GBP savings account")
+	}
+
+	// A reset replaces the demo's database: the old session is gone with
+	// the run it belonged to, and a customer of the new run can log in.
+	ds.Reset()
+	addFundedCustomer(ds)
+	if rr := get("/v1/screen/accounts", cookie); rr.Code != http.StatusSeeOther {
+		t.Errorf("GET accounts with the old run's session after a reset: %d, want 303", rr.Code)
+	}
+	rr = httptest.NewRecorder()
+	req = httptest.NewRequest("POST", "/v1/login", strings.NewReader("customer_id=cust-001&password="+testAppPassword))
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	req.Header.Set("Accept", "text/html")
+	h.ServeHTTP(rr, req)
+	if rr.Code != http.StatusSeeOther || rr.Header().Get("Location") != scope+"v1/screen/accounts" {
+		t.Fatalf("login after a reset: %d %s", rr.Code, rr.Header().Get("Location"))
+	}
+	for _, c := range rr.Result().Cookies() {
+		if c.Name == "mb_session" {
+			cookie = c
+		}
+	}
+	if rr := get("/v1/screen/accounts", cookie); rr.Code != http.StatusOK {
+		t.Errorf("GET accounts after a reset and a new login: %d", rr.Code)
 	}
 }

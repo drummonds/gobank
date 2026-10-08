@@ -7,12 +7,14 @@ import (
 )
 
 // HTML renders a screen as the inner content of a phone frame: header, body
-// and bottom nav. It escapes all text. Document wraps it in a full page.
+// and bottom nav. It escapes all text. Every screen path and endpoint is
+// written relative to the scope the BFF is mounted under, so the page
+// resolves them against the <base> Document gives it.
 func HTML(s Screen) string {
 	var b strings.Builder
 	b.WriteString(`<div class="phone-header">`)
 	if s.Back != nil && s.Back.Screen != "" {
-		fmt.Fprintf(&b, `<a class="back" href="%s">&#8249; Back</a>`, esc(s.Back.Screen))
+		fmt.Fprintf(&b, `<a class="back" href="%s">&#8249; Back</a>`, href(s.Back.Screen))
 	}
 	fmt.Fprintf(&b, `<p class="title">%s</p>`, esc(s.Title))
 	if s.Subtitle != "" {
@@ -30,7 +32,7 @@ func HTML(s Screen) string {
 			if t.Key == s.Nav.Active {
 				cls = ` class="is-active"`
 			}
-			fmt.Fprintf(&b, `<a href="%s"%s><span>%s</span>%s</a>`, esc(t.Screen), cls, glyph(t.Icon), esc(t.Label))
+			fmt.Fprintf(&b, `<a href="%s"%s><span>%s</span>%s</a>`, href(t.Screen), cls, glyph(t.Icon), esc(t.Label))
 		}
 		b.WriteString(`</div>`)
 	}
@@ -38,11 +40,15 @@ func HTML(s Screen) string {
 }
 
 // Document renders a screen as a complete HTML page inside a phone frame,
-// with no external scripts or stylesheets.
-func Document(s Screen) string {
+// with no external scripts or stylesheets. scope is the path the BFF is
+// mounted under ("/" on its own server, "/demo/" in the tab): the page
+// carries it as its <base>, so the scope-relative paths HTML writes
+// resolve inside it.
+func Document(s Screen, scope string) string {
 	return `<!DOCTYPE html><html><head><meta charset="utf-8">` +
 		`<meta name="viewport" content="width=device-width, initial-scale=1">` +
-		`<title>` + esc(s.Title) + `</title><style>` + css + `</style></head><body>` +
+		`<title>` + esc(s.Title) + `</title><base href="` + esc(scope) + `">` +
+		`<style>` + css + `</style></head><body>` +
 		`<div class="phone-frame"><div class="phone-notch"></div>` + HTML(s) + `</div></body></html>`
 }
 
@@ -61,20 +67,20 @@ func component(c Component) string {
 		}
 		b.WriteString(`</div>`)
 	case TypeRow:
-		href := ""
+		target := ""
 		if c.Action != nil && c.Action.Screen != "" {
-			href = c.Action.Screen
+			target = c.Action.Screen
 		}
-		if href != "" {
-			fmt.Fprintf(&b, `<a class="rowlink" href="%s">`, esc(href))
+		if target != "" {
+			fmt.Fprintf(&b, `<a class="rowlink" href="%s">`, href(target))
 		}
 		fmt.Fprintf(&b, `<div class="row" style="border-left-color:%s"><div><span>%s</span> <strong>%s</strong><br><span class="muted">%s</span></div>`, accent(c.Tone), Glyph(c.Icon, c.Currency), esc(c.Title), esc(c.Subtitle))
 		fmt.Fprintf(&b, `<div class="right"><div><strong>%s</strong><br><span class="muted">%s</span></div>`, esc(c.Value), esc(c.Note))
-		if href != "" {
+		if target != "" {
 			b.WriteString(`<span class="chev">&#8250;</span>`)
 		}
 		b.WriteString(`</div></div>`)
-		if href != "" {
+		if target != "" {
 			b.WriteString(`</a>`)
 		}
 	case TypeTx:
@@ -102,7 +108,7 @@ func component(c Component) string {
 		if c.Action != nil {
 			submit = c.Action.Submit
 		}
-		fmt.Fprintf(&b, `<form method="POST" action="%s">`, esc(submit))
+		fmt.Fprintf(&b, `<form method="POST" action="%s">`, href(submit))
 		for _, f := range c.Fields {
 			kind := f.Kind
 			if kind == "" {
@@ -117,11 +123,11 @@ func component(c Component) string {
 		fmt.Fprintf(&b, `<button type="submit">%s</button></form>`, esc(c.Title))
 	case TypeButton:
 		if c.Action != nil && c.Action.Screen != "" {
-			fmt.Fprintf(&b, `<p class="center"><a class="button" href="%s">%s</a></p>`, esc(c.Action.Screen), esc(c.Title))
+			fmt.Fprintf(&b, `<p class="center"><a class="button" href="%s">%s</a></p>`, href(c.Action.Screen), esc(c.Title))
 		} else if c.Action != nil && c.Action.Submit != "" {
-			fmt.Fprintf(&b, `<form method="POST" action="%s" class="center"><button type="submit">%s</button></form>`, esc(c.Action.Submit), esc(c.Title))
+			fmt.Fprintf(&b, `<form method="POST" action="%s" class="center"><button type="submit">%s</button></form>`, href(c.Action.Submit), esc(c.Title))
 		} else if c.Action != nil && c.Action.Logout {
-			fmt.Fprintf(&b, `<form method="POST" action="/v1/logout" class="center"><button type="submit" class="secondary">%s</button></form>`, esc(c.Title))
+			fmt.Fprintf(&b, `<form method="POST" action="%s" class="center"><button type="submit" class="secondary">%s</button></form>`, href(PathLogout), esc(c.Title))
 		}
 	default:
 		// Unknown component: render a visible fallback rather than nothing,
@@ -131,7 +137,14 @@ func component(c Component) string {
 	return b.String()
 }
 
+// PathLogout is the endpoint the logout action posts to.
+const PathLogout = "/v1/logout"
+
 func esc(s string) string { return html.EscapeString(s) }
+
+// href is a screen path or endpoint as a page writes it: relative to the
+// scope, escaped. The tree keeps its paths absolute for JSON clients.
+func href(path string) string { return esc(strings.TrimPrefix(path, "/")) }
 
 // Glyph is the HTML glyph for an icon. The savings icon is the currency's
 // banknote, so it follows the account's currency rather than assuming

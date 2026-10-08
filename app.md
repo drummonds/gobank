@@ -76,5 +76,6 @@ choice rather than a customer ID; statements.
 Stories to build what is drawn, each a release: (1) Home as the summary,
 the four-tab nav and More with log out; (2) signed-out screen and the
 expired-session notice; (3) pay someone, over `core.Transfer`; (4) open an
-account, over `core.OpenCustomer`, with the KYC checks stubbed; (5) the
-demo's phone frame rendered from the same screen trees (roadmap item 5).
+account, over `core.OpenCustomer`, with the KYC checks stubbed. Story (5),
+the demo's phone frame rendered from the same screen trees (roadmap item
+5), is built: the demo's Bank App link opens the BFF's own HTML.

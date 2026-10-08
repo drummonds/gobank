@@ -107,8 +107,8 @@ func customerLabel(q core.StaffQueries, id string, piiAuthorized bool) string {
 	return id
 }
 
-// buildCustomerDetailHTML renders a single customer's detail page with two-column layout.
-// Left column: summary, PII, KYC, accounts table. Right column: phone preview.
+// buildCustomerDetailHTML renders a single customer's detail page: summary,
+// PII, KYC, accounts table.
 func buildCustomerDetailHTML(q core.StaffQueries, id string, piiAuthorized bool, txPage int) string {
 	ctx := context.Background()
 	cust, err := q.CustomerRecord(ctx, id)
@@ -141,7 +141,7 @@ func buildCustomerDetailHTML(q core.StaffQueries, id string, piiAuthorized bool,
 
 	var s strings.Builder
 
-	s.WriteString(fmt.Sprintf(`<div class="level"><div class="level-left"><div class="level-item"><h2 class="title is-4 mb-0">%s</h2></div><div class="level-item"><a href="app/customer/%s" target="_blank" class="button is-small is-success is-outlined">Bank App</a></div></div></div>`, name, cust.ID))
+	s.WriteString(fmt.Sprintf(`<div class="level"><div class="level-left"><div class="level-item"><h2 class="title is-4 mb-0">%s</h2></div><div class="level-item"><a href="v1/screen/login" target="_blank" class="button is-small is-success is-outlined">Bank App</a></div></div></div>`, name))
 	s.WriteString(fmt.Sprintf(`<p class="subtitle is-6 has-text-grey">ID: %s</p>`, cust.ID))
 
 	// A. Summary panel (no PII)
@@ -215,7 +215,7 @@ func buildCustomerDetailHTML(q core.StaffQueries, id string, piiAuthorized bool,
 	return s.String()
 }
 
-// buildCustomerAccountHTML renders a per-account detail page with transactions and phone preview.
+// buildCustomerAccountHTML renders a per-account detail page with transactions.
 func buildCustomerAccountHTML(q core.StaffQueries, custID string, accountIdx int, piiAuthorized bool, txPage int) string {
 	ctx := context.Background()
 	cust, err := q.CustomerRecord(ctx, custID)
@@ -239,7 +239,7 @@ func buildCustomerAccountHTML(q core.StaffQueries, custID string, accountIdx int
 	s.WriteString(fmt.Sprintf(`<li class="is-active"><a aria-current="page">%s</a></li>`, a.ProductName))
 	s.WriteString(`</ul></nav>`)
 	s.WriteString(`</div><div class="level-item">`)
-	s.WriteString(fmt.Sprintf(`<a href="app/customer/%s/product/%d" target="_blank" class="button is-small is-success is-outlined">Bank App</a>`, cust.ID, accountIdx))
+	s.WriteString(`<a href="v1/screen/login" target="_blank" class="button is-small is-success is-outlined">Bank App</a>`)
 	s.WriteString(`</div></div></div>`)
 
 	// Account detail card

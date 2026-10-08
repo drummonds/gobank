@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"net/url"
+	"regexp"
 	"strings"
 	"testing"
 	"time"
@@ -241,7 +242,7 @@ func TestLoginLockout(t *testing.T) {
 func TestHTMLClient(t *testing.T) {
 	f := newFixture(t)
 	res, m := f.do("GET", "/v1/screen/login", "", "", "", "Accept", "text/html")
-	if res.StatusCode != 200 || !strings.HasPrefix(res.Header.Get("Content-Type"), "text/html") || !strings.Contains(m["_raw"].(string), `action="/v1/login"`) {
+	if res.StatusCode != 200 || !strings.HasPrefix(res.Header.Get("Content-Type"), "text/html") || !strings.Contains(m["_raw"].(string), `action="v1/login"`) {
 		t.Fatalf("html login screen: %d %v", res.StatusCode, res.Header)
 	}
 	if res.Header.Get("Content-Security-Policy") == "" {
@@ -270,6 +271,70 @@ func TestHTMLClient(t *testing.T) {
 	res, m = f.do("GET", "/v1/screen/accounts", "", "", "", "Accept", "text/html", "Cookie", cookie.Name+"="+cookie.Value)
 	if res.StatusCode != 200 || !strings.Contains(m["_raw"].(string), "Alice Example") {
 		t.Errorf("html accounts via cookie: %d", res.StatusCode)
+	}
+}
+
+// The BFF is mounted under a scope (/ on its own server, /demo/ in the
+// tab): its documents carry the scope as their <base>, its links are
+// relative to it, and its redirects and session cookie carry it, so a
+// browser never leaves the scope it was served from.
+func TestMountedUnderAScope(t *testing.T) {
+	f := newFixtureWith(t, bff.Config{Scope: "/demo/"})
+	res, m := f.do("GET", "/v1/screen/login", "", "", "", "Accept", "text/html")
+	doc := m["_raw"].(string)
+	if res.StatusCode != 200 || !strings.Contains(doc, `<base href="/demo/">`) || !strings.Contains(doc, `action="v1/login"`) {
+		t.Fatalf("login screen under a scope: %d %.300s", res.StatusCode, doc)
+	}
+	res, _ = f.do("GET", "/v1/screen/accounts", "", "", "", "Accept", "text/html")
+	if res.StatusCode != http.StatusSeeOther || res.Header.Get("Location") != "/demo/v1/screen/login" {
+		t.Errorf("unauthenticated: %d %s, want 303 /demo/v1/screen/login", res.StatusCode, res.Header.Get("Location"))
+	}
+	form := url.Values{"customer_id": {"cust-001"}, "password": {"password"}}.Encode()
+	res, _ = f.do("POST", "/v1/login", "", "application/x-www-form-urlencoded", form, "Accept", "text/html")
+	if res.StatusCode != http.StatusSeeOther || res.Header.Get("Location") != "/demo/v1/screen/accounts" {
+		t.Fatalf("form login: %d %v", res.StatusCode, res.Header)
+	}
+	var cookie *http.Cookie
+	for _, c := range res.Cookies() {
+		if c.Name == "mb_session" {
+			cookie = c
+		}
+	}
+	if cookie == nil || cookie.Path != "/demo/v1" {
+		t.Fatalf("session cookie should carry the scope: %+v", cookie)
+	}
+	res, m = f.do("GET", "/v1/screen/accounts", "", "", "", "Accept", "text/html", "Cookie", cookie.Name+"="+cookie.Value)
+	doc = m["_raw"].(string)
+	if res.StatusCode != 200 || !strings.Contains(doc, "Alice Example") {
+		t.Fatalf("accounts via cookie: %d", res.StatusCode)
+	}
+	for _, mm := range regexp.MustCompile(`<(?:a|form)[^>]*(?:href|action)="([^"]*)"`).FindAllStringSubmatch(doc, -1) {
+		if strings.HasPrefix(mm[1], "/") {
+			t.Errorf("absolute URL %q escapes the scope", mm[1])
+		}
+	}
+	res, _ = f.do("POST", "/v1/logout", "", "", "", "Accept", "text/html", "Cookie", cookie.Name+"="+cookie.Value)
+	if res.StatusCode != http.StatusSeeOther || res.Header.Get("Location") != "/demo/v1/screen/login" {
+		t.Errorf("logout: %d %s", res.StatusCode, res.Header.Get("Location"))
+	}
+}
+
+// The login screen's note is the deployment's to set: the tab says what
+// the demo password is, a server says nothing of the kind.
+func TestLoginNote(t *testing.T) {
+	f := newFixtureWith(t, bff.Config{LoginNote: "The password is demo."})
+	_, m := f.do("GET", "/v1/screen/login", "", "", "")
+	if !strings.Contains(fmtJSON(m), "The password is demo.") {
+		t.Errorf("login screen should carry the note: %v", m)
+	}
+	_, m = f.do("GET", "/v1/screen/accounts", "", "", "")
+	if !strings.Contains(fmtJSON(m), "The password is demo.") {
+		t.Errorf("the login screen that comes with a 401 should carry the note too: %v", m)
+	}
+	f = newFixture(t)
+	_, m = f.do("GET", "/v1/screen/login", "", "", "")
+	if !strings.Contains(fmtJSON(m), bff.DefaultLoginNote) {
+		t.Errorf("default note missing: %v", m)
 	}
 }
 

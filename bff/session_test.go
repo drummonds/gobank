@@ -114,10 +114,32 @@ func TestSQLSessionsSurviveARestart(t *testing.T) {
 	}
 }
 
+// The program that owns the database may replace it (the demo's reset and
+// import close the in-memory database and open a fresh one), so the store
+// asks for the database on each use rather than holding a handle: the old
+// run's sessions are gone with it, and new ones are kept in the new one.
+func TestSQLSessionsFollowTheDatabase(t *testing.T) {
+	now := time.Date(2026, 10, 4, 12, 0, 0, 0, time.UTC)
+	clock := func() time.Time { return now }
+	current := sessionsDB(t)
+	s := bff.NewSQLSessions(func() *sql.DB { return current }, time.Hour, 10*time.Minute, clock)
+	old, _ := s.Create("cust-001")
+
+	current.Close()
+	current = sessionsDB(t)
+	if _, ok := s.Lookup(old); ok {
+		t.Error("a session of the replaced database is still live")
+	}
+	token, _ := s.Create("cust-002")
+	if id, ok := s.Lookup(token); !ok || id != "cust-002" {
+		t.Fatalf("after the database was replaced Lookup = %q, %v; want cust-002, true", id, ok)
+	}
+}
+
 // The server keeps its sessions in the database it is given.
 func TestServerUsesTheSessionDatabase(t *testing.T) {
 	db := sessionsDB(t)
-	f := newFixtureWith(t, bff.Config{SessionDB: db})
+	f := newFixtureWith(t, bff.Config{SessionDB: func() *sql.DB { return db }})
 	_, m := f.login("cust-001", "password")
 	token := m["token"].(string)
 	var n int
@@ -146,5 +168,5 @@ func sessionsDB(t *testing.T) *sql.DB {
 
 func newSQLSessions(t *testing.T, db *sql.DB, ttl, idle time.Duration, now func() time.Time) bff.Sessions {
 	t.Helper()
-	return bff.NewSQLSessions(db, ttl, idle, now)
+	return bff.NewSQLSessions(func() *sql.DB { return db }, ttl, idle, now)
 }

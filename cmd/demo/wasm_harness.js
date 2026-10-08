@@ -40,15 +40,18 @@ class Demo {
         this.handler = handler;
     }
 
+    // Requests are a browser's navigations: they ask for HTML.
     async get(p) {
-        return this.request(new Request(origin + Demo.scope + p.replace(/^\//, '')));
+        return this.request(new Request(origin + Demo.scope + p.replace(/^\//, ''), {
+            headers: { 'Accept': 'text/html' },
+        }));
     }
 
     async post(p, form) {
         const body = new URLSearchParams(form || {}).toString();
         return this.request(new Request(origin + Demo.scope + p.replace(/^\//, ''), {
             method: 'POST',
-            headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+            headers: { 'Content-Type': 'application/x-www-form-urlencoded', 'Accept': 'text/html' },
             body,
         }));
     }

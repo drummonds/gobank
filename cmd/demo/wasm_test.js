@@ -32,7 +32,7 @@ async function testInitialRender(demo) {
     console.log('\n--- Initial render (day 0, 0 customers) ---');
     for (const page of ['/', '/accounting/pnl', '/accounting/balance-sheet', '/customers', '/payments',
         '/settings', '/about', '/products/savings', '/products/lending', '/treasury/cash',
-        '/treasury/capital', '/treasury/gilts', '/about/models', '/about/runtime', '/app/']) {
+        '/treasury/capital', '/treasury/gilts', '/about/models', '/about/runtime', '/v1/screen/login']) {
         assertPage(await demo.get(page), page);
     }
     const dash = await demo.get('/');
@@ -84,6 +84,30 @@ async function testRoleAndPII(demo) {
     assert(res.body.includes('>Run<'), 'admin role sees the simulation controls again');
 }
 
+// The customer web is the BFF's HTML (ADR-0002 stage 6, story 1.6.2). In
+// the tab a service worker's response cannot set a cookie, so the demo
+// keeps the session itself; the login screen states the demo password.
+async function testCustomerWeb(demo) {
+    console.log('\n--- Customer web (BFF HTML in the tab) ---');
+    let res = await demo.get('/v1/screen/accounts');
+    assert(res.status === 303 && res.location === Demo.scope + 'v1/screen/login', 'accounts without a session goes to the login screen (got ' + res.status + ' ' + res.location + ')');
+    res = await demo.get('/v1/screen/login');
+    assert(res.body.includes('the password is demo'), 'login screen states the demo password');
+    res = await demo.post('/v1/login', { customer_id: 'cust-001', password: 'demo' });
+    assert(res.status === 303 && res.location === Demo.scope + 'v1/screen/accounts', 'login lands on accounts (got ' + res.status + ' ' + res.location + ')');
+    res = await demo.get('/v1/screen/accounts');
+    assertPage(res, 'accounts with the tab\'s session');
+    assert(res.body.includes('cust-001') && res.body.includes('Net Balance'), 'accounts shows the customer\'s figures');
+    for (const gone of ['/app/', '/api/customers', '/api/customer/cust-001/accounts']) {
+        res = await demo.get(gone);
+        assert(res.status === 404, gone + ' is retired (got ' + res.status + ')');
+    }
+    res = await demo.post('/v1/logout');
+    assert(res.status === 303 && res.location === Demo.scope + 'v1/screen/login', 'logout returns to the login screen');
+    res = await demo.get('/v1/screen/accounts');
+    assert(res.status === 303, 'the session is gone after logout');
+}
+
 async function testExport(demo) {
     console.log('\n--- Export ---');
     const res = await demo.get('/export.goluca');
@@ -106,6 +130,7 @@ async function testExport(demo) {
     await testShortRun(demo, 10, 7);
     await testPayments(demo);
     await testRoleAndPII(demo);
+    await testCustomerWeb(demo);
     await testExport(demo);
 
     console.log('\n=== Results: ' + passes + ' passed, ' + failures + ' failed ===');

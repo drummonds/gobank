@@ -23,3 +23,7 @@ func getSessionID(w http.ResponseWriter, r *http.Request) string {
 	})
 	return id
 }
+
+// customerSessions is how the customer web keeps its session on a server:
+// the BFF's own cookie, which the browser keeps.
+func customerSessions(bff http.Handler) http.Handler { return bff }

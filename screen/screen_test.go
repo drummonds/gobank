@@ -2,6 +2,7 @@ package screen
 
 import (
 	"encoding/json"
+	"regexp"
 	"strings"
 	"testing"
 )
@@ -48,14 +49,37 @@ func TestHTMLEscapesAndFallsBack(t *testing.T) {
 	if strings.Contains(h, "<script>") {
 		t.Errorf("unescaped script in output")
 	}
-	for _, want := range []string{"Alice &lt;Test&gt;", "£1,234.56", `href="/v1/screen/product/0"`, "[hologram]", `class="is-active"`} {
+	for _, want := range []string{"Alice &lt;Test&gt;", "£1,234.56", `href="v1/screen/product/0"`, "[hologram]", `class="is-active"`} {
 		if !strings.Contains(h, want) {
 			t.Errorf("missing %q in output", want)
 		}
 	}
-	doc := Document(sample())
+	doc := Document(sample(), "/")
 	if !strings.HasPrefix(doc, "<!DOCTYPE html>") || strings.Contains(doc, "<script") || strings.Contains(doc, "cdn.") {
 		t.Errorf("document should be self-contained with no scripts: %.80s", doc)
+	}
+}
+
+// The HTML is served wherever the BFF is mounted: a document carries that
+// scope as its <base> and every link, action and tab is relative to it,
+// so the same page works at / on a server and under /demo/ in the tab.
+func TestHTMLIsScopeRelative(t *testing.T) {
+	s := sample()
+	s.Back = Go("/v1/screen/accounts")
+	s.Add(Button("Log out", ToneMuted, Logout()))
+	doc := Document(s, "/demo/")
+	if !strings.Contains(doc, `<base href="/demo/">`) {
+		t.Errorf("document carries no <base href=\"/demo/\">: %.200s", doc)
+	}
+	for _, m := range regexp.MustCompile(`<(?:a|form)[^>]*(?:href|action)="([^"]*)"`).FindAllStringSubmatch(doc, -1) {
+		if strings.HasPrefix(m[1], "/") {
+			t.Errorf("absolute URL %q escapes the scope", m[1])
+		}
+	}
+	for _, want := range []string{`href="v1/screen/accounts"`, `action="v1/logout"`} {
+		if !strings.Contains(doc, want) {
+			t.Errorf("missing %q", want)
+		}
 	}
 }
 
@@ -65,7 +89,7 @@ func TestFormHTML(t *testing.T) {
 		Field{Name: "customer_id", Label: "Customer ID", Kind: "text", Required: true},
 		Field{Name: "password", Label: "Password", Kind: "password"}))
 	h := HTML(s)
-	for _, want := range []string{`action="/v1/login"`, `type="password"`, `name="customer_id"`, ` required`, `<button type="submit">Log in</button>`} {
+	for _, want := range []string{`action="v1/login"`, `type="password"`, `name="customer_id"`, ` required`, `<button type="submit">Log in</button>`} {
 		if !strings.Contains(h, want) {
 			t.Errorf("missing %q in %s", want, h)
 		}

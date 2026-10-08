@@ -7,7 +7,6 @@ import (
 	"log"
 	"log/slog"
 	"net/http"
-	"os"
 	"strconv"
 	"strings"
 	"time"
@@ -137,8 +136,7 @@ func simStatus(ds *DemoState) string {
 }
 
 // newHandler is the demo as one http.Handler over its state (ADR-0002
-// stage 6, story 1.6.1): the staff pages, the customer BFF under /v1/ and
-// the phone frame. The server listens on it; the WASM build serves it in
+// stage 6, story 1.6.1): the staff pages and the customer BFF under /v1/. The server listens on it; the WASM build serves it in
 // the tab from a service worker. scope is the path the handler is mounted
 // under ("/" on the server, the service worker's scope in the tab): every
 // page carries it as its <base>, links and form actions are relative to
@@ -159,18 +157,22 @@ func newHandler(state *DemoState, version, scope string) http.Handler {
 
 	// The bank (ADR-0002 stage 5): the BFF and every staff page read and
 	// write it through the core.
-	appPassword := os.Getenv("GOBANK_APP_PASSWORD")
 	bank := state.Bank
 
-	// The customer BFF, on this port under /v1/.
-	appBFF := newAppBFF(bank, newAppLogin(bank, appPassword), state.DB(), slog.Default())
-	mux.Handle("/v1/", appBFF)
+	// The customer BFF, on this port under /v1/: the app's screens and
+	// the customer web, which is the BFF's own HTML (ADR-0002 stage 6,
+	// story 1.6.2). The password is the deployment's (GOBANK_APP_PASSWORD
+	// on a server, a fixed one in the tab) and so is the session's
+	// keeping (a cookie on a server, the tab's jar in the tab).
+	password := appPassword()
+	appBFF := newAppBFF(bank, newAppLogin(bank, password), state.DB, scope, loginNote(), slog.Default())
+	mux.Handle("/v1/", customerSessions(appBFF))
 	go func() {
 		for range time.Tick(time.Minute) {
 			appBFF.Sessions().Sweep()
 		}
 	}()
-	if appPassword == "" {
+	if password == "" {
 		log.Printf("app BFF mounted at /v1/ with GOBANK_APP_PASSWORD unset: app login is off")
 	}
 
@@ -181,19 +183,6 @@ func newHandler(state *DemoState, version, scope string) http.Handler {
 	if err != nil {
 		panic(err)
 	}
-
-	// Bank app controller (phone frame layout)
-	appCtrl, err := lofigui.NewController(lofigui.ControllerConfig{
-		TemplateString: LayoutBankApp,
-		Name:           "Bank App",
-	})
-	if err != nil {
-		panic(err)
-	}
-
-	// Register bank app routes
-	registerBankAppAPI(mux, bank)
-	registerBankAppRoutes(mux, bank, appCtrl, scope, redirect)
 
 	// renderPage renders the layout around content; polling "Running" makes
 	// the layout re-fetch the whole page every second.

@@ -3,14 +3,12 @@ package main
 import (
 	"context"
 	"git.bytestone.uk/hum3/gobank/bank/products"
-	"strings"
 	"testing"
 )
 
 // The currency is a property of the product (#26). It reaches the
-// account, its transactions and the app's screens, which pick the symbol
-// from it: a GBP savings account shows a pound note, never the dollar
-// sign the renderers used to hard-code.
+// account and its transactions; the customer web's screens pick the
+// symbol from it (TestCustomerWebNeedsASession).
 func TestCurrencyComesFromTheProduct(t *testing.T) {
 	for _, p := range products.Catalogue() {
 		if p.Currency != "GBP" {
@@ -46,17 +44,4 @@ func TestCurrencyComesFromTheProduct(t *testing.T) {
 		}
 	}
 
-	const dollar, pound = "&#128178;", "&#128183;"
-	for what, html := range map[string]string{
-		"balance":      buildAppBalanceHTML(ds.Bank, "cust-001"),
-		"transactions": buildAppTransactionsHTML(ds.Bank, "cust-001", 1),
-		"product":      buildAppProductHTML(ds.Bank, "cust-001", 0, 1),
-	} {
-		if strings.Contains(html, dollar) {
-			t.Errorf("app %s page shows the dollar sign", what)
-		}
-	}
-	if !strings.Contains(buildAppBalanceHTML(ds.Bank, "cust-001"), pound) {
-		t.Error("app balance page shows no pound note for a GBP savings account")
-	}
 }

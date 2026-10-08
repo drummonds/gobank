@@ -89,7 +89,7 @@ const LayoutModelBank = `<!DOCTYPE html>
             </div>
           </form>
         </div>
-        <a class="navbar-item" href="app/" target="_blank">Bank App</a>
+        <a class="navbar-item" href="v1/screen/login" target="_blank">Bank App</a>
         <div class="navbar-item">
           <span class="tag {{if eq .polling "Running"}}is-warning{{else}}is-success{{end}}">{{ .polling }}</span>
         </div>

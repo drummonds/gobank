@@ -328,14 +328,17 @@ root module, `cmd/bff` is the service binary, and `app/` is the Flutter shell.
   Done: `main_wasm.go` registers the handler and nothing else; `test:wasm`
   drives the binary over the worker's own Request/Response protocol under
   `/demo/`; the docs demo serves the server's pages
-- **1.6.2** customer web through the BFF — the hand-rendered phone frame
+- **1.6.2** [x] customer web through the BFF — the hand-rendered phone frame
   (`/app/`, `bankapp_*.go`, `LayoutBankApp`) and the open `/api/customers`
   and `/api/customer/` endpoints are retired; the demo's Bank App link
   opens the BFF's HTML at `/v1/screen/login`, whose phone frame is the
   demo's customer web; the WASM build logs in with a fixed demo password
   the login screen states. Item 5, app.md story 5, the HTML half of item 8.
   Done-when: no customer data is served without a session; app and browser
-  render from one screen tree
+  render from one screen tree. Done: the BFF takes the scope it is mounted
+  under (`bff.Config.Scope`) and its pages, redirects and cookie carry it;
+  the tab keeps the session cookie the service worker cannot set
+  (`keepCookiesInTab`); the login note is the deployment's
 - **1.6.3** staff pages through the BFF — the layout, the role switch, PII
   authorisation and the pages that read the core (dashboard data,
   accounting, products, customers, payments, treasury, reports, about and
@@ -386,17 +389,18 @@ root module, `cmd/bff` is the service binary, and `app/` is the Flutter shell.
   stub), AML transaction monitoring (belongs with the risk register).
   Open: does the customer generator produce KYC outcomes, so the staff
   view has a queue to work
-- **5 Demo phone frame onto the screen layer** (ADR-0002 stage 6) — `cmd/demo/bankapp_render.go`
-  becomes a caller of `screen.HTML`, so browser and app show identical screens
-  from one source, and the open `/api/customer/` endpoints are retired
+- **5** [x] **Demo phone frame onto the screen layer** (ADR-0002 stage 6,
+  story 1.6.2) — the demo's phone frame is the BFF's HTML (`screen.HTML`),
+  so browser and app show identical screens from one source, and the open
+  `/api/customer/` endpoints are retired
 - **6 Native security plugin** — biometric-bound keys (Secure Enclave, StrongBox),
   passkey registration and login, App Attest and Play Integrity token fetching,
   certificate pinning, screenshot blocking and app-switcher blanking, jailbreak,
   root and overlay detection; the BFF checks attestation before issuing tokens
 - **7 Device-bound signing** — request signing for transactions, step-up
   authentication (PSD2 SCA)
-- **8 Web client on the BFF** — the HTML rendering of the same endpoints becomes
-  the customer web client; passkeys via WebAuthn in the browser
+- **8 Web client on the BFF** — the HTML rendering of the same endpoints is
+  the customer web client (story 1.6.2); passkeys via WebAuthn in the browser
 - **9 App-shielding SDK evaluation** — Promon, Guardsquare, Appdome, Zimperium;
   chosen and integrated before any external pilot
 - **10 Standalone RBAC module** — extract `Role`/`Can` from `cmd/demo` into its

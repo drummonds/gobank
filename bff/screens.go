@@ -13,7 +13,7 @@ import (
 // actions in the screens they receive.
 const (
 	PathLogin         = "/v1/login"
-	PathLogout        = "/v1/logout"
+	PathLogout        = screen.PathLogout
 	PathScreenLogin   = "/v1/screen/login"
 	PathScreenHome    = "/v1/screen/accounts"
 	PathScreenTx      = "/v1/screen/activity"
@@ -29,9 +29,16 @@ func nav(active string) *screen.Nav {
 	}}
 }
 
+// DefaultLoginNote is the note under the login form unless the deployment
+// sets its own (Config.LoginNote).
+const DefaultLoginNote = "Model bank. Customer IDs are listed on the admin Customers page."
+
 // LoginScreen is the public front door. It shows no customer data. notice, if
 // set, is shown as an error above the form.
-func LoginScreen(notice string) screen.Screen {
+func LoginScreen(notice string) screen.Screen { return loginScreen(notice, DefaultLoginNote) }
+
+// loginScreen is LoginScreen with the deployment's note under the form.
+func loginScreen(notice, note string) screen.Screen {
 	s := screen.New("login", PathScreenLogin, "Model Bank")
 	s.Subtitle = "Internet Banking"
 	if notice != "" {
@@ -42,7 +49,7 @@ func LoginScreen(notice string) screen.Screen {
 			screen.Field{Name: "customer_id", Label: "Customer ID", Kind: "text", Placeholder: "e.g. cust-001", Required: true},
 			screen.Field{Name: "password", Label: "Password", Kind: "password", Placeholder: "Password", Required: true},
 		),
-		screen.Text("Model bank. Customer IDs are listed on the admin Customers page.", screen.ToneMuted),
+		screen.Text(note, screen.ToneMuted),
 	)
 	return s
 }
@@ -160,11 +167,4 @@ func txStyle(txType string) (sign string, tone screen.Tone, icon screen.Icon) {
 		tone, icon = screen.ToneLending, screen.IconLoan
 	}
 	return sign, tone, icon
-}
-
-// TxIcon is the icon a transaction type shows, for a renderer outside the
-// screen tree (the demo's phone frame) so the decision lives once.
-func TxIcon(txType string) screen.Icon {
-	_, _, icon := txStyle(txType)
-	return icon
 }

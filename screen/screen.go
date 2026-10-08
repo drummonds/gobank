@@ -6,7 +6,7 @@
 // formatting, sign and colour of an amount, icon, grouping, paging) is made by
 // the server that builds the tree. Clients only render: the Flutter shell
 // turns the JSON into widgets, and HTML renders the same tree for the
-// browser and the demo phone frame.
+// browser, which is the demo's customer web.
 //
 // The schema is versioned. Clients must render a fallback for any component
 // type they do not know, so the server can add components without breaking
