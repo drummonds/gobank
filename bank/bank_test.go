@@ -600,14 +600,15 @@ func TestBookIsAReadModel(t *testing.T) {
 		t.Fatal(err)
 	}
 	if p := f.position(); p.Savings != 10_00 {
-		t.Errorf("savings %d from a fresh cache, want the cached 1000", p.Savings)
+		t.Errorf("savings %d from a fresh reading, want the read 1000", p.Savings)
 	}
-	f.bank.book.mu.Lock()
-	f.bank.book.at = time.Now().Add(-2 * bookTTL)
-	f.bank.book.mu.Unlock()
-	if p := f.position(); p.Savings != 15_00 {
-		t.Errorf("savings %d once the cache is stale, want 1500", p.Savings)
+	// An expired reading is served one last time while a new one is taken
+	// behind the page.
+	f.bank.book.expire()
+	if p := f.position(); p.Savings != 10_00 {
+		t.Errorf("savings %d from an expired reading, want the last 1000 straight away", p.Savings)
 	}
+	eventually(t, 15_00, func() int { return int(f.position().Savings) })
 }
 
 // Export writes the ledger and Import reads it back, opening accounts as

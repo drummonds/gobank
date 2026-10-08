@@ -94,8 +94,9 @@ type Bank struct {
 	dayAccrualLending   int64
 	throughput          throughput
 
-	book     book     // the read model: the book totals and the customer count (ADR-0004)
-	progress progress // the day in progress, for the runtime page
+	book     *reading[bookFigures]     // the read model: the book totals and the customer count (ADR-0004)
+	interest *reading[interestFigures] // the read model: customer interest to date
+	progress progress                  // the day in progress, for the runtime page
 	passHook func()
 }
 
@@ -105,6 +106,8 @@ type Bank struct {
 // from the ledger.
 func Open(db *sql.DB, opts Options) (*Bank, error) {
 	b := &Bank{clock: opts.Clock, rates: opts.Rates, key: opts.PIIKey, seed: opts.Seed, passHook: opts.PassHook}
+	b.book = newReading(b.readBook, bookTTL)
+	b.interest = newReading(b.readInterest, bookTTL)
 	if b.clock == nil {
 		b.clock = core.ClockFunc(time.Now)
 	}
@@ -180,6 +183,7 @@ func (b *Bank) openOn(db *sql.DB) error {
 	}
 	b.mu.Unlock()
 	b.book.invalidate()
+	b.interest.invalidate()
 
 	// The opening day's snapshot: the bank's record of having begun it.
 	// On a resumed run the day is on record already and keeps its row.
@@ -287,6 +291,7 @@ func (b *Bank) StartDay(ctx context.Context) (time.Time, error) {
 		b.dayAccrualLending += res.AccruedLending
 		b.mu.Unlock()
 		b.book.invalidate()
+		b.interest.invalidate()
 	}
 	return b.businessDay(), ctx.Err()
 }
@@ -443,5 +448,6 @@ func (b *Bank) Import(r interface{ Read([]byte) (int, error) }) error {
 	b.syncFromLedgerLocked()
 	b.mu.Unlock()
 	b.book.invalidate()
+	b.interest.invalidate()
 	return nil
 }

@@ -10,7 +10,6 @@ import (
 	"os"
 	"strconv"
 	"strings"
-	"sync"
 	"time"
 
 	gbp "git.bytestone.uk/hum3/gobank-products"
@@ -20,18 +19,6 @@ import (
 )
 
 var authStore = NewAuthStore(5 * time.Minute)
-
-var renderMu sync.Mutex
-
-// renderAndCapture runs fn (which calls lofigui output functions) under a lock,
-// captures the buffer content, and returns it.
-func renderAndCapture(fn func()) string {
-	renderMu.Lock()
-	defer renderMu.Unlock()
-	lofigui.Reset()
-	fn()
-	return lofigui.Buffer()
-}
 
 // serveHTMX checks for HTMX request and serves HTML fragment if so.
 // Returns true if served as fragment (caller should return).
@@ -121,9 +108,10 @@ func renderDashboardUpdate(d DashData, role Role) string {
 	return s.String()
 }
 
-func renderPaymentsPage(bank core.StaffQueries, ds *DemoState, piiAuth bool, page int, role Role) {
+func renderPaymentsPage(bank core.StaffQueries, ds *DemoState, piiAuth bool, page int, role Role) string {
 	running := ds.IsPaymentsRunning()
-	lofigui.HTML(buildPaymentsHTML(bank, piiAuth, page, running))
+	var s strings.Builder
+	s.WriteString(buildPaymentsHTML(bank, piiAuth, page, running))
 
 	if role.Can("send_payment") {
 		var startStopBtn string
@@ -133,11 +121,12 @@ func renderPaymentsPage(bank core.StaffQueries, ds *DemoState, piiAuth bool, pag
 			startStopBtn = `<form action="payments/run" method="post" style="display:inline"><button class="button is-success" type="submit">Auto Send</button></form>`
 		}
 
-		lofigui.HTML(fmt.Sprintf(`<div class="buttons mt-4">
+		fmt.Fprintf(&s, `<div class="buttons mt-4">
   <form action="payments/send" method="post" style="display:inline"><button class="button is-primary" type="submit">Send Payment</button></form>
   %s
-</div>`, startStopBtn))
+</div>`, startStopBtn)
 	}
+	return s.String()
 }
 
 func simStatus(ds *DemoState) string {
@@ -391,7 +380,7 @@ func newHandler(state *DemoState, version, scope string) http.Handler {
 			http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 			return
 		}
-		content := renderAndCapture(func() { lofigui.HTML(buildPnLHTML(bank)) })
+		content := buildPnLHTML(bank)
 		if serveHTMX(w, r, content) {
 			return
 		}
@@ -403,7 +392,7 @@ func newHandler(state *DemoState, version, scope string) http.Handler {
 			http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 			return
 		}
-		content := renderAndCapture(func() { lofigui.HTML(buildBalanceSheetHTML(bank)) })
+		content := buildBalanceSheetHTML(bank)
 		if serveHTMX(w, r, content) {
 			return
 		}
@@ -417,7 +406,7 @@ func newHandler(state *DemoState, version, scope string) http.Handler {
 			http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 			return
 		}
-		content := renderAndCapture(func() { lofigui.HTML(buildProductsHTML(bank, gbp.FamilySavings)) })
+		content := buildProductsHTML(bank, gbp.FamilySavings)
 		if serveHTMX(w, r, content) {
 			return
 		}
@@ -429,7 +418,7 @@ func newHandler(state *DemoState, version, scope string) http.Handler {
 			http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 			return
 		}
-		content := renderAndCapture(func() { lofigui.HTML(buildProductsHTML(bank, gbp.FamilyLending)) })
+		content := buildProductsHTML(bank, gbp.FamilyLending)
 		if serveHTMX(w, r, content) {
 			return
 		}
@@ -449,7 +438,7 @@ func newHandler(state *DemoState, version, scope string) http.Handler {
 		}
 		sessID := getSessionID(w, r)
 		piiAuth := authStore.EffectivePII(sessID)
-		content := renderAndCapture(func() { lofigui.HTML(buildCustomersHTML(bank, page, piiAuth)) })
+		content := buildCustomersHTML(bank, page, piiAuth)
 		if serveHTMX(w, r, content) {
 			return
 		}
@@ -478,7 +467,7 @@ func newHandler(state *DemoState, version, scope string) http.Handler {
 				http.NotFound(w, r)
 				return
 			}
-			content := renderAndCapture(func() { lofigui.HTML(buildCustomerAccountHTML(bank, parts[0], idx, piiAuth, txPage)) })
+			content := buildCustomerAccountHTML(bank, parts[0], idx, piiAuth, txPage)
 			if serveHTMX(w, r, content) {
 				return
 			}
@@ -487,7 +476,7 @@ func newHandler(state *DemoState, version, scope string) http.Handler {
 		}
 
 		id := parts[0]
-		content := renderAndCapture(func() { lofigui.HTML(buildCustomerDetailHTML(bank, id, piiAuth, txPage)) })
+		content := buildCustomerDetailHTML(bank, id, piiAuth, txPage)
 		if serveHTMX(w, r, content) {
 			return
 		}
@@ -508,7 +497,7 @@ func newHandler(state *DemoState, version, scope string) http.Handler {
 		if page < 1 {
 			page = 1
 		}
-		content := renderAndCapture(func() { renderPaymentsPage(bank, state, piiAuth, page, role) })
+		content := renderPaymentsPage(bank, state, piiAuth, page, role)
 		if serveHTMX(w, r, content) {
 			return
 		}
@@ -565,7 +554,7 @@ func newHandler(state *DemoState, version, scope string) http.Handler {
 		}
 		sessID := getSessionID(w, r)
 		piiAuth := authStore.EffectivePII(sessID)
-		content := renderAndCapture(func() { lofigui.HTML(buildPaymentDetailHTML(bank, id, piiAuth)) })
+		content := buildPaymentDetailHTML(bank, id, piiAuth)
 		if serveHTMX(w, r, content) {
 			return
 		}
@@ -593,7 +582,7 @@ func newHandler(state *DemoState, version, scope string) http.Handler {
 			return
 		}
 		polling := simStatus(state) == "Running"
-		content := renderAndCapture(func() { lofigui.HTML(buildSettingsHTML(bank, state.Settings(), polling, state.Restarts(10))) })
+		content := buildSettingsHTML(bank, state.Settings(), polling, state.Restarts(10))
 		if serveHTMX(w, r, content) {
 			return
 		}
@@ -642,7 +631,7 @@ func newHandler(state *DemoState, version, scope string) http.Handler {
 			http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 			return
 		}
-		content := renderAndCapture(func() { lofigui.HTML(buildChartsHTML(bank)) })
+		content := buildChartsHTML(bank)
 		if serveHTMX(w, r, content) {
 			return
 		}
@@ -656,7 +645,7 @@ func newHandler(state *DemoState, version, scope string) http.Handler {
 		}
 		sessID := getSessionID(w, r)
 		piiAuth := authStore.EffectivePII(sessID)
-		content := renderAndCapture(func() { lofigui.HTML(buildBBSIHTML(bank, piiAuth)) })
+		content := buildBBSIHTML(bank, piiAuth)
 		if serveHTMX(w, r, content) {
 			return
 		}
@@ -675,7 +664,7 @@ func newHandler(state *DemoState, version, scope string) http.Handler {
 		}
 		sessID := getSessionID(w, r)
 		piiAuth := authStore.EffectivePII(sessID)
-		content := renderAndCapture(func() { lofigui.HTML(buildCustomerViewHTML(bank, id, piiAuth)) })
+		content := buildCustomerViewHTML(bank, id, piiAuth)
 		if serveHTMX(w, r, content) {
 			return
 		}
@@ -785,7 +774,7 @@ func newHandler(state *DemoState, version, scope string) http.Handler {
 			http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 			return
 		}
-		content := renderAndCapture(func() { lofigui.HTML(BuildProjectAboutHTML()) })
+		content := BuildProjectAboutHTML()
 		if serveHTMX(w, r, content) {
 			return
 		}
@@ -808,7 +797,7 @@ func newHandler(state *DemoState, version, scope string) http.Handler {
 			http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 			return
 		}
-		content := renderAndCapture(func() { lofigui.HTML(state.BuildRuntimeHTML()) })
+		content := state.BuildRuntimeHTML()
 		if serveHTMX(w, r, content) {
 			return
 		}
@@ -820,7 +809,7 @@ func newHandler(state *DemoState, version, scope string) http.Handler {
 			http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 			return
 		}
-		content := renderAndCapture(func() { lofigui.HTML(BuildModelsHTML()) })
+		content := BuildModelsHTML()
 		if serveHTMX(w, r, content) {
 			return
 		}
@@ -832,7 +821,7 @@ func newHandler(state *DemoState, version, scope string) http.Handler {
 			http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 			return
 		}
-		content := renderAndCapture(func() { lofigui.HTML(BuildDocsHTML()) })
+		content := BuildDocsHTML()
 		if serveHTMX(w, r, content) {
 			return
 		}
@@ -850,7 +839,7 @@ func newHandler(state *DemoState, version, scope string) http.Handler {
 			http.NotFound(w, r)
 			return
 		}
-		content := renderAndCapture(func() { lofigui.HTML(page) })
+		content := page
 		if serveHTMX(w, r, content) {
 			return
 		}

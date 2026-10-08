@@ -2,6 +2,25 @@
 
 ## [Unreleased]
 
+### Fixed
+- The demo's pages no longer queue behind one another. Every staff page
+  was rendered under one process-wide mutex that was held through the
+  page's database reads, so a slow page (customers, with hundreds of
+  per-account reads on a saturated database) stalled every other page
+  for every visitor: on the Hetzner demo, pages waited minutes. The
+  mutex only guarded lofigui's global buffer, which the pages never
+  needed; each page now returns its HTML directly.
+- The dashboard, P&L and balance sheet are served from readings taken in
+  the background (`bank/reading.go`). The book totals and the interest to
+  date aggregate every account through the ledger's views, which takes
+  seconds on a large bank; pages now get the last reading at once, and a
+  reading older than two seconds is taken again behind the page rather
+  than in front of it. Only a reading never taken (the first page after
+  startup) or one a command has invalidated (opening a customer, a
+  payment, a day's close, a restart or import) makes a page wait, so
+  what follows a command is still what the command did; a read in
+  flight when that happens is discarded and taken again.
+
 ## [0.19.0] - 2026-10-07
 
  - Stage 6 story 1.6.1: the demo is one handler, served in the tab by a service worker

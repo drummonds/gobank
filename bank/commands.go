@@ -47,7 +47,8 @@ func (b *Bank) OpenCustomer(ctx context.Context, c core.NewCustomer) (core.Custo
 	// Funding is decided on the book as the read model has it, plus what
 	// this opening adds: a loan is kept within the headroom the deposits
 	// before it open up (ADR-0004: a policy on a reading a second old).
-	savings, lending, _ := b.readBook(ctx)
+	k := b.book.get(ctx)
+	savings, lending := k.savings, k.lending
 	now := b.clock.Now()
 	var fundings []funding
 	for i := range plan.Record.Accounts {
@@ -187,6 +188,7 @@ func (b *Bank) Transfer(ctx context.Context, t core.Transfer) (core.Payment, err
 		log.Print(err)
 	}
 	b.book.invalidate()
+	b.interest.invalidate() // the two positions were rewritten, accruals with them
 	// The payment settles on its own.
 	go func() {
 		time.Sleep(500 * time.Millisecond)

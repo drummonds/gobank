@@ -42,7 +42,7 @@ to the penny; they must be right when they settle.
 | State | Truth lives in | Writer | One process | Many processes | Multi-region |
 |---|---|---|---|---|---|
 | Account balance, accrual | the ledger's position row | the event or the pass, in its transaction | process lock per account, plus the transaction | the transaction alone: serializable isolation, retry on conflict; the process lock stays as a local courtesy | the same; an account's rows are regional by the customer's home region |
-| Book totals, customer count, NIM inputs | the ledger's views, the customers' view | nobody: derived | a read model, cached for about a second, no mutex | the same | the same, served from the local replica, settling late by design |
+| Book totals, customer count, NIM inputs | the ledger's views, the customers' view | nobody: derived | a read model, read in the background and served as of its last reading, no mutex | the same | the same, served from the local replica, settling late by design |
 | Business day, day count | the daily snapshots and the run record | StartDay | one small mutex around the transition | the one workflow runner; every other process reads the day from the record | one runner per bank, not per region |
 | BoE reserve accrual, posted pence | the reserve's ledger position | StartDay | inside the same transition | the same | the same |
 | Lending headroom at opening | the ledger (the totals) | policy, read at opening | the read model's value, stale by a second | the same; acceptable risk policy | the same |

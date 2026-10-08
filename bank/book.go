@@ -3,8 +3,6 @@ package bank
 import (
 	"context"
 	"fmt"
-	"log"
-	"sync"
 	"time"
 
 	luca "git.bytestone.uk/hum3/go-luca"
@@ -16,64 +14,41 @@ import (
 // The bank's book: the totals over every customer account and the
 // customer count, derived from the ledger's and the customers' contract
 // views rather than kept as running totals under a lock (ADR-0004). The
-// answer is cached for bookTTL so the dashboard's polling does not
-// hammer the database, and a write that moves the book invalidates it,
-// so what follows a command is what the command did.
+// views aggregate every account, which takes seconds on a large bank, so
+// the book and the interest to date are readings taken in the
+// background: pages serve the last reading at once, and one older than
+// bookTTL is taken again behind them. A write that moves the book
+// invalidates it, so what follows a command is what the command did.
 
-// bookTTL is how long a reading of the book is served before it is read
+// bookTTL is how long a reading of the book is served before it is taken
 // again.
 const bookTTL = 2 * time.Second
 
-// book is the read model's cache.
-type book struct {
-	mu        sync.Mutex
-	at        time.Time
-	valid     bool
-	savings   luca.Amount
-	lending   luca.Amount
-	customers int
+// bookFigures is one reading of the book.
+type bookFigures struct {
+	savings, lending luca.Amount
+	customers        int
 }
 
-func (k *book) invalidate() {
-	k.mu.Lock()
-	k.valid = false
-	k.mu.Unlock()
-}
-
-// readBook is the book as of now, from the cache while it is fresh.
-func (b *Bank) readBook(ctx context.Context) (savings, lending luca.Amount, customers int) {
-	b.book.mu.Lock()
-	defer b.book.mu.Unlock()
-	if b.book.valid && time.Since(b.book.at) < bookTTL {
-		return b.book.savings, b.book.lending, b.book.customers
-	}
-	return b.refreshBookLocked(ctx)
-}
-
-// freshBook is the book read now, whatever the cache holds.
-func (b *Bank) freshBook(ctx context.Context) (savings, lending luca.Amount, customers int) {
-	b.book.mu.Lock()
-	defer b.book.mu.Unlock()
-	return b.refreshBookLocked(ctx)
-}
-
-// refreshBookLocked reads the book and caches it. Must be called with
-// book.mu held; readers wait on one another, so the database sees one
-// reading at a time.
-func (b *Bank) refreshBookLocked(ctx context.Context) (savings, lending luca.Amount, customers int) {
+// readBook is the read behind the book: the balances through the live
+// view and the customer count.
+func (b *Bank) readBook(ctx context.Context) (bookFigures, error) {
 	savings, lending, err := b.customerBalances(ctx)
 	if err != nil {
-		log.Print(err)
-		return b.book.savings, b.book.lending, b.book.customers
+		return bookFigures{}, err
 	}
-	customers, err = b.customers.Count(ctx)
+	customers, err := b.customers.Count(ctx)
 	if err != nil {
-		log.Print(err)
-		return b.book.savings, b.book.lending, b.book.customers
+		return bookFigures{}, err
 	}
-	b.book.savings, b.book.lending, b.book.customers = savings, lending, customers
-	b.book.at, b.book.valid = time.Now(), true
-	return savings, lending, customers
+	return bookFigures{savings: savings, lending: lending, customers: customers}, nil
+}
+
+// freshBook is the book read now, in front of the caller: what a day's
+// close and a snapshot are made from.
+func (b *Bank) freshBook(ctx context.Context) (savings, lending luca.Amount, customers int) {
+	k := b.book.fresh(ctx)
+	return k.savings, k.lending, k.customers
 }
 
 // customerBalances sums every customer account's live position — the
@@ -122,20 +97,34 @@ func lendingHeadroom(savings, lending luca.Amount, ratio float64) luca.Amount {
 // on every account's latest position, summed per product through the
 // ledger's end-of-day view and truncated to whole pence per family.
 func (b *Bank) interestTotals(ctx context.Context) (loanIncome, depositExpense luca.Amount, err error) {
+	f := b.interest.get(ctx)
+	return f.loanIncome, f.depositExpense, nil
+}
+
+// interestFigures is one reading of the interest to date.
+type interestFigures struct {
+	loanIncome, depositExpense luca.Amount
+}
+
+// readInterest is the read behind interestTotals.
+func (b *Bank) readInterest(ctx context.Context) (interestFigures, error) {
 	chart := b.ledger.Chart
 	income, err := b.ledger.Balance(chart.IncomeInterest)
 	if err != nil {
-		return 0, 0, fmt.Errorf("bank: interest income: %w", err)
+		return interestFigures{}, fmt.Errorf("bank: interest income: %w", err)
 	}
 	expense, err := b.ledger.Balance(chart.ExpenseInterest)
 	if err != nil {
-		return 0, 0, fmt.Errorf("bank: interest expense: %w", err)
+		return interestFigures{}, fmt.Errorf("bank: interest expense: %w", err)
 	}
 	accruedSavings, accruedLending, err := b.accruedByFamily(ctx)
 	if err != nil {
-		return 0, 0, err
+		return interestFigures{}, err
 	}
-	return -income + accruedLending/poundsE7PerPenny, -expense + accruedSavings/poundsE7PerPenny, nil
+	return interestFigures{
+		loanIncome:     -income + accruedLending/poundsE7PerPenny,
+		depositExpense: -expense + accruedSavings/poundsE7PerPenny,
+	}, nil
 }
 
 // poundsE7PerPenny is the number of 7dp-pound units in one penny.
@@ -181,17 +170,17 @@ func (b *Bank) Position(ctx context.Context) (core.Position, error) {
 }
 
 func (b *Bank) position(ctx context.Context) core.Position {
-	savings, lending, customers := b.readBook(ctx)
+	k := b.book.get(ctx)
 	b.mu.Lock()
 	defer b.mu.Unlock()
 	return core.Position{
 		Day:              b.day,
 		DayCount:         b.dayCount,
-		Customers:        customers,
-		Savings:          savings,
-		Lending:          lending,
-		Cash:             savings - lending,
-		RequiredReserves: requiredReserves(savings, b.reserveRatio),
+		Customers:        k.customers,
+		Savings:          k.savings,
+		Lending:          k.lending,
+		Cash:             k.savings - k.lending,
+		RequiredReserves: requiredReserves(k.savings, b.reserveRatio),
 		ReserveRatio:     b.reserveRatio,
 		BoERate:          b.boeRate,
 		BoEInterest:      b.boeInterestTotalLocked(),
