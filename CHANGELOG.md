@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+## [0.20.0] - 2026-10-08
+
+ - Demo pages no longer queue behind one slow page; dashboard, P&L and balance sheet served from background readings
+
 ### Fixed
 - The demo's pages no longer queue behind one another. Every staff page
   was rendered under one process-wide mutex that was held through the
