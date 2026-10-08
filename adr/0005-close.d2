@@ -1,0 +1,19 @@
+shape: sequence_diagram
+
+runner: "Workflow runner"
+sub: "Sub-ledger"
+gl: "General ledger"
+dash: "Dashboard"
+
+runner -> sub: "StartDay(D)"
+runner -> sub: "pass: for each account,\nclose D-1, project D" {style.bold: true}
+dash -> gl: "book?"
+gl -> dash: "D-2 closed, D-1 closing,\nplus today's control movements"
+runner -> sub: "D-1 applications\nby product and code"
+runner -> gl: "journal D-1\n(idempotent per day, product, code)"
+runner -> gl: "project each control for D-1"
+runner -> sub: "sum of positions for D-1\nper product"
+runner -> gl: "reconcile: control = sum\nreport any break"
+runner -> gl: "posted-through = D-1"
+dash -> gl: "book?"
+gl -> dash: "D-1 closed"

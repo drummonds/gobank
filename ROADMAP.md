@@ -422,6 +422,30 @@ root module, `cmd/bff` is the service binary, and `app/` is the Flutter shell.
   pages only when given one; `internal/daylength` parses the day length
   for the simulation and the settings page; `cmd/demo` holds no HTML and
   no handler
+- **1.6a** General ledger and sub-ledger (ADR-0005) — the one ledger grows
+  as accounts × days while the bank's questions are per product, so the
+  P&L never returns and the book is a sum over every account. Two go-luca
+  ledgers in one database: today's ledger becomes the customer sub-ledger,
+  unchanged; a small general ledger holds a control account per product
+  and the bank's own accounts, is posted per event (control movements,
+  inserts only) and by a journal at the GL close that follows the
+  start-of-day pass, and is reconciled to the sub-ledger daily. The GL
+  lags by the length of the pass and every GL read carries its day.
+  Out of scope: retiring old sub-ledger positions (ADR-0002 data
+  management), which this makes possible. Stories:
+- **1.6a.1** go-luca enablers (go-luca #8, #9) — a second ledger in one database (a table
+  and view prefix on `NewSQLLedger`), and indexes for day-bounded reads
+  (movements by value time, positions by day) so the journal and the
+  reconciliation scan a day, not the table
+- **1.6a.2** the GL opened and posted in shadow — the chart, per-event
+  control movements in the event's transaction, the journal and the GL
+  close at pass completion (idempotent per day, product, code), the
+  posted-through day, the reconciliation reported on the dashboard;
+  reads unchanged. Done when preprod closes days with no break
+- **1.6a.3** reads move to the GL — the book, accrued interest, P&L and
+  balance sheet, the history series and lending headroom, each labelled
+  with its day; the snapshot taken at the close; the BoE reserve moves to
+  the GL; customer reads stay on the sub-ledger. Done-when of the stage
 - **1.7** Read/write split — separate read and write handles
 - **1.8** Many processes — several BFFs, a generator and one workflow runner;
   deploys go blue-green (deployment level 3), ending the downtime

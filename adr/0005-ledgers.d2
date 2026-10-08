@@ -1,0 +1,28 @@
+direction: right
+
+event: "Customer event\n(funding, transfer)" {shape: oval}
+pass: "Start-of-day pass\n(one account at a time)" {shape: oval}
+
+sub: "Sub-ledger (go-luca)" {
+  accounts: "Customer accounts\nLiability:Savings:<customer>:<product>\nAsset:Loans:<customer>:<product>"
+  movements: "Movements"
+  positions: "Daily positions\n(one row per account per day)"
+}
+
+gl: "General ledger (go-luca, prefixed)" {
+  controls: "Control accounts\none per product"
+  own: "Bank's own accounts\nEquity, Income, Expense, BoE reserve"
+  positions: "Daily positions\n(one row per control per day)"
+  through: "Posted-through day"
+}
+
+close: "GL close\n(after the pass)" {shape: hexagon}
+
+event -> sub.movements: "movement + projection"
+event -> gl.controls: "control movement\n(insert only, same tx)"
+pass -> sub.positions: "closes D-1, projects D"
+pass -> close: "every account visited"
+close -> gl.controls: "journal: D-1 interest\nper product and code"
+close -> gl.positions: "project controls for D-1"
+close -> gl.through: "D-1"
+close -> sub.positions: "reconcile: control = sum of D-1 positions" {style.stroke-dash: 3}
