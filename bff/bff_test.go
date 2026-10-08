@@ -338,6 +338,35 @@ func TestLoginNote(t *testing.T) {
 	}
 }
 
+// The BFF is one handler for the app, the customer web and the staff web
+// (ADR-0002 stage 6): everything outside /v1/ is the staff web's, served
+// without the customer routes' security headers (its pages load their own
+// scripts and styles); without a staff web those paths are not found.
+func TestStaffWebIsServedOutsideV1(t *testing.T) {
+	staff := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "text/html")
+		_, _ = w.Write([]byte("staff " + r.URL.Path))
+	})
+	f := newFixtureWith(t, bff.Config{Staff: staff})
+	for _, p := range []string{"/", "/customers", "/about/docs"} {
+		res, m := f.do("GET", p, "", "", "")
+		if res.StatusCode != 200 || m["_raw"] != "staff "+p {
+			t.Errorf("GET %s: %d %v, want the staff web", p, res.StatusCode, m)
+		}
+		if res.Header.Get("Content-Security-Policy") != "" {
+			t.Errorf("GET %s: the staff web carries the customer routes' CSP", p)
+		}
+	}
+	res, _ := f.do("GET", "/v1/screen/login", "", "", "")
+	if res.StatusCode != 200 || res.Header.Get("Content-Security-Policy") == "" {
+		t.Errorf("customer route lost its headers: %d", res.StatusCode)
+	}
+	res, _ = f.do("GET", "/v1/nothing", "", "", "")
+	if res.StatusCode != http.StatusNotFound {
+		t.Errorf("unknown customer route: %d", res.StatusCode)
+	}
+}
+
 func TestJourneys(t *testing.T) {
 	bank := stubbank.New()
 	j, err := bff.Journeys(t.Context(), bank, "cust-001")

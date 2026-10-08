@@ -1,4 +1,4 @@
-package main
+package staff
 
 import (
 	"context"
@@ -31,9 +31,9 @@ func familyTag(family string) string {
 	return `<span class="tag is-success is-light">Savings</span>`
 }
 
-// buildCustomersHTML renders the customer list table with pagination.
+// BuildCustomersHTML renders the customer list table with pagination.
 // Names are shown only when piiAuth is true; otherwise only the customer ID is displayed.
-func buildCustomersHTML(q core.StaffQueries, page int, piiAuth bool) string {
+func BuildCustomersHTML(q core.StaffQueries, page int, piiAuth bool) string {
 	ctx := context.Background()
 	pos, _ := q.Position(ctx)
 	aggSavings, aggLending := pos.Savings, pos.Lending
@@ -50,7 +50,7 @@ func buildCustomersHTML(q core.StaffQueries, page int, piiAuth bool) string {
   <div class="control"><span class="tag is-info is-light">%d customers</span></div>
   <div class="control"><span class="tag is-success is-light">Savings: %s</span></div>
   <div class="control"><span class="tag is-link is-light">Lending: %s</span></div>
-</div>`, total, fmtMoney(aggSavings), fmtMoney(aggLending)))
+</div>`, total, FormatMoney(aggSavings), FormatMoney(aggLending)))
 	s.WriteString(`<div class="table-container"><table class="table is-fullwidth is-striped is-hoverable">`)
 	if piiAuth {
 		s.WriteString(`<thead><tr><th>ID</th><th>Name</th><th>Accounts</th><th>Total Savings</th><th>Total Lending</th><th></th></tr></thead><tbody>`)
@@ -64,12 +64,12 @@ func buildCustomersHTML(q core.StaffQueries, page int, piiAuth bool) string {
 			s.WriteString(fmt.Sprintf(`<tr>
   <td><code>%s</code></td><td>%s</td><td>%d</td><td>%s</td><td>%s</td>
   <td><a href="customers/%s" class="button is-small is-link is-light">View</a></td>
-</tr>`, c.ID, name, c.Accounts, fmtMoney(c.Savings), fmtMoney(c.Lending), c.ID))
+</tr>`, c.ID, name, c.Accounts, FormatMoney(c.Savings), FormatMoney(c.Lending), c.ID))
 		} else {
 			s.WriteString(fmt.Sprintf(`<tr>
   <td><code>%s</code></td><td>%d</td><td>%s</td><td>%s</td>
   <td><a href="customers/%s" class="button is-small is-link is-light">View</a></td>
-</tr>`, c.ID, c.Accounts, fmtMoney(c.Savings), fmtMoney(c.Lending), c.ID))
+</tr>`, c.ID, c.Accounts, FormatMoney(c.Savings), FormatMoney(c.Lending), c.ID))
 		}
 	}
 
@@ -107,9 +107,9 @@ func customerLabel(q core.StaffQueries, id string, piiAuthorized bool) string {
 	return id
 }
 
-// buildCustomerDetailHTML renders a single customer's detail page: summary,
+// BuildCustomerDetailHTML renders a single customer's detail page: summary,
 // PII, KYC, accounts table.
-func buildCustomerDetailHTML(q core.StaffQueries, id string, piiAuthorized bool, txPage int) string {
+func BuildCustomerDetailHTML(q core.StaffQueries, id string, piiAuthorized bool, txPage int) string {
 	ctx := context.Background()
 	cust, err := q.CustomerRecord(ctx, id)
 	if err != nil {
@@ -150,7 +150,7 @@ func buildCustomerDetailHTML(q core.StaffQueries, id string, piiAuthorized bool,
 <div class="columns">`)
 	s.WriteString(fmt.Sprintf(`<div class="column"><strong>Customer since:</strong> %s (%s)</div>`, cust.JoinDate.Format("2 Jan 2006"), tenure))
 	s.WriteString(fmt.Sprintf(`<div class="column"><strong>Products:</strong> %d</div>`, len(cust.Accounts)))
-	s.WriteString(fmt.Sprintf(`<div class="column"><strong>Relationship value:</strong> %s</div>`, fmtMoney(relationshipValue)))
+	s.WriteString(fmt.Sprintf(`<div class="column"><strong>Relationship value:</strong> %s</div>`, FormatMoney(relationshipValue)))
 	s.WriteString(`<div class="column"><span class="tag is-success">Active</span></div>`)
 	s.WriteString(`</div></div>`)
 
@@ -208,15 +208,15 @@ func buildCustomerDetailHTML(q core.StaffQueries, id string, piiAuthorized bool,
 		s.WriteString(fmt.Sprintf(`<tr>
   <td>%s</td><td>%s</td><td><code>%s</code></td><td><code>%s</code></td><td>%.1f%%</td><td>%s</td><td>%s</td><td>%s</td>
   <td><a href="customers/%s/account/%d" class="button is-small is-link is-light">View</a></td>
-</tr>`, a.ProductName, familyTag(a.Family), a.SortCode, a.AccountNum, a.Rate*100, fmtMoney(a.Balance), fmtMoney(a.Interest), fmtISODate(a.OpenDate), cust.ID, i))
+</tr>`, a.ProductName, familyTag(a.Family), a.SortCode, a.AccountNum, a.Rate*100, FormatMoney(a.Balance), FormatMoney(a.Interest), fmtISODate(a.OpenDate), cust.ID, i))
 	}
 	s.WriteString(`</tbody></table></div>`)
 
 	return s.String()
 }
 
-// buildCustomerAccountHTML renders a per-account detail page with transactions.
-func buildCustomerAccountHTML(q core.StaffQueries, custID string, accountIdx int, piiAuthorized bool, txPage int) string {
+// BuildCustomerAccountHTML renders a per-account detail page with transactions.
+func BuildCustomerAccountHTML(q core.StaffQueries, custID string, accountIdx int, piiAuthorized bool, txPage int) string {
 	ctx := context.Background()
 	cust, err := q.CustomerRecord(ctx, custID)
 	if err != nil {
@@ -250,8 +250,8 @@ func buildCustomerAccountHTML(q core.StaffQueries, custID string, accountIdx int
 	s.WriteString(fmt.Sprintf(`<div class="column"><strong>Account No.:</strong> <code>%s</code></div>`, a.AccountNum))
 	s.WriteString(fmt.Sprintf(`<div class="column"><strong>Rate:</strong> %.2f%%</div>`, a.Rate*100))
 	s.WriteString(`</div><div class="columns">`)
-	s.WriteString(fmt.Sprintf(`<div class="column"><strong>Balance:</strong> %s</div>`, fmtMoney(a.Balance)))
-	s.WriteString(fmt.Sprintf(`<div class="column"><strong>Interest:</strong> %s</div>`, fmtMoney(a.Interest)))
+	s.WriteString(fmt.Sprintf(`<div class="column"><strong>Balance:</strong> %s</div>`, FormatMoney(a.Balance)))
+	s.WriteString(fmt.Sprintf(`<div class="column"><strong>Interest:</strong> %s</div>`, FormatMoney(a.Interest)))
 	s.WriteString(fmt.Sprintf(`<div class="column"><strong>Opened:</strong> %s</div>`, fmtISODate(a.OpenDate)))
 	s.WriteString(`</div></div>`)
 
@@ -270,7 +270,7 @@ func buildCustomerAccountHTML(q core.StaffQueries, custID string, accountIdx int
 		for _, tx := range txs.Entries {
 			s.WriteString(fmt.Sprintf(`<tr>
   <td>%s</td><td>%s</td><td>%s</td><td>%s</td><td>%s</td>
-</tr>`, fmtISODate(tx.Date), tx.Type, fmtMoney(tx.Amount), fmtMoney(tx.Balance), tx.Reference))
+</tr>`, fmtISODate(tx.Date), tx.Type, FormatMoney(tx.Amount), FormatMoney(tx.Balance), tx.Reference))
 		}
 		s.WriteString(`</tbody></table></div>`)
 

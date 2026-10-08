@@ -1,4 +1,4 @@
-package main
+package staff
 
 // The treasury pages: cash position, capital and gilt purchases, rendered
 // from the core's book and treasury queries (the desk itself is
@@ -16,7 +16,7 @@ import (
 
 // --- Cash Position Page ---
 
-func buildCashPositionHTML(q core.BookQueries) string {
+func BuildCashPositionHTML(q core.BookQueries) string {
 	t, _ := q.Position(context.Background())
 	hist, _ := q.History(context.Background())
 
@@ -25,15 +25,15 @@ func buildCashPositionHTML(q core.BookQueries) string {
 
 	// Level boxes
 	s.WriteString(`<nav class="level mb-4">`)
-	s.WriteString(fmt.Sprintf(`<div class="level-item has-text-centered"><div><p class="heading">Total Deposits</p><p class="title is-5">%s</p></div></div>`, fmtMoney(t.Savings)))
-	s.WriteString(fmt.Sprintf(`<div class="level-item has-text-centered"><div><p class="heading">Total Loans</p><p class="title is-5">%s</p></div></div>`, fmtMoney(t.Lending)))
-	s.WriteString(fmt.Sprintf(`<div class="level-item has-text-centered"><div><p class="heading">Cash at BoE</p><p class="title is-5">%s</p></div></div>`, fmtMoney(t.Cash)))
-	s.WriteString(fmt.Sprintf(`<div class="level-item has-text-centered"><div><p class="heading">Required Reserves</p><p class="title is-5">%s</p></div></div>`, fmtMoney(t.RequiredReserves)))
+	s.WriteString(fmt.Sprintf(`<div class="level-item has-text-centered"><div><p class="heading">Total Deposits</p><p class="title is-5">%s</p></div></div>`, FormatMoney(t.Savings)))
+	s.WriteString(fmt.Sprintf(`<div class="level-item has-text-centered"><div><p class="heading">Total Loans</p><p class="title is-5">%s</p></div></div>`, FormatMoney(t.Lending)))
+	s.WriteString(fmt.Sprintf(`<div class="level-item has-text-centered"><div><p class="heading">Cash at BoE</p><p class="title is-5">%s</p></div></div>`, FormatMoney(t.Cash)))
+	s.WriteString(fmt.Sprintf(`<div class="level-item has-text-centered"><div><p class="heading">Required Reserves</p><p class="title is-5">%s</p></div></div>`, FormatMoney(t.RequiredReserves)))
 	excessClass := "has-text-success"
 	if t.ExcessCash() < 0 {
 		excessClass = "has-text-danger"
 	}
-	s.WriteString(fmt.Sprintf(`<div class="level-item has-text-centered"><div><p class="heading">Excess Cash</p><p class="title is-5 %s">%s</p></div></div>`, excessClass, fmtMoney(t.ExcessCash())))
+	s.WriteString(fmt.Sprintf(`<div class="level-item has-text-centered"><div><p class="heading">Excess Cash</p><p class="title is-5 %s">%s</p></div></div>`, excessClass, FormatMoney(t.ExcessCash())))
 	s.WriteString(`</nav>`)
 
 	// Detail table
@@ -42,7 +42,7 @@ func buildCashPositionHTML(q core.BookQueries) string {
 	s.WriteString(`<table class="table is-fullwidth is-striped">`)
 	s.WriteString(`<tbody>`)
 	s.WriteString(fmt.Sprintf(`<tr><td>BoE Base Rate</td><td class="has-text-right"><strong>%.2f%%</strong></td></tr>`, t.BoERate*100))
-	s.WriteString(fmt.Sprintf(`<tr><td>BoE Interest Earned (cumulative)</td><td class="has-text-right"><strong>%s</strong></td></tr>`, fmtMoney(t.BoEInterest)))
+	s.WriteString(fmt.Sprintf(`<tr><td>BoE Interest Earned (cumulative)</td><td class="has-text-right"><strong>%s</strong></td></tr>`, FormatMoney(t.BoEInterest)))
 	s.WriteString(fmt.Sprintf(`<tr><td>Reserve Ratio</td><td class="has-text-right"><strong>%.0f%%</strong></td></tr>`, t.ReserveRatio*100))
 	s.WriteString(fmt.Sprintf(`<tr><td>Simulation Day</td><td class="has-text-right"><strong>%d &mdash; %s</strong></td></tr>`, t.DayCount, t.Day.Format("2 Jan 2006")))
 	s.WriteString(`</tbody></table>`)
@@ -59,7 +59,7 @@ func buildCashPositionHTML(q core.BookQueries) string {
 
 // --- Capital Requirements Page ---
 
-func buildCapitalHTML(q core.BookQueries) string {
+func BuildCapitalHTML(q core.BookQueries) string {
 	t, _ := q.Position(context.Background())
 
 	actualRatio := 0.0
@@ -89,7 +89,7 @@ func buildCapitalHTML(q core.BookQueries) string {
 	s.WriteString(`<nav class="level mb-4">`)
 	s.WriteString(fmt.Sprintf(`<div class="level-item has-text-centered"><div><p class="heading">Reserve Ratio (actual)</p><p class="title is-5">%.1f%%</p></div></div>`, actualRatio*100))
 	s.WriteString(fmt.Sprintf(`<div class="level-item has-text-centered"><div><p class="heading">Reserve Ratio (required)</p><p class="title is-5">%.0f%%</p></div></div>`, t.ReserveRatio*100))
-	s.WriteString(fmt.Sprintf(`<div class="level-item has-text-centered"><div><p class="heading">Lending Headroom</p><p class="title is-5">%s</p></div></div>`, fmtMoney(headroom)))
+	s.WriteString(fmt.Sprintf(`<div class="level-item has-text-centered"><div><p class="heading">Lending Headroom</p><p class="title is-5">%s</p></div></div>`, FormatMoney(headroom)))
 	s.WriteString(`</nav>`)
 
 	// Utilisation bar SVG
@@ -103,11 +103,11 @@ func buildCapitalHTML(q core.BookQueries) string {
 	s.WriteString(`<h3 class="title is-5">Breakdown</h3>`)
 	s.WriteString(`<table class="table is-fullwidth is-striped">`)
 	s.WriteString(`<tbody>`)
-	s.WriteString(fmt.Sprintf(`<tr><td>Total Deposits</td><td class="has-text-right">%s</td></tr>`, fmtMoney(t.Savings)))
-	s.WriteString(fmt.Sprintf(`<tr><td>Total Loans</td><td class="has-text-right">%s</td></tr>`, fmtMoney(t.Lending)))
-	s.WriteString(fmt.Sprintf(`<tr><td>Cash at BoE</td><td class="has-text-right">%s</td></tr>`, fmtMoney(t.Cash)))
-	s.WriteString(fmt.Sprintf(`<tr><td>Required Reserves (%.0f%% of deposits)</td><td class="has-text-right">%s</td></tr>`, t.ReserveRatio*100, fmtMoney(t.RequiredReserves)))
-	s.WriteString(fmt.Sprintf(`<tr><td>Max Lending Capacity</td><td class="has-text-right">%s</td></tr>`, fmtMoney(maxLoans)))
+	s.WriteString(fmt.Sprintf(`<tr><td>Total Deposits</td><td class="has-text-right">%s</td></tr>`, FormatMoney(t.Savings)))
+	s.WriteString(fmt.Sprintf(`<tr><td>Total Loans</td><td class="has-text-right">%s</td></tr>`, FormatMoney(t.Lending)))
+	s.WriteString(fmt.Sprintf(`<tr><td>Cash at BoE</td><td class="has-text-right">%s</td></tr>`, FormatMoney(t.Cash)))
+	s.WriteString(fmt.Sprintf(`<tr><td>Required Reserves (%.0f%% of deposits)</td><td class="has-text-right">%s</td></tr>`, t.ReserveRatio*100, FormatMoney(t.RequiredReserves)))
+	s.WriteString(fmt.Sprintf(`<tr><td>Max Lending Capacity</td><td class="has-text-right">%s</td></tr>`, FormatMoney(maxLoans)))
 	s.WriteString(fmt.Sprintf(`<tr><td>Utilisation</td><td class="has-text-right">%.1f%%</td></tr>`, utilisationPct))
 	s.WriteString(`</tbody></table>`)
 	s.WriteString(`</div>`)
@@ -147,7 +147,7 @@ func buildUtilisationBar(pct float64) string {
 
 // --- Gilt Purchases Page ---
 
-func buildGiltsHTML(q core.TreasuryQueries) string {
+func BuildGiltsHTML(q core.TreasuryQueries) string {
 	yields, _ := q.GiltYields(context.Background())
 	holdings, _ := q.GiltHoldings(context.Background())
 
@@ -208,13 +208,13 @@ func buildGiltsHTML(q core.TreasuryQueries) string {
 		if totalFace > 0 {
 			avgTenor = weightedTenor / float64(totalFace)
 		}
-		s.WriteString(fmt.Sprintf(`<p class="mb-2"><strong>Total Face Value:</strong> %s | <strong>Avg Tenor:</strong> %.1f years</p>`, fmtMoney(totalFace), avgTenor))
+		s.WriteString(fmt.Sprintf(`<p class="mb-2"><strong>Total Face Value:</strong> %s | <strong>Avg Tenor:</strong> %.1f years</p>`, FormatMoney(totalFace), avgTenor))
 		s.WriteString(`<table class="table is-fullwidth is-striped">`)
 		s.WriteString(`<thead><tr><th>#</th><th>Tenor</th><th class="has-text-right">Face Value</th><th>Purchase Date</th><th class="has-text-right">Yield</th></tr></thead>`)
 		s.WriteString(`<tbody>`)
 		for _, h := range holdings {
 			s.WriteString(fmt.Sprintf(`<tr><td>%d</td><td>%s</td><td class="has-text-right">%s</td><td>%s</td><td class="has-text-right">%.2f%%</td></tr>`,
-				h.ID, h.Tenor, fmtMoney(h.FaceValue), h.PurchaseDate.Format("2 Jan 2006"), h.Yield*100))
+				h.ID, h.Tenor, FormatMoney(h.FaceValue), h.PurchaseDate.Format("2 Jan 2006"), h.Yield*100))
 		}
 		s.WriteString(`</tbody></table>`)
 	}

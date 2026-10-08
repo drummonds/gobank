@@ -3,6 +3,7 @@ package main
 import (
 	"database/sql"
 	"log/slog"
+	"net/http"
 
 	"git.bytestone.uk/hum3/gobank/bff"
 	"git.bytestone.uk/hum3/gobank/core"
@@ -15,7 +16,8 @@ import (
 // pages, redirects and cookie carry. An empty password leaves the routes
 // up with every login refused. Sessions live in the demo's database (the
 // sessions component), so a restart keeps customers logged in; db gives
-// the database as it stands, since a reset or an import replaces it.
-func newAppBFF(bank core.StaffQueries, auth core.Authenticator, db func() *sql.DB, scope, loginNote string, log *slog.Logger) *bff.Server {
-	return bff.NewServer(bff.Config{Bank: bank, Auth: auth, SessionDB: db, Scope: scope, LoginNote: loginNote, Logger: log})
+// the database as it stands, since a reset or an import replaces it. The
+// staff web is served for every path outside /v1/ (story 1.6.3).
+func newAppBFF(bank core.StaffQueries, auth core.Authenticator, db func() *sql.DB, scope, loginNote string, staff http.Handler, log *slog.Logger) *bff.Server {
+	return bff.NewServer(bff.Config{Bank: bank, Auth: auth, SessionDB: db, Scope: scope, LoginNote: loginNote, Staff: staff, Logger: log})
 }

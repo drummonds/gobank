@@ -2,6 +2,7 @@ package main
 
 import (
 	"fmt"
+	"git.bytestone.uk/hum3/gobank/bff/staff"
 	"math"
 	"strconv"
 	"time"
@@ -27,4 +28,4 @@ func progressRow(s bank.DayProgress) string {
 	return ""
 }
 
-func groupInt(n int) string { return groupThousands(strconv.Itoa(n)) }
+func groupInt(n int) string { return staff.GroupThousands(strconv.Itoa(n)) }

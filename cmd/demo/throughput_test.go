@@ -1,6 +1,7 @@
 package main
 
 import (
+	"git.bytestone.uk/hum3/gobank/bff/staff"
 	"strings"
 	"testing"
 	"time"
@@ -82,13 +83,13 @@ func TestDashboardReportsCustomersAddedPerSecond(t *testing.T) {
 }
 
 func TestDashboardShowsRates(t *testing.T) {
-	html := renderDashContent(DashData{Sim: SimStatus{AccountDaysPer12h: 4320000, AddingCust: true, AddingProgress: 250, AddingTarget: 1000, CustomersPerSec: 83.4}})
+	html := staff.BuildDashboardHTML(staff.DashData{Sim: staff.SimStatus{AccountDaysPer12h: 4320000, AddingCust: true, AddingProgress: 250, AddingTarget: 1000, CustomersPerSec: 83.4}})
 	for _, want := range []string{"Account days / 12h", "4,320,000", "250 / 1000", "83 /s"} {
 		if !contains(html, want) {
 			t.Errorf("dashboard missing %q", want)
 		}
 	}
-	html = renderDashContent(DashData{Sim: SimStatus{LastCustomersPerSec: 83.4}})
+	html = staff.BuildDashboardHTML(staff.DashData{Sim: staff.SimStatus{LastCustomersPerSec: 83.4}})
 	if !contains(html, "Last add") || !contains(html, "83 /s") {
 		t.Errorf("finished batch should keep its rate on show:\n%s", html)
 	}

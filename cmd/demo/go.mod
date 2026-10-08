@@ -8,13 +8,15 @@ require (
 	git.bytestone.uk/hum3/gobank v0.3.44
 	git.bytestone.uk/hum3/gobank-products v0.3.0
 	git.bytestone.uk/hum3/gobanks-customers v0.2.1
-	git.bytestone.uk/hum3/gogal v0.2.0
 	git.bytestone.uk/hum3/lofigui v0.17.40
 	github.com/jackc/pgx/v5 v5.11.0
-	github.com/yuin/goldmark v1.8.6
 )
 
-require github.com/ncruces/go-sqlite3-wasm/v6 v6.3.35304 // indirect
+require (
+	git.bytestone.uk/hum3/gogal v0.2.0 // indirect
+	github.com/ncruces/go-sqlite3-wasm/v6 v6.3.35304 // indirect
+	github.com/yuin/goldmark v1.8.6 // indirect
+)
 
 require (
 	git.bytestone.uk/hum3/go-dbexplorer v0.4.0

@@ -1,6 +1,7 @@
 package main
 
 import (
+	"git.bytestone.uk/hum3/gobank/bff/staff"
 	"strings"
 	"testing"
 )
@@ -20,8 +21,8 @@ func TestCustomerPagesHideNameWithoutPII(t *testing.T) {
 		what   string
 		render func(pii bool) string
 	}{
-		{"detail", func(pii bool) string { return buildCustomerDetailHTML(q, "cust-001", pii, 1) }},
-		{"account", func(pii bool) string { return buildCustomerAccountHTML(q, "cust-001", 0, pii, 1) }},
+		{"detail", func(pii bool) string { return staff.BuildCustomerDetailHTML(q, "cust-001", pii, 1) }},
+		{"account", func(pii bool) string { return staff.BuildCustomerAccountHTML(q, "cust-001", 0, pii, 1) }},
 	} {
 		if h := page.render(false); strings.Contains(h, name) {
 			t.Errorf("%s page shows %q without PII authorisation", page.what, name)

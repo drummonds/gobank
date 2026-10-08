@@ -1,6 +1,7 @@
 package main
 
 import (
+	"git.bytestone.uk/hum3/gobank/bff/staff"
 	"os"
 	"strings"
 	"testing"
@@ -61,17 +62,17 @@ func TestExplorerPageHonoursFilter(t *testing.T) {
 // other component, and unowned tables, are open to all roles.
 func TestRoleCanViewComponent(t *testing.T) {
 	cases := []struct {
-		role      Role
+		role      staff.Role
 		component string
 		want      bool
 	}{
-		{RoleAdmin, "customers", true},
-		{RoleAuditor, "customers", true},
-		{RoleCustomerService, "customers", true},
-		{RoleReadOnly, "customers", false},
-		{RoleReadOnly, "payments", true},
-		{RoleReadOnly, "ledger", true},
-		{RoleReadOnly, "", true},
+		{staff.RoleAdmin, "customers", true},
+		{staff.RoleAuditor, "customers", true},
+		{staff.RoleCustomerService, "customers", true},
+		{staff.RoleReadOnly, "customers", false},
+		{staff.RoleReadOnly, "payments", true},
+		{staff.RoleReadOnly, "ledger", true},
+		{staff.RoleReadOnly, "", true},
 	}
 	for _, c := range cases {
 		if got := c.role.CanViewComponent(c.component); got != c.want {
@@ -83,14 +84,14 @@ func TestRoleCanViewComponent(t *testing.T) {
 // The explorer applies the viewer's role: read-only never sees PII tables.
 func TestExplorerHidesPIIFromReadOnly(t *testing.T) {
 	ds := NewDemoState()
-	readOnly := withRole(t.Context(), RoleReadOnly)
+	readOnly := staff.WithRole(t.Context(), staff.RoleReadOnly)
 	if page := ds.BuildExplorerPage(readOnly, "/", "/internal/explorer"); strings.Contains(page, ">cust_pii</a>") || !strings.Contains(page, ">payments</a>") {
 		t.Error("read-only index should hide the customers component and keep the rest")
 	}
 	if page := ds.BuildExplorerPage(readOnly, "/", "/internal/explorer/cust_pii"); !strings.Contains(page, "Access denied") {
 		t.Error("read-only should be denied cust_pii")
 	}
-	if page := ds.BuildExplorerPage(withRole(t.Context(), RoleAuditor), "/", "/internal/explorer"); !strings.Contains(page, ">cust_pii</a>") {
+	if page := ds.BuildExplorerPage(staff.WithRole(t.Context(), staff.RoleAuditor), "/", "/internal/explorer"); !strings.Contains(page, ">cust_pii</a>") {
 		t.Error("auditor should see the customers component")
 	}
 }

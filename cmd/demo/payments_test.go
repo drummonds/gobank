@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"git.bytestone.uk/hum3/gobank/bank/payments"
+	"git.bytestone.uk/hum3/gobank/bff/staff"
 	"strings"
 	"testing"
 	"time"
@@ -136,12 +137,12 @@ func TestPaymentTimesAreUTCDatetimes(t *testing.T) {
 	}
 	p := page.Payments[0]
 	want := p.CreatedAt.UTC().Format("2006-01-02 15:04:05Z")
-	if got := fmtUTC(p.CreatedAt); got != want {
-		t.Errorf("fmtUTC = %q, want %q", got, want)
+	if got := staff.FormatUTC(p.CreatedAt); got != want {
+		t.Errorf("staff.FormatUTC = %q, want %q", got, want)
 	}
 	for what, html := range map[string]string{
-		"detail": buildPaymentDetailHTML(q, p.ID, false),
-		"list":   buildPaymentsHTML(q, false, 1, false),
+		"detail": staff.BuildPaymentDetailHTML(q, p.ID, false),
+		"list":   staff.BuildPaymentsHTML(q, false, 1, false),
 	} {
 		if !strings.Contains(html, want) {
 			t.Errorf("%s page lacks the UTC datetime %q", what, want)
@@ -150,8 +151,8 @@ func TestPaymentTimesAreUTCDatetimes(t *testing.T) {
 	// The customer report lists the customer's own payments.
 	for _, p := range page.Payments {
 		if p.From == "cust-001" || p.To == "cust-001" {
-			if html := buildCustomerViewHTML(q, "cust-001", true); !strings.Contains(html, fmtUTC(p.CreatedAt)) {
-				t.Errorf("report page lacks the UTC datetime %q of payment %d", fmtUTC(p.CreatedAt), p.ID)
+			if html := staff.BuildCustomerViewHTML(q, "cust-001", true); !strings.Contains(html, staff.FormatUTC(p.CreatedAt)) {
+				t.Errorf("report page lacks the UTC datetime %q of payment %d", staff.FormatUTC(p.CreatedAt), p.ID)
 			}
 			break
 		}

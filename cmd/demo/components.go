@@ -6,19 +6,16 @@ package main
 // documentation page (docs.go), the contract-view rule (ADR-0001, enforced
 // by TestContractViewRule) and the explorer's component catalog.
 
-import "slices"
+import (
+	"slices"
+
+	"git.bytestone.uk/hum3/gobank/bff/staff"
+)
 
 // Component is one function of the bank: a package under bank/ once it has
 // moved there (ADR-0002 stage 5), a set of files in this package until then.
-type Component struct {
-	Name    string   // domain name, e.g. "payments"
-	Purpose string   // one line
-	Library string   // external module that owns the schema, if any
-	Package string   // the root-module package the component is, e.g. "bank/treasury" (ADR-0002 stage 5); "" while it is still files here
-	Files   []string // source files in this package the component owns
-	Tables  []string // internal tables: only this component's code touches them
-	Views   []string // contract views (contract_*) other code reads
-}
+// The staff web's documentation page renders the registry (staff.Component).
+type Component = staff.Component
 
 var components = []Component{
 	{
@@ -85,16 +82,10 @@ var components = []Component{
 	},
 }
 
-// crossRead is a file reading a table it does not own.
-type crossRead struct {
-	File  string
-	Table string
-}
-
 // contractDebt is the pre-rule baseline: cross-reads that predated
 // ADR-0001. It was burnt down to nothing and stays empty; a new cross-read
 // gets a contract view or an API, not an entry here.
-var contractDebt = []crossRead{}
+var contractDebt = []staff.CrossRead{}
 
 // componentOf returns the component owning a table, or "" if none does.
 func componentOf(table string) string {

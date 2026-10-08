@@ -1,6 +1,7 @@
 package main
 
 import (
+	"git.bytestone.uk/hum3/gobank/bff/staff"
 	"html"
 	"strings"
 	"testing"
@@ -11,7 +12,7 @@ import (
 // The documentation page is generated from the registry: every component,
 // its tables and contract views, the pre-rule debt, and every ADR appear.
 func TestDocsPageCoversRegistryAndADRs(t *testing.T) {
-	page := BuildDocsHTML()
+	page := staff.BuildDocsHTML(components, contractDebt)
 	for _, c := range components {
 		if !strings.Contains(page, c.Name) || !strings.Contains(page, html.EscapeString(c.Purpose)) {
 			t.Errorf("docs page missing component %s", c.Name)
@@ -41,14 +42,14 @@ func TestDocsPageCoversRegistryAndADRs(t *testing.T) {
 
 // An ADR renders as HTML from its markdown; an unknown one is reported.
 func TestADRPage(t *testing.T) {
-	page, ok := BuildADRHTML("contract-views")
+	page, ok := staff.BuildADRHTML("contract-views")
 	if !ok {
 		t.Fatal("contract-views not found")
 	}
 	if !strings.Contains(page, "<h1") || !strings.Contains(page, "Contract views") || !strings.Contains(page, "Accepted") {
 		t.Errorf("ADR page not rendered: %.200s", page)
 	}
-	if _, ok := BuildADRHTML("no-such-adr"); ok {
+	if _, ok := staff.BuildADRHTML("no-such-adr"); ok {
 		t.Error("unknown ADR reported as found")
 	}
 }

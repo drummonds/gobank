@@ -1,4 +1,4 @@
-package main
+package staff
 
 import (
 	"context"
@@ -10,8 +10,8 @@ import (
 	"git.bytestone.uk/hum3/gobank/core"
 )
 
-// buildChartsHTML renders historical charts: NIM, balances, customer count, BoE rate.
-func buildChartsHTML(q core.BookQueries) string {
+// BuildChartsHTML renders historical charts: NIM, balances, customer count, BoE rate.
+func BuildChartsHTML(q core.BookQueries) string {
 	ctx := context.Background()
 	hist, _ := q.History(ctx)
 	pos, _ := q.Position(ctx)
@@ -45,8 +45,8 @@ func buildChartsHTML(q core.BookQueries) string {
 	return s.String()
 }
 
-// buildBBSIHTML renders the BBSI annual report. Shows auth gate when not authorized.
-func buildBBSIHTML(q core.StaffQueries, piiAuthorized bool) string {
+// BuildBBSIHTML renders the BBSI annual report. Shows auth gate when not authorized.
+func BuildBBSIHTML(q core.StaffQueries, piiAuthorized bool) string {
 	ctx := context.Background()
 	pos, _ := q.Position(ctx)
 	currentDay := pos.Day
@@ -81,13 +81,13 @@ func buildBBSIHTML(q core.StaffQueries, piiAuthorized bool) string {
 		piiData, _ := q.CustomerPII(ctx, row.CustomerID)
 		s.WriteString(fmt.Sprintf(`<tr>
   <td>%s</td><td><code>%s</code></td><td>%s</td><td>%s</td>
-</tr>`, piiData.Name, piiData.NI, fmtMoney(row.Interest), fmtMoney(0)))
+</tr>`, piiData.Name, piiData.NI, FormatMoney(row.Interest), FormatMoney(0)))
 	}
 
 	s.WriteString(`</tbody>`)
 	s.WriteString(fmt.Sprintf(`<tfoot><tr class="has-text-weight-bold">
   <td colspan="2">Total</td><td>%s</td><td>%s</td>
-</tr></tfoot>`, fmtMoney(totalInterest), fmtMoney(0)))
+</tr></tfoot>`, FormatMoney(totalInterest), FormatMoney(0)))
 	s.WriteString(`</table></div>`)
 
 	s.WriteString(`<div class="notification is-info is-light mt-4">
@@ -98,8 +98,8 @@ func buildBBSIHTML(q core.StaffQueries, piiAuthorized bool) string {
 	return s.String()
 }
 
-// buildCustomerViewHTML renders a comprehensive single-customer report.
-func buildCustomerViewHTML(q core.StaffQueries, id string, piiAuthorized bool) string {
+// BuildCustomerViewHTML renders a comprehensive single-customer report.
+func BuildCustomerViewHTML(q core.StaffQueries, id string, piiAuthorized bool) string {
 	ctx := context.Background()
 	cust, err := q.CustomerRecord(ctx, id)
 	if err != nil {
@@ -146,28 +146,28 @@ func buildCustomerViewHTML(q core.StaffQueries, id string, piiAuthorized bool) s
 		} else {
 			totalLending += a.Balance
 		}
-		totalInterest += a.Interest + poundsE7(a.AccruedE7).Pence()
+		totalInterest += a.Interest + PoundsE7(a.AccruedE7).Pence()
 	}
 
 	s.WriteString(`<div class="columns mb-4">`)
-	s.WriteString(fmt.Sprintf(`<div class="column"><div class="notification is-success is-light has-text-centered"><p class="heading">Savings</p><p class="title is-5">%s</p></div></div>`, fmtMoney(totalSavings)))
-	s.WriteString(fmt.Sprintf(`<div class="column"><div class="notification is-info is-light has-text-centered"><p class="heading">Lending</p><p class="title is-5">%s</p></div></div>`, fmtMoney(totalLending)))
-	s.WriteString(fmt.Sprintf(`<div class="column"><div class="notification is-warning is-light has-text-centered"><p class="heading">Interest</p><p class="title is-5">%s</p></div></div>`, fmtMoney(totalInterest)))
+	s.WriteString(fmt.Sprintf(`<div class="column"><div class="notification is-success is-light has-text-centered"><p class="heading">Savings</p><p class="title is-5">%s</p></div></div>`, FormatMoney(totalSavings)))
+	s.WriteString(fmt.Sprintf(`<div class="column"><div class="notification is-info is-light has-text-centered"><p class="heading">Lending</p><p class="title is-5">%s</p></div></div>`, FormatMoney(totalLending)))
+	s.WriteString(fmt.Sprintf(`<div class="column"><div class="notification is-warning is-light has-text-centered"><p class="heading">Interest</p><p class="title is-5">%s</p></div></div>`, FormatMoney(totalInterest)))
 	s.WriteString(`</div>`)
 
 	// Account table
 	s.WriteString(`<div class="table-container"><table class="table is-fullwidth is-striped">`)
 	s.WriteString(`<thead><tr><th>Product</th><th>Type</th><th>Rate</th><th>Balance</th><th>Interest Accrued</th><th>Opened</th></tr></thead><tbody>`)
 	for _, a := range cust.Accounts {
-		interestCell := fmtMoney(a.Interest)
-		if accrued := poundsE7(a.AccruedE7); accrued != 0 {
+		interestCell := FormatMoney(a.Interest)
+		if accrued := PoundsE7(a.AccruedE7); accrued != 0 {
 			// Accrued-but-unapplied interest modelled as 7dp pounds; it
 			// converts to whole pence on application.
 			interestCell += fmt.Sprintf(` <span class="has-text-grey is-size-7">+%s accruing</span>`, accrued)
 		}
 		s.WriteString(fmt.Sprintf(`<tr>
   <td>%s</td><td>%s</td><td>%.1f%%</td><td>%s</td><td>%s</td><td>%s</td>
-</tr>`, a.ProductName, familyTag(a.Family), a.Rate*100, fmtMoney(a.Balance), interestCell, fmtISODate(a.OpenDate)))
+</tr>`, a.ProductName, familyTag(a.Family), a.Rate*100, FormatMoney(a.Balance), interestCell, fmtISODate(a.OpenDate)))
 	}
 	s.WriteString(`</tbody></table></div>`)
 
@@ -195,7 +195,7 @@ func buildCustomerViewHTML(q core.StaffQueries, id string, piiAuthorized bool) s
 			s.WriteString(fmt.Sprintf(`<tr>
   <td>%d</td><td>%s</td><td>%s</td><td>%s</td>
   <td><span class="tag %s">%s</span></td><td>%s</td><td>%s</td>
-</tr>`, p.ID, dirTag, counterparty, fmtMoney(p.Amount), paymentStatusTag(p.Status), p.Status, p.Reference, fmtUTC(p.CreatedAt)))
+</tr>`, p.ID, dirTag, counterparty, FormatMoney(p.Amount), paymentStatusTag(p.Status), p.Status, p.Reference, FormatUTC(p.CreatedAt)))
 		}
 		s.WriteString(`</tbody></table></div>`)
 	}

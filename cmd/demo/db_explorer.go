@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"git.bytestone.uk/hum3/gobank/bff/staff"
 	"strings"
 
 	dbexplorer "git.bytestone.uk/hum3/go-dbexplorer"
@@ -19,7 +20,7 @@ func (ds *DemoState) explorer(scope string) *dbexplorer.Explorer {
 		Catalog:  explorerCatalog,
 		Annotate: contractBadge,
 		Authoriser: dbexplorer.AuthoriserFunc(func(ctx context.Context, component string) bool {
-			return roleFrom(ctx).CanViewComponent(component)
+			return staff.RoleFrom(ctx).CanViewComponent(component)
 		}),
 	}
 }
@@ -37,7 +38,7 @@ var explorerCatalog = func() dbexplorer.StaticCatalog {
 // index for /internal/explorer, a table for /internal/explorer/<table> —
 // honouring every query parameter the explorer's own links carry (page,
 // sort, dir, trunc, filter, value). ctx carries the viewer's role (see
-// withRole), which decides the components shown; rawURL is scope-relative
+// staff.WithRole), which decides the components shown; rawURL is scope-relative
 // as the handler saw it.
 func (ds *DemoState) BuildExplorerPage(ctx context.Context, scope, rawURL string) string {
 	return ds.explorer(scope).Render(ctx, scope+strings.TrimPrefix(rawURL, "/"))

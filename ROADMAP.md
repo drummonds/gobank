@@ -401,17 +401,24 @@ root module, `cmd/bff` is the service binary, and `app/` is the Flutter shell.
   under (`bff.Config.Scope`) and its pages, redirects and cookie carry it;
   the tab keeps the session cookie the service worker cannot set
   (`keepCookiesInTab`); the login note is the deployment's
-- **1.6.3** staff pages through the BFF — the layout, the role switch, PII
+- **1.6.3** [x] staff pages through the BFF — the layout, the role switch, PII
   authorisation and the pages that read the core (dashboard data,
   accounting, products, customers, payments, treasury, reports, about and
   docs) move to `bff/staff`, mounted by `bff.Server`; the BFF is the
-  demo's handler. Pure move over `core.StaffQueries` and `core.Commands`
+  demo's handler. Pure move over `core.StaffQueries` and `core.Commands`.
+  Done: `staff.New(staff.Config)` is the staff web, served by the BFF for
+  every path outside `/v1/` (`bff.Config.Staff`); the console mounts its
+  own pages on it (`Site.Handle`) and renders them in the layout
+  (`Page`, `StaticPage`, `Fragment`, `Role`, `PII`, `Require`,
+  `Redirect`) until 1.6.4; `TestStaffWebKnowsOnlyTheCore` holds the
+  package to the core and its UI libraries
 - **1.6.4** the console through the BFF — the dashboard controls, settings,
   runtime, restarts, export and import and the DB explorer move to
   `bff/staff` over a `Console` interface (start, stop, advance, reset, add
-  customers, settings, restarts, export, import, explorer) that
-  `DemoState` implements. Done-when of the stage; the import-rule test
-  covers `bff/`
+  customers, the payments generator's send, run and stop, settings,
+  restarts, export, import, explorer, the status `/about.json` reports)
+  that `DemoState` implements, replacing `Site.Handle`. Done-when of the
+  stage
 - **1.7** Read/write split — separate read and write handles
 - **1.8** Many processes — several BFFs, a generator and one workflow runner;
   deploys go blue-green (deployment level 3), ending the downtime

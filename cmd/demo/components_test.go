@@ -1,6 +1,7 @@
 package main
 
 import (
+	"git.bytestone.uk/hum3/gobank/bff/staff"
 	"go/ast"
 	"go/parser"
 	"go/token"
@@ -115,11 +116,11 @@ func TestContractViewRule(t *testing.T) {
 			}
 		}
 	}
-	baseline := map[crossRead]bool{}
+	baseline := map[staff.CrossRead]bool{}
 	for _, d := range contractDebt {
 		baseline[d] = true
 	}
-	seenDebt := map[crossRead]bool{}
+	seenDebt := map[staff.CrossRead]bool{}
 
 	files, _ := filepath.Glob("*.go")
 	bankFiles, _ := filepath.Glob("../../bank/*/*.go")
@@ -141,7 +142,7 @@ func TestContractViewRule(t *testing.T) {
 				if fileOwner[file] == owner[tbl] {
 					continue
 				}
-				cr := crossRead{File: file, Table: tbl}
+				cr := staff.CrossRead{File: file, Table: tbl}
 				if baseline[cr] {
 					seenDebt[cr] = true
 					continue

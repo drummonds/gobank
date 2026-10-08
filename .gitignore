@@ -3,7 +3,7 @@
 .tp-release-comment
 
 .task/
-cmd/demo/diagrams/*.svg
+bff/staff/diagrams/*.svg
 docs/*
 !docs/research/
 

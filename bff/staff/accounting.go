@@ -1,4 +1,4 @@
-package main
+package staff
 
 import (
 	"context"
@@ -8,8 +8,8 @@ import (
 	"git.bytestone.uk/hum3/gobank/core"
 )
 
-// buildPnLHTML renders a Profit & Loss statement from the core's figures.
-func buildPnLHTML(q core.BookQueries) string {
+// BuildPnLHTML renders a Profit & Loss statement from the core's figures.
+func BuildPnLHTML(q core.BookQueries) string {
 	pl, _ := q.ProfitAndLoss(context.Background())
 	dayCount := pl.DayCount
 	loanInterestIncome, boeInterestIncome, depositInterestExpense := pl.LoanInterestIncome, pl.BoEInterestIncome, pl.DepositInterestExpense
@@ -24,27 +24,27 @@ func buildPnLHTML(q core.BookQueries) string {
 	s.WriteString(`<div class="box">`)
 	s.WriteString(`<table class="table is-fullwidth">`)
 	s.WriteString(`<tbody>`)
-	s.WriteString(fmt.Sprintf(`<tr><td><strong>Loan Interest Income</strong></td><td class="has-text-right has-text-success-dark">%s</td></tr>`, fmtMoney(loanInterestIncome)))
-	s.WriteString(fmt.Sprintf(`<tr><td><strong>BoE Interest Income</strong></td><td class="has-text-right has-text-success-dark">%s</td></tr>`, fmtMoney(boeInterestIncome)))
-	s.WriteString(fmt.Sprintf(`<tr><td><strong>Deposit Interest Expense</strong></td><td class="has-text-right has-text-danger">(%s)</td></tr>`, fmtMoney(depositInterestExpense)))
-	s.WriteString(fmt.Sprintf(`<tr><td class="has-text-weight-semibold">Net Interest Margin</td><td class="has-text-right has-text-weight-semibold">%s</td></tr>`, fmtMoney(netInterest)))
+	s.WriteString(fmt.Sprintf(`<tr><td><strong>Loan Interest Income</strong></td><td class="has-text-right has-text-success-dark">%s</td></tr>`, FormatMoney(loanInterestIncome)))
+	s.WriteString(fmt.Sprintf(`<tr><td><strong>BoE Interest Income</strong></td><td class="has-text-right has-text-success-dark">%s</td></tr>`, FormatMoney(boeInterestIncome)))
+	s.WriteString(fmt.Sprintf(`<tr><td><strong>Deposit Interest Expense</strong></td><td class="has-text-right has-text-danger">(%s)</td></tr>`, FormatMoney(depositInterestExpense)))
+	s.WriteString(fmt.Sprintf(`<tr><td class="has-text-weight-semibold">Net Interest Margin</td><td class="has-text-right has-text-weight-semibold">%s</td></tr>`, FormatMoney(netInterest)))
 	s.WriteString(`<tr><td colspan="2"><hr class="my-1"></td></tr>`)
-	s.WriteString(fmt.Sprintf(`<tr><td><strong>Operational Costs</strong></td><td class="has-text-right has-text-danger">(%s)</td></tr>`, fmtMoney(opCosts)))
+	s.WriteString(fmt.Sprintf(`<tr><td><strong>Operational Costs</strong></td><td class="has-text-right has-text-danger">(%s)</td></tr>`, FormatMoney(opCosts)))
 	s.WriteString(`<tr><td colspan="2"><hr class="my-1"></td></tr>`)
 
 	profitClass := "has-text-success-dark"
 	if profit < 0 {
 		profitClass = "has-text-danger"
 	}
-	s.WriteString(fmt.Sprintf(`<tr><td class="has-text-weight-bold is-size-5">Net Profit</td><td class="has-text-right has-text-weight-bold is-size-5 %s">%s</td></tr>`, profitClass, fmtMoney(profit)))
+	s.WriteString(fmt.Sprintf(`<tr><td class="has-text-weight-bold is-size-5">Net Profit</td><td class="has-text-right has-text-weight-bold is-size-5 %s">%s</td></tr>`, profitClass, FormatMoney(profit)))
 	s.WriteString(`</tbody></table></div>`)
 
 	return s.String()
 }
 
-// buildBalanceSheetHTML renders the balance sheet from the core's figures,
+// BuildBalanceSheetHTML renders the balance sheet from the core's figures,
 // including gilt holdings and a regulatory capital (Tier 1) section.
-func buildBalanceSheetHTML(q core.BookQueries) string {
+func BuildBalanceSheetHTML(q core.BookQueries) string {
 	bs, _ := q.BalanceSheet(context.Background())
 	dayCount := bs.DayCount
 	totalLoans, totalGilts, cashAtBoE := bs.Loans, bs.Gilts, bs.CashAtBoE
@@ -64,27 +64,27 @@ func buildBalanceSheetHTML(q core.BookQueries) string {
 	s.WriteString(`<div class="column"><div class="box">`)
 	s.WriteString(`<h3 class="title is-5">Assets</h3>`)
 	s.WriteString(`<table class="table is-fullwidth"><tbody>`)
-	s.WriteString(fmt.Sprintf(`<tr><td>Loans to Customers</td><td class="has-text-right">%s</td><td class="has-text-right has-text-grey is-size-7">100%% RW</td></tr>`, fmtMoney(totalLoans)))
+	s.WriteString(fmt.Sprintf(`<tr><td>Loans to Customers</td><td class="has-text-right">%s</td><td class="has-text-right has-text-grey is-size-7">100%% RW</td></tr>`, FormatMoney(totalLoans)))
 	if totalGilts > 0 {
-		s.WriteString(fmt.Sprintf(`<tr><td>Government Securities (Gilts)</td><td class="has-text-right">%s</td><td class="has-text-right has-text-grey is-size-7">0%% RW</td></tr>`, fmtMoney(totalGilts)))
+		s.WriteString(fmt.Sprintf(`<tr><td>Government Securities (Gilts)</td><td class="has-text-right">%s</td><td class="has-text-right has-text-grey is-size-7">0%% RW</td></tr>`, FormatMoney(totalGilts)))
 	}
-	s.WriteString(fmt.Sprintf(`<tr><td>Cash &amp; Reserves at BoE</td><td class="has-text-right">%s</td><td class="has-text-right has-text-grey is-size-7">0%% RW</td></tr>`, fmtMoney(cashAtBoE)))
+	s.WriteString(fmt.Sprintf(`<tr><td>Cash &amp; Reserves at BoE</td><td class="has-text-right">%s</td><td class="has-text-right has-text-grey is-size-7">0%% RW</td></tr>`, FormatMoney(cashAtBoE)))
 	s.WriteString(`<tr><td colspan="3"><hr class="my-1"></td></tr>`)
-	s.WriteString(fmt.Sprintf(`<tr><td class="has-text-weight-bold">Total Assets</td><td class="has-text-right has-text-weight-bold">%s</td><td></td></tr>`, fmtMoney(totalAssets)))
+	s.WriteString(fmt.Sprintf(`<tr><td class="has-text-weight-bold">Total Assets</td><td class="has-text-right has-text-weight-bold">%s</td><td></td></tr>`, FormatMoney(totalAssets)))
 	s.WriteString(`</tbody></table></div></div>`)
 
 	// Liabilities + Equity
 	s.WriteString(`<div class="column"><div class="box">`)
 	s.WriteString(`<h3 class="title is-5">Liabilities &amp; Equity</h3>`)
 	s.WriteString(`<table class="table is-fullwidth"><tbody>`)
-	s.WriteString(fmt.Sprintf(`<tr><td>Customer Deposits</td><td class="has-text-right">%s</td></tr>`, fmtMoney(totalLiabilities)))
+	s.WriteString(fmt.Sprintf(`<tr><td>Customer Deposits</td><td class="has-text-right">%s</td></tr>`, FormatMoney(totalLiabilities)))
 	eqClass := ""
 	if equity < 0 {
 		eqClass = ` class="has-text-danger"`
 	}
-	s.WriteString(fmt.Sprintf(`<tr><td>Retained Earnings (CET1 Capital)</td><td class="has-text-right"%s>%s</td></tr>`, eqClass, fmtMoney(equity)))
+	s.WriteString(fmt.Sprintf(`<tr><td>Retained Earnings (CET1 Capital)</td><td class="has-text-right"%s>%s</td></tr>`, eqClass, FormatMoney(equity)))
 	s.WriteString(`<tr><td colspan="2"><hr class="my-1"></td></tr>`)
-	s.WriteString(fmt.Sprintf(`<tr><td class="has-text-weight-bold">Total</td><td class="has-text-right has-text-weight-bold">%s</td></tr>`, fmtMoney(totalLiabilities+equity)))
+	s.WriteString(fmt.Sprintf(`<tr><td class="has-text-weight-bold">Total</td><td class="has-text-right has-text-weight-bold">%s</td></tr>`, FormatMoney(totalLiabilities+equity)))
 	s.WriteString(`</tbody></table></div></div>`)
 
 	s.WriteString(`</div>`) // end columns
@@ -102,8 +102,8 @@ func buildBalanceSheetHTML(q core.BookQueries) string {
 	}
 
 	s.WriteString(`<table class="table is-fullwidth"><tbody>`)
-	s.WriteString(fmt.Sprintf(`<tr><td><strong>Common Equity Tier 1 (CET1) Capital</strong></td><td class="has-text-right">%s</td></tr>`, fmtMoney(equity)))
-	s.WriteString(fmt.Sprintf(`<tr><td>Risk-Weighted Assets (RWA)</td><td class="has-text-right">%s</td></tr>`, fmtMoney(rwa)))
+	s.WriteString(fmt.Sprintf(`<tr><td><strong>Common Equity Tier 1 (CET1) Capital</strong></td><td class="has-text-right">%s</td></tr>`, FormatMoney(equity)))
+	s.WriteString(fmt.Sprintf(`<tr><td>Risk-Weighted Assets (RWA)</td><td class="has-text-right">%s</td></tr>`, FormatMoney(rwa)))
 	s.WriteString(`<tr><td colspan="2"><hr class="my-1"></td></tr>`)
 
 	ratioClass := "has-text-success-dark"

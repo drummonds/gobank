@@ -1,9 +1,10 @@
-package main
+package staff
 
 import (
 	"bytes"
 	"fmt"
 	"html"
+	"slices"
 	"strings"
 
 	"git.bytestone.uk/hum3/gobank/adr"
@@ -14,10 +15,29 @@ import (
 // The documentation page is generated from the component registry and the
 // embedded ADRs, so it cannot drift from the code it describes.
 
-// BuildDocsHTML renders the system documentation: components with their
-// tables and contract views, the contract-view rule, the pre-rule debt and
-// the architecture decision records.
-func BuildDocsHTML() string {
+// Component is one function of the bank as the registry describes it: a
+// package under bank/, or a set of files in the program that owns the
+// registry; which tables it owns and which contract views it publishes.
+type Component struct {
+	Name    string   // domain name, e.g. "payments"
+	Purpose string   // one line
+	Library string   // external module that owns the schema, if any
+	Package string   // the root-module package the component is, e.g. "bank/treasury"; "" while it is still files in the owner
+	Files   []string // source files in the owner the component owns
+	Tables  []string // internal tables: only this component's code touches them
+	Views   []string // contract views (contract_*) other code reads
+}
+
+// CrossRead is a file reading a table it does not own: pre-rule debt.
+type CrossRead struct {
+	File  string
+	Table string
+}
+
+// BuildDocsHTML renders the system documentation: the components of the
+// registry with their tables and contract views, the contract-view rule,
+// the pre-rule debt and the architecture decision records.
+func BuildDocsHTML(components []Component, contractDebt []CrossRead) string {
 	var s strings.Builder
 	s.WriteString(`<h2 class="title is-4">System Documentation</h2>`)
 	s.WriteString(`<p class="subtitle is-6 has-text-grey">Generated from the component registry and the ADRs compiled into this build. `)
@@ -55,7 +75,7 @@ func BuildDocsHTML() string {
 		s.WriteString(`<table class="table is-narrow"><thead><tr><th>File</th><th>Reads</th><th>Owned by</th></tr></thead><tbody>`)
 		for _, d := range contractDebt {
 			s.WriteString(fmt.Sprintf(`<tr><td><code>%s</code></td><td><code>%s</code></td><td>%s</td></tr>`,
-				html.EscapeString(d.File), html.EscapeString(d.Table), html.EscapeString(componentOf(d.Table))))
+				html.EscapeString(d.File), html.EscapeString(d.Table), html.EscapeString(componentOf(components, d.Table))))
 		}
 		s.WriteString(`</tbody></table>`)
 	}
@@ -100,4 +120,14 @@ func codeList(names []string, empty string) string {
 		parts[i] = "<code>" + html.EscapeString(n) + "</code>"
 	}
 	return strings.Join(parts, " ")
+}
+
+// componentOf returns the component owning a table, or "" if none does.
+func componentOf(components []Component, table string) string {
+	for _, c := range components {
+		if slices.Contains(c.Tables, table) {
+			return c.Name
+		}
+	}
+	return ""
 }

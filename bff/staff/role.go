@@ -1,4 +1,4 @@
-package main
+package staff
 
 import (
 	"context"
@@ -65,14 +65,14 @@ func (r Role) CanViewComponent(component string) bool {
 // roleKey carries the viewer's role in a context.
 type roleKey struct{}
 
-// withRole returns ctx carrying the viewer's role.
-func withRole(ctx context.Context, r Role) context.Context {
+// WithRole returns ctx carrying the viewer's role.
+func WithRole(ctx context.Context, r Role) context.Context {
 	return context.WithValue(ctx, roleKey{}, r)
 }
 
-// roleFrom is the viewer's role in ctx; admin when none is set, as for a
+// RoleFrom is the viewer's role in ctx; admin when none is set, as for a
 // session AuthStore has not seen and for the single-user WASM simulator.
-func roleFrom(ctx context.Context) Role {
+func RoleFrom(ctx context.Context) Role {
 	if r, ok := ctx.Value(roleKey{}).(Role); ok {
 		return r
 	}

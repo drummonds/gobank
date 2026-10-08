@@ -5,6 +5,7 @@ import (
 	"git.bytestone.uk/hum3/gobank/bank/customers"
 	"git.bytestone.uk/hum3/gobank/bank/payments"
 	"git.bytestone.uk/hum3/gobank/bank/products"
+	"git.bytestone.uk/hum3/gobank/bff/staff"
 	"testing"
 
 	luca "git.bytestone.uk/hum3/go-luca"
@@ -88,11 +89,11 @@ func TestInterestTotalsOnAnAccrualBasis(t *testing.T) {
 		t.Fatalf("savings applied %d, accrued %d e7: the test needs both", appliedSavings, accruedSavingsE7)
 	}
 	income, expense := ds.interestTotals()
-	if want := appliedSavings + poundsE7(accruedSavingsE7).Pence(); expense != want {
-		t.Errorf("deposit interest expense %d, want applied %d + accrued %d", expense, appliedSavings, poundsE7(accruedSavingsE7).Pence())
+	if want := appliedSavings + staff.PoundsE7(accruedSavingsE7).Pence(); expense != want {
+		t.Errorf("deposit interest expense %d, want applied %d + accrued %d", expense, appliedSavings, staff.PoundsE7(accruedSavingsE7).Pence())
 	}
-	if want := appliedLending + poundsE7(accruedLendingE7).Pence(); income != want {
-		t.Errorf("loan interest income %d, want applied %d + accrued %d", income, appliedLending, poundsE7(accruedLendingE7).Pence())
+	if want := appliedLending + staff.PoundsE7(accruedLendingE7).Pence(); income != want {
+		t.Errorf("loan interest income %d, want applied %d + accrued %d", income, appliedLending, staff.PoundsE7(accruedLendingE7).Pence())
 	}
 }
 
@@ -146,8 +147,8 @@ func TestNoFloatMoneyStorage(t *testing.T) {
 		_ luca.Amount = payments.Payment{}.Amount
 		_ luca.Amount = core.Transaction{}.Amount
 		_ luca.Amount = core.Transaction{}.Balance
-		_ luca.Amount = BalancePoint{}.Savings
-		_ luca.Amount = BalancePoint{}.Lending
+		_ luca.Amount = core.BalancePoint{}.Savings
+		_ luca.Amount = core.BalancePoint{}.Lending
 		_ luca.Amount = core.GiltHolding{}.FaceValue
 		_ int64       = customers.Account{}.AccruedE7
 		_ int64       = luca.Position{}.Accrued.Num
@@ -167,25 +168,25 @@ func TestNoFloatMoneyStorage(t *testing.T) {
 // rounds to nearest, and the pence conversion truncates like the engine's
 // application (whole pence move, remainders keep accruing).
 func TestPoundsE7(t *testing.T) {
-	if got := accrualPoundsE7(gbp.AccrualDenominator); got != poundsE7PerPenny {
-		t.Errorf("one penny of numerator = %d e7-units, want %d", got, poundsE7PerPenny)
+	if got := staff.AccrualPoundsE7(gbp.AccrualDenominator); got != staff.PoundsE7PerPenny {
+		t.Errorf("one penny of numerator = %d e7-units, want %d", got, staff.PoundsE7PerPenny)
 	}
-	if got := accrualPoundsE7(gbp.AccrualDenominator / 2); got != poundsE7PerPenny/2 {
-		t.Errorf("half penny = %d e7-units, want %d", got, poundsE7PerPenny/2)
+	if got := staff.AccrualPoundsE7(gbp.AccrualDenominator / 2); got != staff.PoundsE7PerPenny/2 {
+		t.Errorf("half penny = %d e7-units, want %d", got, staff.PoundsE7PerPenny/2)
 	}
-	if got := accrualPoundsE7(-gbp.AccrualDenominator); got != -poundsE7PerPenny {
-		t.Errorf("negative penny = %d e7-units, want %d", got, -poundsE7PerPenny)
+	if got := staff.AccrualPoundsE7(-gbp.AccrualDenominator); got != -staff.PoundsE7PerPenny {
+		t.Errorf("negative penny = %d e7-units, want %d", got, -staff.PoundsE7PerPenny)
 	}
-	if got := poundsE7(poundsE7PerPenny / 2).Pence(); got != 0 {
+	if got := staff.PoundsE7(staff.PoundsE7PerPenny / 2).Pence(); got != 0 {
 		t.Errorf("half penny should truncate to 0 pence, got %d", got)
 	}
-	if got := poundsE7(poundsE7PerPenny).Pence(); got != 1 {
+	if got := staff.PoundsE7(staff.PoundsE7PerPenny).Pence(); got != 1 {
 		t.Errorf("one penny in e7-units = %d pence, want 1", got)
 	}
-	if got := poundsE7(12_345_678).String(); got != "£1.2345678" {
+	if got := staff.PoundsE7(12_345_678).String(); got != "£1.2345678" {
 		t.Errorf("String() = %q, want £1.2345678", got)
 	}
-	if got := poundsE7(-12_345_678_900_000).String(); got != "-£1,234,567.8900000" {
+	if got := staff.PoundsE7(-12_345_678_900_000).String(); got != "-£1,234,567.8900000" {
 		t.Errorf("String() = %q, want -£1,234,567.8900000", got)
 	}
 }

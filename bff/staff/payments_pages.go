@@ -1,4 +1,4 @@
-package main
+package staff
 
 import (
 	"context"
@@ -62,10 +62,10 @@ func partyLabel(q core.CustomerRegister, id string, piiAuth bool) string {
 	return id
 }
 
-// buildPaymentsHTML renders the payments list as a Bulma HTML table.
+// BuildPaymentsHTML renders the payments list as a Bulma HTML table.
 // Shows customer IDs; names shown only when piiAuth is true. running is
 // the generator's state, shown as a tag.
-func buildPaymentsHTML(q core.StaffQueries, piiAuth bool, page int, running bool) string {
+func BuildPaymentsHTML(q core.StaffQueries, piiAuth bool, page int, running bool) string {
 	ctx := context.Background()
 	pp, _ := q.PaymentPage(ctx, page)
 	if pp.Page > pp.TotalPages() {
@@ -101,7 +101,7 @@ func buildPaymentsHTML(q core.StaffQueries, piiAuth bool, page int, running bool
   <td><span class="tag %s">%s</span></td>
   <td>%s</td>
   <td><a href="payments/%d" class="button is-small is-link is-light">Detail</a></td>
-</tr>`, p.ID, paymentTypeTag(p.Type), p.Type, from, to, fmtMoney(p.Amount), p.Reference, paymentStatusTag(p.Status), p.Status, fmtUTC(p.CreatedAt), p.ID))
+</tr>`, p.ID, paymentTypeTag(p.Type), p.Type, from, to, FormatMoney(p.Amount), p.Reference, paymentStatusTag(p.Status), p.Status, FormatUTC(p.CreatedAt), p.ID))
 		}
 
 		s.WriteString(`</tbody></table></div>`)
@@ -127,9 +127,9 @@ func buildPaymentsHTML(q core.StaffQueries, piiAuth bool, page int, running bool
 	return s.String()
 }
 
-// buildPaymentDetailHTML renders a single payment detail with settlement timeline.
+// BuildPaymentDetailHTML renders a single payment detail with settlement timeline.
 // Shows customer IDs; names shown only when piiAuth is true.
-func buildPaymentDetailHTML(q core.StaffQueries, id int, piiAuth bool) string {
+func BuildPaymentDetailHTML(q core.StaffQueries, id int, piiAuth bool) string {
 	p, err := q.Payment(context.Background(), id)
 	if err != nil {
 		return `<div class="notification is-warning">Payment not found.</div>`
@@ -146,14 +146,14 @@ func buildPaymentDetailHTML(q core.StaffQueries, id int, piiAuth bool) string {
 	s.WriteString(fmt.Sprintf(`<div class="column"><strong>Type:</strong> <span class="tag %s">%s</span></div>`, paymentTypeTag(p.Type), p.Type))
 	s.WriteString(fmt.Sprintf(`<div class="column"><strong>From:</strong> %s</div>`, from))
 	s.WriteString(fmt.Sprintf(`<div class="column"><strong>To:</strong> %s</div>`, to))
-	s.WriteString(fmt.Sprintf(`<div class="column"><strong>Amount:</strong> %s</div>`, fmtMoney(p.Amount)))
+	s.WriteString(fmt.Sprintf(`<div class="column"><strong>Amount:</strong> %s</div>`, FormatMoney(p.Amount)))
 	s.WriteString(`</div>`)
 	s.WriteString(`<div class="columns">`)
 	s.WriteString(fmt.Sprintf(`<div class="column"><strong>Status:</strong> <span class="tag %s">%s</span></div>`, paymentStatusTag(p.Status), p.Status))
-	s.WriteString(fmt.Sprintf(`<div class="column"><strong>Created:</strong> %s</div>`, fmtUTC(p.CreatedAt)))
+	s.WriteString(fmt.Sprintf(`<div class="column"><strong>Created:</strong> %s</div>`, FormatUTC(p.CreatedAt)))
 	settled := "—"
 	if !p.SettledAt.IsZero() {
-		settled = fmtUTC(p.SettledAt)
+		settled = FormatUTC(p.SettledAt)
 	}
 	s.WriteString(fmt.Sprintf(`<div class="column"><strong>Settled:</strong> %s</div>`, settled))
 	s.WriteString(`</div></div>`)
@@ -180,13 +180,13 @@ func buildTimelineSVG(p core.Payment) string {
 		Time  string
 		Done  bool
 	}{
-		{50, "Pending", fmtUTC(p.CreatedAt), paymentStatusReached(p.Status, core.PaymentPending)},
+		{50, "Pending", FormatUTC(p.CreatedAt), paymentStatusReached(p.Status, core.PaymentPending)},
 		{250, "Processing", "", paymentStatusReached(p.Status, core.PaymentProcessing)},
 		{450, "Completed", "", paymentStatusReached(p.Status, core.PaymentCompleted)},
 	}
 
 	if !p.SettledAt.IsZero() {
-		steps[2].Time = fmtUTC(p.SettledAt)
+		steps[2].Time = FormatUTC(p.SettledAt)
 	}
 
 	for _, st := range steps {

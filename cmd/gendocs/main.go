@@ -1,4 +1,4 @@
-// Command gendocs generates docs/index.html from cmd/demo/project_data.json.
+// Command gendocs generates docs/index.html from bff/staff/project_data.json.
 package main
 
 import (
@@ -128,7 +128,7 @@ const tmpl = `<!DOCTYPE html>
 `
 
 func main() {
-	dataPath := "cmd/demo/project_data.json"
+	dataPath := "bff/staff/project_data.json"
 	outPath := "docs/index.html"
 
 	data, err := os.ReadFile(dataPath)

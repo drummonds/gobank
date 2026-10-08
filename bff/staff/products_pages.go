@@ -1,4 +1,4 @@
-package main
+package staff
 
 import (
 	"context"
@@ -10,10 +10,10 @@ import (
 	"git.bytestone.uk/hum3/gobank/core"
 )
 
-// buildProductsHTML renders product cards for a given family, with each
+// BuildProductsHTML renders product cards for a given family, with each
 // product's book from the core. For savings, appends the BoE base rate
 // history graph.
-func buildProductsHTML(q core.StaffQueries, family gbp.ProductFamily) string {
+func BuildProductsHTML(q core.StaffQueries, family gbp.ProductFamily) string {
 	ctx := context.Background()
 	products, _ := q.Products(ctx)
 	pos, _ := q.Position(ctx)
@@ -36,7 +36,7 @@ func buildProductsHTML(q core.StaffQueries, family gbp.ProductFamily) string {
 		s.WriteString(fmt.Sprintf(`<div class="column"><strong>Rate:</strong> %.1f%%</div>`, p.Rate*100))
 		s.WriteString(fmt.Sprintf(`<div class="column"><strong>Terms:</strong> %s</div>`, p.Terms))
 		s.WriteString(fmt.Sprintf(`<div class="column"><strong>Accounts:</strong> %d</div>`, count))
-		s.WriteString(fmt.Sprintf(`<div class="column"><strong>Total:</strong> %s</div>`, fmtMoney(totalBal)))
+		s.WriteString(fmt.Sprintf(`<div class="column"><strong>Total:</strong> %s</div>`, FormatMoney(totalBal)))
 		s.WriteString(`</div></div>`)
 	}
 

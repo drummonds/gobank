@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"git.bytestone.uk/hum3/gobank/bff/staff"
 	"testing"
 
 	luca "git.bytestone.uk/hum3/go-luca"
@@ -44,8 +45,8 @@ func sumCustomerFigures(t *testing.T, ds *DemoState) (savings, lending, loanInte
 			}
 		}
 	}
-	depositInterest += poundsE7(accruedSavingsE7).Pence()
-	loanInterest += poundsE7(accruedLendingE7).Pence()
+	depositInterest += staff.PoundsE7(accruedSavingsE7).Pence()
+	loanInterest += staff.PoundsE7(accruedLendingE7).Pence()
 	return
 }
 

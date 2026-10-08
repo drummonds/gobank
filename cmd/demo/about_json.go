@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"git.bytestone.uk/hum3/gobank/bff/staff"
 	"time"
 
 	"git.bytestone.uk/hum3/gobank/bank"
@@ -85,7 +86,7 @@ func aboutStatus(q core.BookQueries, ds *DemoState) AboutStatus {
 		Schema:   appliedSchemaVersions(ds.db),
 		Settings: AboutSettings{DayLength: settings.DayLength.String(), MaxCustomers: settings.MaxCustomers},
 		Sim:      aboutSim(sim, ds.Progress()),
-		Position: AboutPosition{Day: pos.Day.Format("2006-01-02"), DayCount: pos.DayCount, Customers: pos.Customers, Savings: fmtMoney(pos.Savings), Lending: fmtMoney(pos.Lending)},
+		Position: AboutPosition{Day: pos.Day.Format("2006-01-02"), DayCount: pos.DayCount, Customers: pos.Customers, Savings: staff.FormatMoney(pos.Savings), Lending: staff.FormatMoney(pos.Lending)},
 	}
 	restarts := ds.Restarts(10)
 	for i, r := range restarts {
@@ -98,7 +99,7 @@ func aboutStatus(q core.BookQueries, ds *DemoState) AboutStatus {
 	return st
 }
 
-func aboutSim(sim SimStatus, last bank.DayProgress) AboutSim {
+func aboutSim(sim staff.SimStatus, last bank.DayProgress) AboutSim {
 	a := AboutSim{
 		Running: sim.Running, DayEndsIn: sim.DayEndsIn.Round(time.Second).String(),
 		Wall: sim.Wall.UTC().Format(time.RFC3339), Clock: sim.Clock.UTC().Format(time.RFC3339), Warp: sim.Warp,

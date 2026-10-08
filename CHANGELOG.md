@@ -2,6 +2,29 @@
 
 ## [Unreleased]
 
+ - Stage 6 story 1.6.3: the staff web is the package bff/staff, served by the BFF; the demo keeps the console
+
+### Changed
+- ADR-0002 stage 6 story 1.6.3, staff pages through the BFF. The staff
+  web is the package `bff/staff`: the layout, the role switch and the
+  PII authorisation, and the pages that read the bank through
+  `core.StaffQueries` and act on it through `core.Commands` (accounting,
+  products, customers, the payment detail, treasury including buying a
+  gilt, reports, about, models and the documentation), with the
+  dashboard's data sections and the money and chart formatting. The BFF
+  serves it for every path outside `/v1/` (`bff.Config.Staff`), without
+  the customer routes' security headers, so the BFF is the demo's
+  handler. The console (the dashboard and its controls, the payments
+  generator, settings, runtime, export and import, the explorer and
+  `/about.json`) stays in `cmd/demo` and mounts its pages on the site
+  (`Site.Handle`), rendering them in the layout through the site's
+  services, until story 1.6.4 moves it in. A pure move: every route and
+  page is as it was. `TestStaffWebKnowsOnlyTheCore` holds the package's
+  imports to the core, the embedded ADRs and its UI libraries; the root
+  module now requires lofigui, gogal and goldmark. The architecture
+  diagrams, the favicon and the project data the pages embed live under
+  `bff/staff/`.
+
 ## [0.21.0] - 2026-10-08
 
  - Stage 6 story 1.6.2: the customer web is the BFF's HTML; the demo's phone frame and open customer API are retired

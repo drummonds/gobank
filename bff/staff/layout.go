@@ -1,7 +1,8 @@
-package main
+package staff
 
-// LayoutModelBank is a custom navbar layout with multi-page navigation.
-const LayoutModelBank = `<!DOCTYPE html>
+// layout is the staff web's page: the navbar with the role switch and the
+// console's status, the content, and the footer with the version.
+const layout = `<!DOCTYPE html>
 <html>
 <head>
   <meta charset="utf-8">

@@ -4,6 +4,7 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"git.bytestone.uk/hum3/gobank/bff/staff"
 	"log"
 	"strconv"
 	"strings"
@@ -219,12 +220,12 @@ func renderRestarts(restarts []Restart) string {
 // at this start, red when they differ.
 func renderHandover(r Restart, previous *Restart) string {
 	if previous == nil || previous.StoppedAt.IsZero() || r.PreviousVersion != previous.Version {
-		return fmt.Sprintf(`<td>%d</td><td>%s</td>`, r.DayCount, groupThousands(strconv.Itoa(r.Customers)))
+		return fmt.Sprintf(`<td>%d</td><td>%s</td>`, r.DayCount, staff.GroupThousands(strconv.Itoa(r.Customers)))
 	}
 	class := ""
 	if !r.ResumedIntact(*previous) {
 		class = ` class="has-text-danger"`
 	}
 	return fmt.Sprintf(`<td%s>%d → %d</td><td%s>%s → %s</td>`, class, previous.StopDayCount, r.DayCount,
-		class, groupThousands(strconv.Itoa(previous.StopCustomers)), groupThousands(strconv.Itoa(r.Customers)))
+		class, staff.GroupThousands(strconv.Itoa(previous.StopCustomers)), staff.GroupThousands(strconv.Itoa(r.Customers)))
 }

@@ -4,6 +4,7 @@ import (
 	"database/sql"
 	"encoding/json"
 	"fmt"
+	"git.bytestone.uk/hum3/gobank/bff/staff"
 	"io"
 	"log/slog"
 	"net/http"
@@ -280,7 +281,7 @@ func benchBuildMux(ds *DemoState) *http.ServeMux {
 	mux := http.NewServeMux()
 
 	// The customer BFF — lightweight reads of one customer's screens
-	mux.Handle("/v1/", newAppBFF(ds.Bank, newAppLogin(ds.Bank, benchAppPassword), ds.DB, "/", "", slog.New(slog.NewTextHandler(io.Discard, nil))))
+	mux.Handle("/v1/", newAppBFF(ds.Bank, newAppLogin(ds.Bank, benchAppPassword), ds.DB, "/", "", nil, slog.New(slog.NewTextHandler(io.Discard, nil))))
 
 	// HTML renders — heavier, hold renderMu
 	mux.HandleFunc("GET /dashboard", func(w http.ResponseWriter, r *http.Request) {
@@ -292,14 +293,14 @@ func benchBuildMux(ds *DemoState) *http.ServeMux {
 	})
 	mux.HandleFunc("GET /accounting/pnl", func(w http.ResponseWriter, r *http.Request) {
 		renderMu.Lock()
-		html := buildPnLHTML(ds.Bank)
+		html := staff.BuildPnLHTML(ds.Bank)
 		renderMu.Unlock()
 		w.Header().Set("Content-Type", "text/html")
 		io.WriteString(w, html)
 	})
 	mux.HandleFunc("GET /customers", func(w http.ResponseWriter, r *http.Request) {
 		renderMu.Lock()
-		html := buildCustomersHTML(ds.Bank, 1, false)
+		html := staff.BuildCustomersHTML(ds.Bank, 1, false)
 		renderMu.Unlock()
 		w.Header().Set("Content-Type", "text/html")
 		io.WriteString(w, html)

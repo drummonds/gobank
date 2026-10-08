@@ -1,4 +1,4 @@
-package main
+package staff
 
 import (
 	"regexp"
@@ -20,7 +20,7 @@ func TestCustomerChartAxes(t *testing.T) {
 		}
 		svg := buildCustomerChartSVG(hist)
 
-		first, last := hist[0].Date.Format(chartDateFormat), hist[len(hist)-1].Date.Format(chartDateFormat)
+		first, last := hist[0].Date.Format(ChartDateFormat), hist[len(hist)-1].Date.Format(ChartDateFormat)
 		var leftmost, rightmost string
 		minX, maxX := 1e9, -1e9
 		for _, m := range svgTextRe.FindAllStringSubmatch(svg, -1) {

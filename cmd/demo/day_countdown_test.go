@@ -1,6 +1,7 @@
 package main
 
 import (
+	"git.bytestone.uk/hum3/gobank/bff/staff"
 	"strings"
 	"sync"
 	"testing"
@@ -43,12 +44,12 @@ func TestDayEndsInCountsDownWhileRunning(t *testing.T) {
 }
 
 func TestDayTileShowsCountdown(t *testing.T) {
-	d := DashData{Sim: SimStatus{Running: true, DayLength: 2 * time.Hour, DayEndsIn: 62*time.Minute + 3*time.Second}}
-	html := renderDashContent(d)
+	d := staff.DashData{Sim: staff.SimStatus{Running: true, DayLength: 2 * time.Hour, DayEndsIn: 62*time.Minute + 3*time.Second}}
+	html := staff.BuildDashboardHTML(d)
 	if !strings.Contains(html, "ends in 1h2m3s") {
 		t.Errorf("day tile should count down to the end of the day:\n%s", html)
 	}
-	if html := renderDashContent(DashData{Sim: SimStatus{Running: true}}); strings.Contains(html, "ends in") {
+	if html := staff.BuildDashboardHTML(staff.DashData{Sim: staff.SimStatus{Running: true}}); strings.Contains(html, "ends in") {
 		t.Errorf("flat out there is no end of day to count down to")
 	}
 }

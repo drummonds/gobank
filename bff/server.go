@@ -52,6 +52,12 @@ type Config struct {
 	// customer IDs are listed. The tab uses it to state the demo password.
 	LoginNote string
 
+	// Staff is the staff web (bff/staff), served for every path outside
+	// /v1/ without the customer routes' security headers, since its pages
+	// load their own scripts and styles. nil answers those paths not
+	// found.
+	Staff http.Handler
+
 	Logger *slog.Logger
 	Now    func() time.Time
 }
@@ -132,8 +138,14 @@ func (s *Server) redirect(w http.ResponseWriter, r *http.Request, path string) {
 // frontDoor is the login screen with the deployment's note.
 func (s *Server) frontDoor(notice string) screen.Screen { return loginScreen(notice, s.cfg.LoginNote) }
 
-// ServeHTTP applies the security headers every response carries, then routes.
+// ServeHTTP routes the customer paths (/v1/) with the security headers
+// every one of their responses carries, and everything else to the staff
+// web.
 func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	if s.cfg.Staff != nil && r.URL.Path != "/v1" && !strings.HasPrefix(r.URL.Path, "/v1/") {
+		s.cfg.Staff.ServeHTTP(w, r)
+		return
+	}
 	h := w.Header()
 	h.Set("Cache-Control", "no-store")
 	h.Set("X-Content-Type-Options", "nosniff")

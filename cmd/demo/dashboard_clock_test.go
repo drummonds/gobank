@@ -1,6 +1,7 @@
 package main
 
 import (
+	"git.bytestone.uk/hum3/gobank/bff/staff"
 	"strings"
 	"testing"
 	"time"
@@ -19,7 +20,7 @@ func TestDashboardShowsBothClocks(t *testing.T) {
 	ds.clock = core.ClockFunc(func() time.Time { return time.Date(2020, 3, 4, 11, 30, 0, 0, time.UTC) })
 	ds.SetDayLength(2 * time.Hour)
 
-	html := renderDashContent(dashboardData(ds.Bank, ds))
+	html := staff.BuildDashboardHTML(dashboardData(ds.Bank, ds))
 	for _, want := range []string{
 		`<p class="heading">Wall clock</p><p class="title is-5">14:05:09</p>`,
 		`<p class="heading">Sim clock</p><p class="title is-5">4 Mar 2020 11:30:00</p><p class="heading">&times;12 wall pace</p>`,
@@ -30,7 +31,7 @@ func TestDashboardShowsBothClocks(t *testing.T) {
 	}
 
 	ds.SetDayLength(0)
-	html = renderDashContent(dashboardData(ds.Bank, ds))
+	html = staff.BuildDashboardHTML(dashboardData(ds.Bank, ds))
 	if want := `<p class="heading">flat out</p>`; !strings.Contains(html, want) {
 		t.Errorf("flat out, the sim clock's rate should read %s:\n%s", want, html)
 	}
