@@ -367,7 +367,7 @@ root module, `cmd/bff` is the service binary, and `app/` is the Flutter shell.
   dissolves `coreAdapter`; book and about read through `core`. Stories
   1.5.4 to 1.5.7 of the original breakdown, taken together and released
   once; the stage's done-when
-- **1.6** One BFF — the staff UI and the customer web render through the
+- **1.6** [x] One BFF — the staff UI and the customer web render through the
   BFF, which becomes the demo's one handler, and the WASM build serves that
   handler in the tab (ADR-0002 stage 6; absorbs item 5 and the HTML half of
   item 8, passkeys excluded). The BFF keeps no state of its own: the console
@@ -412,13 +412,16 @@ root module, `cmd/bff` is the service binary, and `app/` is the Flutter shell.
   (`Page`, `StaticPage`, `Fragment`, `Role`, `PII`, `Require`,
   `Redirect`) until 1.6.4; `TestStaffWebKnowsOnlyTheCore` holds the
   package to the core and its UI libraries
-- **1.6.4** the console through the BFF — the dashboard controls, settings,
+- **1.6.4** [x] the console through the BFF — the dashboard controls, settings,
   runtime, restarts, export and import and the DB explorer move to
   `bff/staff` over a `Console` interface (start, stop, advance, reset, add
   customers, the payments generator's send, run and stop, settings,
   restarts, export, import, explorer, the status `/about.json` reports)
   that `DemoState` implements, replacing `Site.Handle`. Done-when of the
-  stage
+  stage. Done: `staff.Config.Console`; the site serves the console's
+  pages only when given one; `internal/daylength` parses the day length
+  for the simulation and the settings page; `cmd/demo` holds no HTML and
+  no handler
 - **1.7** Read/write split — separate read and write handles
 - **1.8** Many processes — several BFFs, a generator and one workflow runner;
   deploys go blue-green (deployment level 3), ending the downtime

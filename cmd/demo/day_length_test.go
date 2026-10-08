@@ -1,6 +1,7 @@
 package main
 
 import (
+	"git.bytestone.uk/hum3/gobank/bff/staff"
 	"strings"
 	"testing"
 	"time"
@@ -20,7 +21,7 @@ func TestDayLengthSetting(t *testing.T) {
 		t.Errorf("negative day length should be ignored, got %v", got)
 	}
 
-	page := buildSettingsHTML(ds.Bank, ds.Settings(), false, nil)
+	page := staff.BuildSettingsHTML(ds.Bank, ds.Settings(), false, nil)
 	if !strings.Contains(page, `name="day_length"`) || !strings.Contains(page, `value="2h0m0s"`) {
 		t.Errorf("settings page should show the day length field with the current value:\n%s", page)
 	}
@@ -29,11 +30,11 @@ func TestDayLengthSetting(t *testing.T) {
 func TestDashboardShowsDayLength(t *testing.T) {
 	ds := NewDemoState()
 	bank := ds.Bank
-	if html := buildDashboardHTML(bank, ds); strings.Contains(html, "Day length") {
+	if html := staff.BuildDashboardHTML(staff.DashboardData(bank, ds)); strings.Contains(html, "Day length") {
 		t.Errorf("flat-out simulation should not show a day length")
 	}
 	ds.SetDayLength(2 * time.Hour)
-	if html := buildDashboardHTML(bank, ds); !strings.Contains(html, "Day length") || !strings.Contains(html, "2h0m0s") {
+	if html := staff.BuildDashboardHTML(staff.DashboardData(bank, ds)); !strings.Contains(html, "Day length") || !strings.Contains(html, "2h0m0s") {
 		t.Errorf("dashboard should show the day length when set")
 	}
 }

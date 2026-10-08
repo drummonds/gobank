@@ -3,11 +3,8 @@ package main
 import (
 	"database/sql"
 	"errors"
-	"fmt"
 	"git.bytestone.uk/hum3/gobank/bff/staff"
 	"log"
-	"strconv"
-	"strings"
 	"time"
 )
 
@@ -35,42 +32,9 @@ func nullTime(t time.Time) sql.NullTime {
 	return sql.NullTime{Time: t.UTC(), Valid: !t.IsZero()}
 }
 
-// Restart is one process's time over the database.
-type Restart struct {
-	Version   string
-	StartedAt time.Time
-	DayCount  int // the run at start
-	Customers int
-
-	// The process this one followed. PreviousVersion is empty when that
-	// process left no record: a release from before this table, or a
-	// rollback to one. PreviousStoppedAt is zero when the stop time is
-	// unknown, because the previous process did not stop cleanly.
-	PreviousVersion   string
-	PreviousStoppedAt time.Time
-
-	// Set when this process stopped cleanly.
-	StoppedAt     time.Time
-	StopDayCount  int
-	StopCustomers int
-}
-
-// Downtime is how long the bank was unserved before this start: from the
-// previous process's stop (or, for a previous process that kept no
-// record, its last write of the run row) to this start. ok is false when
-// the previous stop time is unknown.
-func (r Restart) Downtime() (d time.Duration, ok bool) {
-	if r.PreviousStoppedAt.IsZero() {
-		return 0, false
-	}
-	return r.StartedAt.Sub(r.PreviousStoppedAt), true
-}
-
-// ResumedIntact reports that this start found the run where previous
-// left it: the same day and the same customers.
-func (r Restart) ResumedIntact(previous Restart) bool {
-	return !previous.StoppedAt.IsZero() && r.DayCount == previous.StopDayCount && r.Customers == previous.StopCustomers
-}
+// Restart is one process's time over the database: the row of the
+// restart record, as the staff web shows it.
+type Restart = staff.Restart
 
 // recordStart inserts this process's row. runSavedAt is when the run row
 // was last written before this process touched it: a write after the last
@@ -172,60 +136,4 @@ func (ds *DemoState) RecordStop() {
 	db, id := ds.db, ds.restartID
 	ds.mu.Unlock()
 	recordStop(db, id, pos.DayCount, pos.Customers)
-}
-
-// renderRestarts is the settings page's restart record: each start
-// against the stop before it, so an upgrade's downtime and what it
-// carried across are read off the console.
-func renderRestarts(restarts []Restart) string {
-	var s strings.Builder
-	s.WriteString(`<h3 class="title is-5 mt-5">Restarts</h3>`)
-	s.WriteString(`<p class="help mb-2">Each process start against the stop before it. Downtime is from the previous stop (or its last write of the run, for a release that kept no record) to this start; day and customers are at that stop and at this start.</p>`)
-	s.WriteString(`<table class="table is-narrow is-fullwidth"><thead><tr><th>Started</th><th>Version</th><th>Previous</th><th>Downtime</th><th>Day</th><th>Customers</th><th>Stopped</th></tr></thead><tbody>`)
-	for i, r := range restarts {
-		var previous *Restart
-		if i+1 < len(restarts) {
-			previous = &restarts[i+1]
-		}
-		s.WriteString(`<tr>`)
-		s.WriteString(fmt.Sprintf(`<td>%s</td><td>%s</td>`, r.StartedAt.Format("2 Jan 15:04:05"), r.Version))
-		switch {
-		case r.PreviousVersion != "":
-			s.WriteString(fmt.Sprintf(`<td>%s</td>`, r.PreviousVersion))
-		case !r.PreviousStoppedAt.IsZero():
-			s.WriteString(`<td class="has-text-grey">unrecorded</td>`)
-		default:
-			s.WriteString(`<td class="has-text-grey">—</td>`)
-		}
-		if d, ok := r.Downtime(); ok {
-			s.WriteString(fmt.Sprintf(`<td>%s</td>`, d.Round(time.Second)))
-		} else if r.PreviousVersion != "" {
-			s.WriteString(`<td class="has-text-danger">unknown (unclean stop)</td>`)
-		} else {
-			s.WriteString(`<td class="has-text-grey">—</td>`)
-		}
-		s.WriteString(renderHandover(r, previous))
-		if r.StoppedAt.IsZero() {
-			s.WriteString(`<td class="has-text-grey">—</td>`)
-		} else {
-			s.WriteString(fmt.Sprintf(`<td>%s</td>`, r.StoppedAt.Format("2 Jan 15:04:05")))
-		}
-		s.WriteString(`</tr>`)
-	}
-	s.WriteString(`</tbody></table>`)
-	return s.String()
-}
-
-// renderHandover is the day and customers cells: at the previous stop and
-// at this start, red when they differ.
-func renderHandover(r Restart, previous *Restart) string {
-	if previous == nil || previous.StoppedAt.IsZero() || r.PreviousVersion != previous.Version {
-		return fmt.Sprintf(`<td>%d</td><td>%s</td>`, r.DayCount, staff.GroupThousands(strconv.Itoa(r.Customers)))
-	}
-	class := ""
-	if !r.ResumedIntact(*previous) {
-		class = ` class="has-text-danger"`
-	}
-	return fmt.Sprintf(`<td%s>%d → %d</td><td%s>%s → %s</td>`, class, previous.StopDayCount, r.DayCount,
-		class, staff.GroupThousands(strconv.Itoa(previous.StopCustomers)), staff.GroupThousands(strconv.Itoa(r.Customers)))
 }

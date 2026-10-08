@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"git.bytestone.uk/hum3/gobank/bank"
 	"git.bytestone.uk/hum3/gobank/bank/schema"
+	"git.bytestone.uk/hum3/gobank/bff/staff"
 	"log"
 	"time"
 )
@@ -102,6 +103,10 @@ func tableExists(db *sql.DB, name string) bool {
 	_, err := db.Exec(fmt.Sprintf(`SELECT 1 FROM %s WHERE 1 = 0`, name))
 	return err == nil
 }
+
+// SchemaVersion is the version a component's tables are at, as the
+// staff web reports it.
+type SchemaVersion = staff.SchemaVersion
 
 // appliedSchemaVersions is the version each component's tables are at,
 // as the about endpoint reports it.

@@ -1,14 +1,14 @@
 // Package staff is the staff web of the Model Bank: the pages a member of
 // staff reads the bank through (accounting, products, customers, payments,
 // treasury, reports, about and the documentation), the role switch and the
-// PII authorisation that gate what they see, and the layout every page is
-// rendered in (ADR-0002 stage 6, story 1.6.3).
+// PII authorisation that gate what they see, the layout every page is
+// rendered in, and the simulation console when there is one (ADR-0002
+// stage 6, stories 1.6.3 and 1.6.4).
 //
-// It reads the bank through core.StaffQueries and acts on it through
-// core.Commands, and knows nothing else of it. The BFF mounts it beside the
-// customer routes (bff.Config.Staff). Until story 1.6.4 brings the console
-// here, the console mounts its own pages on the site (Handle) and renders
-// them in the layout (Page).
+// It reads the bank through core.StaffQueries, acts on it through
+// core.Commands and drives the simulation through Console, and knows
+// nothing else of it. The BFF mounts it beside the customer routes
+// (bff.Config.Staff).
 package staff
 
 import (
@@ -20,6 +20,7 @@ import (
 	"strings"
 	"time"
 
+	dbexplorer "git.bytestone.uk/hum3/go-dbexplorer"
 	gbp "git.bytestone.uk/hum3/gobank-products"
 	"git.bytestone.uk/hum3/gobank/core"
 	"git.bytestone.uk/hum3/lofigui"
@@ -38,9 +39,9 @@ type Config struct {
 	Scope   string
 	Version string // shown in the footer
 
-	// Status is the console's status, "Running" or "Stopped", for the
-	// layout's tag and its whole-page poll; nil is "Stopped".
-	Status func() string
+	// Console is the simulation console; its pages are served when one is
+	// given. The layout's status tag and whole-page poll follow it.
+	Console Console
 
 	// Components and Debt are the component registry the documentation
 	// page renders.
@@ -52,19 +53,17 @@ type Config struct {
 
 // Site is the staff web as one http.Handler.
 type Site struct {
-	cfg  Config
-	mux  *http.ServeMux
-	auth *AuthStore
-	ctrl *lofigui.Controller
+	cfg     Config
+	mux     *http.ServeMux
+	auth    *AuthStore
+	ctrl    *lofigui.Controller
+	catalog dbexplorer.StaticCatalog
 }
 
 // New builds the site and its routes.
 func New(cfg Config) *Site {
 	if cfg.Scope == "" {
 		cfg.Scope = "/"
-	}
-	if cfg.Status == nil {
-		cfg.Status = func() string { return "Stopped" }
 	}
 	if cfg.PIITTL == 0 {
 		cfg.PIITTL = 5 * time.Minute
@@ -73,46 +72,51 @@ func New(cfg Config) *Site {
 	if err != nil {
 		panic(err)
 	}
-	s := &Site{cfg: cfg, mux: http.NewServeMux(), auth: NewAuthStore(cfg.PIITTL), ctrl: ctrl}
+	s := &Site{cfg: cfg, mux: http.NewServeMux(), auth: NewAuthStore(cfg.PIITTL), ctrl: ctrl, catalog: explorerCatalog(cfg.Components)}
 	s.routes()
+	if cfg.Console != nil {
+		s.consoleRoutes()
+	}
 	return s
 }
 
 func (s *Site) ServeHTTP(w http.ResponseWriter, r *http.Request) { s.mux.ServeHTTP(w, r) }
 
-// Handle mounts a page of the console's on the site, until story 1.6.4
-// brings the console here. pattern is a net/http pattern.
-func (s *Site) Handle(pattern string, h http.HandlerFunc) { s.mux.HandleFunc(pattern, h) }
+// status is the console's status for the layout's tag and its whole-page
+// poll: "Running" while anything is going, else "Stopped".
+func (s *Site) status() string {
+	if s.cfg.Console != nil && s.cfg.Console.SimStatus().Busy() {
+		return "Running"
+	}
+	return "Stopped"
+}
 
-// --- services a page uses ---
+// --- what a page uses ---
 
-// Session is the staff session the request belongs to.
-func (s *Site) Session(w http.ResponseWriter, r *http.Request) string { return sessionID(w, r) }
-
-// Role is the role the request's session has chosen.
-func (s *Site) Role(w http.ResponseWriter, r *http.Request) Role {
+// role is the role the request's session has chosen.
+func (s *Site) role(w http.ResponseWriter, r *http.Request) Role {
 	return s.auth.GetRole(sessionID(w, r))
 }
 
-// PII says whether the request's session may see personal data.
-func (s *Site) PII(w http.ResponseWriter, r *http.Request) bool {
+// pii says whether the request's session may see personal data.
+func (s *Site) pii(w http.ResponseWriter, r *http.Request) bool {
 	return s.auth.EffectivePII(sessionID(w, r))
 }
 
-// Require answers 403 and returns false unless the session's role may
+// require answers 403 and returns false unless the session's role may
 // take the action.
-func (s *Site) Require(w http.ResponseWriter, r *http.Request, action string) bool {
-	if !s.Role(w, r).Can(action) {
+func (s *Site) require(w http.ResponseWriter, r *http.Request, action string) bool {
+	if !s.role(w, r).Can(action) {
 		http.Error(w, "Forbidden", http.StatusForbidden)
 		return false
 	}
 	return true
 }
 
-// Redirect sends the browser to a scope-relative path. A target taken
+// redirect sends the browser to a scope-relative path. A target taken
 // from a form is only honoured when it is such a path: anything with a
 // leading slash or a scheme lands on the dashboard.
-func (s *Site) Redirect(w http.ResponseWriter, r *http.Request, target string) {
+func (s *Site) redirect(w http.ResponseWriter, r *http.Request, target string) {
 	if !inScope(target) {
 		target = ""
 	}
@@ -125,9 +129,9 @@ func inScope(target string) bool {
 	return target == "" || (!strings.HasPrefix(target, "/") && !strings.Contains(target, ":") && !strings.HasPrefix(target, "\\"))
 }
 
-// Fragment serves content alone to an HTMX request and returns true; a
+// fragment serves content alone to an HTMX request and returns true; a
 // page request gets false and renders the whole page.
-func (s *Site) Fragment(w http.ResponseWriter, r *http.Request, content string) bool {
+func (s *Site) fragment(w http.ResponseWriter, r *http.Request, content string) bool {
 	if r.Header.Get("HX-Request") == "true" && r.Header.Get("HX-Boosted") != "true" {
 		w.Header().Set("Content-Type", "text/html; charset=utf-8")
 		fmt.Fprint(w, content)
@@ -136,16 +140,16 @@ func (s *Site) Fragment(w http.ResponseWriter, r *http.Request, content string) 
 	return false
 }
 
-// Page renders content in the layout; while the console runs the layout
-// re-fetches the whole page every second.
-func (s *Site) Page(w http.ResponseWriter, r *http.Request, content string) {
-	s.render(w, r, content, s.cfg.Status())
+// fullPage renders content in the layout; while the console runs the
+// layout re-fetches the whole page every second.
+func (s *Site) fullPage(w http.ResponseWriter, r *http.Request, content string) {
+	s.render(w, r, content, s.status())
 }
 
-// StaticPage renders content in the layout with the whole-page poll off,
+// staticPage renders content in the layout with the whole-page poll off,
 // so forms on it keep what is typed; the page polls its own fragments if
 // anything.
-func (s *Site) StaticPage(w http.ResponseWriter, r *http.Request, content string) {
+func (s *Site) staticPage(w http.ResponseWriter, r *http.Request, content string) {
 	s.render(w, r, content, "Stopped")
 }
 
@@ -156,7 +160,7 @@ func (s *Site) render(w http.ResponseWriter, r *http.Request, content, polling s
 		"controller_name": s.ctrl.Name,
 		"results":         template.HTML(content),
 		"polling":         polling,
-		"role":            string(s.Role(w, r)),
+		"role":            string(s.role(w, r)),
 		"scope":           s.cfg.Scope,
 		"path":            strings.TrimPrefix(r.URL.Path, "/"),
 	})
@@ -170,10 +174,10 @@ func (s *Site) page(w http.ResponseWriter, r *http.Request, build func() string)
 		return
 	}
 	content := build()
-	if s.Fragment(w, r, content) {
+	if s.fragment(w, r, content) {
 		return
 	}
-	s.Page(w, r, content)
+	s.fullPage(w, r, content)
 }
 
 // --- routes ---
@@ -185,33 +189,33 @@ func (s *Site) routes() {
 	// Role and PII
 	mux.HandleFunc("/role", func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != "POST" {
-			s.Redirect(w, r, "")
+			s.redirect(w, r, "")
 			return
 		}
 		r.ParseForm()
 		role := r.FormValue("role")
 		if !ValidRole(role) {
-			s.Redirect(w, r, "")
+			s.redirect(w, r, "")
 			return
 		}
 		s.auth.SetRole(sessionID(w, r), Role(role))
-		s.Redirect(w, r, r.FormValue("redirect"))
+		s.redirect(w, r, r.FormValue("redirect"))
 	})
 	mux.HandleFunc("/auth/authorize", func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != "POST" {
-			s.Redirect(w, r, "")
+			s.redirect(w, r, "")
 			return
 		}
 		s.auth.Authorize(sessionID(w, r))
-		s.Redirect(w, r, r.FormValue("redirect"))
+		s.redirect(w, r, r.FormValue("redirect"))
 	})
 	mux.HandleFunc("/auth/revoke", func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != "POST" {
-			s.Redirect(w, r, "")
+			s.redirect(w, r, "")
 			return
 		}
 		s.auth.Revoke(sessionID(w, r))
-		s.Redirect(w, r, r.FormValue("redirect"))
+		s.redirect(w, r, r.FormValue("redirect"))
 	})
 
 	// Accounting
@@ -232,7 +236,7 @@ func (s *Site) routes() {
 
 	// Customers
 	mux.HandleFunc("/customers", func(w http.ResponseWriter, r *http.Request) {
-		s.page(w, r, func() string { return BuildCustomersHTML(bank, pageParam(r, "page"), s.PII(w, r)) })
+		s.page(w, r, func() string { return BuildCustomersHTML(bank, pageParam(r, "page"), s.pii(w, r)) })
 	})
 	mux.HandleFunc("/customers/", func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != "GET" {
@@ -241,10 +245,10 @@ func (s *Site) routes() {
 		}
 		rest := strings.TrimPrefix(r.URL.Path, "/customers/")
 		if rest == "" {
-			s.Redirect(w, r, "customers")
+			s.redirect(w, r, "customers")
 			return
 		}
-		pii := s.PII(w, r)
+		pii := s.pii(w, r)
 		txPage := pageParam(r, "txpage")
 		// /customers/{id}/account/{idx}
 		parts := strings.SplitN(rest, "/", 3)
@@ -267,7 +271,7 @@ func (s *Site) routes() {
 			http.NotFound(w, r)
 			return
 		}
-		s.page(w, r, func() string { return BuildPaymentDetailHTML(bank, id, s.PII(w, r)) })
+		s.page(w, r, func() string { return BuildPaymentDetailHTML(bank, id, s.pii(w, r)) })
 	})
 
 	// Reports
@@ -275,15 +279,15 @@ func (s *Site) routes() {
 		s.page(w, r, func() string { return BuildChartsHTML(bank) })
 	})
 	mux.HandleFunc("/reports/bbsi", func(w http.ResponseWriter, r *http.Request) {
-		s.page(w, r, func() string { return BuildBBSIHTML(bank, s.PII(w, r)) })
+		s.page(w, r, func() string { return BuildBBSIHTML(bank, s.pii(w, r)) })
 	})
 	mux.HandleFunc("/reports/customer-view", func(w http.ResponseWriter, r *http.Request) {
 		id := r.URL.Query().Get("id")
 		if id == "" {
-			s.Redirect(w, r, "customers")
+			s.redirect(w, r, "customers")
 			return
 		}
-		s.page(w, r, func() string { return BuildCustomerViewHTML(bank, id, s.PII(w, r)) })
+		s.page(w, r, func() string { return BuildCustomerViewHTML(bank, id, s.pii(w, r)) })
 	})
 
 	// Treasury
@@ -298,10 +302,10 @@ func (s *Site) routes() {
 	})
 	mux.HandleFunc("/treasury/gilts/buy", func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != "POST" {
-			s.Redirect(w, r, "treasury/gilts")
+			s.redirect(w, r, "treasury/gilts")
 			return
 		}
-		if !s.Require(w, r, "buy_gilt") {
+		if !s.require(w, r, "buy_gilt") {
 			return
 		}
 		r.ParseForm()
@@ -316,7 +320,7 @@ func (s *Site) routes() {
 		if err := s.cfg.Commands.BuyGilt(r.Context(), tenor, faceValue); err != nil {
 			log.Printf("buy gilt %s %d: %v", tenor, faceValue, err)
 		}
-		s.Redirect(w, r, "treasury/gilts")
+		s.redirect(w, r, "treasury/gilts")
 	})
 
 	// About

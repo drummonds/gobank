@@ -23,6 +23,7 @@ func TestSimulationImportsOnlyTheCore(t *testing.T) {
 		"git.bytestone.uk/hum3/gobank/core",
 		"git.bytestone.uk/hum3/go-luca",
 		"git.bytestone.uk/hum3/gobank/internal/yield",
+		"git.bytestone.uk/hum3/gobank/internal/daylength",
 	}
 	fset := token.NewFileSet()
 	for _, name := range files {

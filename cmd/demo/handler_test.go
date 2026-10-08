@@ -1,6 +1,7 @@
 package main
 
 import (
+	"git.bytestone.uk/hum3/gobank/bff/staff"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
@@ -15,6 +16,9 @@ import (
 // stay inside whatever scope it is given: links, form actions and HTMX
 // polls are scope-relative against a <base>, and every redirect carries
 // the scope.
+
+// newSite is the staff web over a demo, for the pages tested on their own.
+func newSite(ds *DemoState) *staff.Site { return staff.New(siteConfig(ds, "test", "/")) }
 
 // staffPages is every GET page the staff UI serves.
 var staffPages = []string{

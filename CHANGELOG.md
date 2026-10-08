@@ -2,7 +2,29 @@
 
 ## [Unreleased]
 
+ - Stage 6 story 1.6.4: the console is served by the staff web over a Console interface; stage 6 (One BFF) is complete
+
+### Changed
+- ADR-0002 stage 6 story 1.6.4, the console through the BFF. The
+  simulation console's pages (the dashboard and its controls, the
+  payments generator, settings and the restart record, the runtime page,
+  export and import, the DB explorer and `/about.json`) are served by the
+  staff web (`bff/staff`) over `staff.Console`, an interface `DemoState`
+  implements: start, stop, advance, reset, add customers, the payments
+  generator, settings, the restart record, the runtime (process, data
+  store, schema versions, day in progress), export, import and the
+  database for the explorer. The site serves the console's pages only
+  when given a console. `Site.Handle` and the exported page services are
+  gone. The day-length parser is `internal/daylength`, shared by the
+  simulation and the settings page. Stage 6's done-when holds: `cmd/demo`
+  has no HTML and no handler, only wiring, the simulation and the
+  console, and the app, the customer web and the staff web are all served
+  by the BFF, in the tab as on a server. The JSON at `/about.json` is
+  unchanged.
+
 ## [0.23.0] - 2026-10-09
+
+ - No changes: tagged before story 1.6.4 was merged
 
 ## [0.22.0] - 2026-10-08
 

@@ -1,6 +1,7 @@
 package main
 
 import (
+	"git.bytestone.uk/hum3/gobank/bff/staff"
 	"strings"
 	"testing"
 	"time"
@@ -22,7 +23,7 @@ func TestSettingsFormIsStaticWhileStatusPolls(t *testing.T) {
 	ds := NewDemoState()
 	bank := ds.Bank
 
-	polled := buildSettingsHTML(bank, ds.Settings(), true, nil)
+	polled := staff.BuildSettingsHTML(bank, ds.Settings(), true, nil)
 	found := strings.Contains(polled, `id="settings-status"`)
 	hx := strings.Index(polled, `hx-get="settings/status"`)
 	form := strings.Index(polled, `<form`)
@@ -36,11 +37,11 @@ func TestSettingsFormIsStaticWhileStatusPolls(t *testing.T) {
 		t.Errorf("form missing the day length field")
 	}
 
-	still := buildSettingsHTML(bank, ds.Settings(), false, nil)
+	still := staff.BuildSettingsHTML(bank, ds.Settings(), false, nil)
 	if strings.Contains(still, "hx-") {
 		t.Errorf("a page that is not polling should carry no HTMX attributes")
 	}
-	if !strings.Contains(renderSettingsStatus(bank, true), `hx-get="settings/status"`) {
+	if !strings.Contains(staff.RenderSettingsStatus(bank, true), `hx-get="settings/status"`) {
 		t.Errorf("the status fragment served to the poll must keep polling")
 	}
 }

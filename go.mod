@@ -3,6 +3,7 @@ module git.bytestone.uk/hum3/gobank
 go 1.26.0
 
 require (
+	git.bytestone.uk/hum3/go-dbexplorer v0.4.0
 	git.bytestone.uk/hum3/go-luca v0.3.1
 	git.bytestone.uk/hum3/go-postgres v0.7.0
 	git.bytestone.uk/hum3/gobank-products v0.3.0

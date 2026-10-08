@@ -192,7 +192,7 @@ func BenchmarkBaselineDashboardRender(b *testing.B) {
 
 	b.ResetTimer()
 	for b.Loop() {
-		_ = buildDashboardHTML(ds.Bank, ds)
+		_ = staff.BuildDashboardHTML(staff.DashboardData(ds.Bank, ds))
 	}
 	b.StopTimer()
 	ds.db.Close()
@@ -286,7 +286,7 @@ func benchBuildMux(ds *DemoState) *http.ServeMux {
 	// HTML renders — heavier, hold renderMu
 	mux.HandleFunc("GET /dashboard", func(w http.ResponseWriter, r *http.Request) {
 		renderMu.Lock()
-		html := buildDashboardHTML(ds.Bank, ds)
+		html := staff.BuildDashboardHTML(staff.DashboardData(ds.Bank, ds))
 		renderMu.Unlock()
 		w.Header().Set("Content-Type", "text/html")
 		io.WriteString(w, html)

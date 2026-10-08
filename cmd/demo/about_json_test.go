@@ -2,6 +2,7 @@ package main
 
 import (
 	"encoding/json"
+	"git.bytestone.uk/hum3/gobank/bff/staff"
 	"strings"
 	"testing"
 	"time"
@@ -25,7 +26,7 @@ func TestAboutJSONReportsTheProcessForAnotherProgram(t *testing.T) {
 	second := newDemoStateOn(first.db, "")
 	second.SetDayLength(2 * time.Hour)
 
-	got := aboutStatus(second.Bank, second)
+	got := staff.AboutStatusOf(second.Bank, second, version)
 	if got.Version != "v2" || got.Settings.DayLength != "2h0m0s" {
 		t.Errorf("version %q day length %q", got.Version, got.Settings.DayLength)
 	}
@@ -72,7 +73,7 @@ func TestAboutJSONReportsTheRates(t *testing.T) {
 	ds.SetProgressClock(clock)
 	ds.clock = fixedBankClock(ds) // banking stamps must not step the wall clock
 
-	got := aboutStatus(ds.Bank, ds)
+	got := staff.AboutStatusOf(ds.Bank, ds, version)
 	if got.Sim.CustomersPerSec != 0 || got.Sim.AccountDaysPer12h != 0 || got.Sim.AddingCustomers {
 		t.Fatalf("before anything: %+v", got.Sim)
 	}
@@ -85,7 +86,7 @@ func TestAboutJSONReportsTheRates(t *testing.T) {
 	ds.clock = ds.sim.Clock() // the day follows the simulation's clock again
 	ds.AdvanceDay()
 
-	got = aboutStatus(ds.Bank, ds)
+	got = staff.AboutStatusOf(ds.Bank, ds, version)
 	if got.Sim.AddingCustomers || got.Sim.CustomersPerSec != 5 { // batch start and end are the only clock readings: 5 customers in 1s
 		t.Errorf("after a batch add: adding %v, %v customers/s; want not adding at 5/s", got.Sim.AddingCustomers, got.Sim.CustomersPerSec)
 	}

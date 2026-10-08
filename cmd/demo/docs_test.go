@@ -59,7 +59,7 @@ func TestADRPage(t *testing.T) {
 // knows whose table it is reading.
 func TestExplorerShowsOwnership(t *testing.T) {
 	ds := NewDemoState()
-	page := ds.BuildExplorerPage(t.Context(), "/", "/internal/explorer")
+	page := newSite(ds).BuildExplorerPage(t.Context(), "/internal/explorer")
 	if !strings.Contains(page, `>customer_accounts</a> <a class="tag is-light" href="/internal/explorer/c/customers">customers</a>`) {
 		t.Errorf("explorer index does not tag customer_accounts with its owner: %.300s", page)
 	}
@@ -72,7 +72,7 @@ func TestExplorerShowsOwnership(t *testing.T) {
 // the contract views it publishes (ADR-0001).
 func TestExplorerComponentScope(t *testing.T) {
 	ds := NewDemoState()
-	page := ds.BuildExplorerPage(t.Context(), "/", "/internal/explorer/c/payments")
+	page := newSite(ds).BuildExplorerPage(t.Context(), "/internal/explorer/c/payments")
 	for _, want := range []string{`href="/internal/explorer/c/payments/payments"`, `href="/internal/explorer/c/payments/contract_payments"`} {
 		if !strings.Contains(page, want) {
 			t.Errorf("payments scope missing %q", want)

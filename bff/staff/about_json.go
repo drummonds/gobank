@@ -1,11 +1,9 @@
-package main
+package staff
 
 import (
 	"context"
-	"git.bytestone.uk/hum3/gobank/bff/staff"
 	"time"
 
-	"git.bytestone.uk/hum3/gobank/bank"
 	"git.bytestone.uk/hum3/gobank/core"
 )
 
@@ -21,12 +19,6 @@ type AboutStatus struct {
 	Sim      AboutSim        `json:"sim"`
 	Position AboutPosition   `json:"position"`
 	Restarts []AboutRestart  `json:"restarts"`
-}
-
-// SchemaVersion is the version a component's tables are at.
-type SchemaVersion struct {
-	Component string `json:"component"`
-	Version   int    `json:"version"`
 }
 
 // AboutSettings are the console settings.
@@ -77,18 +69,21 @@ type AboutRestart struct {
 	StopCustomers     int        `json:"stop_customers"`
 }
 
-func aboutStatus(q core.BookQueries, ds *DemoState) AboutStatus {
+// AboutStatusOf gathers the status: the bank's position through the core,
+// the rest from the console.
+func AboutStatusOf(q core.BookQueries, c Console, version string) AboutStatus {
 	pos, _ := q.Position(context.Background())
-	sim := ds.SimStatus()
-	settings := ds.Settings()
+	sim := c.SimStatus()
+	settings := c.Settings()
+	rt := c.Runtime()
 	st := AboutStatus{
 		Version:  version,
-		Schema:   appliedSchemaVersions(ds.db),
+		Schema:   rt.Schema,
 		Settings: AboutSettings{DayLength: settings.DayLength.String(), MaxCustomers: settings.MaxCustomers},
-		Sim:      aboutSim(sim, ds.Progress()),
-		Position: AboutPosition{Day: pos.Day.Format("2006-01-02"), DayCount: pos.DayCount, Customers: pos.Customers, Savings: staff.FormatMoney(pos.Savings), Lending: staff.FormatMoney(pos.Lending)},
+		Sim:      aboutSim(sim, rt.Progress),
+		Position: AboutPosition{Day: pos.Day.Format("2006-01-02"), DayCount: pos.DayCount, Customers: pos.Customers, Savings: FormatMoney(pos.Savings), Lending: FormatMoney(pos.Lending)},
 	}
-	restarts := ds.Restarts(10)
+	restarts := c.Restarts(10)
 	for i, r := range restarts {
 		var previous *Restart
 		if i+1 < len(restarts) {
@@ -99,7 +94,7 @@ func aboutStatus(q core.BookQueries, ds *DemoState) AboutStatus {
 	return st
 }
 
-func aboutSim(sim staff.SimStatus, last bank.DayProgress) AboutSim {
+func aboutSim(sim SimStatus, last DayProgress) AboutSim {
 	a := AboutSim{
 		Running: sim.Running, DayEndsIn: sim.DayEndsIn.Round(time.Second).String(),
 		Wall: sim.Wall.UTC().Format(time.RFC3339), Clock: sim.Clock.UTC().Format(time.RFC3339), Warp: sim.Warp,

@@ -1,6 +1,7 @@
 package main
 
 import (
+	"git.bytestone.uk/hum3/gobank/bff/staff"
 	"strings"
 	"testing"
 )
@@ -53,8 +54,8 @@ func TestMemoryLimitStopsSimulation(t *testing.T) {
 func TestAboutShowsConfiguredMemoryLimit(t *testing.T) {
 	ds := NewDemoState()
 	ds.SetMemoryLimit(6 << 30)
-	html := ds.BuildRuntimeHTML()
-	if want := formatBytes(6 << 30); !strings.Contains(html, want) {
+	html := staff.BuildRuntimeHTML(ds.Bank, ds.Runtime(), version)
+	if want := staff.FormatBytes(6 << 30); !strings.Contains(html, want) {
 		t.Errorf("runtime page should show the %s auto-stop threshold:\n%s", want, html)
 	}
 }
@@ -63,7 +64,7 @@ func TestAboutShowsConfiguredMemoryLimit(t *testing.T) {
 // at, as /about.json does, so an operator can read it without the JSON.
 func TestRuntimeShowsSchemaVersionPerComponent(t *testing.T) {
 	ds := NewDemoState()
-	html := ds.BuildRuntimeHTML()
+	html := staff.BuildRuntimeHTML(ds.Bank, ds.Runtime(), version)
 	for _, want := range []string{
 		`<tr><th>Schema: simulation</th><td>4</td></tr>`,
 		`<tr><th>Schema: products</th><td>2</td></tr>`,

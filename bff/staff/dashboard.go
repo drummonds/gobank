@@ -21,35 +21,8 @@ type (
 	NIMPoint      = core.NIMPoint
 )
 
-// SimStatus is the simulation console's own state: what is running and
-// how fast. It is not part of the bank (ADR-0002: the console drives the
-// generators) and so not a core query; the console fills it in.
-type SimStatus struct {
-	Running             bool
-	AddingCust          bool
-	AddingProgress      int
-	AddingTarget        int
-	CustomersPerSec     float64 // live rate of the running batch add
-	LastCustomersPerSec float64 // rate of the last finished batch add
-	AccountDaysPer12h   int64   // accounts the pass would project in 12h at the measured whole-day rate
-	MemoryExceeded      bool
-	DayLength           time.Duration // wall-clock length of a simulated day; zero is flat out
-	DayEndsIn           time.Duration // what is left of the day in progress; zero when flat out or stopped
-	Wall                time.Time     // the wall clock now
-	Clock               time.Time     // the bank's clock now: simulated time
-	Warp                float64       // simulated seconds per wall second; zero when flat out
-}
-
-// DashData is what the dashboard shows: the bank's position and history
-// through the core, and the console's own state.
-type DashData struct {
-	Sim     SimStatus
-	Bank    core.Position
-	History core.History
-}
-
-// BuildDashboardHTML renders the dashboard's data sections. The console
-// puts its controls after them (ADR-0002 story 1.6.4 brings those here).
+// BuildDashboardHTML renders the dashboard's data sections, without the
+// console's controls.
 func BuildDashboardHTML(d DashData) string {
 	var s strings.Builder
 

@@ -1,6 +1,7 @@
 package main
 
 import (
+	"git.bytestone.uk/hum3/gobank/bff/staff"
 	"testing"
 	"time"
 )
@@ -30,7 +31,7 @@ func TestBrowserScenarioAddCustomersDuringSim(t *testing.T) {
 					return
 				default:
 				}
-				_ = buildDashboardHTML(ds.Bank, ds)
+				_ = staff.BuildDashboardHTML(staff.DashboardData(ds.Bank, ds))
 				var count int
 				if err := ds.db.QueryRow(`SELECT COUNT(*) FROM movements`).Scan(&count); err != nil {
 					select {
