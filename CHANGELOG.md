@@ -2,6 +2,8 @@
 
 ## [Unreleased]
 
+## [0.21.0] - 2026-10-08
+
  - Stage 6 story 1.6.2: the customer web is the BFF's HTML; the demo's phone frame and open customer API are retired
 
 ### Changed
