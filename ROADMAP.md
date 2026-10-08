@@ -422,6 +422,29 @@ root module, `cmd/bff` is the service binary, and `app/` is the Flutter shell.
   pages only when given one; `internal/daylength` parses the day length
   for the simulation and the settings page; `cmd/demo` holds no HTML and
   no handler
+- **UUID columns across the family** — every column that holds a GUID is
+  typed `UUID`, not `TEXT` or `VARCHAR(36)`: 16 bytes instead of 36 in
+  every row and index (the movements indexes at 44M rows a year are the
+  cost that matters), and the database rejects a non-UUID. Walk the
+  dependency tree bottom up (`docs/research/gobank-family.d2`), one
+  release per repo, pins bumped up the tree, one gobank release drilled
+  on preprod: go-postgres (verify pglike translates `ALTER COLUMN … TYPE
+  uuid USING …::uuid` and that UUID text compares case-insensitively as
+  Postgres does; `UUID`→`TEXT` and `gen_random_uuid()` already exist);
+  go-luca (`id`, `batch_id`, `*_account_id`, `customer_id`,
+  `commodity_id` on every table, with FKs retyped together); gobank
+  (`customer_accounts.ledger_account_id`, and sessions once they carry a
+  ledger id). gobank-products stores nothing; gotreesitter, lofigui and
+  gogal have no database. Before 1.6a.1, so the GL's tables are born with
+  UUID columns and only one ledger is rewritten. Out of scope: columns
+  that hold a human reference (`customer_id` and payment `from_id`/`to_id`
+  as `cust-000123`, `PAY-000042`): they become UUID identity plus a
+  reference column in ADR-0004's identity story, which this is the first
+  half of. Open: the Postgres retype rewrites each table under a lock
+  (minutes at the Hetzner scale; ADR-0003's accepted downtime) versus
+  expand-and-contract with a new column, which pglike handles but
+  doubles the migration; and whether gobanks-customers' `cust_*` ids are
+  references or GUIDs today (checked in the go-postgres step)
 - **1.6a** General ledger and sub-ledger (ADR-0005) — the one ledger grows
   as accounts × days while the bank's questions are per product, so the
   P&L never returns and the book is a sum over every account. Two go-luca
