@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+## [0.27.0] - 2026-10-09
+
+ - Merge old products branch
+
 ## [0.26.0] - 2026-10-09
 
  - Stage 6a story 1.6a.2: the general ledger opened, posted and closed in shadow, reconciled daily
