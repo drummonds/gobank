@@ -422,7 +422,7 @@ root module, `cmd/bff` is the service binary, and `app/` is the Flutter shell.
   pages only when given one; `internal/daylength` parses the day length
   for the simulation and the settings page; `cmd/demo` holds no HTML and
   no handler
-- **UUID columns across the family** — every column that holds a GUID is
+- **UUID columns across the family** (go-luca #10) — every column that holds a GUID is
   typed `UUID`, not `TEXT` or `VARCHAR(36)`: 16 bytes instead of 36 in
   every row and index (the movements indexes at 44M rows a year are the
   cost that matters), and the database rejects a non-UUID. Walk the
@@ -456,7 +456,7 @@ root module, `cmd/bff` is the service binary, and `app/` is the Flutter shell.
   lags by the length of the pass and every GL read carries its day.
   Out of scope: retiring old sub-ledger positions (ADR-0002 data
   management), which this makes possible. Stories:
-- **1.6a.1** go-luca enablers (go-luca #8, #9) — a second ledger in one database (a table
+- **1.6a.1** [x] (go-luca v0.4.0) go-luca enablers (go-luca #8, #9) — a second ledger in one database (a table
   and view prefix on `NewSQLLedger`), and indexes for day-bounded reads
   (movements by value time, positions by day) so the journal and the
   reconciliation scan a day, not the table
