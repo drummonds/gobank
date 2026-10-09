@@ -221,7 +221,7 @@ func TestPagesNeedALogin(t *testing.T) {
 	}
 
 	// Lockout: five wrong passwords for one login lock it, right one or not.
-	for i := 0; i < 5; i++ {
+	for range 5 {
 		post(site, "/login", "login=aud&password=wrong", nil)
 	}
 	rr = post(site, "/login", "login=aud&password=pw", nil)

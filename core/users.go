@@ -1,5 +1,7 @@
 package core
 
+import "slices"
+
 import "context"
 
 // The users of the bank (ADR-0002 stage 7, story 1.7.1): who may sign in
@@ -18,12 +20,7 @@ type User struct {
 
 // HasRole reports whether the user holds the role.
 func (u User) HasRole(role string) bool {
-	for _, r := range u.Roles {
-		if r == role {
-			return true
-		}
-	}
-	return false
+	return slices.Contains(u.Roles, role)
 }
 
 // Users is the users component as the staff web reads it. AuthenticateUser
