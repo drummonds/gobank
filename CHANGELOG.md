@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+## [0.28.0] - 2026-10-09
+
+ - Stage 7 story 1.7.1: the users component and the staff login
+
 ### Added
 - ADR-0002 stage 7 story 1.7.1, the users component and the staff login.
   `bank/users` owns `users` and `user_roles`: a user is a login name, an
