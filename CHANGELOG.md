@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+## [0.27.1] - 2026-10-09
+
+ - Updating roadmap
+
 ## [0.27.0] - 2026-10-09
 
  - Merge old products branch
