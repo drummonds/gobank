@@ -24,6 +24,7 @@ func TestStaffWebKnowsOnlyTheCore(t *testing.T) {
 		"git.bytestone.uk/hum3/gobank/core",
 		"git.bytestone.uk/hum3/gobank/adr",
 		"git.bytestone.uk/hum3/gobank/internal/daylength",
+		"git.bytestone.uk/hum3/gobank/internal/session",
 		"git.bytestone.uk/hum3/go-dbexplorer",
 		"git.bytestone.uk/hum3/go-luca",
 		"git.bytestone.uk/hum3/gobank-products",

@@ -122,7 +122,7 @@ func TestSQLSessionsFollowTheDatabase(t *testing.T) {
 	now := time.Date(2026, 10, 4, 12, 0, 0, 0, time.UTC)
 	clock := func() time.Time { return now }
 	current := sessionsDB(t)
-	s := bff.NewSQLSessions(func() *sql.DB { return current }, time.Hour, 10*time.Minute, clock)
+	s := bff.NewSQLSessions(bff.CustomerSessionsTable, func() *sql.DB { return current }, time.Hour, 10*time.Minute, clock)
 	old, _ := s.Create("cust-001")
 
 	current.Close()
@@ -158,7 +158,7 @@ func sessionsDB(t *testing.T) *sql.DB {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { db.Close() })
-	for _, stmt := range bff.SessionsSchema {
+	for _, stmt := range append(bff.SessionsSchema, bff.StaffSessionsSchema...) {
 		if _, err := db.Exec(stmt); err != nil {
 			t.Fatal(err)
 		}
@@ -166,7 +166,32 @@ func sessionsDB(t *testing.T) *sql.DB {
 	return db
 }
 
+// Staff sessions are kept apart from customers' (story 1.7.1): a staff
+// token is no customer's session and a customer's is no staff session,
+// and a staff session's subject is the user's ID.
+func TestStaffSessionsAreKeptApart(t *testing.T) {
+	db := sessionsDB(t)
+	customers := newSQLSessions(t, db, time.Hour, 10*time.Minute, nil)
+	staff := bff.NewSQLSessions(bff.StaffSessionsTable, func() *sql.DB { return db }, time.Hour, 10*time.Minute, nil)
+	const userID = "4b1b3b2e-2c7a-4d2e-9f1a-0f2d3c4b5a69"
+	token, _ := staff.Create(userID)
+	if _, ok := customers.Lookup(token); ok {
+		t.Error("a staff token is a customer session")
+	}
+	if id, ok := staff.Lookup(token); !ok || id != userID {
+		t.Errorf("staff Lookup = %q, %v; want the user ID", id, ok)
+	}
+	custToken, _ := customers.Create("cust-001")
+	if _, ok := staff.Lookup(custToken); ok {
+		t.Error("a customer token is a staff session")
+	}
+	staff.Revoke(token)
+	if _, ok := staff.Lookup(token); ok {
+		t.Error("a revoked staff session is still live")
+	}
+}
+
 func newSQLSessions(t *testing.T, db *sql.DB, ttl, idle time.Duration, now func() time.Time) bff.Sessions {
 	t.Helper()
-	return bff.NewSQLSessions(func() *sql.DB { return db }, ttl, idle, now)
+	return bff.NewSQLSessions(bff.CustomerSessionsTable, func() *sql.DB { return db }, ttl, idle, now)
 }

@@ -18,7 +18,29 @@ import (
 // the scope.
 
 // newSite is the staff web over a demo, for the pages tested on their own.
-func newSite(ds *DemoState) *staff.Site { return staff.New(siteConfig(ds, "test", "/")) }
+func newSite(ds *DemoState) *staff.Site { return staff.New(siteConfig(ds, "test", "/", nil)) }
+
+// testAdminPassword is the first admin's password the handler tests run
+// with; staffLogin signs in with it and returns the session cookie.
+const testAdminPassword = "admin-pw"
+
+func staffLogin(t *testing.T, h http.Handler) *http.Cookie {
+	t.Helper()
+	rr := httptest.NewRecorder()
+	req := httptest.NewRequest("POST", "/login", strings.NewReader("login=admin&password="+testAdminPassword))
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	h.ServeHTTP(rr, req)
+	if rr.Code != http.StatusSeeOther {
+		t.Fatalf("staff login: %d %s", rr.Code, rr.Body.String())
+	}
+	for _, c := range rr.Result().Cookies() {
+		if c.Name == "staff_session" && c.Value != "" {
+			return c
+		}
+	}
+	t.Fatal("staff login set no session cookie")
+	return nil
+}
 
 // staffPages is every GET page the staff UI serves.
 var staffPages = []string{
@@ -60,10 +82,10 @@ var staffActions = map[string]string{
 	"/payments/run":       "",
 	"/payments/stop":      "",
 	"/settings":           "max_customers=10&day_length=",
-	"/role":               "role=admin&redirect=customers",
 	"/auth/authorize":     "redirect=customers/cust-001",
 	"/auth/revoke":        "",
 	"/treasury/gilts/buy": "tenor=5Y&face_value=1000",
+	"/login":              "login=admin&password=" + testAdminPassword + "&redirect=customers",
 	"/v1/login":           "customer_id=cust-001&password=" + testAppPassword,
 }
 
@@ -76,14 +98,19 @@ var sameOriginURL = regexp.MustCompile(`(?:href|action|hx-get|hx-post|src|value)
 func TestHandlerStaysInScope(t *testing.T) {
 	const scope = "/demo/"
 	t.Setenv("GOBANK_APP_PASSWORD", testAppPassword)
+	t.Setenv("GOBANK_ADMIN_PASSWORD", testAdminPassword)
 	ds := NewDemoState()
 	addFundedCustomer(ds)
 	h := newHandler(ds, "test", scope)
+	admin := staffLogin(t, h)
 
-	for _, page := range staffPages {
+	for _, page := range append(staffPages, "/login") {
 		rr := httptest.NewRecorder()
 		req := httptest.NewRequest("GET", page, nil)
 		req.Header.Set("Accept", "text/html") // a browser's navigation
+		if page != "/login" {
+			req.AddCookie(admin)
+		}
 		h.ServeHTTP(rr, req)
 		if rr.Code != http.StatusOK {
 			t.Errorf("GET %s: status %d", page, rr.Code)
@@ -104,6 +131,7 @@ func TestHandlerStaysInScope(t *testing.T) {
 		rr := httptest.NewRecorder()
 		req := httptest.NewRequest("POST", action, strings.NewReader(form))
 		req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+		req.AddCookie(admin)
 		h.ServeHTTP(rr, req)
 		if rr.Code != http.StatusSeeOther {
 			t.Errorf("POST %s: status %d, want 303", action, rr.Code)
@@ -125,10 +153,13 @@ func isFragment(page string) bool {
 // On the server the scope is the origin root and the pages are what they
 // always were: a link to the customers page is /customers.
 func TestHandlerAtRoot(t *testing.T) {
+	t.Setenv("GOBANK_ADMIN_PASSWORD", testAdminPassword)
 	ds := NewDemoState()
 	h := newHandler(ds, "test", "/")
 	rr := httptest.NewRecorder()
-	h.ServeHTTP(rr, httptest.NewRequest("GET", "/", nil))
+	req := httptest.NewRequest("GET", "/", nil)
+	req.AddCookie(staffLogin(t, h))
+	h.ServeHTTP(rr, req)
 	body := rr.Body.String()
 	if !strings.Contains(body, `<base href="/">`) {
 		t.Error("dashboard: no <base href=\"/\">")
@@ -141,16 +172,70 @@ func TestHandlerAtRoot(t *testing.T) {
 // A redirect target supplied by a form is a path inside the scope, never
 // another origin.
 func TestRedirectTargetStaysOnSite(t *testing.T) {
+	t.Setenv("GOBANK_ADMIN_PASSWORD", testAdminPassword)
 	ds := NewDemoState()
 	h := newHandler(ds, "test", "/demo/")
 	for _, target := range []string{"//evil.example/x", "https://evil.example/x", "/customers"} {
 		rr := httptest.NewRecorder()
-		req := httptest.NewRequest("POST", "/role", strings.NewReader("role=admin&redirect="+url.QueryEscape(target)))
+		req := httptest.NewRequest("POST", "/login", strings.NewReader("login=admin&password="+testAdminPassword+"&redirect="+url.QueryEscape(target)))
 		req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 		h.ServeHTTP(rr, req)
 		if loc := rr.Header().Get("Location"); loc != "/demo/" {
 			t.Errorf("redirect=%q: Location %q, want /demo/", target, loc)
 		}
+	}
+}
+
+// The staff web needs a signed-in member of staff (story 1.7.1): the first
+// admin signs in with the deployment's password, which is set again on a
+// fresh run after a reset; about.json stays open for gobank-deploy; and
+// without the password nobody signs in.
+func TestStaffWebNeedsTheAdminPassword(t *testing.T) {
+	const scope = "/demo/"
+	t.Setenv("GOBANK_ADMIN_PASSWORD", testAdminPassword)
+	ds := NewDemoState()
+	h := newHandler(ds, "test", scope)
+	get := func(path string, cookie *http.Cookie) *httptest.ResponseRecorder {
+		rr := httptest.NewRecorder()
+		req := httptest.NewRequest("GET", path, nil)
+		req.Header.Set("Accept", "text/html")
+		if cookie != nil {
+			req.AddCookie(cookie)
+		}
+		h.ServeHTTP(rr, req)
+		return rr
+	}
+	if rr := get("/customers", nil); rr.Code != http.StatusSeeOther || rr.Header().Get("Location") != scope+"login?redirect=customers" {
+		t.Errorf("GET customers without a session: %d %s, want 303 to the login page", rr.Code, rr.Header().Get("Location"))
+	}
+	if rr := get("/about.json", nil); rr.Code != http.StatusOK {
+		t.Errorf("GET about.json without a session: %d, want 200", rr.Code)
+	}
+	admin := staffLogin(t, h)
+	if rr := get("/customers", admin); rr.Code != http.StatusOK {
+		t.Errorf("GET customers signed in: %d", rr.Code)
+	}
+	if body := get("/", admin).Body.String(); !strings.Contains(body, `<span class="signed-in">admin`) {
+		t.Error("the dashboard does not show who is signed in")
+	}
+
+	ds.Reset()
+	if rr := get("/customers", admin); rr.Code != http.StatusSeeOther {
+		t.Errorf("GET customers with the old run's session after a reset: %d, want 303", rr.Code)
+	}
+	admin = staffLogin(t, h)
+	if rr := get("/customers", admin); rr.Code != http.StatusOK {
+		t.Errorf("GET customers after a reset and a new login: %d", rr.Code)
+	}
+
+	t.Setenv("GOBANK_ADMIN_PASSWORD", "")
+	h = newHandler(NewDemoState(), "test", scope)
+	rr := httptest.NewRecorder()
+	req := httptest.NewRequest("POST", "/login", strings.NewReader("login=admin&password="+testAdminPassword))
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	h.ServeHTTP(rr, req)
+	if rr.Code != http.StatusUnauthorized {
+		t.Errorf("login with no admin password set: %d, want 401", rr.Code)
 	}
 }
 
@@ -160,6 +245,7 @@ func TestRedirectTargetStaysOnSite(t *testing.T) {
 func TestCustomerWebNeedsASession(t *testing.T) {
 	const scope = "/demo/"
 	t.Setenv("GOBANK_APP_PASSWORD", testAppPassword)
+	t.Setenv("GOBANK_ADMIN_PASSWORD", testAdminPassword)
 	ds := NewDemoState()
 	addFundedCustomer(ds)
 	h := newHandler(ds, "test", scope)
@@ -174,8 +260,11 @@ func TestCustomerWebNeedsASession(t *testing.T) {
 		return rr
 	}
 
+	// The retired open API is gone: a signed-in member of staff finds
+	// nothing there (and nobody else gets past the staff login).
+	admin := staffLogin(t, h)
 	for _, gone := range []string{"/app/", "/app/customer/cust-001", "/api/customers", "/api/customer/cust-001/accounts"} {
-		if rr := get(gone, nil); rr.Code != http.StatusNotFound {
+		if rr := get(gone, admin); rr.Code != http.StatusNotFound {
 			t.Errorf("GET %s: status %d, want 404 (retired)", gone, rr.Code)
 		}
 	}

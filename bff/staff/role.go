@@ -4,9 +4,13 @@ import (
 	"context"
 	"sync"
 	"time"
+
+	"git.bytestone.uk/hum3/gobank/core"
 )
 
-// Role represents a user role in the demo application.
+// Role is what a member of staff may do on the staff web. The role comes
+// from the signed-in user (story 1.7.1); the permissions stay a code
+// table here until story 1.7.3 moves them into the users component.
 type Role string
 
 const (
@@ -16,7 +20,22 @@ const (
 	RoleReadOnly        Role = "readonly"
 )
 
-// RoleLabel returns a human-readable label for the role.
+// staffRoles is every staff role, in order of precedence: a user holding
+// several has the first.
+var staffRoles = []Role{RoleAdmin, RoleAuditor, RoleCustomerService, RoleReadOnly}
+
+// RoleOf is the role a user has on the staff web, and whether it has one:
+// a user holding none of the staff roles (a customer) cannot sign in here.
+func RoleOf(u core.User) (Role, bool) {
+	for _, r := range staffRoles {
+		if u.HasRole(string(r)) {
+			return r, true
+		}
+	}
+	return "", false
+}
+
+// Label returns a human-readable label for the role.
 func (r Role) Label() string {
 	switch r {
 	case RoleAdmin:
@@ -71,7 +90,7 @@ func WithRole(ctx context.Context, r Role) context.Context {
 }
 
 // RoleFrom is the viewer's role in ctx; admin when none is set, as for a
-// session AuthStore has not seen and for the single-user WASM simulator.
+// page built outside a request.
 func RoleFrom(ctx context.Context) Role {
 	if r, ok := ctx.Value(roleKey{}).(Role); ok {
 		return r
@@ -79,106 +98,43 @@ func RoleFrom(ctx context.Context) Role {
 	return RoleAdmin
 }
 
-// ValidRole returns true if the string is a known role.
-func ValidRole(s string) bool {
-	switch Role(s) {
-	case RoleAdmin, RoleAuditor, RoleCustomerService, RoleReadOnly:
-		return true
-	}
-	return false
+// piiStore keeps each session's PII authorisation: an admin sees personal
+// data for a while after authorising, and the authorisation goes with
+// the process.
+type piiStore struct {
+	mu     sync.Mutex
+	expiry map[string]time.Time
+	ttl    time.Duration
 }
 
-type sessionData struct {
-	PIIExpiry time.Time
-	Role      Role
+func newPIIStore(ttl time.Duration) *piiStore {
+	return &piiStore{expiry: map[string]time.Time{}, ttl: ttl}
 }
 
-// AuthStore manages simulated PII authorization sessions.
-type AuthStore struct {
-	mu       sync.Mutex
-	sessions map[string]*sessionData
-	ttl      time.Duration
+func (p *piiStore) authorise(session string) {
+	p.mu.Lock()
+	p.expiry[session] = time.Now().Add(p.ttl)
+	p.mu.Unlock()
 }
 
-func NewAuthStore(ttl time.Duration) *AuthStore {
-	return &AuthStore{
-		sessions: make(map[string]*sessionData),
-		ttl:      ttl,
-	}
+func (p *piiStore) revoke(session string) {
+	p.mu.Lock()
+	delete(p.expiry, session)
+	p.mu.Unlock()
 }
 
-func (as *AuthStore) getOrCreate(sessionID string) *sessionData {
-	sd, ok := as.sessions[sessionID]
-	if !ok {
-		sd = &sessionData{Role: RoleAdmin}
-		as.sessions[sessionID] = sd
-	}
-	return sd
-}
-
-func (as *AuthStore) Authorize(sessionID string) {
-	as.mu.Lock()
-	sd := as.getOrCreate(sessionID)
-	sd.PIIExpiry = time.Now().Add(as.ttl)
-	as.mu.Unlock()
-}
-
-func (as *AuthStore) Revoke(sessionID string) {
-	as.mu.Lock()
-	if sd, ok := as.sessions[sessionID]; ok {
-		sd.PIIExpiry = time.Time{}
-	}
-	as.mu.Unlock()
-}
-
-func (as *AuthStore) IsAuthorized(sessionID string) bool {
-	as.mu.Lock()
-	defer as.mu.Unlock()
-	sd, ok := as.sessions[sessionID]
-	if !ok {
-		return false
-	}
-	if sd.PIIExpiry.IsZero() || time.Now().After(sd.PIIExpiry) {
-		return false
-	}
-	return true
-}
-
-func (as *AuthStore) SetRole(sessionID string, role Role) {
-	as.mu.Lock()
-	sd := as.getOrCreate(sessionID)
-	sd.Role = role
-	as.mu.Unlock()
-}
-
-func (as *AuthStore) GetRole(sessionID string) Role {
-	as.mu.Lock()
-	defer as.mu.Unlock()
-	sd, ok := as.sessions[sessionID]
-	if !ok {
-		return RoleAdmin
-	}
-	return sd.Role
-}
-
-// EffectivePII returns whether PII should be visible for this session.
-// Auditor/CS: always true. ReadOnly: always false. Admin: TTL-based check.
-func (as *AuthStore) EffectivePII(sessionID string) bool {
-	as.mu.Lock()
-	defer as.mu.Unlock()
-	sd, ok := as.sessions[sessionID]
-	if !ok {
-		return false
-	}
-	switch sd.Role {
+// effective says whether a session of the given role sees personal data
+// now. Auditor and customer service always do, read-only never, an admin
+// while authorised.
+func (p *piiStore) effective(session string, role Role) bool {
+	switch role {
 	case RoleAuditor, RoleCustomerService:
 		return true
 	case RoleReadOnly:
 		return false
-	default: // Admin
-		if sd.PIIExpiry.IsZero() || time.Now().After(sd.PIIExpiry) {
-			return false
-		}
-		return true
 	}
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	until, ok := p.expiry[session]
+	return ok && time.Now().Before(until)
 }

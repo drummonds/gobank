@@ -28,6 +28,34 @@ function assertPage(res, label) {
     assert(res.body.includes('<base href="' + Demo.scope + '">'), label + ' carries the scope as its <base>');
 }
 
+// The staff web needs a login (story 1.7.1). In the tab the first admin's
+// password is the demo one, which the login page states; the tab keeps
+// the session cookie, as it does the customer app's.
+async function testStaffLogin(demo) {
+    console.log('\n--- Staff login (one session per tab) ---');
+    let res = await demo.get('/customers');
+    assert(res.status === 303 && res.location === Demo.scope + 'login?redirect=customers', 'a page without a session goes to the login page (got ' + res.status + ' ' + res.location + ')');
+    res = await demo.get('/login');
+    assertPage(res, '/login');
+    assert(res.body.includes('the password is demo'), 'login page states the demo password');
+    assert(!res.body.includes('href="customers"'), 'signed out, the navigation is not shown');
+    res = await demo.post('/login', { login: 'admin', password: 'wrong', redirect: '' });
+    assert(res.status === 401, 'a wrong password is refused (got ' + res.status + ')');
+    res = await demo.post('/login', { login: 'admin', password: 'demo', redirect: 'customers' });
+    assert(res.status === 303 && res.location === Demo.scope + 'customers', 'login returns to the page (got ' + res.status + ' ' + res.location + ')');
+    res = await demo.get('/');
+    assertPage(res, '/ signed in');
+    assert(res.body.includes('<span class="signed-in">admin'), 'the layout shows who is signed in');
+}
+
+async function testStaffLogout(demo) {
+    console.log('\n--- Staff logout ---');
+    let res = await demo.post('/logout');
+    assert(res.status === 303 && res.location === Demo.scope + 'login', 'logout returns to the login page (got ' + res.status + ' ' + res.location + ')');
+    res = await demo.get('/');
+    assert(res.status === 303, 'the staff session is gone after logout');
+}
+
 async function testInitialRender(demo) {
     console.log('\n--- Initial render (day 0, 0 customers) ---');
     for (const page of ['/', '/accounting/pnl', '/accounting/balance-sheet', '/customers', '/payments',
@@ -42,12 +70,18 @@ async function testInitialRender(demo) {
 async function testShortRun(demo, nCustomers, nDays) {
     console.log('\n--- Short run: ' + nCustomers + ' customers, ' + nDays + ' days ---');
     await demo.post('/reset');
+    // A reset is a new run: its users and sessions go with the old one,
+    // so the operator signs in again.
+    let res = await demo.get('/');
+    assert(res.status === 303 && res.location === Demo.scope + 'login', 'after a reset the staff session is gone (got ' + res.status + ' ' + res.location + ')');
+    res = await demo.post('/login', { login: 'admin', password: 'demo', redirect: '' });
+    assert(res.status === 303 && res.location === Demo.scope, 'the admin signs in to the new run (got ' + res.status + ' ' + res.location + ')');
     await demo.post('/settings', { max_customers: nCustomers, day_length: '' });
     await demo.addCustomers(nCustomers);
     assertPage(await demo.get('/customers'), 'customers after add');
 
     for (let d = 0; d < nDays; d++) {
-        const res = await demo.post('/advance');
+        res = await demo.post('/advance');
         assert(res.status === 303 && res.location === Demo.scope, 'advance redirects to the dashboard (got ' + res.status + ' ' + res.location + ')');
     }
 
@@ -71,17 +105,6 @@ async function testPayments(demo) {
         await demo.post('/payments/send');
     }
     assertPage(await demo.get('/payments'), 'payments after sends');
-}
-
-async function testRoleAndPII(demo) {
-    console.log('\n--- Role and PII (one session per tab) ---');
-    let res = await demo.post('/role', { role: 'readonly', redirect: 'customers' });
-    assert(res.location === Demo.scope + 'customers', 'role change returns to the page (got ' + res.location + ')');
-    res = await demo.get('/');
-    assert(!res.body.includes('>Run<'), 'read-only role sees no simulation controls');
-    await demo.post('/role', { role: 'admin', redirect: '' });
-    res = await demo.get('/');
-    assert(res.body.includes('>Run<'), 'admin role sees the simulation controls again');
 }
 
 // The customer web is the BFF's HTML (ADR-0002 stage 6, story 1.6.2). In
@@ -126,12 +149,13 @@ async function testExport(demo) {
         process.exit(1);
     }
 
+    await testStaffLogin(demo);
     await testInitialRender(demo);
     await testShortRun(demo, 10, 7);
     await testPayments(demo);
-    await testRoleAndPII(demo);
     await testCustomerWeb(demo);
     await testExport(demo);
+    await testStaffLogout(demo);
 
     console.log('\n=== Results: ' + passes + ' passed, ' + failures + ' failed ===');
     process.exit(failures > 0 ? 1 : 0);

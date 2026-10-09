@@ -91,9 +91,10 @@ func (ds *DemoState) openOn(db *sql.DB, dsn string) *DemoState {
 // reopens the same handle, so the simulation and the pages keep it.
 func (ds *DemoState) openBank() {
 	opts := bank.Options{
-		Clock: core.ClockFunc(func() time.Time { return ds.clock.Now() }),
-		Rates: core.BaseRateFunc(func(day time.Time) float64 { return ds.rates.BaseRate(day) }),
-		Seed:  42,
+		Clock:         core.ClockFunc(func() time.Time { return ds.clock.Now() }),
+		Rates:         core.BaseRateFunc(func(day time.Time) float64 { return ds.rates.BaseRate(day) }),
+		Seed:          42,
+		AdminPassword: adminPassword(),
 	}
 	if ds.Bank != nil {
 		if err := ds.Bank.Reopen(ds.db); err != nil {

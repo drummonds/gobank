@@ -1,7 +1,8 @@
 package staff
 
-// layout is the staff web's page: the navbar with the role switch and the
-// console's status, the content, and the footer with the version.
+// layout is the staff web's page: the navbar with the signed-in user, their
+// role and the console's status, the content, and the footer with the
+// version. Signed out, the navbar carries the brand alone.
 const layout = `<!DOCTYPE html>
 <html>
 <head>
@@ -24,6 +25,7 @@ const layout = `<!DOCTYPE html>
       </a>
     </div>
     <div id="mainNavbar" class="navbar-menu">
+      {{if .signed_in}}
       <div class="navbar-start">
         <a class="navbar-item" href="{{.scope}}">Dashboard</a>
         <div class="navbar-item has-dropdown is-hoverable">
@@ -78,16 +80,11 @@ const layout = `<!DOCTYPE html>
       </div>
       <div class="navbar-end">
         <div class="navbar-item">
-          <form action="role" method="post" hx-boost="false">
-            <input type="hidden" name="redirect" value="{{ .path }}">
-            <div class="select is-small">
-              <select name="role" onchange="this.form.submit()">
-                <option value="admin"{{if eq .role "admin"}} selected{{end}}>Admin</option>
-                <option value="auditor"{{if eq .role "auditor"}} selected{{end}}>Auditor</option>
-                <option value="cs"{{if eq .role "cs"}} selected{{end}}>Customer Service</option>
-                <option value="readonly"{{if eq .role "readonly"}} selected{{end}}>Read Only</option>
-              </select>
-            </div>
+          <span class="signed-in">{{ .login }} <span class="tag is-light">{{ .role_label }}</span></span>
+        </div>
+        <div class="navbar-item">
+          <form action="logout" method="post" hx-boost="false">
+            <button class="button is-small is-light" type="submit">Log out</button>
           </form>
         </div>
         <a class="navbar-item" href="v1/screen/login" target="_blank">Bank App</a>
@@ -95,6 +92,7 @@ const layout = `<!DOCTYPE html>
           <span class="tag {{if eq .polling "Running"}}is-warning{{else}}is-success{{end}}">{{ .polling }}</span>
         </div>
       </div>
+      {{end}}
     </div>
   </nav>
   <section class="section">

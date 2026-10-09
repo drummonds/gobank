@@ -1,14 +1,16 @@
-// Package staff is the staff web of the Model Bank: the pages a member of
-// staff reads the bank through (accounting, products, customers, payments,
-// treasury, reports, about and the documentation), the role switch and the
-// PII authorisation that gate what they see, the layout every page is
+// Package staff is the staff web of the Model Bank: the login (story
+// 1.7.1), the pages a member of staff reads the bank through (accounting,
+// products, customers, payments, treasury, reports, about and the
+// documentation), the role the signed-in user holds and the PII
+// authorisation that gate what they see, the layout every page is
 // rendered in, and the simulation console when there is one (ADR-0002
 // stage 6, stories 1.6.3 and 1.6.4).
 //
 // It reads the bank through core.StaffQueries, acts on it through
-// core.Commands and drives the simulation through Console, and knows
-// nothing else of it. The BFF mounts it beside the customer routes
-// (bff.Config.Staff).
+// core.Commands, checks logins through core.Users and drives the
+// simulation through Console, and knows nothing else of it. The BFF mounts
+// it beside the customer routes (bff.Config.Staff) and its sessions are
+// kept in the BFF's store.
 package staff
 
 import (
@@ -23,6 +25,7 @@ import (
 	dbexplorer "git.bytestone.uk/hum3/go-dbexplorer"
 	gbp "git.bytestone.uk/hum3/gobank-products"
 	"git.bytestone.uk/hum3/gobank/core"
+	"git.bytestone.uk/hum3/gobank/internal/session"
 	"git.bytestone.uk/hum3/lofigui"
 )
 
@@ -30,6 +33,15 @@ import (
 type Config struct {
 	Bank     core.StaffQueries // what the pages read; nil serves only the pages that read nothing
 	Commands core.Commands     // what the pages act on (buying a gilt); nil refuses
+	Users    core.Users        // who may sign in; nil lets nobody in
+
+	// Sessions is where the signed-in users are kept; nil keeps them in
+	// memory for the process. SecureCookies marks the session cookie
+	// Secure: on unless serving plain HTTP. LoginNote is a note under the
+	// login form; the tab uses it to state its password.
+	Sessions      session.Store
+	SecureCookies bool
+	LoginNote     string
 
 	// Scope is the path the site is mounted under: "/" on a server, the
 	// service worker's scope in the tab. Every page carries it as its
@@ -53,11 +65,14 @@ type Config struct {
 
 // Site is the staff web as one http.Handler.
 type Site struct {
-	cfg     Config
-	mux     *http.ServeMux
-	auth    *AuthStore
-	ctrl    *lofigui.Controller
-	catalog dbexplorer.StaticCatalog
+	cfg      Config
+	mux      *http.ServeMux
+	handler  http.Handler // the mux behind the login
+	sessions session.Store
+	limiter  *session.Limiter
+	pii      *piiStore
+	ctrl     *lofigui.Controller
+	catalog  dbexplorer.StaticCatalog
 }
 
 // New builds the site and its routes.
@@ -72,15 +87,25 @@ func New(cfg Config) *Site {
 	if err != nil {
 		panic(err)
 	}
-	s := &Site{cfg: cfg, mux: http.NewServeMux(), auth: NewAuthStore(cfg.PIITTL), ctrl: ctrl, catalog: explorerCatalog(cfg.Components)}
+	sessions := cfg.Sessions
+	if sessions == nil {
+		sessions = session.NewMemory(8*time.Hour, 15*time.Minute, nil)
+	}
+	s := &Site{
+		cfg: cfg, mux: http.NewServeMux(), sessions: sessions,
+		limiter: session.NewLimiter(5, 15*time.Minute, time.Now),
+		pii:     newPIIStore(cfg.PIITTL), ctrl: ctrl, catalog: explorerCatalog(cfg.Components),
+	}
+	s.loginRoutes()
 	s.routes()
 	if cfg.Console != nil {
 		s.consoleRoutes()
 	}
+	s.handler = s.requireLogin(s.mux)
 	return s
 }
 
-func (s *Site) ServeHTTP(w http.ResponseWriter, r *http.Request) { s.mux.ServeHTTP(w, r) }
+func (s *Site) ServeHTTP(w http.ResponseWriter, r *http.Request) { s.handler.ServeHTTP(w, r) }
 
 // status is the console's status for the layout's tag and its whole-page
 // poll: "Running" while anything is going, else "Stopped".
@@ -93,20 +118,25 @@ func (s *Site) status() string {
 
 // --- what a page uses ---
 
-// role is the role the request's session has chosen.
-func (s *Site) role(w http.ResponseWriter, r *http.Request) Role {
-	return s.auth.GetRole(sessionID(w, r))
+// role is the role the signed-in user holds; read-only for a request
+// that carries no session, which only the open paths see.
+func (s *Site) role(r *http.Request) Role {
+	if sess, ok := signedIn(r); ok {
+		return sess.role
+	}
+	return RoleReadOnly
 }
 
-// pii says whether the request's session may see personal data.
-func (s *Site) pii(w http.ResponseWriter, r *http.Request) bool {
-	return s.auth.EffectivePII(sessionID(w, r))
+// piiAuthorised says whether the signed-in user may see personal data.
+func (s *Site) piiAuthorised(r *http.Request) bool {
+	sess, ok := signedIn(r)
+	return ok && s.pii.effective(sess.key(), sess.role)
 }
 
 // require answers 403 and returns false unless the session's role may
 // take the action.
 func (s *Site) require(w http.ResponseWriter, r *http.Request, action string) bool {
-	if !s.role(w, r).Can(action) {
+	if !s.role(r).Can(action) {
 		http.Error(w, "Forbidden", http.StatusForbidden)
 		return false
 	}
@@ -154,13 +184,17 @@ func (s *Site) staticPage(w http.ResponseWriter, r *http.Request, content string
 }
 
 func (s *Site) render(w http.ResponseWriter, r *http.Request, content, polling string) {
+	sess, signedIn := signedIn(r)
 	s.ctrl.RenderTemplate(w, lofigui.TemplateContext{
 		"request":         r,
 		"version":         "Model Bank " + s.cfg.Version,
 		"controller_name": s.ctrl.Name,
 		"results":         template.HTML(content),
 		"polling":         polling,
-		"role":            string(s.role(w, r)),
+		"signed_in":       signedIn,
+		"login":           sess.user.Login,
+		"role":            string(sess.role),
+		"role_label":      sess.role.Label(),
 		"scope":           s.cfg.Scope,
 		"path":            strings.TrimPrefix(r.URL.Path, "/"),
 	})
@@ -186,27 +220,15 @@ func (s *Site) routes() {
 	bank := s.cfg.Bank
 	mux := s.mux
 
-	// Role and PII
-	mux.HandleFunc("/role", func(w http.ResponseWriter, r *http.Request) {
-		if r.Method != "POST" {
-			s.redirect(w, r, "")
-			return
-		}
-		r.ParseForm()
-		role := r.FormValue("role")
-		if !ValidRole(role) {
-			s.redirect(w, r, "")
-			return
-		}
-		s.auth.SetRole(sessionID(w, r), Role(role))
-		s.redirect(w, r, r.FormValue("redirect"))
-	})
+	// PII: an admin authorises themselves to see personal data for a while
 	mux.HandleFunc("/auth/authorize", func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != "POST" {
 			s.redirect(w, r, "")
 			return
 		}
-		s.auth.Authorize(sessionID(w, r))
+		if sess, ok := signedIn(r); ok {
+			s.pii.authorise(sess.key())
+		}
 		s.redirect(w, r, r.FormValue("redirect"))
 	})
 	mux.HandleFunc("/auth/revoke", func(w http.ResponseWriter, r *http.Request) {
@@ -214,7 +236,9 @@ func (s *Site) routes() {
 			s.redirect(w, r, "")
 			return
 		}
-		s.auth.Revoke(sessionID(w, r))
+		if sess, ok := signedIn(r); ok {
+			s.pii.revoke(sess.key())
+		}
 		s.redirect(w, r, r.FormValue("redirect"))
 	})
 
@@ -236,7 +260,7 @@ func (s *Site) routes() {
 
 	// Customers
 	mux.HandleFunc("/customers", func(w http.ResponseWriter, r *http.Request) {
-		s.page(w, r, func() string { return BuildCustomersHTML(bank, pageParam(r, "page"), s.pii(w, r)) })
+		s.page(w, r, func() string { return BuildCustomersHTML(bank, pageParam(r, "page"), s.piiAuthorised(r)) })
 	})
 	mux.HandleFunc("/customers/", func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != "GET" {
@@ -248,7 +272,7 @@ func (s *Site) routes() {
 			s.redirect(w, r, "customers")
 			return
 		}
-		pii := s.pii(w, r)
+		pii := s.piiAuthorised(r)
 		txPage := pageParam(r, "txpage")
 		// /customers/{id}/account/{idx}
 		parts := strings.SplitN(rest, "/", 3)
@@ -271,7 +295,7 @@ func (s *Site) routes() {
 			http.NotFound(w, r)
 			return
 		}
-		s.page(w, r, func() string { return BuildPaymentDetailHTML(bank, id, s.pii(w, r)) })
+		s.page(w, r, func() string { return BuildPaymentDetailHTML(bank, id, s.piiAuthorised(r)) })
 	})
 
 	// Reports
@@ -279,7 +303,7 @@ func (s *Site) routes() {
 		s.page(w, r, func() string { return BuildChartsHTML(bank) })
 	})
 	mux.HandleFunc("/reports/bbsi", func(w http.ResponseWriter, r *http.Request) {
-		s.page(w, r, func() string { return BuildBBSIHTML(bank, s.pii(w, r)) })
+		s.page(w, r, func() string { return BuildBBSIHTML(bank, s.piiAuthorised(r)) })
 	})
 	mux.HandleFunc("/reports/customer-view", func(w http.ResponseWriter, r *http.Request) {
 		id := r.URL.Query().Get("id")
@@ -287,7 +311,7 @@ func (s *Site) routes() {
 			s.redirect(w, r, "customers")
 			return
 		}
-		s.page(w, r, func() string { return BuildCustomerViewHTML(bank, id, s.pii(w, r)) })
+		s.page(w, r, func() string { return BuildCustomerViewHTML(bank, id, s.piiAuthorised(r)) })
 	})
 
 	// Treasury

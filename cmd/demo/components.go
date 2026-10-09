@@ -79,10 +79,16 @@ var components = []Component{
 	},
 	{
 		Name:    "sessions",
-		Purpose: "The customer app's live sessions, kept by the BFF so a restart keeps customers logged in.",
+		Purpose: "The customer app's and the staff web's live sessions, kept by the BFF so a restart keeps everyone logged in.",
 		Library: "bff",
 		Files:   []string{"sessions.go", "app_bff.go"},
-		Tables:  []string{"sessions"},
+		Tables:  []string{"sessions", "staff_sessions"},
+	},
+	{
+		Name:    "users",
+		Purpose: "Who may use the bank: a user is a login name, a password hash (argon2id) and the roles it holds; staff and customers are one table told apart by role. The staff web signs in through it.",
+		Package: "bank/users",
+		Tables:  []string{"users", "user_roles"},
 	},
 	{
 		Name:    "treasury",

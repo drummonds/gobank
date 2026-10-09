@@ -30,7 +30,7 @@ func (s *Site) consoleRoutes() {
 			http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 			return
 		}
-		role := s.role(w, r)
+		role := s.role(r)
 		d := DashboardData(bank, console)
 		content := renderDashboardFull(d, d.Sim.Running, role)
 		if s.fragment(w, r, content) {
@@ -45,7 +45,7 @@ func (s *Site) consoleRoutes() {
 			http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 			return
 		}
-		role := s.role(w, r)
+		role := s.role(r)
 		d := DashboardData(bank, console)
 		w.Header().Set("Content-Type", "text/html; charset=utf-8")
 		fmt.Fprint(w, renderDashboardUpdate(d, role))
@@ -126,7 +126,7 @@ func (s *Site) consoleRoutes() {
 
 	mux.HandleFunc("/payments", func(w http.ResponseWriter, r *http.Request) {
 		s.page(w, r, func() string {
-			return renderPaymentsPage(bank, console.SimStatus().PaymentsRunning, s.pii(w, r), pageParam(r, "page"), s.role(w, r))
+			return renderPaymentsPage(bank, console.SimStatus().PaymentsRunning, s.piiAuthorised(r), pageParam(r, "page"), s.role(r))
 		})
 	})
 	payments := func(pattern string, do func()) {
@@ -195,7 +195,7 @@ func (s *Site) consoleRoutes() {
 			s.redirect(w, r, "internal/explorer")
 			return
 		}
-		content := s.BuildExplorerPage(WithRole(r.Context(), s.role(w, r)), r.URL.RequestURI())
+		content := s.BuildExplorerPage(WithRole(r.Context(), s.role(r)), r.URL.RequestURI())
 		if s.fragment(w, r, content) {
 			return
 		}

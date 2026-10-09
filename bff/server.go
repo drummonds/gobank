@@ -67,7 +67,7 @@ type Server struct {
 	cfg      Config
 	mux      *http.ServeMux
 	sessions Sessions
-	limiter  *failureLimiter
+	limiter  *FailureLimiter
 	log      *slog.Logger
 }
 
@@ -102,13 +102,13 @@ func NewServer(cfg Config) *Server {
 	}
 	var sessions Sessions = NewSessionStore(cfg.SessionTTL, cfg.SessionIdle, cfg.Now)
 	if cfg.SessionDB != nil {
-		sessions = NewSQLSessions(cfg.SessionDB, cfg.SessionTTL, cfg.SessionIdle, cfg.Now)
+		sessions = NewSQLSessions(CustomerSessionsTable, cfg.SessionDB, cfg.SessionTTL, cfg.SessionIdle, cfg.Now)
 	}
 	s := &Server{
 		cfg:      cfg,
 		mux:      http.NewServeMux(),
 		sessions: sessions,
-		limiter:  newFailureLimiter(cfg.MaxLoginFailures, cfg.LoginWindow, cfg.Now),
+		limiter:  NewFailureLimiter(cfg.MaxLoginFailures, cfg.LoginWindow, cfg.Now),
 		log:      cfg.Logger,
 	}
 	s.mux.HandleFunc("GET /v1/health", s.health)
@@ -254,14 +254,14 @@ func (s *Server) login(w http.ResponseWriter, r *http.Request) {
 	req.CustomerID = strings.TrimSpace(req.CustomerID)
 	ip := clientIP(r)
 	if req.CustomerID == "" || len(req.CustomerID) > 64 || len(req.Password) > 256 {
-		s.limiter.fail("ip:" + ip)
+		s.limiter.Fail("ip:" + ip)
 		sc := s.frontDoor("Enter your customer ID and password.")
 		s.writeError(w, r, http.StatusBadRequest, "bad_request", "Enter your customer ID and password.", &sc)
 		return
 	}
 
 	for _, key := range []string{"cust:" + req.CustomerID, "ip:" + ip} {
-		if wait := s.limiter.retryAfter(key); wait > 0 {
+		if wait := s.limiter.RetryAfter(key); wait > 0 {
 			s.log.Warn("bff.login.locked", "customer", req.CustomerID, "ip", ip, "key", key, "retry_after", wait)
 			mins := int(wait.Minutes()) + 1
 			msg := fmt.Sprintf("Too many attempts. Try again in %d minutes.", mins)
@@ -274,8 +274,8 @@ func (s *Server) login(w http.ResponseWriter, r *http.Request) {
 
 	cust, err := s.cfg.Auth.Authenticate(r.Context(), req.CustomerID, req.Password)
 	if err != nil {
-		s.limiter.fail("cust:" + req.CustomerID)
-		s.limiter.fail("ip:" + ip)
+		s.limiter.Fail("cust:" + req.CustomerID)
+		s.limiter.Fail("ip:" + ip)
 		s.log.Info("bff.login", "customer", req.CustomerID, "ip", ip, "ok", false)
 		if !errors.Is(err, core.ErrBadCredentials) {
 			s.log.Error("bff.login.error", "err", err)
@@ -285,7 +285,7 @@ func (s *Server) login(w http.ResponseWriter, r *http.Request) {
 		s.writeError(w, r, http.StatusUnauthorized, "bad_credentials", msg, &sc)
 		return
 	}
-	s.limiter.reset("cust:" + req.CustomerID)
+	s.limiter.Reset("cust:" + req.CustomerID)
 	token, expires := s.sessions.Create(cust.ID)
 	s.log.Info("bff.login", "customer", cust.ID, "ip", ip, "ok", true)
 

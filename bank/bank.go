@@ -1,5 +1,6 @@
 // Package bank is the bank: the composition root over the component
-// packages (ledger, products, customers, payments, treasury, history)
+// packages (ledger, products, customers, payments, treasury, history,
+// users)
 // that implements the core's commands and queries (ADR-0002 stage 5,
 // story 1.5.4). It owns what no single component does: the business day
 // and its start, the BoE reserve's accounting, the position and the
@@ -27,6 +28,7 @@ import (
 	"git.bytestone.uk/hum3/gobank/bank/products"
 	"git.bytestone.uk/hum3/gobank/bank/schema"
 	"git.bytestone.uk/hum3/gobank/bank/treasury"
+	"git.bytestone.uk/hum3/gobank/bank/users"
 	"git.bytestone.uk/hum3/gobank/core"
 	store "git.bytestone.uk/hum3/gobanks-customers"
 )
@@ -34,7 +36,7 @@ import (
 // Schemas is every component's schema, for the wiring to apply at start
 // (the ledger's tables are go-luca's own and not listed).
 func Schemas() []schema.Component {
-	return []schema.Component{products.Schema, customers.Schema, payments.Schema, treasury.Schema, history.Schema, gl.Schema}
+	return []schema.Component{products.Schema, customers.Schema, payments.Schema, treasury.Schema, history.Schema, gl.Schema, users.Schema}
 }
 
 // DefaultReserveRatio is the fraction of deposits the bank holds as BoE
@@ -57,6 +59,11 @@ type Options struct {
 	PIIKey   store.KeyProvider   // the key the customers' PII is encrypted with; nil is the demo's fixed key
 	Seed     int64               // the account numbers' randomness
 	PassHook func()              // called after each account the pass visits; tests cut a pass short with it
+	// AdminPassword is the first admin's password, the deployment's
+	// secret: the bank opens with the user "admin" signing in with it.
+	// Empty opens the bank with no admin, so nobody signs in to the staff
+	// web.
+	AdminPassword string
 }
 
 // Bank is the bank over its database.
@@ -65,11 +72,12 @@ type Bank struct {
 	// so a fresh bank over a wiped database is never seen half-built.
 	open sync.RWMutex
 
-	db    *sql.DB
-	clock core.Clock
-	rates core.BaseRateSource
-	key   store.KeyProvider
-	seed  int64
+	db            *sql.DB
+	clock         core.Clock
+	rates         core.BaseRateSource
+	key           store.KeyProvider
+	seed          int64
+	adminPassword string
 
 	ledger    *ledger.Ledger
 	gl        *gl.Ledger
@@ -78,6 +86,7 @@ type Bank struct {
 	payments  *payments.Payments
 	treasury  *treasury.Treasury
 	history   *history.History
+	users     *users.Users
 
 	// mu guards the day and the figures only its start writes: the day
 	// itself, the base rate, the BoE reserve's accrual, the day's accrual
@@ -108,7 +117,7 @@ type Bank struct {
 // bank's own record, the daily snapshots, and the books are read back
 // from the ledger.
 func Open(db *sql.DB, opts Options) (*Bank, error) {
-	b := &Bank{clock: opts.Clock, rates: opts.Rates, key: opts.PIIKey, seed: opts.Seed, passHook: opts.PassHook}
+	b := &Bank{clock: opts.Clock, rates: opts.Rates, key: opts.PIIKey, seed: opts.Seed, passHook: opts.PassHook, adminPassword: opts.AdminPassword}
 	b.book = newReading(b.readBook, bookTTL)
 	b.interest = newReading(b.readInterest, bookTTL)
 	if b.clock == nil {
@@ -175,9 +184,15 @@ func (b *Bank) openOn(db *sql.DB) error {
 	if err != nil {
 		return err
 	}
+	people := users.Open(db)
+	if b.adminPassword != "" {
+		if err := people.FirstAdmin(ctx, b.adminPassword); err != nil {
+			return err
+		}
+	}
 	b.mu.Lock()
 	b.db = db
-	b.ledger, b.gl, b.products, b.customers, b.payments, b.history = books, general, catalogue, custs, pays, hist
+	b.ledger, b.gl, b.products, b.customers, b.payments, b.history, b.users = books, general, catalogue, custs, pays, hist, people
 	b.glStatus = glReport(glStatus)
 	b.treasury = treasury.New(db, b.businessDay)
 	b.day, b.dayCount = day, dayCount
@@ -226,6 +241,21 @@ func (b *Bank) GeneralLedger() *gl.Ledger       { return b.gl }
 func (b *Bank) Catalogue() *products.Products   { return b.products }
 func (b *Bank) Customers() *customers.Customers { return b.customers }
 func (b *Bank) Payments() *payments.Payments    { return b.payments }
+func (b *Bank) Users() *users.Users             { return b.users }
+
+// AuthenticateUser implements core.Users: the staff web's login.
+func (b *Bank) AuthenticateUser(ctx context.Context, login, password string) (core.User, error) {
+	b.open.RLock()
+	defer b.open.RUnlock()
+	return b.users.AuthenticateUser(ctx, login, password)
+}
+
+// User implements core.Users: the user a session names.
+func (b *Bank) User(ctx context.Context, id string) (core.User, error) {
+	b.open.RLock()
+	defer b.open.RUnlock()
+	return b.users.User(ctx, id)
+}
 
 // SetPassHook sets the function called after each account the pass
 // visits; tests cut a pass short with it.

@@ -104,6 +104,41 @@ func saver(name string, amount luca.Amount) core.NewCustomer {
 	return core.NewCustomer{PII: core.PII{Name: name}, Accounts: []core.NewAccount{{ProductID: gbp.EasyAccess().ID, Opening: amount}}}
 }
 
+// The bank opens with its first admin (story 1.7.1): the user "admin"
+// signs in with the deployment's password, which follows the deployment
+// when the bank is reopened on it, and nobody signs in to a bank opened
+// without one.
+func TestBankOpensWithItsFirstAdmin(t *testing.T) {
+	ctx := context.Background()
+	db := openDB(t)
+	b, err := Open(db, Options{AdminPassword: "s3cret"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	admin, err := b.AuthenticateUser(ctx, "admin", "s3cret")
+	if err != nil || !admin.HasRole("admin") {
+		t.Fatalf("AuthenticateUser(admin) = %+v, %v", admin, err)
+	}
+	if got, err := b.User(ctx, admin.ID); err != nil || got.Login != "admin" {
+		t.Errorf("User(%s) = %+v, %v", admin.ID, got, err)
+	}
+	if b, err = Open(db, Options{AdminPassword: "rotated"}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := b.AuthenticateUser(ctx, "admin", "rotated"); err != nil {
+		t.Errorf("after reopening with a new password: %v", err)
+	}
+	if _, err := b.AuthenticateUser(ctx, "admin", "s3cret"); !errors.Is(err, core.ErrBadCredentials) {
+		t.Errorf("the old password still signs in: %v", err)
+	}
+	if b, err = Open(openDB(t), Options{}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := b.AuthenticateUser(ctx, "admin", ""); !errors.Is(err, core.ErrBadCredentials) {
+		t.Errorf("a bank opened without an admin password lets admin in: %v", err)
+	}
+}
+
 // Every component's schema is listed once, in version order.
 func TestSchemasAreEveryComponents(t *testing.T) {
 	seen := map[string]bool{}

@@ -2,6 +2,30 @@
 
 ## [Unreleased]
 
+### Added
+- ADR-0002 stage 7 story 1.7.1, the users component and the staff login.
+  `bank/users` owns `users` and `user_roles`: a user is a login name, an
+  argon2id password hash (the OWASP minimum, 19 MiB, t=2, p=1, stored as
+  a PHC string) and the roles it holds, with a UUID v4 identity that is
+  never the login name. The bank opens with its first admin, the user
+  `admin`, whose password is the deployment's `GOBANK_ADMIN_PASSWORD`
+  (set again at every start, so a database restored from another
+  environment takes this one's; `demo` in the tab). The staff web has a
+  login page: every page but the login, the favicon and `about.json`
+  needs a signed-in member of staff, the role is the user's, and the
+  layout shows who is signed in with a log out. Staff sessions are kept
+  in the database beside the customer app's (`staff_sessions`, sessions
+  component v2), so an upgrade keeps staff signed in; a reset is a new
+  run and signs everyone out. Five failed logins lock a login name or an
+  address for fifteen minutes. gobank-deploy sets and shows the admin
+  password as it does the app password.
+
+### Changed
+- The role switch is gone: the role comes from the signed-in user. Until
+  more users can be made, the demo has the admin alone.
+- The sessions and the login lockout live in `internal/session`, shared
+  by the BFF and the staff web; package `bff` keeps their names.
+
 ## [0.27.1] - 2026-10-09
 
  - Updating roadmap

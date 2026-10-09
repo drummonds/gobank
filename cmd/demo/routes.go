@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"time"
 
+	"git.bytestone.uk/hum3/gobank/bff"
 	"git.bytestone.uk/hum3/gobank/bff/staff"
 )
 
@@ -15,9 +16,15 @@ import (
 // console driven through staff.Console, which DemoState implements. The
 // server listens on it; the WASM build serves it in the tab from a
 // service worker. scope is the path the handler is mounted under ("/" on
-// the server, the service worker's scope in the tab).
+// the server, the service worker's scope in the tab). The staff web's
+// sessions live in the demo's database beside the customer app's (the
+// sessions component), so an upgrade keeps staff signed in.
 func newHandler(state *DemoState, version, scope string) http.Handler {
-	site := staff.New(siteConfig(state, version, scope))
+	staffSessions := bff.NewSQLSessions(bff.StaffSessionsTable, state.DB, 8*time.Hour, 15*time.Minute, nil)
+	site := staff.New(siteConfig(state, version, scope, staffSessions))
+	if adminPassword() == "" {
+		log.Printf("staff web mounted with GOBANK_ADMIN_PASSWORD unset: staff login is off")
+	}
 
 	// The customer BFF under /v1/: the app's screens and the customer
 	// web, which is the BFF's own HTML (story 1.6.2). The password is the
@@ -29,6 +36,7 @@ func newHandler(state *DemoState, version, scope string) http.Handler {
 	go func() {
 		for range time.Tick(time.Minute) {
 			server.Sessions().Sweep()
+			staffSessions.Sweep()
 		}
 	}()
 	if password == "" {
@@ -38,11 +46,14 @@ func newHandler(state *DemoState, version, scope string) http.Handler {
 }
 
 // siteConfig is the staff web over the demo: the bank (ADR-0002 stage 5)
-// read and written through the core, the console, and the component
-// registry its documentation page renders.
-func siteConfig(state *DemoState, version, scope string) staff.Config {
+// read and written through the core, which also checks its logins, the
+// console, and the component registry its documentation page renders.
+// sessions is where the signed-in staff are kept; nil keeps them in the
+// process.
+func siteConfig(state *DemoState, version, scope string, sessions bff.Sessions) staff.Config {
 	return staff.Config{
-		Bank: state.Bank, Commands: state.Bank, Console: state,
+		Bank: state.Bank, Commands: state.Bank, Users: state.Bank, Console: state,
+		Sessions: sessions, LoginNote: staffLoginNote(),
 		Scope: scope, Version: version,
 		Components: components, Debt: contractDebt,
 	}

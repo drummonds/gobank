@@ -16,6 +16,7 @@ require (
 	git.bytestone.uk/hum3/gogal v0.2.0 // indirect
 	github.com/ncruces/go-sqlite3-wasm/v6 v6.3.35304 // indirect
 	github.com/yuin/goldmark v1.8.6 // indirect
+	golang.org/x/crypto v0.57.0 // indirect
 )
 
 require (

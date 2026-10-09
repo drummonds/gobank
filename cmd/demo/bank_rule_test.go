@@ -29,6 +29,7 @@ func TestBankPackagesKnowOnlyTheCoreAndEachOther(t *testing.T) {
 		"git.bytestone.uk/hum3/go-luca",
 		"git.bytestone.uk/hum3/gobank-products",
 		"git.bytestone.uk/hum3/gobanks-customers",
+		"golang.org/x/crypto/argon2", // the users component's password hash
 	}
 	fset := token.NewFileSet()
 	for _, name := range files {
