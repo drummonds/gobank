@@ -638,3 +638,35 @@ func TestExportAndImport(t *testing.T) {
 		t.Errorf("imported savings %d, %v; want 1000", bal, err)
 	}
 }
+
+// The ledger's business day is the bank's: StartDay advances it before
+// the pass, so the live positions read the day's two slices rather than
+// each account's latest row (go-luca v0.5.0), and a restart on the same
+// day leaves it where it is.
+func TestStartDayAdvancesTheLedgersBusinessDay(t *testing.T) {
+	f := open(t)
+	if _, err := f.bank.OpenCustomer(f.ctx, ada); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := f.bank.StartDay(f.ctx); err != nil {
+		t.Fatal(err)
+	}
+	bd, err := f.bank.Ledger().BusinessDay()
+	if err != nil || bd == nil || !bd.Day.Equal(opening) {
+		t.Fatalf("ledger business day after the opening day = %v, %v; want %s", bd, err, opening.Format(time.DateOnly))
+	}
+	f.nextDay()
+	f.nextDay()
+	bd, err = f.bank.Ledger().BusinessDay()
+	want := opening.AddDate(0, 0, 2)
+	if err != nil || bd == nil || !bd.Day.Equal(want) || !bd.PrevDay.Equal(opening.AddDate(0, 0, 1)) {
+		t.Fatalf("ledger business day after two days = %v, %v; want %s with the day before as previous", bd, err, want.Format(time.DateOnly))
+	}
+	g := reopen(t, f.db, f.now)
+	if _, err := g.bank.StartDay(g.ctx); err != nil {
+		t.Fatal(err)
+	}
+	if bd, err := g.bank.Ledger().BusinessDay(); err != nil || !bd.Day.Equal(want) {
+		t.Errorf("ledger business day after a restart = %v, %v; want %s unchanged", bd, err, want.Format(time.DateOnly))
+	}
+}

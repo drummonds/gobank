@@ -222,6 +222,18 @@ func (b *Bank) SetPassHook(fn func()) {
 
 // businessDay is the day the bank is on, which a component books its
 // facts against.
+// advanceLedgerDay moves the ledger's business day to the bank's, before
+// the pass projects anything on it: the live view then reads the day and
+// the day before as two slices, an account the pass has reached on the
+// first and one it has not on the second (go-luca v0.5.0). The same day
+// again, after a restart, is a no-op.
+func (b *Bank) advanceLedgerDay(day time.Time) error {
+	if err := b.ledger.AdvanceDay(day); err != nil {
+		return fmt.Errorf("bank: start day: %w", err)
+	}
+	return nil
+}
+
 func (b *Bank) businessDay() time.Time {
 	b.mu.Lock()
 	defer b.mu.Unlock()
@@ -272,7 +284,12 @@ func (b *Bank) StartDay(ctx context.Context) (time.Time, error) {
 		} else if day.Before(core.BusinessDay(b.clock.Now())) {
 			day = b.startDay(ctx)
 		} else {
-			return day, nil // on the clock's day, with the day's work done
+			// On the clock's day with the day's work done: a fresh bank
+			// or a restart; the ledger's day is this one.
+			return day, b.advanceLedgerDay(day)
+		}
+		if err := b.advanceLedgerDay(day); err != nil {
+			return day, err
 		}
 		b.mu.Lock()
 		hook := b.passHook

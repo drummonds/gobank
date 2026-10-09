@@ -2,6 +2,16 @@
 
 ## [Unreleased]
 
+### Changed
+- go-luca v0.5.0, go-postgres v0.8.0 and gobank-db v0.3.0. The ledger's
+  business day follows the bank's: `StartDay` advances it before the
+  pass projects anything on it, and on a restart or a fresh bank on the
+  clock's day, so go-luca's live positions view reads the day and the
+  day before as two slices of the day index instead of finding each
+  account's latest row (go-luca #7). Whole-ledger reads such as the book
+  are what this is for. go-postgres makes `sum`, `avg`, `min` and `max`
+  over NUMERIC columns exact on pglike.
+
 ## [0.24.0] - 2026-10-09
 
  - Stage 6 story 1.6.4: the console is served by the staff web over a Console interface; stage 6 (One BFF) is complete
