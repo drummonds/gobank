@@ -460,7 +460,7 @@ root module, `cmd/bff` is the service binary, and `app/` is the Flutter shell.
   and view prefix on `NewSQLLedger`), and indexes for day-bounded reads
   (movements by value time, positions by day) so the journal and the
   reconciliation scan a day, not the table
-- **1.6a.2** the GL opened and posted in shadow — the chart, per-event
+- **1.6a.2** [x] the GL opened and posted in shadow — the chart, per-event
   control movements in the event's transaction, the journal and the GL
   close at pass completion (idempotent per day, product, code), the
   posted-through day, the reconciliation reported on the dashboard;

@@ -84,8 +84,8 @@ func (b *Bank) reserveRatioNow() float64 {
 }
 
 // persistCustomer writes a planned customer — record, ledger accounts,
-// register, funding payments and movements — in one transaction, so each
-// customer is one commit. A customer the database refuses is the error
+// register, funding payments and movements, the GL's control movements —
+// in one transaction, so each customer is one commit. A customer the database refuses is the error
 // returned and nothing of theirs is written; later failures are logged
 // and the customer kept. Funding rewrites the equity account's position
 // and the new accounts' inside the transaction, so their locks are held
@@ -108,6 +108,7 @@ func (b *Bank) persistCustomer(ctx context.Context, day time.Time, plan *custome
 	}
 	unlock := books.Lock(locked...)
 	defer unlock()
+	general := b.gl.WithTx(tx)
 	for _, f := range fundings {
 		if err := b.payments.Insert(tx, f.payment); err != nil {
 			log.Printf("bank: open customer %s: %v", rec.ID, err)
@@ -116,6 +117,10 @@ func (b *Bank) persistCustomer(ctx context.Context, day time.Time, plan *custome
 		// line the customer sees.
 		a := rec.Accounts[f.index]
 		if _, err := b.products.PostEvent(books, day, books.Chart.EquityCapital, a.LedgerAccountID, f.payment.Amount, luca.CodeBookTransfer, f.payment.Reference); err != nil {
+			log.Printf("bank: open customer %s: %v", rec.ID, err)
+		}
+		// The GL sees the funding as equity to the product's control.
+		if err := general.Funding(day, a.ProductID, f.payment.Amount, f.payment.Reference); err != nil {
 			log.Printf("bank: open customer %s: %v", rec.ID, err)
 		}
 	}
@@ -140,10 +145,11 @@ func (b *Bank) persistCustomer(ctx context.Context, day time.Time, plan *custome
 
 // Transfer implements core.PaymentCommands: it moves amount between the
 // two customers' first savings accounts, posting the movement to the
-// ledger with the day's rules rerun on both, and records the payment,
-// whose status then settles asynchronously. The two accounts' locks are
-// held from the balance check to the posting, so two transfers from one
-// account take turns.
+// ledger with the day's rules rerun on both and to the GL's controls
+// when the products differ, and records the payment, whose status then
+// settles asynchronously, all in one transaction. The two accounts' locks
+// are held from the balance check to the commit, so two transfers from
+// one account take turns.
 func (b *Bank) Transfer(ctx context.Context, t core.Transfer) (core.Payment, error) {
 	b.open.RLock()
 	defer b.open.RUnlock()
@@ -180,12 +186,27 @@ func (b *Bank) Transfer(ctx context.Context, t core.Transfer) (core.Payment, err
 	pay := b.payments.New(payments.Transfer, t.From, t.To, t.Amount, payments.Pending, b.clock.Now())
 	fromProduct, _ := b.products.ByID(fromAcc.ProductID)
 	toProduct, _ := b.products.ByID(toAcc.ProductID)
-	if _, err := b.products.PostEvent(b.ledger, b.businessDay(), fromAcc.LedgerAccountID, toAcc.LedgerAccountID, t.Amount, luca.CodeBookTransfer, pay.Reference,
+	day := b.businessDay()
+	tx, err := b.db.BeginTx(ctx, nil)
+	if err != nil {
+		return core.Payment{}, fmt.Errorf("bank: transfer: %w", err)
+	}
+	books := b.ledger.WithTx(tx)
+	if _, err := b.products.PostEvent(books, day, fromAcc.LedgerAccountID, toAcc.LedgerAccountID, t.Amount, luca.CodeBookTransfer, pay.Reference,
 		products.Account{ID: fromAcc.LedgerAccountID, Product: fromProduct}, products.Account{ID: toAcc.LedgerAccountID, Product: toProduct}); err != nil {
+		_ = tx.Rollback()
 		return core.Payment{}, err
 	}
-	if err := b.payments.Insert(b.db, pay); err != nil {
+	if err := b.gl.WithTx(tx).Transfer(day, fromProduct.ID, toProduct.ID, t.Amount, pay.Reference); err != nil {
+		_ = tx.Rollback()
+		return core.Payment{}, err
+	}
+	if err := b.payments.Insert(tx, pay); err != nil {
 		log.Print(err)
+	}
+	if err := tx.Commit(); err != nil {
+		_ = tx.Rollback()
+		return core.Payment{}, fmt.Errorf("bank: transfer %s: commit: %w", pay.Reference, err)
 	}
 	b.book.invalidate()
 	b.interest.invalidate() // the two positions were rewritten, accruals with them

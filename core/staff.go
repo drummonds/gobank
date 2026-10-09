@@ -26,6 +26,15 @@ type Position struct {
 	BoEInterest      luca.Amount // interest earned on reserves to date
 	NIMBps           float64     // latest net interest margin, annualised basis points
 	DayComplete      bool        // every account has its position for Day: the start-of-day pass is done
+	GL               GeneralLedger
+}
+
+// GeneralLedger is the general ledger as the bank reports it (ADR-0005):
+// the last day it has closed, which the bank's figures will be as of,
+// and whether that close reconciled to the sub-ledger.
+type GeneralLedger struct {
+	PostedThrough time.Time // zero before the first close
+	Breaks        int       // products whose control disagreed with the sub-ledger at the close
 }
 
 // ExcessCash is what the bank holds above its required reserves.

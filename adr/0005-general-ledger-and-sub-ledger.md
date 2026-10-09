@@ -123,8 +123,11 @@ stage 7 rewires reads that are already cheap. Stories:
 2. The GL opened and posted in shadow: the chart, per-event control
    movements in the event's transaction, the journal and the GL close at
    pass completion, the posted-through day, the reconciliation reported
-   on the dashboard. Reads unchanged. Done when preprod closes days with
-   no break.
+   on the dashboard. Reads unchanged. A bank already running when the GL
+   opens is adopted: the GL records its opening day, and its first close
+   takes each control's opening balance from the sub-ledger's positions
+   instead of journalling, so the reconciliation holds from the first
+   day. Done when preprod closes days with no break.
 3. Reads move to the GL: the book, accrued interest, the P&L and balance
    sheet, the history series and lending headroom, each labelled with its
    day; the snapshot taken at the close; the BoE reserve moves to the GL.

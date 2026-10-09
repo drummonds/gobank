@@ -50,6 +50,7 @@ func BuildDashboardHTML(d DashData) string {
 	s.WriteString(fmt.Sprintf(`<div class="level-item has-text-centered"><div><p class="heading">Sim clock</p><p class="title is-5">%s</p>%s</div></div>`, d.Sim.Clock.UTC().Format("2 Jan 2006 15:04:05"), warp))
 	s.WriteString(fmt.Sprintf(`<div class="level-item has-text-centered"><div><p class="heading">Customers</p><p class="title is-5">%d</p></div></div>`, d.Bank.Customers))
 	s.WriteString(fmt.Sprintf(`<div class="level-item has-text-centered"><div><p class="heading">NIM</p><p class="title is-5">%s</p></div></div>`, nimStr))
+	s.WriteString(generalLedgerItem(d.Bank.GL))
 	if d.Sim.DayLength > 0 {
 		s.WriteString(fmt.Sprintf(`<div class="level-item has-text-centered"><div><p class="heading">Day length</p><p class="title is-5">%s</p></div></div>`, d.Sim.DayLength))
 	}
@@ -84,6 +85,22 @@ func BuildDashboardHTML(d DashData) string {
 	s.WriteString(buildCustomerChartSVG(d.History.Customers))
 
 	return s.String()
+}
+
+// generalLedgerItem is the general ledger on the summary level (ADR-0005):
+// the day it is posted through and whether that close reconciled. A
+// break is shown, never hidden.
+func generalLedgerItem(gl core.GeneralLedger) string {
+	if gl.PostedThrough.IsZero() {
+		return `<div class="level-item has-text-centered"><div><p class="heading">General ledger</p><p class="title is-6">not yet closed</p></div></div>`
+	}
+	state := `<p class="heading">reconciled</p>`
+	if gl.Breaks == 1 {
+		state = `<p class="heading"><span class="tag is-danger">1 break</span></p>`
+	} else if gl.Breaks > 1 {
+		state = fmt.Sprintf(`<p class="heading"><span class="tag is-danger">%d breaks</span></p>`, gl.Breaks)
+	}
+	return fmt.Sprintf(`<div class="level-item has-text-centered"><div><p class="heading">General ledger</p><p class="title is-6">%s</p>%s</div></div>`, gl.PostedThrough.Format("2 Jan 2006"), state)
 }
 
 // buildNIMChart renders a single-line chart of NIM in basis points as an SVG fragment.

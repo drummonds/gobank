@@ -41,6 +41,16 @@ var components = []Component{
 			"customer_metadata", "options"},
 	},
 	{
+		Name:    "gl",
+		Purpose: "The general ledger, the bank's own books (ADR-0005): a control account per product and the bank's own accounts, posted per event from the sub-ledger's movements and by a journal at the GL close behind each day's pass, and reconciled to the sub-ledger daily. In shadow until story 1.6a.3 moves the bank-level reads onto it.",
+		Library: "go-luca",
+		Package: "bank/gl",
+		Views:   []string{"contract_gl_ledger_movements", "contract_gl_ledger_eod_positions", "contract_gl_ledger_live_positions", "contract_gl_ledger_latest_positions"},
+		Tables: []string{"gl_accounts", "gl_movements", "gl_balances_live", "gl_ledger_day", "gl_aliases", "gl_data_points",
+			"gl_movement_metadata", "gl_commodities", "gl_commodity_metadata", "gl_customers",
+			"gl_customer_metadata", "gl_options", "gl_opening", "gl_closes", "gl_journal", "gl_reconciliations"},
+	},
+	{
 		Name:    "customers",
 		Purpose: "Who the bank's customers are, their KYC status, and the accounts each holds.",
 		Library: "gobanks-customers",

@@ -186,6 +186,7 @@ func (b *Bank) position(ctx context.Context) core.Position {
 		BoEInterest:      b.boeInterestTotalLocked(),
 		NIMBps:           b.nimBps,
 		DayComplete:      b.dayComplete,
+		GL:               b.glStatus,
 	}
 }
 

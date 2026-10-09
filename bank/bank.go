@@ -20,6 +20,7 @@ import (
 	luca "git.bytestone.uk/hum3/go-luca"
 	gbp "git.bytestone.uk/hum3/gobank-products"
 	"git.bytestone.uk/hum3/gobank/bank/customers"
+	"git.bytestone.uk/hum3/gobank/bank/gl"
 	"git.bytestone.uk/hum3/gobank/bank/history"
 	"git.bytestone.uk/hum3/gobank/bank/ledger"
 	"git.bytestone.uk/hum3/gobank/bank/payments"
@@ -33,7 +34,7 @@ import (
 // Schemas is every component's schema, for the wiring to apply at start
 // (the ledger's tables are go-luca's own and not listed).
 func Schemas() []schema.Component {
-	return []schema.Component{products.Schema, customers.Schema, payments.Schema, treasury.Schema, history.Schema}
+	return []schema.Component{products.Schema, customers.Schema, payments.Schema, treasury.Schema, history.Schema, gl.Schema}
 }
 
 // DefaultReserveRatio is the fraction of deposits the bank holds as BoE
@@ -71,6 +72,7 @@ type Bank struct {
 	seed  int64
 
 	ledger    *ledger.Ledger
+	gl        *gl.Ledger
 	products  *products.Products
 	customers *customers.Customers
 	payments  *payments.Payments
@@ -83,12 +85,13 @@ type Bank struct {
 	mu                  sync.Mutex
 	day                 time.Time
 	dayCount            int
-	boeRate             float64 // BoE base rate as a decimal, e.g. 0.0525; moves with the rate source
-	reserveRatio        float64 // fraction of deposits held as BoE reserves, e.g. 0.15
-	dayComplete         bool    // every account has its position for day: the start-of-day pass is done
-	nimBps              float64 // the latest snapshot's NIM, for the position
-	boeAccruedNumerator int64   // BoE interest on excess reserves, numerator units over gbp.AccrualDenominator
-	boePostedPence      int64   // whole pence of BoE accrual posted to the ledger, not yet applied
+	boeRate             float64            // BoE base rate as a decimal, e.g. 0.0525; moves with the rate source
+	reserveRatio        float64            // fraction of deposits held as BoE reserves, e.g. 0.15
+	dayComplete         bool               // every account has its position for day: the start-of-day pass is done
+	glStatus            core.GeneralLedger // the GL as of its last close, for the position
+	nimBps              float64            // the latest snapshot's NIM, for the position
+	boeAccruedNumerator int64              // BoE interest on excess reserves, numerator units over gbp.AccrualDenominator
+	boePostedPence      int64              // whole pence of BoE accrual posted to the ledger, not yet applied
 	boeInterestApplied  luca.Amount
 	dayAccrualSavings   int64 // interest accrued today on savings, numerator units; the pass alone writes it
 	dayAccrualLending   int64
@@ -154,6 +157,16 @@ func (b *Bank) openOn(db *sql.DB) error {
 		day, dayCount = latest, int(latest.Sub(first).Hours()/24)
 	}
 	catalogue := products.New(db)
+	// A bank on record that the GL has never been posted for is adopted:
+	// the GL's first close takes its balances from the sub-ledger.
+	general, err := gl.Open(db, catalogue.All(), day, resumed)
+	if err != nil {
+		return err
+	}
+	glStatus, err := general.Status(ctx)
+	if err != nil {
+		return err
+	}
 	custs, err := customers.Open(db, b.key, books, catalogue, b.seed+int64(dayCount))
 	if err != nil {
 		return err
@@ -164,7 +177,8 @@ func (b *Bank) openOn(db *sql.DB) error {
 	}
 	b.mu.Lock()
 	b.db = db
-	b.ledger, b.products, b.customers, b.payments, b.history = books, catalogue, custs, pays, hist
+	b.ledger, b.gl, b.products, b.customers, b.payments, b.history = books, general, catalogue, custs, pays, hist
+	b.glStatus = glReport(glStatus)
 	b.treasury = treasury.New(db, b.businessDay)
 	b.day, b.dayCount = day, dayCount
 	b.boeRate = b.rates.BaseRate(day)
@@ -208,6 +222,7 @@ func (b *Bank) openOn(db *sql.DB) error {
 
 // The components, for the wiring and for tests.
 func (b *Bank) Ledger() *ledger.Ledger          { return b.ledger }
+func (b *Bank) GeneralLedger() *gl.Ledger       { return b.gl }
 func (b *Bank) Catalogue() *products.Products   { return b.products }
 func (b *Bank) Customers() *customers.Customers { return b.customers }
 func (b *Bank) Payments() *payments.Payments    { return b.payments }
@@ -220,9 +235,7 @@ func (b *Bank) SetPassHook(fn func()) {
 	b.passHook = fn
 }
 
-// businessDay is the day the bank is on, which a component books its
-// facts against.
-// advanceLedgerDay moves the ledger's business day to the bank's, before
+// advanceLedgerDay moves both ledgers' business day to the bank's, before
 // the pass projects anything on it: the live view then reads the day and
 // the day before as two slices, an account the pass has reached on the
 // first and one it has not on the second (go-luca v0.5.0). The same day
@@ -231,9 +244,37 @@ func (b *Bank) advanceLedgerDay(day time.Time) error {
 	if err := b.ledger.AdvanceDay(day); err != nil {
 		return fmt.Errorf("bank: start day: %w", err)
 	}
+	if err := b.gl.AdvanceDay(day); err != nil {
+		return fmt.Errorf("bank: start day: %w", err)
+	}
 	return nil
 }
 
+// closeGL closes the general ledger through the day before day, once
+// day's pass is complete (ADR-0005: the pass of D closes D-1), and keeps
+// what the close reported for the position. A break is logged as well as
+// shown; a close that fails is logged and owed to the next start.
+func (b *Bank) closeGL(ctx context.Context, day time.Time) {
+	s, err := b.gl.Close(ctx, day.AddDate(0, 0, -1))
+	if err != nil {
+		log.Printf("bank: GL close: %v", err)
+		return
+	}
+	for _, br := range s.Breaks {
+		log.Printf("bank: GL break on %s: %s control %d, sub-ledger %d", br.Day.Format(time.DateOnly), br.ProductID, br.Control, br.SubLedger)
+	}
+	b.mu.Lock()
+	b.glStatus = glReport(s)
+	b.mu.Unlock()
+}
+
+// glReport is the GL's status as the position carries it.
+func glReport(s gl.Status) core.GeneralLedger {
+	return core.GeneralLedger{PostedThrough: s.PostedThrough, Breaks: len(s.Breaks)}
+}
+
+// businessDay is the day the bank is on, which a component books its
+// facts against.
 func (b *Bank) businessDay() time.Time {
 	b.mu.Lock()
 	defer b.mu.Unlock()
@@ -285,8 +326,13 @@ func (b *Bank) StartDay(ctx context.Context) (time.Time, error) {
 			day = b.startDay(ctx)
 		} else {
 			// On the clock's day with the day's work done: a fresh bank
-			// or a restart; the ledger's day is this one.
-			return day, b.advanceLedgerDay(day)
+			// or a restart; the ledgers' day is this one, and a GL close
+			// the day's pass left owing is made now.
+			if err := b.advanceLedgerDay(day); err != nil {
+				return day, err
+			}
+			b.closeGL(ctx, day)
+			return day, nil
 		}
 		if err := b.advanceLedgerDay(day); err != nil {
 			return day, err
@@ -295,12 +341,16 @@ func (b *Bank) StartDay(ctx context.Context) (time.Time, error) {
 		hook := b.passHook
 		b.mu.Unlock()
 		res := b.products.RunPass(ctx, b.ledger, day, &b.progress, hook)
+		left, err := b.products.AnyUnprojected(ctx, day)
+		if err == nil && !left {
+			b.progress.phase("closing the general ledger", 0)
+			b.closeGL(ctx, day)
+		}
 
 		// The throughput the dashboard quotes is the accounts the pass
 		// visited over the whole day, begin to finish: the span the runtime
 		// page reports as the last day's duration.
 		elapsed := b.progress.finish()
-		left, err := b.products.AnyUnprojected(ctx, day)
 		b.mu.Lock()
 		b.throughput.record(res.Visited, elapsed)
 		b.dayComplete = err == nil && !left

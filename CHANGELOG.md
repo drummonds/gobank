@@ -2,6 +2,28 @@
 
 ## [Unreleased]
 
+### Added
+- ADR-0005 stage 6a story 1.6a.2, the general ledger in shadow. A second
+  go-luca ledger in the bank's database (`bank/gl`; tables and views
+  prefixed `gl_`) with a control account per product and the bank's own
+  accounts. Funding and transfers across products post to the controls in
+  the event's transaction, inserts only; `Transfer` now writes in one
+  transaction. Once a day's pass completes the GL closes the day before:
+  the journal (the day's interest applications from the sub-ledger's
+  movements, one movement per product and code), each control's position
+  with the sub-ledger's summed accrual, the reconciliation per product and
+  the close on record. Days close in sequence, so a catch-up after
+  downtime skips none, and a close owed at start is made then. The
+  position carries the posted-through day and the break count and the
+  dashboard shows them; reads are otherwise unchanged. A bank that ran
+  before the GL existed is adopted: its first close takes each control's
+  opening balance from the sub-ledger, so the upgrade reconciles from its
+  first day.
+
+### Known
+- An import through the console rebuilds the sub-ledger but not the GL,
+  so the close after it reports a break per product.
+
 ## [0.25.0] - 2026-10-09
 
  - adding business day
