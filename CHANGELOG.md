@@ -7,6 +7,15 @@
  - Stage 7 story 1.7.1: the users component and the staff login
 
 ### Added
+- ADR-0006, products as versioned code with bitemporal parameters
+  (accepted 2026-10-10): a product version is a package in
+  gobank-products answering a fixed event set with intents; rates are
+  parameters with effective-dated settings, a product rate deriving from
+  a bank rate that the bank's policy derives from the base rate with a
+  spread and a lag; the bank stores adoption, the account's version and
+  a record on every rule posting. Roadmap 1.8 refined into four stories;
+  story 1.8.1 shipped as gobank-products v0.6.0, which gobank adopts in
+  1.8.2.
 - ADR-0002 stage 7 story 1.7.1, the users component and the staff login.
   `bank/users` owns `users` and `user_roles`: a user is a login name, an
   argon2id password hash (the OWASP minimum, 19 MiB, t=2, p=1, stored as
