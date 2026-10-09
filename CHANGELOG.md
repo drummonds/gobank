@@ -2,6 +2,8 @@
 
 ## [Unreleased]
 
+## [0.24.0] - 2026-10-09
+
  - Stage 6 story 1.6.4: the console is served by the staff web over a Console interface; stage 6 (One BFF) is complete
 
 ### Changed
