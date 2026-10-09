@@ -475,15 +475,37 @@ root module, `cmd/bff` is the service binary, and `app/` is the Flutter shell.
 - **1.7** Users and access — a `users` component (own tables, ADR-0001)
   in the bank's database: a user is a login name, a password hash and
   the roles it holds, and names the customer it is when it is one. Staff
-  and customers are one table told apart by role; an identity service of
-  its own is a later split, and because the component sits behind its
-  API that split is a move, not a redesign. The staff web gets a login
-  and the role comes from the session, replacing the role switch; the
-  app's one password per environment (`GOBANK_APP_PASSWORD`, `demo` in
-  the tab) becomes each customer's own. Sessions are already stored
-  (1.2.7). Out of scope: passkeys and WebAuthn (items 6 and 8), MFA, a
+  and customers are one table told apart by role. Chosen (2026-10-09)
+  over an identity server: the tab needs its login in-process, and
+  `OpenCustomer` creating a login is a call in the same transaction.
+  Authelia, Authentik and Pocket ID were looked at and are staff-only
+  front doors with no customer API; the hosted services do not run in
+  the tab. The later split, if a second bank or SSO earns it, is Ory
+  Kratos (Go, headless, admin API, CockroachDB-native, Apache 2.0,
+  imports argon2id hashes); because the component sits behind its API
+  that split is a move, not a redesign. The staff web gets a login and
+  the role comes from the session, replacing the role switch; the app's
+  one password per environment (`GOBANK_APP_PASSWORD`, `demo` in the
+  tab) becomes each customer's own. Sessions are already stored (1.2.7).
+  Out of scope: passkeys and WebAuthn (items 6 and 8), MFA, a
   password-reset journey, a separate identity service, the standalone
-  RBAC module (item 10, which waits for a second consumer). Settled
+  RBAC module (item 10, which waits for a second consumer). Design facts
+  that keep passkeys a later addition rather than a rework: a user is
+  representable without a password (the hash is nullable; passkeys
+  become a `user_passkeys` table of credential ID, public key, sign
+  count, transports, AAGUID, backup flags and RP ID); the user's
+  identity is its UUID v4 key, which is the WebAuthn user handle, never
+  the login name; `core.Authenticator` stays password-shaped and a
+  passkey login is a begin/finish ceremony behind an interface of its
+  own with the challenge held in the stored session; the session records
+  how it was authenticated and whether the user was verified, which
+  step-up (item 7) asks; the relying-party ID is a domain per
+  environment that gobank-deploy sets beside the app password, so an
+  environment reached by IP cannot drill passkeys. Server library when
+  they come: `github.com/go-webauthn/webauthn` (pinned, still v0);
+  browser side is `navigator.credentials` on the BFF login screen; app
+  side is Corbado's Flutter `passkeys` package with the `.well-known`
+  association files served by the BFF. Settled
   (2026-10-09): argon2id at the OWASP minimum (19 MiB, t=2, p=1) from
   `golang.org/x/crypto/argon2`, measured against `x/crypto/bcrypt` native
   and under GOOS=js: 15 ms against 43 ms (bcrypt cost 10) on the laptop,
