@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+## [0.25.0] - 2026-10-09
+
+ - adding business day
+
 ### Changed
 - go-luca v0.5.0, go-postgres v0.8.0 and gobank-db v0.3.0. The ledger's
   business day follows the bank's: `StartDay` advances it before the
