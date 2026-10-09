@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+## [0.26.0] - 2026-10-09
+
+ - Stage 6a story 1.6a.2: the general ledger opened, posted and closed in shadow, reconciled daily
+
 ### Added
 - ADR-0005 stage 6a story 1.6a.2, the general ledger in shadow. A second
   go-luca ledger in the bank's database (`bank/gl`; tables and views
