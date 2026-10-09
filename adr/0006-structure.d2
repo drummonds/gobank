@@ -1,0 +1,75 @@
+direction: right
+
+gbp: gobank-products (library) {
+  contract: Version contract {
+    shape: class
+    Version: "Product(), Version(), Family()"
+    Parameters: "[]Declaration: key, scope, type, fixed | derived"
+    Rules: "one method per event: facts in, intents out"
+    Commands: "named manual events"
+  }
+  ea1: easyaccess/v1 {
+    shape: package
+  }
+  ea2: easyaccess/v2 (tracker) {
+    shape: package
+  }
+  ft1: fixedterm/v1 {
+    shape: package
+  }
+  more: "isa/v1 loan/v1 mortgage/v1 overdraft/v1" {
+    shape: package
+  }
+  engine: accrual arithmetic {
+    shape: rectangle
+  }
+  ea1 -> contract: implements
+  ea2 -> contract: implements
+  ft1 -> contract: implements
+  more -> contract: implements
+  ea1 -> engine
+  ea2 -> engine
+  ft1 -> engine
+  more -> engine
+}
+
+bank: gobank (the bank) {
+  runner: bank/products — the runner {
+    shape: rectangle
+    label: "bank/products\ngathers facts, dispatches the event,\nposts the intents under the account's lock\nowns: products (adoptions), product_postings"
+  }
+  params: bank/parameters {
+    shape: rectangle
+    label: "bank/parameters\nsettings: key, scope, value,\neffective-from, decided-at\nresolves (key, day, known-at)"
+  }
+  ledger: bank/ledger (go-luca) {
+    shape: cylinder
+    label: "sub-ledger\npositions, movements"
+  }
+  customers: bank/customers {
+    shape: rectangle
+    label: "customer_accounts\n+ product_version"
+  }
+  treasury: bank/treasury {
+    shape: rectangle
+  }
+}
+
+callers: who fires events {
+  pass: start-of-day pass
+  payments: a posting (transfer, funding)
+  console: staff console
+  sim: simulation (the market)
+}
+
+callers.pass -> bank.runner: day
+callers.payments -> bank.runner: pre-posting, post-posting
+callers.console -> bank.runner: manual command,\nchange of version
+callers.console -> bank.params: set a product rate\n(effective in the future)
+callers.sim -> bank.params: boe.base_rate settings
+
+bank.runner -> gbp.contract: Rules(facts)
+bank.runner -> bank.params: resolve parameters\nfor the account's version
+bank.runner -> bank.ledger: positions, postings
+bank.runner -> bank.customers: account's version
+bank.treasury -> bank.params: boe.base_rate

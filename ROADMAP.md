@@ -533,48 +533,70 @@ root module, `cmd/bff` is the service binary, and `app/` is the Flutter shell.
   staff pages, PII gating and the DB explorer's `Authoriser` (the Phase 1
   explorer item) ask it, closing the gap where every role browses every
   table. Done-when of the stage
-- **1.8** Products as versioned code — today a product is a
-  gobank-products value (id, name, family, a feature list and a string
-  map of defaults) wrapped by the bank with a `float64` rate and a blurb,
-  and an account records only a product id. The day rule (`NextDay`,
-  pure, over go-luca positions) is right, but what it is asked to apply
-  is not a record: the rate lives in the wrapper, the cycle in a string
-  map, the feature and event framework in gobank-products is a second
-  mechanism the bank does not run, and nothing says which rules an
-  account was on when a posting was made, so a rate change would rewrite
-  the past and the interest application is hard to reason about. A
-  product definition becomes code with a version: a typed Go value in
-  gobank-products (id, version, family, the parameters its rules read:
-  rate in basis points, application cycle, day-count basis, term) with
-  the rules as methods on it over one event set (open, movement, day,
-  close). A version is immutable; a change is a new version. The bank
-  stores what it has adopted: a `products` table (product, version,
-  adopted day, the parameters as published) owned by `bank/products`,
-  accounts reference product and version, and every posting the rules
-  call for carries the version that produced it. go-luca stays the
-  mechanics: positions, accrual carried on the position, postings. Out
-  of scope: a product designer, products as data (code is the
-  definition; the table records adoption), moving an account between
-  versions (a later event), notice periods. Open: the version as a
-  per-product integer in code, several coexisting in one build, with the
-  module version recorded on adoption (recommended) versus the
-  gobank-products module version as the product version (one set per
-  build, so moving an account means a rebuild); and where a posting
-  records its version (go-luca batch metadata versus a column of the
-  bank's own). Stories:
-- **1.8.1** gobank-products: versioned definitions — `Product` gains a
-  version and typed parameters, one event interface, `NextDay` a method
-  of the version; the feature and `SimContext` framework is folded in or
-  retired; the goldens hold
-- **1.8.2** the stored catalogue — the `products` table, accounts stamped
-  with product and version (the migration puts every open account on
-  version 1), the `float64` rate and the defaults map gone from the bank,
+- **1.8** Products as versioned code, with bitemporal parameters
+  (ADR-0006, proposed 2026-10-09; taken before 1.7.2 and 1.7.3) — today
+  a product is a gobank-products value (id, name, family, a feature
+  list and a string map of defaults) wrapped by the bank with a
+  `float64` rate and a blurb, an account records only a product id, the
+  feature and event framework in gobank-products is a second mechanism
+  the bank does not run (no term lock, ISA allowance or overdraft limit
+  is enforced), nothing says which rules an account was on when a
+  posting was made, and the base rate is an injected function connected
+  to no product. A product version becomes a Go package in
+  gobank-products (`easyaccess/v1`, `easyaccess/v2`) with its own golden,
+  immutable once adopted, answering one fixed event set (start-up, open,
+  pre-posting, post-posting, day, parameter change, manual command,
+  change of version, close) as pure rules: facts read through an
+  interface, intents (positions, postings, refusals) returned, the bank's
+  runner carrying them out under the account's lock. A rate is a
+  parameter the version declares with a scope (bank, product version,
+  account) and a source: a stored setting, or a derivation from another
+  parameter in code (base rate − 15 bps, floor 0, possibly negative).
+  Settings are bitemporal (effective-from, decided-at, append-only), so a
+  rate change is decided today for a future day and takes effect with
+  nothing to do; a rule change is a new version, a value change a
+  setting. The bank stores adoption (`products`), the account's version,
+  the settings (`bank/parameters`) and on every rule posting the
+  version, event and resolved values (`product_postings`). The base rate
+  becomes a bank parameter the simulation writes and the treasury reads;
+  `core.BaseRateSource` goes. Settled from the earlier opens: the version
+  is a per-product integer in code with the module version recorded on
+  adoption; the posting's version is a bank table, not go-luca
+  metadata. The build carries only the versions the bank has (on sale
+  or with accounts on them); each version ships its own up (adoption)
+  and down (withdrawal) migration, both additive, applied by the bank's
+  migration and the drill's rollback like any component's; a retired
+  version's package goes, and its postings and their records stay,
+  carrying the inputs so they verify by arithmetic without the code; an
+  older build leaves accounts on versions it lacks unprojected and
+  counted. Out of scope: a product designer, products as data, bulk
+  migration between versions (the per-account event is in), notice
+  periods, corrections as adjustment postings, negotiated per-account
+  rates. Stories:
+- **1.8.1** gobank-products: the contract and v1 of every product —
+  `Version`, `Facts`, events and intents, parameter declarations with
+  scope and derivation; six `<product>/v1` packages reproducing today's
+  behaviour exactly with the bank's rates moved in as published basis
+  points; goldens re-pinned per package; the feature framework,
+  `SimContext`, `Simulation` and `ParameterStore` retired. A library
+  release; gobank stays on v0.3.0 until 1.8.2
+- **1.8.2** the catalogue and the runner — `products` and
+  `product_postings`, `product_version` on accounts (the migration
+  adopts the six and stamps every account 1), `bank/products`
+  dispatching open, post-posting, day and close to the account's
+  version; the `float64` rate and the defaults map gone from the bank;
   the products page showing versions and the accounts on each
-- **1.8.3** events driven by the version — the pass and every posting
-  path resolve the account's version and run its rule, and postings
-  record it; a second version of easy access (a rate change) adopted on
-  preprod mid-run, with interest seen applying per account's version.
-  Done-when of the stage
+- **1.8.3** parameters — `bank/parameters` with settings and
+  resolution; the base rate as a bank parameter the simulation writes;
+  a staff page setting a product rate effective on a future day;
+  `easyaccess/v2` as a tracker adopted on preprod mid-run, new accounts
+  opening on it, its accrual seen moving when the base rate does
+- **1.8.4** the remaining events — pre-posting (term lock, ISA
+  allowance, overdraft limit as rules the payments path asks),
+  parameter change, start-up, manual commands from the console, change
+  of version per account from the staff account page. Done-when of the
+  stage: an account moved from easy-access v1 to v2 on preprod, its v1
+  cycle closed by postings that record v1
 - **1.9** Speed — the demo is slow to use. Found by hand on 2026-10-08
   at the Hetzner scale: savings and lending 8 s (a movement sum per
   request), customers 9 s (not attributed), P&L and balance sheet never
