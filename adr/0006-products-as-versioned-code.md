@@ -1,7 +1,7 @@
 # ADR-0006: Products as versioned code, with bitemporal parameters
 
-Status: Proposed
-Date: 2026-10-09
+Status: Accepted
+Date: 2026-10-09, accepted 2026-10-10
 Stage: ADR-0002 stage 8 of Phase 2 (roadmap 1.8), taken before 1.7.2 and 1.7.3
 
 ## Context
@@ -47,7 +47,9 @@ every rule posting the version and the values that produced it.
 | Parameter | A named, typed value a rule reads: rate in basis points, floor, application cycle, day-count basis, term. Declared by the version with a scope and a source. |
 | Scope | Whose parameter it is: the bank (`boe.base_rate`), a product version (`easy-access/v1/rate_bps`), or one account (`maturity_day`). |
 | Setting | One stored value of a parameter: value, effective-from (value time), decided-at (knowledge time), who. Append-only. The bitemporal record. |
-| Derivation | A parameter the version defines as a function of another: `boe.base_rate − 15 bps, floor 0`. Code, not a setting; a derived parameter has no settings of its own. |
+| Derivation | A parameter defined as a function of another: `bank.savings_rate − 15 bps, floor 0`. Code, not a setting; a derived parameter has no settings of its own. A derivation may lag: the lower (or higher) of the source now and the source a number of days ago. |
+| Bank rate | The bank's own base rate for a family, `bank.savings_rate_bps` and `bank.lending_rate_bps`: derived from the Bank of England rate with a spread and a lag, by the bank's policy. What a product rate derives from, unless the version has logic of its own. |
+| Policy | The bank's rules as versioned code: a package in gobank-products that declares the bank-scoped parameters (the base rate as the market writes it, the bank rates, the spreads and lags). Adopted, immutable and retired as a product version is; a change to how the bank sets its rates is a new policy version. |
 | Catalogue | The versions the bank has adopted: the `products` table, with the day each went on sale, the gobank-products module version that carried it, and its parameters as published. |
 | Account version | The version an account runs under: stamped at open, changed only by the change-of-version event. |
 | Rule posting | A ledger movement a rule called for, recorded with the version, the event and the resolved parameters that produced it. |
@@ -118,6 +120,40 @@ why a rule reads through an interface and returns intents rather than
 holding a ledger handle. The feature framework held a ledger handle, and
 the bank never ran it.
 
+### The bank's rates
+
+The Bank of England announces a change before it takes effect, so its
+setting is decided before it is effective. The bank does not pass the
+change straight through: a cut reaches savers at once and a rise after a
+delay, and for borrowers the other way about. The product rate then
+follows the bank rate on the same day, at a fixed spread below it.
+
+The policy expresses this as derivations, not as a daily rule that
+writes settings. A lagged derivation reads its source on the day and a
+lag of days earlier and takes the lower (savings) or the higher
+(lending), so the bank rate on any day, past or future, is a function of
+the base-rate series and nothing else:
+
+| Family | Base rate moved | Bank rate on day d | Reaches the customer |
+|---|---|---|---|
+| savings | down on d0 | min(base(d), base(d − lag)) + spread: the new, lower rate from d0 | at once |
+| savings | up on d0 | the old rate until d0 + lag, then the new | after the lag |
+| lending | up on d0 | max(base(d), base(d − lag)) + spread: the new, higher rate from d0 | at once |
+| lending | down on d0 | the old rate until d0 + lag, then the new | after the lag |
+
+The spreads and lags are bank-scoped parameters with published values,
+changeable by setting: the bank that chooses not to pass a cut on widens
+its savings spread by the cut from the cut's day, and the derivation does
+the rest. Because every rate resolves for a future day, the products
+page shows the rate a product will pay in two weeks, and the parameter
+change event fires on the day it lands with nothing scheduled.
+
+A product version's rate derives from the bank rate by default:
+`rate_bps = bank.savings_rate_bps − 15, floor 0`. A version with logic
+of its own publishes a fixed rate instead (the v1 packages, which
+reproduce the rates the bank ran before), or answers the parameter
+change event in its own way.
+
 ### Parameter resolution
 
 A rule asks for parameter P on day D. The runner resolves it as known at
@@ -128,7 +164,7 @@ recorded the value used.
 
 | P is derived | P's scope | A setting with effective ≤ D and decided ≤ K exists | Outcome |
 |---|---|---|---|
-| yes | | | resolve the source at (D, K), apply the formula: spread, then floor and cap |
+| yes | | | resolve the source at (D, K) and, if lagged, at (D − lag, K), take the lower or higher as declared, apply the formula: spread, then floor and cap |
 | no | account | yes | the setting with the greatest effective-from; of equals, the latest decided |
 | no | account | no | refuse: the open event failed to write it |
 | no | product version | yes | as the account row |
@@ -170,6 +206,7 @@ one integer where three values and a parameter list are needed.
 | Rules read facts through an interface and return intents | the version holds a ledger handle and posts | each version tests with no database; idempotence under restart needs rules to be functions of stored facts; the shared-row lesson of v0.10.0 |
 | Rate as a parameter with settings, rule as a version | every change a new version | a rate move is the commonest change a bank makes and must be decidable today for a future day without a release |
 | Derivation in the version's code | a formula stored as a setting | code is the definition; a formula in a string is a product designer, which is out of scope |
+| The bank's rates as lagged derivations in a policy package | a daily bank rule that answers each base-rate change by writing settings | a derivation is a function of the series, so it resolves for any day, needs no record of which changes it has answered, and runs the same after a restart; discretion is a change to the spread or the lag |
 | The base rate a bank parameter the simulation writes | keep `BaseRateSource` and mirror it | one mechanism; stage 9's tests write a setting the same way |
 | A `product_postings` table | go-luca batch metadata | above |
 | The events dispatched by `bank/products` | each caller resolves the version and dispatches | one place resolves the account's version, its parameters and the lock; callers name the event |
@@ -207,11 +244,15 @@ deployed and drilled before the next:
    migration applies the six ups and stamps every account 1; the
    rollback build runs with the rows in place.
 3. **Parameters.** `bank/parameters` with its settings and resolution;
-   the base rate as a bank parameter the simulation writes and the
-   treasury reads; a staff page that sets a product rate effective on a
-   future day; `easyaccess/v2` as a tracker (base rate − 15 bps, floor
-   0) adopted on preprod mid-run, with new accounts opening on it and
-   its accrual seen moving when the base rate does.
+   the policy package (`policy/v1` in gobank-products: the base rate as
+   the market writes it, the bank savings and lending rates derived with
+   spread and lag, lagged derivations in the contract) and its adoption;
+   the base rate written by the simulation and read by the treasury; a
+   staff page that sets a product rate or a bank spread effective on a
+   future day; `easyaccess/v2` tracking the bank savings rate (− 15 bps,
+   floor 0) adopted on preprod mid-run, with new accounts opening on it
+   and its accrual seen moving, at once on a cut and after the lag on a
+   rise, when the base rate does.
 4. **The remaining events.** Pre-posting (the term lock, the ISA
    allowance, the overdraft limit become rules the payments path asks),
    parameter change, start-up, manual commands from the console, change

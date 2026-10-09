@@ -552,6 +552,11 @@ root module, `cmd/bff` is the service binary, and `app/` is the Flutter shell.
   parameter the version declares with a scope (bank, product version,
   account) and a source: a stored setting, or a derivation from another
   parameter in code (base rate − 15 bps, floor 0, possibly negative).
+  A product rate derives by default from a bank rate for its family,
+  itself derived from the Bank of England rate by the bank's policy
+  (versioned code too) with a spread and an asymmetric lag; a version
+  with logic of its own publishes a fixed rate or answers the parameter
+  change event itself.
   Settings are bitemporal (effective-from, decided-at, append-only), so a
   rate change is decided today for a future day and takes effect with
   nothing to do; a rule change is a new version, a value change a
@@ -586,11 +591,17 @@ root module, `cmd/bff` is the service binary, and `app/` is the Flutter shell.
   dispatching open, post-posting, day and close to the account's
   version; the `float64` rate and the defaults map gone from the bank;
   the products page showing versions and the accounts on each
-- **1.8.3** parameters — `bank/parameters` with settings and
-  resolution; the base rate as a bank parameter the simulation writes;
-  a staff page setting a product rate effective on a future day;
-  `easyaccess/v2` as a tracker adopted on preprod mid-run, new accounts
-  opening on it, its accrual seen moving when the base rate does
+- **1.8.3** parameters and the bank's rates — `bank/parameters` with
+  settings and resolution; `policy/v1` in gobank-products declaring the
+  base rate (written by the simulation, read by the treasury) and the
+  bank savings and lending rates as lagged derivations (a cut reaches
+  savers at once and a rise after a lag, borrowers the other way about;
+  spread and lag published, changeable by setting), lagged derivations
+  added to the contract; a staff page setting a product rate or a bank
+  spread effective on a future day; `easyaccess/v2` tracking the bank
+  savings rate at − 15 bps, floor 0, adopted on preprod mid-run, new
+  accounts opening on it, its accrual seen moving when the base rate
+  does, at once on a cut and after the lag on a rise
 - **1.8.4** the remaining events — pre-posting (term lock, ISA
   allowance, overdraft limit as rules the payments path asks),
   parameter change, start-up, manual commands from the console, change
