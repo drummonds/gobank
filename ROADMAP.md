@@ -27,7 +27,7 @@ The browser-based model proves the banking core works end-to-end.
   durable so an instance resumes after a restart, with timers on the
   bank clock (`core.Clock`) so a six-month wait runs inside a simulated
   afternoon. First consumers: KYC journeys and sign-up (Phase 2 #4),
-  lending proposals, dormancy, licence promotion (below). Stage 1.8's
+  lending proposals, dormancy, licence promotion (below). Stage 1.12's
   single workflow runner becomes this engine's runner. WASM runs it in
   memory. Out of scope: a visual designer, BPMN, retries with backoff
   beyond "try again next day". Open: definitions as Go code (steps are
@@ -99,8 +99,7 @@ The browser-based model proves the banking core works end-to-end.
   metrics (e.g. liquidity coverage needs a treasury cash view)
 - **DB explorer on the pluggable go-dbexplorer** — fix FK filter links
   (route through `Explorer.Render`); then a `Catalog` adapter over
-  `components.go` and an `Authoriser` wired to `Role`, closing the gap where
-  every role can browse every table
+  `components.go`. The `Authoriser` is story 1.7.3
 - **Working savings accounts** — full lifecycle: open, deposit, withdraw, accrue interest, close
 - **Import/export via luca files** — load and save simulation state as plain-text accounting files
 - **Export single savings account** — extract one account's history as a luca file
@@ -127,7 +126,7 @@ and the daily pass taking turns per account, projections written through
 the day) has to be measured, not inferred. Telemetry is its own item so
 that every later story ships with its numbers.
 
-- **Performance run on Hetzner, small and large** — a gobank-deploy
+- [x] (v0.12.0) **Performance run on Hetzner, small and large** — a gobank-deploy
   `perf` workflow (beside the drill) creates an environment at a scale
   (`small` cx23, `large` cx53), waits for the demo, sets the day length to
   zero, batch-adds customers for a fixed wall-clock span, lets days run
@@ -207,15 +206,18 @@ root module, `cmd/bff` is the service binary, and `app/` is the Flutter shell.
   that holds every fact, accruals pipelined one day ahead by a start-of-day
   workflow, and a simulation that differs from production only in event
   sources and the clock. Nine stages, each leaving the demo running in
-  WASM, on a server and on Hetzner. Every story ends with a release
-  deployed to the Hetzner demo and sense-checked there before the next
-  starts:
+  WASM, on a server and on Hetzner. The list below is the ADR's nine
+  stages with the stages added since (1.6a, 1.7 to 1.10) in the order
+  they are worked; a shipped story keeps its number, so an insertion
+  before one takes a letter (1.6a) and only unshipped stages are
+  renumbered. Every story ends with a release deployed to the Hetzner
+  demo and sense-checked there before the next starts:
 - **1.1** [x] (v0.4.0) Seams — core commands/queries as interfaces; `DemoState` adapts to
   them; the BFF runs in the demo process and the app shows real data.
   Stories:
 - **1.1.1** [x] (v0.3.54) customer contracts in `core`, contract suite,
   demo adapter, BFF at `/v1/`
-- **1.1.2** [x] gobank-deploy sets `GOBANK_APP_PASSWORD` per environment
+- **1.1.2** [x] (gobank-deploy v0.3.0) gobank-deploy sets `GOBANK_APP_PASSWORD` per environment
   and shows it (its story 1g, gobank-deploy v0.3.0)
 - **1.1.3** [x] (v0.4.0) Android debug build — `app/android` and `app/ios`
   generated and committed, cleartext traffic allowed in the debug
@@ -264,7 +266,7 @@ root module, `cmd/bff` is the service binary, and `app/` is the Flutter shell.
 - **1.2.7** [x] (v0.9.0) sessions in the database — `bff.Sessions`,
   with a SQL store over the demo's database (the `sessions`
   component)
-- **1.3** Pipelined accruals — start-of-day workflow writes next-day
+- **1.3** [x] (v0.11.0) Pipelined accruals — start-of-day workflow writes next-day
   projections; interest application is product code inside it. A
   projection is an account's position at the start of a day: its
   balance and its accrued-but-unapplied interest. go-luca publishes
@@ -314,7 +316,7 @@ root module, `cmd/bff` is the service binary, and `app/` is the Flutter shell.
   the touched account's next-day projection; the engine's account
   map and the end-of-day sweep go. Done-when of the stage; drilled
   with a restart mid-pass
-- **1.4** Events and clock — bank and simulation split; generators and an
+- **1.4** [x] (v0.15.0) Events and clock — bank and simulation split; generators and an
   injected clock. The simulation differs from the bank in where its
   events come from and in the clock and market data it reads, nothing
   else; the stage ends with the simulation a package of its own that
@@ -346,7 +348,7 @@ root module, `cmd/bff` is the service binary, and `app/` is the Flutter shell.
   bank over a wiped database); separate locks replace the shared
   `ds.mu`. Done-when of the stage: the compiler is the enforcement
   and a test checks the package's imports
-- **1.5** Core into packages — one component at a time, into `bank/<component>`
+- **1.5** [x] (v0.18.0) Core into packages — one component at a time, into `bank/<component>`
   packages of the root module, each owning its tables and migrations behind
   its API, with `bank` the composition root that implements `core.Commands`
   and `core.StaffQueries`. Smallest coupling first so the pattern (the
@@ -356,10 +358,10 @@ root module, `cmd/bff` is the service binary, and `app/` is the Flutter shell.
   stage: `cmd/demo` holds only wiring, the console and the UI. Stories:
 - **1.5.1** [x] (v0.16.0) treasury — `bank/treasury`: gilt yields and holdings,
   `Buy`; reads only the bank's business day
-- **1.5.2** [x] history — `bank/history`: the daily snapshots
-- **1.5.3** [x] ledger — `bank/ledger`: the go-luca wrapper, the chart of
+- **1.5.2** [x] (v0.17.0) history — `bank/history`: the daily snapshots
+- **1.5.3** [x] (v0.17.0) ledger — `bank/ledger`: the go-luca wrapper, the chart of
   accounts, the account locks and `postEvent`
-- **1.5.4** [x] products, customers, payments and the bank, as one story:
+- **1.5.4** [x] (v0.18.0) products, customers, payments and the bank, as one story:
   `bank/products` (the catalogue, the pass and the accrual over the
   ledger), `bank/customers` (the store, the register, opening and
   transactions, over ledger and products), `bank/payments` over all of
@@ -367,16 +369,16 @@ root module, `cmd/bff` is the service binary, and `app/` is the Flutter shell.
   dissolves `coreAdapter`; book and about read through `core`. Stories
   1.5.4 to 1.5.7 of the original breakdown, taken together and released
   once; the stage's done-when
-- **1.6** [x] One BFF — the staff UI and the customer web render through the
+- **1.6** [x] (v0.24.0) One BFF — the staff UI and the customer web render through the
   BFF, which becomes the demo's one handler, and the WASM build serves that
   handler in the tab (ADR-0002 stage 6; absorbs item 5 and the HTML half of
   item 8, passkeys excluded). The BFF keeps no state of its own: the console
   it serves is an interface the demo implements. Out of scope: a staff
-  login (the role switch stays), staff sessions in the database (1.8 needs
-  them), the audience split, and the screens app.md draws (its stories
+  login (the role switch stays; 1.7 adds it), staff sessions in the
+  database (1.12 needs them), the audience split, and the screens app.md draws (its stories
   1 to 4). Done-when of the stage: `cmd/demo` holds no HTML and no handler,
   only wiring, the simulation and the console. Stories:
-- **1.6.1** [x] one handler, in the tab — the demo's routes become one
+- **1.6.1** [x] (v0.19.0) one handler, in the tab — the demo's routes become one
   `http.Handler` built over the state (no default mux, no closures in
   `main`); the server listens on it and the WASM build serves the same
   handler in the tab through lofigui's service worker (`wasmhttp.Serve`,
@@ -390,7 +392,7 @@ root module, `cmd/bff` is the service binary, and `app/` is the Flutter shell.
   Done: `main_wasm.go` registers the handler and nothing else; `test:wasm`
   drives the binary over the worker's own Request/Response protocol under
   `/demo/`; the docs demo serves the server's pages
-- **1.6.2** [x] customer web through the BFF — the hand-rendered phone frame
+- **1.6.2** [x] (v0.21.0) customer web through the BFF — the hand-rendered phone frame
   (`/app/`, `bankapp_*.go`, `LayoutBankApp`) and the open `/api/customers`
   and `/api/customer/` endpoints are retired; the demo's Bank App link
   opens the BFF's HTML at `/v1/screen/login`, whose phone frame is the
@@ -401,7 +403,7 @@ root module, `cmd/bff` is the service binary, and `app/` is the Flutter shell.
   under (`bff.Config.Scope`) and its pages, redirects and cookie carry it;
   the tab keeps the session cookie the service worker cannot set
   (`keepCookiesInTab`); the login note is the deployment's
-- **1.6.3** [x] staff pages through the BFF — the layout, the role switch, PII
+- **1.6.3** [x] (v0.22.0) staff pages through the BFF — the layout, the role switch, PII
   authorisation and the pages that read the core (dashboard data,
   accounting, products, customers, payments, treasury, reports, about and
   docs) move to `bff/staff`, mounted by `bff.Server`; the BFF is the
@@ -412,7 +414,7 @@ root module, `cmd/bff` is the service binary, and `app/` is the Flutter shell.
   (`Page`, `StaticPage`, `Fragment`, `Role`, `PII`, `Require`,
   `Redirect`) until 1.6.4; `TestStaffWebKnowsOnlyTheCore` holds the
   package to the core and its UI libraries
-- **1.6.4** [x] the console through the BFF — the dashboard controls, settings,
+- **1.6.4** [x] (v0.24.0) the console through the BFF — the dashboard controls, settings,
   runtime, restarts, export and import and the DB explorer move to
   `bff/staff` over a `Console` interface (start, stop, advance, reset, add
   customers, the payments generator's send, run and stop, settings,
@@ -460,7 +462,7 @@ root module, `cmd/bff` is the service binary, and `app/` is the Flutter shell.
   and view prefix on `NewSQLLedger`), and indexes for day-bounded reads
   (movements by value time, positions by day) so the journal and the
   reconciliation scan a day, not the table
-- **1.6a.2** [x] the GL opened and posted in shadow — the chart, per-event
+- **1.6a.2** [x] (v0.26.0) the GL opened and posted in shadow — the chart, per-event
   control movements in the event's transaction, the journal and the GL
   close at pass completion (idempotent per day, product, code), the
   posted-through day, the reconciliation reported on the dashboard;
@@ -468,12 +470,138 @@ root module, `cmd/bff` is the service binary, and `app/` is the Flutter shell.
 - **1.6a.3** reads move to the GL — the book, accrued interest, P&L and
   balance sheet, the history series and lending headroom, each labelled
   with its day; the snapshot taken at the close; the BoE reserve moves to
-  the GL; customer reads stay on the sub-ledger. Done-when of the stage
-- **1.7** Read/write split — separate read and write handles
-- **1.8** Many processes — several BFFs, a generator and one workflow runner;
-  deploys go blue-green (deployment level 3), ending the downtime
-  accepted since stage 2
-- **1.9** Simulation becomes tests
+  the GL; customer reads stay on the sub-ledger. Done-when of the stage.
+  Worked inside 1.9, after 1.9.1 has measured the reads it replaces
+- **1.7** Users and access — a `users` component (own tables, ADR-0001)
+  in the bank's database: a user is a login name, a password hash and
+  the roles it holds, and names the customer it is when it is one. Staff
+  and customers are one table told apart by role; an identity service of
+  its own is a later split, and because the component sits behind its
+  API that split is a move, not a redesign. The staff web gets a login
+  and the role comes from the session, replacing the role switch; the
+  app's one password per environment (`GOBANK_APP_PASSWORD`, `demo` in
+  the tab) becomes each customer's own. Sessions are already stored
+  (1.2.7). Out of scope: passkeys and WebAuthn (items 6 and 8), MFA, a
+  password-reset journey, a separate identity service, the standalone
+  RBAC module (item 10, which waits for a second consumer). Open:
+  argon2id (the OWASP default) versus bcrypt, decided by the hash cost
+  in the tab; whether permissions become rows (role, action) or stay the
+  code table they are today. Stories:
+- **1.7.1** the component and staff login — the `users` table and
+  migration, password hashes, roles; a login page on the staff web; the
+  first admin's password a per-environment secret gobank-deploy sets and
+  shows, as it does the app password today; the session carries the
+  user and the role switch goes. Done when preprod is logged into with
+  a staff password after the drill
+- **1.7.2** customers as users — `OpenCustomer` creates the customer's
+  user; `core.Authenticator` reads the component; the generator opens
+  its customers with the deployment's password so the sense-check logs
+  in as today, and `GOBANK_APP_PASSWORD` is no longer read at login
+- **1.7.3** permissions with the users — `Role`, `Can` and the action
+  list move out of `bff/staff` into the component, read through `core`;
+  staff pages, PII gating and the DB explorer's `Authoriser` (the Phase 1
+  explorer item) ask it, closing the gap where every role browses every
+  table. Done-when of the stage
+- **1.8** Products as versioned code — today a product is a
+  gobank-products value (id, name, family, a feature list and a string
+  map of defaults) wrapped by the bank with a `float64` rate and a blurb,
+  and an account records only a product id. The day rule (`NextDay`,
+  pure, over go-luca positions) is right, but what it is asked to apply
+  is not a record: the rate lives in the wrapper, the cycle in a string
+  map, the feature and event framework in gobank-products is a second
+  mechanism the bank does not run, and nothing says which rules an
+  account was on when a posting was made, so a rate change would rewrite
+  the past and the interest application is hard to reason about. A
+  product definition becomes code with a version: a typed Go value in
+  gobank-products (id, version, family, the parameters its rules read:
+  rate in basis points, application cycle, day-count basis, term) with
+  the rules as methods on it over one event set (open, movement, day,
+  close). A version is immutable; a change is a new version. The bank
+  stores what it has adopted: a `products` table (product, version,
+  adopted day, the parameters as published) owned by `bank/products`,
+  accounts reference product and version, and every posting the rules
+  call for carries the version that produced it. go-luca stays the
+  mechanics: positions, accrual carried on the position, postings. Out
+  of scope: a product designer, products as data (code is the
+  definition; the table records adoption), moving an account between
+  versions (a later event), notice periods. Open: the version as a
+  per-product integer in code, several coexisting in one build, with the
+  module version recorded on adoption (recommended) versus the
+  gobank-products module version as the product version (one set per
+  build, so moving an account means a rebuild); and where a posting
+  records its version (go-luca batch metadata versus a column of the
+  bank's own). Stories:
+- **1.8.1** gobank-products: versioned definitions — `Product` gains a
+  version and typed parameters, one event interface, `NextDay` a method
+  of the version; the feature and `SimContext` framework is folded in or
+  retired; the goldens hold
+- **1.8.2** the stored catalogue — the `products` table, accounts stamped
+  with product and version (the migration puts every open account on
+  version 1), the `float64` rate and the defaults map gone from the bank,
+  the products page showing versions and the accounts on each
+- **1.8.3** events driven by the version — the pass and every posting
+  path resolve the account's version and run its rule, and postings
+  record it; a second version of easy access (a rate change) adopted on
+  preprod mid-run, with interest seen applying per account's version.
+  Done-when of the stage
+- **1.9** Speed — the demo is slow to use. Found by hand on 2026-10-08
+  at the Hetzner scale: savings and lending 8 s (a movement sum per
+  request), customers 9 s (not attributed), P&L and balance sheet never
+  return (the interest reading is slower than the day that invalidates
+  it), the explorer 50 s; background readings (v0.20.0) stopped pages
+  queuing behind one another but not the reads themselves. Three
+  suspects, told apart before anything is moved: a read slow in the
+  database (a sum over every account, a missing index), a read
+  serialised in-process (`b.mu`, simMu, one `sql.DB`) before any query
+  is sent, and the simulation saturating the box the database shares.
+  The database on its own server is the hypothesis to test, not the
+  plan. Stories:
+- **1.9.1** measure — every route records last, p50, p95 and max on
+  `/about/runtime` and in `/about.json`, and every named read behind a
+  page (the book, the interest, the product books, a customer page, the
+  explorer's counts) records its duration and whether it was served from
+  a reading (age, TTL) or live; a small Go loader in the repo hits the
+  route list at concurrency 1, 4 and 16 and reports throughput and p95
+  per route, so slow-but-parallel is told from serialised (more
+  Postgres only helps the first); a `task bench:reads` runs the named
+  reads against a database seeded at 10k, 100k and 1M customers and
+  writes one table into `benchmark.md`
+- then **1.6a.3** — the book, P&L and balance sheet from the GL: the
+  designed fix for sums over every account
+- **1.9.2** the known reads — the product books from the book reading
+  (branch `products-from-the-book`), the customers page's queries, the
+  explorer's counts, each with its before and after row
+- **1.9.3** the database on its own server — gobank-deploy gives an
+  environment a second server running Postgres on the private network
+  and the demo's `GOBANK_PG_DSN` points at it; kept if 1.9.1's numbers
+  say the shared box was the bottleneck, and in any case the first step
+  of 1.12's topology. Done-when of the stage: at the Hetzner scale every
+  staff page under 1 s at p95 at concurrency 4, the P&L and balance
+  sheet return, and the rows are in `benchmark.md`
+- **1.10** Performance and API documentation in the pipeline — the
+  speed won in 1.9 is held by the pipeline, and the BFF's contract is
+  documented from the code rather than by hand. Performance: `task
+  check` (which `tp release` runs) runs `bench:reads` at the small scale
+  against the thresholds 1.9 settled, so a slower read fails the release;
+  the Hetzner perf run stays a per-release command (it costs a server)
+  and its row joins the release notes. API documentation: an OpenAPI
+  document for `/v1/` and the screen schema, served at
+  `/v1/openapi.json`, rendered by `docs:build` into the docs site in
+  place of the hand-written `docs/research/bff-api.html`, with a test
+  that fails when a route is missing from it. Out of scope: client
+  generation from the spec (the Flutter shell interprets screens, not
+  endpoints), a perf run per commit, load tests in CI. Open: a
+  hand-written spec checked against the router by a test (recommended:
+  no new machinery) versus a spec generated from the Go types (swag or
+  ogen)
+- The last three ADR-0002 stages are deferred: they are not next after
+  1.10
+- **1.11** Read/write split — separate read and write handles (ADR-0002
+  stage 7)
+- **1.12** Many processes — several BFFs, a generator and one workflow
+  runner; deploys go blue-green (deployment level 3), ending the downtime
+  accepted since stage 2 (ADR-0002 stage 8)
+- **1.13** Simulation becomes tests (ADR-0002 stage 9)
 - **2 Multiple payment rails** — every payment records the rail it travelled
   (internal book transfer, FPS, Bacs, CHAPS) and each rail is a scheme
   adapter behind one interface with its own settlement timing, cut-offs,
@@ -509,7 +637,7 @@ root module, `cmd/bff` is the service binary, and `app/` is the Flutter shell.
   stub), AML transaction monitoring (belongs with the risk register).
   Open: does the customer generator produce KYC outcomes, so the staff
   view has a queue to work
-- **5** [x] **Demo phone frame onto the screen layer** (ADR-0002 stage 6,
+- **5** [x] (v0.21.0) **Demo phone frame onto the screen layer** (ADR-0002 stage 6,
   story 1.6.2) — the demo's phone frame is the BFF's HTML (`screen.HTML`),
   so browser and app show identical screens from one source, and the open
   `/api/customer/` endpoints are retired
@@ -523,9 +651,9 @@ root module, `cmd/bff` is the service binary, and `app/` is the Flutter shell.
   the customer web client (story 1.6.2); passkeys via WebAuthn in the browser
 - **9 App-shielding SDK evaluation** — Promon, Guardsquare, Appdome, Zimperium;
   chosen and integrated before any external pilot
-- **10 Standalone RBAC module** — extract `Role`/`Can` from `cmd/demo` into its
-  own repo (not gobank-db) once the BFF is the second consumer; it then
-  implements go-dbexplorer's `Authoriser`
+- **10 Standalone RBAC module** — extract the users component's roles and
+  permissions (1.7.3) into its own repo (not gobank-db) once a second
+  bank is the second consumer; until then it lives in the bank's database
 - **11 Native checkpoint** — after the first external pilot, a written list of what
   Flutter cannot do; move to SwiftUI and Jetpack Compose only if the list is
   non-empty
