@@ -483,10 +483,19 @@ root module, `cmd/bff` is the service binary, and `app/` is the Flutter shell.
   the tab) becomes each customer's own. Sessions are already stored
   (1.2.7). Out of scope: passkeys and WebAuthn (items 6 and 8), MFA, a
   password-reset journey, a separate identity service, the standalone
-  RBAC module (item 10, which waits for a second consumer). Open:
-  argon2id (the OWASP default) versus bcrypt, decided by the hash cost
-  in the tab; whether permissions become rows (role, action) or stay the
-  code table they are today. Stories:
+  RBAC module (item 10, which waits for a second consumer). Settled
+  (2026-10-09): argon2id at the OWASP minimum (19 MiB, t=2, p=1) from
+  `golang.org/x/crypto/argon2`, measured against `x/crypto/bcrypt` native
+  and under GOOS=js: 15 ms against 43 ms (bcrypt cost 10) on the laptop,
+  52 ms against 52 ms in the tab, so the tab is indifferent and the
+  server gets the memory-hard hash at a third of the cost; p stays 1
+  because the tab has one thread. A hash costs more than a whole
+  customer open does today (7 ms on Hetzner), so the generator (1.7.2)
+  hashes the deployment password once per process and gives every
+  generated customer that same salt and hash; only a customer who sets
+  a password of their own pays a hash in the open path. Open: whether
+  permissions become rows (role, action) or stay the code table they are
+  today. Stories:
 - **1.7.1** the component and staff login — the `users` table and
   migration, password hashes, roles; a login page on the staff web; the
   first admin's password a per-environment secret gobank-deploy sets and
