@@ -2,6 +2,8 @@
 
 ## [Unreleased]
 
+## [0.23.0] - 2026-10-09
+
 ## [0.22.0] - 2026-10-08
 
  - Stage 6 story 1.6.3: the staff web is the package bff/staff, served by the BFF; the demo keeps the console
