@@ -126,9 +126,13 @@ func runStaff(t *testing.T, f Fixture) {
 				break
 			}
 		}
-		if pos.Customers != total || pos.Savings != savings || pos.Lending != lending {
+		// Register rows carry balances in the bank's view, savings negative;
+		// the position's totals are magnitudes (ADR-0008).
+		if pos.Customers != total || pos.Savings != -savings || pos.Lending != lending {
 			t.Errorf("Position = %+v; register totals %d customers, savings %d, lending %d", pos, total, savings, lending)
 		}
+		// Cash is the ledger's cash account: the deposits in less the
+		// drawdowns out, which before any interest is the book's difference.
 		if pos.Cash != pos.Savings-pos.Lending || pos.Day.IsZero() || pos.ReserveRatio <= 0 {
 			t.Errorf("Position = %+v: cash must be deposits less loans, with a day and a reserve ratio", pos)
 		}
@@ -186,7 +190,7 @@ func runStaff(t *testing.T, f Fixture) {
 			}
 			accounts += p.Accounts
 			if p.Family == "Savings" {
-				savings += p.Balance
+				savings -= p.Balance // a product's balance is the bank's view: a liability is negative (ADR-0008); the position's total is a magnitude
 			} else {
 				lending += p.Balance
 			}
@@ -302,11 +306,14 @@ func runCommands(t *testing.T, f Fixture) {
 	}
 
 	t.Run("transfer moves the money and is on record", func(t *testing.T) {
+		// A savings balance is a liability and negative (ADR-0008): a
+		// transfer out takes the sender's toward zero and the recipient's
+		// further from it.
 		from, to := firstSavings(t, f.CustomerID), firstSavings(t, f.OtherCustomerID)
-		if from.Balance <= 0 {
+		if from.Balance >= 0 {
 			t.Fatalf("fixture sender %s has no savings balance", f.CustomerID)
 		}
-		amount := min(from.Balance, 12_34)
+		amount := min(-from.Balance, 12_34)
 		p, err := c.Transfer(ctx, core.Transfer{From: f.CustomerID, To: f.OtherCustomerID, Amount: amount})
 		if err != nil {
 			t.Fatal(err)
@@ -317,11 +324,11 @@ func runCommands(t *testing.T, f Fixture) {
 		if got, err := s.Payment(ctx, p.ID); err != nil || got.Reference != p.Reference {
 			t.Errorf("Payment(%d) = %+v, %v; want the transfer", p.ID, got, err)
 		}
-		if after := firstSavings(t, f.CustomerID); after.Balance != from.Balance-amount {
-			t.Errorf("sender balance %d, want %d", after.Balance, from.Balance-amount)
+		if after := firstSavings(t, f.CustomerID); after.Balance != from.Balance+amount {
+			t.Errorf("sender balance %d, want %d", after.Balance, from.Balance+amount)
 		}
-		if after := firstSavings(t, f.OtherCustomerID); after.Balance != to.Balance+amount {
-			t.Errorf("recipient balance %d, want %d", after.Balance, to.Balance+amount)
+		if after := firstSavings(t, f.OtherCustomerID); after.Balance != to.Balance-amount {
+			t.Errorf("recipient balance %d, want %d", after.Balance, to.Balance-amount)
 		}
 		page, err := s.Transactions(ctx, f.CustomerID, 1)
 		if err != nil || len(page.Entries) == 0 {
@@ -348,7 +355,7 @@ func runCommands(t *testing.T, f Fixture) {
 			{"same customer", core.Transfer{From: f.CustomerID, To: f.CustomerID, Amount: 1}, core.ErrSameCustomer},
 			{"unknown sender", core.Transfer{From: UnknownCustomerID, To: f.OtherCustomerID, Amount: 1}, core.ErrNotFound},
 			{"unknown recipient", core.Transfer{From: f.CustomerID, To: UnknownCustomerID, Amount: 1}, core.ErrNotFound},
-			{"over the balance", core.Transfer{From: f.CustomerID, To: f.OtherCustomerID, Amount: from.Balance + 1}, core.ErrInsufficientFunds},
+			{"over the balance", core.Transfer{From: f.CustomerID, To: f.OtherCustomerID, Amount: -from.Balance + 1}, core.ErrInsufficientFunds},
 		} {
 			if _, err := c.Transfer(ctx, tc.t); !errors.Is(err, tc.err) {
 				t.Errorf("%s: err = %v, want %v", tc.name, err, tc.err)
@@ -396,15 +403,16 @@ func runCommands(t *testing.T, f Fixture) {
 		}
 		sv, ln := rec.Accounts[0], rec.Accounts[1]
 		// The day's interest accrues on the balance from the day the account
-		// opens; nothing has been applied yet.
-		if sv.ProductName != savings.Name || sv.Balance != deposit || sv.Interest != 0 || sv.AccruedE7 < 0 || sv.SortCode == "" || sv.AccountNum == "" || sv.OpenDate != before.Day.Format("2006-01-02") {
-			t.Errorf("savings account %+v; want %s holding the deposit %d, nothing applied, opened today", sv, savings.Name, deposit)
+		// opens; nothing has been applied yet. The deposit is a liability,
+		// negative, and so is its accrual (ADR-0008).
+		if sv.ProductName != savings.Name || sv.Balance != -deposit || sv.Interest != 0 || sv.AccruedE7 > 0 || sv.SortCode == "" || sv.AccountNum == "" || sv.OpenDate != before.Day.Format("2006-01-02") {
+			t.Errorf("savings account %+v; want %s owing the deposit %d, nothing applied, opened today", sv, savings.Name, -deposit)
 		}
 		if ln.ProductName != lending.Name || ln.Balance < 0 || ln.Balance > loan || ln.Interest != 0 {
 			t.Errorf("lending account %+v; want %s lent at most %d", ln, lending.Name, loan)
 		}
 		got, err := s.CustomerRecord(ctx, rec.ID)
-		if err != nil || got.ID != rec.ID || len(got.Accounts) != 2 || got.Accounts[0].Balance != deposit || got.Accounts[1].Balance != ln.Balance {
+		if err != nil || got.ID != rec.ID || len(got.Accounts) != 2 || got.Accounts[0].Balance != -deposit || got.Accounts[1].Balance != ln.Balance {
 			t.Errorf("CustomerRecord(%s) = %+v, %v; want what OpenCustomer returned", rec.ID, got, err)
 		}
 		if pii, err := s.CustomerPII(ctx, rec.ID); err != nil || pii.Name != "Opened By Contract" || pii.NI != "QQ123456C" {
@@ -436,7 +444,7 @@ func runCommands(t *testing.T, f Fixture) {
 		}
 		var sawDeposit bool
 		for _, tx := range page.Entries {
-			if tx.Type == "Deposit" && tx.Amount == deposit && tx.ProductName == savings.Name && tx.Balance == deposit {
+			if tx.Type == "Deposit" && tx.Amount == deposit && tx.ProductName == savings.Name && tx.Balance == -deposit {
 				sawDeposit = true
 			}
 		}

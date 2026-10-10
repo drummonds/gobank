@@ -119,12 +119,19 @@ func (p *Products) AccountDay(books *ledger.Ledger, a Account, day time.Time) (D
 	if len(postings) > 0 {
 		for _, posting := range postings {
 			// The posting names its counterparty by path: a P&L account on
-			// the ledger's chart.
+			// the ledger's chart. Its amount is signed as the balance is, so
+			// savings interest is negative: credited to the saver, debited to
+			// the expense (ADR-0008), which is posted the other way about
+			// with the amount positive.
 			counter, err := books.Account(posting.Counterparty)
 			if err != nil {
 				return res, err
 			}
-			if _, err := books.RecordMovement(counter, a.ID, posting.Amount, posting.Code, posting.ValueTime, posting.Description); err != nil {
+			credit, debit, amount := counter, a.ID, posting.Amount
+			if amount < 0 {
+				credit, debit, amount = a.ID, counter, -amount
+			}
+			if _, err := books.RecordMovement(credit, debit, amount, posting.Code, posting.ValueTime, posting.Description); err != nil {
 				return res, err
 			}
 			res.Applied += posting.Amount
@@ -146,16 +153,16 @@ func (p *Products) AccountDay(books *ledger.Ledger, a Account, day time.Time) (D
 }
 
 // PostEvent posts a customer event — a transfer, a funding — to the
-// ledger (ledger.Post: both accounts' positions for the day move at
-// once), then runs the day's rules again for the product accounts it
-// touched: the projection the pass wrote was on the balance as it stood,
+// ledger (ledger.Post: amount credited to the first account, debited to
+// the second, both positions for the day moving at once), then runs the
+// day's rules again for the product accounts it touched: the projection the pass wrote was on the balance as it stood,
 // and the day's interest accrues on the closing balance. The caller holds
 // the accounts' locks for as long as its transaction holds their rows, so
 // the event and the daily pass take turns on an account. What the rules
 // changed in the bank's totals is returned; the day's accrual is counted
 // by the pass alone, so an event's results carry none.
-func (p *Products) PostEvent(books *ledger.Ledger, day time.Time, fromID, toID string, amount luca.Amount, code, description string, touched ...Account) ([]DayResult, error) {
-	if err := books.Post(fromID, toID, amount, code, day, description); err != nil {
+func (p *Products) PostEvent(books *ledger.Ledger, day time.Time, creditID, debitID string, amount luca.Amount, code, description string, touched ...Account) ([]DayResult, error) {
+	if err := books.Post(creditID, debitID, amount, code, day, description); err != nil {
 		return nil, err
 	}
 	var results []DayResult

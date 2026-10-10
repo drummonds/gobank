@@ -190,8 +190,8 @@ func TestOpenCustomerFundsAndProjectsOnTheOpeningDay(t *testing.T) {
 	}
 	const deposit = luca.Amount(1000_00)
 	wantLoan := luca.Amount(float64(deposit) * (1 - DefaultReserveRatio))
-	if len(rec.Accounts) != 2 || rec.Accounts[0].Balance != deposit || rec.Accounts[1].Balance != wantLoan {
-		t.Fatalf("accounts %+v; want the deposit %d and the loan trimmed to %d", rec.Accounts, deposit, wantLoan)
+	if len(rec.Accounts) != 2 || rec.Accounts[0].Balance != -deposit || rec.Accounts[1].Balance != wantLoan {
+		t.Fatalf("accounts %+v; want the deposit as a liability %d and the loan trimmed to %d", rec.Accounts, -deposit, wantLoan)
 	}
 	cust, _ := f.bank.Customers().ByID(f.ctx, rec.ID)
 	for _, a := range cust.Accounts {
@@ -410,7 +410,8 @@ func TestPositionsAndBoEInterestAreTheLedgers(t *testing.T) {
 	assertPositionsAreTheTruth(t, f)
 	assertBoE(false)
 	var applications int
-	f.db.QueryRow(`SELECT COUNT(*) FROM contract_ledger_movements WHERE code = $1 AND to_path LIKE $2`, luca.CodeInterestAccrual, ledger.SavingsRoot+"%").Scan(&applications)
+	// Savings interest credits the saver: the account is the movement's from.
+	f.db.QueryRow(`SELECT COUNT(*) FROM contract_ledger_movements WHERE code = $1 AND from_path LIKE $2`, luca.CodeInterestAccrual, ledger.SavingsRoot+"%").Scan(&applications)
 	if applications != 0 {
 		t.Errorf("%d customer applications before month end", applications)
 	}
@@ -419,7 +420,7 @@ func TestPositionsAndBoEInterestAreTheLedgers(t *testing.T) {
 	}
 	assertPositionsAreTheTruth(t, f)
 	assertBoE(true)
-	f.db.QueryRow(`SELECT COUNT(*) FROM contract_ledger_movements WHERE code = $1 AND to_path LIKE $2`, luca.CodeInterestAccrual, ledger.SavingsRoot+"%").Scan(&applications)
+	f.db.QueryRow(`SELECT COUNT(*) FROM contract_ledger_movements WHERE code = $1 AND from_path LIKE $2`, luca.CodeInterestAccrual, ledger.SavingsRoot+"%").Scan(&applications)
 	if applications == 0 {
 		t.Error("no savings interest applied across the month end")
 	}
@@ -451,12 +452,14 @@ func TestProfitAndLossAndBookFollowTheLedger(t *testing.T) {
 	}
 	var savings, lending, appliedSavings, appliedLending luca.Amount
 	var accruedSavingsE7, accruedLendingE7 int64
+	// Savings figures are liabilities and negative in the bank's view
+	// (ADR-0008); the totals compared are magnitudes.
 	for _, c := range allCustomers(t, f) {
 		for _, a := range c.Accounts {
 			if a.Family == gbp.FamilySavings {
-				savings += a.Balance
-				appliedSavings += a.Interest
-				accruedSavingsE7 += a.AccruedE7
+				savings -= a.Balance
+				appliedSavings -= a.Interest
+				accruedSavingsE7 -= a.AccruedE7
 			} else {
 				lending += a.Balance
 				appliedLending += a.Interest
@@ -526,8 +529,8 @@ func TestTransfer(t *testing.T) {
 		t.Errorf("payment %+v", pay)
 	}
 	accounts, _ := f.bank.Accounts(f.ctx, a)
-	if accounts[0].Balance != 70_00 {
-		t.Errorf("sender's balance %d, want 7000 at once", accounts[0].Balance)
+	if accounts[0].Balance != -70_00 {
+		t.Errorf("sender's balance %d, want -7000 at once (a liability, ADR-0008)", accounts[0].Balance)
 	}
 	if p := f.position(); p.Savings != 105_00 {
 		t.Errorf("savings %d after a transfer, want unchanged 10500", p.Savings)
@@ -631,7 +634,7 @@ func TestBookIsAReadModel(t *testing.T) {
 	// A movement behind the read model's back is not seen until the cache
 	// goes stale.
 	cust, _ := f.bank.Customers().ByID(f.ctx, core.CustomerID(1))
-	if err := f.bank.Ledger().Post(f.bank.Ledger().Chart.EquityCapital, cust.Accounts[0].LedgerAccountID, 5_00, luca.CodeBookTransfer, opening, "behind"); err != nil {
+	if err := f.bank.Ledger().Post(cust.Accounts[0].LedgerAccountID, f.bank.Ledger().Chart.Cash, 5_00, luca.CodeBookTransfer, opening, "behind"); err != nil {
 		t.Fatal(err)
 	}
 	if p := f.position(); p.Savings != 10_00 {
@@ -669,8 +672,8 @@ func TestExportAndImport(t *testing.T) {
 	if err := g.bank.Import(&movements); err != nil {
 		t.Fatal(err)
 	}
-	if bal, _, err := g.bank.Ledger().BalanceByPath(ledger.SavingsRoot, opening.AddDate(0, 0, 1)); err != nil || bal != 10_00 {
-		t.Errorf("imported savings %d, %v; want 1000", bal, err)
+	if bal, _, err := g.bank.Ledger().BalanceByPath(ledger.SavingsRoot, opening.AddDate(0, 0, 1)); err != nil || bal != -10_00 {
+		t.Errorf("imported savings %d, %v; want -1000, the liability", bal, err)
 	}
 }
 
@@ -725,7 +728,7 @@ func TestProductsAreTheBookPerProduct(t *testing.T) {
 	want := map[string]struct {
 		accounts int
 		balance  luca.Amount
-	}{gbp.EasyAccess().ID: {2, 1250_00}, gbp.PersonalLoan().ID: {1, pos.Lending}}
+	}{gbp.EasyAccess().ID: {2, -1250_00}, gbp.PersonalLoan().ID: {1, pos.Lending}} // a product's balance is the bank's view: savings negative
 	var savings, lending luca.Amount
 	for _, p := range products {
 		w := want[p.ID]
@@ -735,10 +738,79 @@ func TestProductsAreTheBookPerProduct(t *testing.T) {
 		if p.Family == string(gbp.FamilyLending) {
 			lending += p.Balance
 		} else {
-			savings += p.Balance
+			savings -= p.Balance
 		}
 	}
 	if savings != pos.Savings || lending != pos.Lending {
 		t.Errorf("products sum to %d savings, %d lending; the position is %d, %d", savings, lending, pos.Savings, pos.Lending)
+	}
+}
+
+// The ledger is the bank's view (ADR-0008): debit-normal accounts (assets,
+// expenses) positive, credit-normal (liabilities, equity, income) negative,
+// a movement from the account credited to the account debited. A deposit
+// credits the saver and debits cash; a drawdown credits cash and debits the
+// loan; savings interest credits the saver and debits the expense; loan
+// interest credits income and debits the loan; equity is no counterparty
+// of customer flows.
+func TestLedgerIsTheBanksView(t *testing.T) {
+	f := open(t)
+	if _, err := f.bank.OpenCustomer(f.ctx, ada); err != nil {
+		t.Fatal(err)
+	}
+	books := f.bank.Ledger()
+	bal := func(path string) luca.Amount {
+		id, err := books.Account(path)
+		if err != nil {
+			t.Fatal(err)
+		}
+		b, err := books.Balance(id)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return b
+	}
+	cust, _ := f.bank.Customers().ByID(f.ctx, core.CustomerID(1))
+	savings, loan := cust.Accounts[0], cust.Accounts[1]
+	const deposit = luca.Amount(1000_00)
+	drawn := loan.Balance
+	if savings.Balance != -deposit {
+		t.Errorf("savings balance %d, want %d: a liability is negative", savings.Balance, -deposit)
+	}
+	if drawn <= 0 || drawn > deposit {
+		t.Fatalf("loan balance %d, want positive and within the headroom", drawn)
+	}
+	if got := bal(ledger.Cash); got != deposit-drawn {
+		t.Errorf("Asset:Cash %d, want the deposit less the drawdown %d", got, deposit-drawn)
+	}
+	if got := bal(ledger.EquityCapital); got != 0 {
+		t.Errorf("Equity:Capital %d, want untouched by customer flows", got)
+	}
+	// A month on, interest has been applied both ways.
+	for range 32 {
+		f.nextDay()
+	}
+	cust, _ = f.bank.Customers().ByID(f.ctx, core.CustomerID(1))
+	savings, loan = cust.Accounts[0], cust.Accounts[1]
+	if savings.Interest >= 0 || savings.Balance != -deposit+savings.Interest {
+		t.Errorf("savings after a month: balance %d, interest %d; want interest negative and in the balance", savings.Balance, savings.Interest)
+	}
+	if loan.Interest <= 0 || loan.Balance != drawn+loan.Interest {
+		t.Errorf("loan after a month: balance %d, interest %d; want interest positive and in the balance", loan.Balance, loan.Interest)
+	}
+	if got := bal(ledger.ExpenseInterest); got != -savings.Interest {
+		t.Errorf("Expense:Interest %d, want the savings interest as a positive expense %d", got, -savings.Interest)
+	}
+	if got := bal(ledger.IncomeInterest); got != -loan.Interest {
+		t.Errorf("Income:Interest %d, want the loan interest as a negative income %d", got, -loan.Interest)
+	}
+	// The book and the position read magnitudes from the signed ledger.
+	pos := f.position()
+	if pos.Savings != -savings.Balance || pos.Lending != loan.Balance || pos.Cash != bal(ledger.Cash) {
+		t.Errorf("position %+v; want savings %d, lending %d, cash %d", pos, -savings.Balance, loan.Balance, bal(ledger.Cash))
+	}
+	pl, _ := f.bank.ProfitAndLoss(f.ctx)
+	if pl.DepositInterestExpense <= 0 || pl.LoanInterestIncome <= 0 {
+		t.Errorf("P&L %+v; want both interest figures positive magnitudes", pl)
 	}
 }

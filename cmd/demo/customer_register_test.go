@@ -37,8 +37,8 @@ func TestCustomerReadableFromDatabase(t *testing.T) {
 		if a.Balance != bal {
 			t.Errorf("account %d: balance %d != ledger %d", i, a.Balance, bal)
 		}
-		if a.Family == gbp.FamilySavings && a.Balance <= 0 {
-			t.Errorf("account %d: savings account unfunded", i)
+		if a.Family == gbp.FamilySavings && a.Balance >= 0 {
+			t.Errorf("account %d: savings account unfunded (a liability is negative, ADR-0008)", i)
 		}
 	}
 
@@ -72,15 +72,22 @@ func TestCustomerInterestReadFromLedger(t *testing.T) {
 		if a.Balance == 0 {
 			continue // unfunded loan (no lending headroom yet)
 		}
-		if a.Interest <= 0 {
+		// Interest is signed as the balance is: negative on savings, a
+		// credit to the saver (ADR-0008).
+		sign := luca.Amount(1)
+		if a.Family == gbp.FamilySavings {
+			sign = -1
+		}
+		if sign*a.Interest <= 0 {
 			t.Errorf("%s: no applied interest after month end (got %d)", a.ProductName, a.Interest)
 		}
-		if a.Accrued <= 0 {
+		if sign*a.Accrued <= 0 {
 			t.Errorf("%s: no accrued interest into February (got %d)", a.ProductName, a.Accrued)
 		}
 		var ledgerApplied luca.Amount
-		err := ds.db.QueryRow(`SELECT COALESCE(SUM(amount), 0) FROM movements WHERE to_account_id = $1 AND code = $2`,
-			a.LedgerAccountID, luca.CodeInterestAccrual).Scan(&ledgerApplied)
+		err := ds.db.QueryRow(`SELECT COALESCE(SUM(CASE WHEN to_account_id = $1 THEN amount ELSE -amount END), 0) FROM movements
+			WHERE (to_account_id = $2 OR from_account_id = $3) AND code = $4`,
+			a.LedgerAccountID, a.LedgerAccountID, a.LedgerAccountID, luca.CodeInterestAccrual).Scan(&ledgerApplied)
 		if err != nil {
 			t.Fatalf("%s: query applied interest: %v", a.ProductName, err)
 		}

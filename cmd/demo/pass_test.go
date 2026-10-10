@@ -25,7 +25,7 @@ func TestEventRewritesTheProvisionalAccrual(t *testing.T) {
 	from, _ := ds.customerByID("cust-001")
 	to, _ := ds.customerByID("cust-002")
 	fromAcc, toAcc := customers.FirstSavings(from.Accounts), customers.FirstSavings(to.Accounts)
-	if fromAcc == nil || toAcc == nil || fromAcc.Balance < 1000 {
+	if fromAcc == nil || toAcc == nil || -fromAcc.Balance < 1000 { // a liability: negative (ADR-0008)
 		t.Fatalf("need two funded savings accounts, got %+v and %+v", fromAcc, toAcc)
 	}
 	if _, err := ds.transfer(core.Transfer{From: "cust-001", To: "cust-002", Amount: 1000}); err != nil {
@@ -35,7 +35,7 @@ func TestEventRewritesTheProvisionalAccrual(t *testing.T) {
 	for _, c := range []struct {
 		acc   *customers.Account
 		delta luca.Amount
-	}{{fromAcc, -1000}, {toAcc, 1000}} {
+	}{{fromAcc, 1000}, {toAcc, -1000}} { // liabilities: the payer's rises toward zero, the payee's falls (ADR-0008)
 		prev, err := ds.Ledger().PositionAt(c.acc.LedgerAccountID, day.AddDate(0, 0, -1))
 		if err != nil || prev == nil {
 			t.Fatalf("%s: yesterday's position: %v %v", c.acc.ProductName, prev, err)

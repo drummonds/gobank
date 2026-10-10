@@ -23,9 +23,14 @@ import (
 )
 
 // The chart of accounts: the bank's own accounts at fixed paths, and the
-// roots customer accounts hang under, by the product's family.
+// roots customer accounts hang under, by the product's family. The ledger
+// holds the bank's view (ADR-0008): debit-normal accounts (assets,
+// expenses) carry positive balances, credit-normal accounts (liabilities,
+// equity, income) negative, and a movement runs from the account credited
+// to the account debited.
 const (
-	EquityCapital   = "Equity:Capital"            // the bank's own money: a movement from it into a customer account is a deposit or a loan drawdown
+	Cash            = "Asset:Cash"                // the bank's cash from customer flows: a deposit debits it, a drawdown credits it
+	EquityCapital   = "Equity:Capital"            // the bank's capital; no counterparty of customer flows
 	ExpenseInterest = "Expense:Interest"          // interest applied to savings
 	IncomeInterest  = "Income:Interest"           // interest applied to loans
 	IncomeBoE       = "Income:Interest:BoE"       // BoE reserve interest, recognised as it accrues
@@ -49,12 +54,14 @@ const positionScale = 7
 // Chart is the bank's own accounts, resolved to ledger account IDs when
 // the ledger opens.
 type Chart struct {
-	EquityCapital, ExpenseInterest, IncomeInterest, IncomeBoE, AccruedBoE, BoEReserves string
+	Cash, EquityCapital, ExpenseInterest, IncomeInterest, IncomeBoE, AccruedBoE, BoEReserves string
 }
 
 // id is the chart's ID for a path, "" if the path is not on the chart.
 func (c Chart) id(path string) string {
 	switch path {
+	case Cash:
+		return c.Cash
 	case EquityCapital:
 		return c.EquityCapital
 	case ExpenseInterest:
@@ -94,6 +101,7 @@ func Open(db *sql.DB) (*Ledger, error) {
 		path string
 		dst  *string
 	}{
+		{Cash, &l.Chart.Cash},
 		{EquityCapital, &l.Chart.EquityCapital},
 		{ExpenseInterest, &l.Chart.ExpenseInterest},
 		{IncomeInterest, &l.Chart.IncomeInterest},
@@ -150,13 +158,19 @@ func (l *Ledger) OpenCustomerAccount(customerID, productID string, family gbp.Pr
 }
 
 // Post writes an event — a transfer, a funding — with projections, so
-// both accounts' positions for the day move at once. The caller holds
-// the accounts' locks for as long as its transaction holds their rows.
-func (l *Ledger) Post(fromID, toID string, amount luca.Amount, code string, day time.Time, description string) error {
-	if fromID == "" || toID == "" {
+// both accounts' positions for the day move at once: amount is credited
+// to the first account and debited to the second (go-luca's from and to:
+// the credited account's balance falls by it, the debited account's
+// rises). The caller holds the accounts' locks for as long as its
+// transaction holds their rows.
+func (l *Ledger) Post(creditID, debitID string, amount luca.Amount, code string, day time.Time, description string) error {
+	if creditID == "" || debitID == "" {
 		return fmt.Errorf("ledger: post %s: both accounts are needed", description)
 	}
-	if _, err := l.RecordMovementWithProjections(fromID, toID, amount, code, day, description); err != nil {
+	if amount < 0 {
+		creditID, debitID, amount = debitID, creditID, -amount
+	}
+	if _, err := l.RecordMovementWithProjections(creditID, debitID, amount, code, day, description); err != nil {
 		return fmt.Errorf("ledger: post %s: %w", description, err)
 	}
 	return nil

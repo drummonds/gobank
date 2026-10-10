@@ -173,26 +173,28 @@ func (g *Ledger) openingBalances(day time.Time, sub map[string]subPosition) erro
 }
 
 // journal posts the day's interest applications from the sub-ledger in
-// aggregate: one movement per product and code, from the P&L account the
-// applications came from to the product's control, valued at the day's
-// last second as the applications are, and recorded in the journal.
+// aggregate: one movement per product and code, between the P&L account
+// and the product's control in the direction the applications ran
+// (savings interest credits the saver and debits the expense; loan
+// interest credits income and debits the loan), valued at the day's last
+// second as the applications are, and recorded in the journal.
 func (g *Ledger) journal(ctx context.Context, day time.Time) error {
-	rows, err := g.q.QueryContext(ctx, `SELECT ca.product_id, m.code, m.from_path, COALESCE(SUM(m.amount), 0)
+	rows, err := g.q.QueryContext(ctx, `SELECT ca.product_id, m.code, m.from_path, m.to_path, COALESCE(SUM(m.amount), 0)
 		FROM contract_ledger_movements m
-		JOIN contract_customer_accounts ca ON ca.ledger_account_id = m.to_account_id
-		WHERE m.value_time >= $1 AND m.value_time < $2 AND m.from_path IN ($3, $4)
-		GROUP BY ca.product_id, m.code, m.from_path`, day, day.AddDate(0, 0, 1), ledger.ExpenseInterest, ledger.IncomeInterest)
+		JOIN contract_customer_accounts ca ON ca.ledger_account_id = m.to_account_id OR ca.ledger_account_id = m.from_account_id
+		WHERE m.value_time >= $1 AND m.value_time < $2 AND (m.from_path IN ($3, $4) OR m.to_path IN ($5, $6))
+		GROUP BY ca.product_id, m.code, m.from_path, m.to_path`, day, day.AddDate(0, 0, 1), ledger.ExpenseInterest, ledger.IncomeInterest, ledger.ExpenseInterest, ledger.IncomeInterest)
 	if err != nil {
 		return fmt.Errorf("gl: journal %s: %w", day.Format(time.DateOnly), err)
 	}
 	type line struct {
-		productID, code, path string
-		amount                luca.Amount
+		productID, code, from, to string
+		amount                    luca.Amount
 	}
 	var lines []line
 	for rows.Next() {
 		var l line
-		if err := rows.Scan(&l.productID, &l.code, &l.path, &l.amount); err != nil {
+		if err := rows.Scan(&l.productID, &l.code, &l.from, &l.to, &l.amount); err != nil {
 			rows.Close()
 			return fmt.Errorf("gl: journal %s: %w", day.Format(time.DateOnly), err)
 		}
@@ -208,12 +210,18 @@ func (g *Ledger) journal(ctx context.Context, day time.Time) error {
 		if !ok {
 			return fmt.Errorf("gl: journal %s: no control account for product %s", day.Format(time.DateOnly), l.productID)
 		}
-		from := g.Chart.ExpenseInterest
-		if l.path == ledger.IncomeInterest {
-			from = g.Chart.IncomeInterest
+		pl := func(path string) string {
+			if path == ledger.IncomeInterest {
+				return g.Chart.IncomeInterest
+			}
+			return g.Chart.ExpenseInterest
+		}
+		credit, debit := pl(l.from), control // the P&L account credited, the control debited: loan interest
+		if l.to == ledger.ExpenseInterest || l.to == ledger.IncomeInterest {
+			credit, debit = control, pl(l.to) // the control credited, the P&L account debited: savings interest
 		}
 		desc := fmt.Sprintf("Interest applied on %s for %s", l.productID, day.Format(time.DateOnly))
-		m, err := g.RecordMovement(from, control, l.amount, l.code, at, desc)
+		m, err := g.RecordMovement(credit, debit, l.amount, l.code, at, desc)
 		if err != nil {
 			return fmt.Errorf("gl: journal %s %s: %w", day.Format(time.DateOnly), l.productID, err)
 		}

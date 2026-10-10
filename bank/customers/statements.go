@@ -68,17 +68,20 @@ type Line struct {
 	known       time.Time   // when the ledger recorded it; orders lines within a day
 }
 
-// TxTypeOf reads a movement on a customer account as a statement line:
+// TxTypeOf reads a movement on a customer account as a statement line.
+// "debited" is whether the account is the movement's debit side (go-luca's
+// to): for a savings account, a liability, being debited is money leaving
+// the customer (ADR-0008).
 //
-//	| code             | counterparty   | direction | family  | reads as      |
-//	|------------------|----------------|-----------|---------|---------------|
-//	| interest accrual | any            | any       | savings | Interest      |
-//	| interest accrual | any            | any       | lending | Loan Interest |
-//	| book transfer    | Equity:Capital | in        | savings | Deposit       |
-//	| book transfer    | Equity:Capital | in        | lending | Loan          |
-//	| book transfer    | other          | in        | any     | Transfer In   |
-//	| book transfer    | other          | out       | any     | Transfer Out  |
-func TxTypeOf(code, counterparty string, in bool, family gbp.ProductFamily) TxType {
+//	| code             | counterparty | account | family  | reads as      |
+//	|------------------|--------------|---------|---------|---------------|
+//	| interest accrual | any          | any     | savings | Interest      |
+//	| interest accrual | any          | any     | lending | Loan Interest |
+//	| book transfer    | Asset:Cash   | any     | savings | Deposit       |
+//	| book transfer    | Asset:Cash   | any     | lending | Loan          |
+//	| book transfer    | other        | credited| savings | Transfer In   |
+//	| book transfer    | other        | debited | savings | Transfer Out  |
+func TxTypeOf(code, counterparty string, debited bool, family gbp.ProductFamily) TxType {
 	lending := family == gbp.FamilyLending
 	switch {
 	case code == luca.CodeInterestAccrual:
@@ -86,15 +89,15 @@ func TxTypeOf(code, counterparty string, in bool, family gbp.ProductFamily) TxTy
 			return TxInterestDebit
 		}
 		return TxInterestCredit
-	case counterparty == ledger.EquityCapital:
+	case counterparty == ledger.Cash:
 		if lending {
 			return TxLoanDisbursement
 		}
 		return TxDepositIn
-	case in:
-		return TxTransferIn
-	default:
+	case debited:
 		return TxTransferOut
+	default:
+		return TxTransferIn
 	}
 }
 
@@ -117,19 +120,21 @@ func (c *Customers) accountLines(ctx context.Context, a Account) ([]Line, error)
 		if err := rows.Scan(&id, &toID, &fromPath, &toPath, &amount, &code, &valueTime, &knowledgeTime, &description); err != nil {
 			return nil, fmt.Errorf("customers: statement of %s: %w", a.LedgerAccountID, err)
 		}
-		in := toID == a.LedgerAccountID
+		debited := toID == a.LedgerAccountID
 		counterparty := fromPath
-		if !in {
+		if !debited {
 			counterparty = toPath
 		}
-		if in {
+		// The running balance is the bank's view: in less out, negative for
+		// a savings account (ADR-0008).
+		if debited {
 			balance += amount
 		} else {
 			balance -= amount
 		}
 		lines = append(lines, Line{
 			ID: id, Date: valueTime, AccountID: a.LedgerAccountID, ProductName: a.ProductName,
-			Type: TxTypeOf(code, counterparty, in, a.Family), Currency: a.Currency,
+			Type: TxTypeOf(code, counterparty, debited, a.Family), Currency: a.Currency,
 			Amount: amount, Balance: balance, Reference: description, known: knowledgeTime,
 		})
 	}

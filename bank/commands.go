@@ -114,12 +114,17 @@ func (b *Bank) persistCustomer(ctx context.Context, day time.Time, plan *custome
 			log.Printf("bank: open customer %s: %v", rec.ID, err)
 		}
 		// The movement carries the payment reference: it is the statement
-		// line the customer sees.
+		// line the customer sees. A deposit credits the saver and debits
+		// cash; a drawdown credits cash and debits the loan (ADR-0008).
 		a := rec.Accounts[f.index]
-		if _, err := b.products.PostEvent(books, day, books.Chart.EquityCapital, a.LedgerAccountID, f.payment.Amount, luca.CodeBookTransfer, f.payment.Reference); err != nil {
+		credit, debit := a.LedgerAccountID, books.Chart.Cash
+		if a.Family == gbp.FamilyLending {
+			credit, debit = books.Chart.Cash, a.LedgerAccountID
+		}
+		if _, err := b.products.PostEvent(books, day, credit, debit, f.payment.Amount, luca.CodeBookTransfer, f.payment.Reference); err != nil {
 			log.Printf("bank: open customer %s: %v", rec.ID, err)
 		}
-		// The GL sees the funding as equity to the product's control.
+		// The GL sees the funding the same way, on the product's control.
 		if err := general.Funding(day, a.ProductID, f.payment.Amount, f.payment.Reference); err != nil {
 			log.Printf("bank: open customer %s: %v", rec.ID, err)
 		}
@@ -180,7 +185,7 @@ func (b *Bank) Transfer(ctx context.Context, t core.Transfer) (core.Payment, err
 	if err != nil {
 		return core.Payment{}, err
 	}
-	if live.Balance < t.Amount {
+	if -live.Balance < t.Amount { // a savings balance is a liability: negative (ADR-0008)
 		return core.Payment{}, core.ErrInsufficientFunds
 	}
 	pay := b.payments.New(payments.Transfer, t.From, t.To, t.Amount, payments.Pending, b.clock.Now())
@@ -192,7 +197,8 @@ func (b *Bank) Transfer(ctx context.Context, t core.Transfer) (core.Payment, err
 		return core.Payment{}, fmt.Errorf("bank: transfer: %w", err)
 	}
 	books := b.ledger.WithTx(tx)
-	if _, err := b.products.PostEvent(books, day, fromAcc.LedgerAccountID, toAcc.LedgerAccountID, t.Amount, luca.CodeBookTransfer, pay.Reference,
+	// A pays B: B's account is credited (the bank owes B more), A's debited.
+	if _, err := b.products.PostEvent(books, day, toAcc.LedgerAccountID, fromAcc.LedgerAccountID, t.Amount, luca.CodeBookTransfer, pay.Reference,
 		products.Account{ID: fromAcc.LedgerAccountID, Product: fromProduct}, products.Account{ID: toAcc.LedgerAccountID, Product: toProduct}); err != nil {
 		_ = tx.Rollback()
 		return core.Payment{}, err

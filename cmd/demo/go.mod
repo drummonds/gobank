@@ -22,7 +22,7 @@ require (
 require (
 	git.bytestone.uk/hum3/go-dbexplorer v0.4.0 // indirect
 	git.bytestone.uk/hum3/gobank-db v0.3.0 // indirect
-	git.bytestone.uk/hum3/gotreesitter v0.6.8 // indirect
+	git.bytestone.uk/hum3/gotreesitter v0.7.0 // indirect
 	github.com/google/uuid v1.6.0 // indirect
 	github.com/hack-pad/safejs v0.1.1 // indirect
 	github.com/jackc/pgpassfile v1.0.0 // indirect

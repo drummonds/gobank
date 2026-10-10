@@ -45,7 +45,7 @@ func (s *Simulation) SendPayment() {
 	if savings == nil {
 		return
 	}
-	amount = min(amount, savings.Balance)
+	amount = min(amount, -savings.Balance) // a savings balance is a liability, negative (ADR-0008)
 	if amount < 100 {
 		return
 	}

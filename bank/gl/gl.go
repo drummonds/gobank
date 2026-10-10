@@ -29,6 +29,7 @@ const Prefix = "gl_"
 // The chart: the bank's own accounts at the sub-ledger's paths, and the
 // roots the control accounts hang under, one per product.
 const (
+	Cash            = ledger.Cash
 	EquityCapital   = ledger.EquityCapital
 	ExpenseInterest = ledger.ExpenseInterest
 	IncomeInterest  = ledger.IncomeInterest
@@ -39,7 +40,7 @@ const (
 // Chart is the bank's own accounts on the general ledger, resolved to
 // account IDs when it opens.
 type Chart struct {
-	EquityCapital, ExpenseInterest, IncomeInterest string
+	Cash, EquityCapital, ExpenseInterest, IncomeInterest string
 }
 
 // querier is the connection or the transaction the ledger's own tables
@@ -65,7 +66,8 @@ type opening struct {
 type Ledger struct {
 	*luca.SQLLedger
 	Chart    Chart
-	controls map[string]string // product ID → control account ID
+	controls map[string]string
+	lending  map[string]bool // controls of lending products: funded from cash, not into it // product ID → control account ID
 	db       *sql.DB
 	q        querier
 	opening  opening
@@ -80,11 +82,12 @@ func Open(db *sql.DB, catalogue []products.Product, day time.Time, adopting bool
 	if err != nil {
 		return nil, fmt.Errorf("gl: open: %w", err)
 	}
-	g := &Ledger{SQLLedger: books, controls: map[string]string{}, db: db, q: db}
+	g := &Ledger{SQLLedger: books, controls: map[string]string{}, lending: map[string]bool{}, db: db, q: db}
 	for _, c := range []struct {
 		path string
 		dst  *string
 	}{
+		{Cash, &g.Chart.Cash},
 		{EquityCapital, &g.Chart.EquityCapital},
 		{ExpenseInterest, &g.Chart.ExpenseInterest},
 		{IncomeInterest, &g.Chart.IncomeInterest},
@@ -103,6 +106,7 @@ func Open(db *sql.DB, catalogue []products.Product, day time.Time, adopting bool
 			return nil, err
 		}
 		g.controls[p.ID] = id
+		g.lending[p.ID] = p.Family == gbp.FamilyLending
 	}
 	if err := g.recordOpening(context.Background(), day, adopting); err != nil {
 		return nil, err
@@ -158,7 +162,7 @@ func dayOf(t time.Time) time.Time {
 // WithTx is the same ledger bound to tx: what it writes, to its own
 // tables and go-luca's, is in the transaction. The chart is shared.
 func (g *Ledger) WithTx(tx *sql.Tx) *Ledger {
-	return &Ledger{SQLLedger: g.SQLLedger.WithTx(tx), Chart: g.Chart, controls: g.controls, db: g.db, q: tx, opening: g.opening}
+	return &Ledger{SQLLedger: g.SQLLedger.WithTx(tx), Chart: g.Chart, controls: g.controls, lending: g.lending, db: g.db, q: tx, opening: g.opening}
 }
 
 // Control is the control account for a product; ok is false for a
@@ -168,35 +172,42 @@ func (g *Ledger) Control(productID string) (id string, ok bool) {
 	return id, ok
 }
 
-// Funding posts a deposit or a loan drawdown: equity to the product's
-// control, valued on day, carrying the payment reference. An insert
-// only: the control's position moves at the close.
+// Funding posts a deposit or a loan drawdown as the sub-ledger does
+// (ADR-0008): a deposit credits the product's control and debits cash, a
+// drawdown credits cash and debits the control; valued on day, carrying
+// the payment reference. An insert only: the control's position moves at
+// the close.
 func (g *Ledger) Funding(day time.Time, productID string, amount luca.Amount, reference string) error {
 	control, ok := g.controls[productID]
 	if !ok {
 		return fmt.Errorf("gl: funding %s: no control account for product %s", reference, productID)
 	}
-	if _, err := g.RecordMovement(g.Chart.EquityCapital, control, amount, luca.CodeBookTransfer, day, reference); err != nil {
+	credit, debit := control, g.Chart.Cash
+	if g.lending[productID] {
+		credit, debit = g.Chart.Cash, control
+	}
+	if _, err := g.RecordMovement(credit, debit, amount, luca.CodeBookTransfer, day, reference); err != nil {
 		return fmt.Errorf("gl: funding %s: %w", reference, err)
 	}
 	return nil
 }
 
-// Transfer posts a transfer between customer accounts: control to control
-// when the products differ, nothing within one product.
+// Transfer posts a transfer between customer accounts, the payer's
+// product to the payee's: the payee's control is credited and the
+// payer's debited when the products differ, nothing within one product.
 func (g *Ledger) Transfer(day time.Time, fromProduct, toProduct string, amount luca.Amount, reference string) error {
 	if fromProduct == toProduct {
 		return nil
 	}
-	from, ok := g.controls[fromProduct]
+	payer, ok := g.controls[fromProduct]
 	if !ok {
 		return fmt.Errorf("gl: transfer %s: no control account for product %s", reference, fromProduct)
 	}
-	to, ok := g.controls[toProduct]
+	payee, ok := g.controls[toProduct]
 	if !ok {
 		return fmt.Errorf("gl: transfer %s: no control account for product %s", reference, toProduct)
 	}
-	if _, err := g.RecordMovement(from, to, amount, luca.CodeBookTransfer, day, reference); err != nil {
+	if _, err := g.RecordMovement(payee, payer, amount, luca.CodeBookTransfer, day, reference); err != nil {
 		return fmt.Errorf("gl: transfer %s: %w", reference, err)
 	}
 	return nil

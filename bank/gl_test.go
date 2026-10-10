@@ -45,8 +45,8 @@ func TestTheGeneralLedgerClosesYesterdayBehindThePass(t *testing.T) {
 		t.Fatalf("GL %+v after the first pass; want posted through the opening day with no break", gl)
 	}
 	const deposit, loan = luca.Amount(1000_00), luca.Amount(850_00)
-	if easy, loans := f.control(gbp.EasyAccess().ID), f.control(gbp.PersonalLoan().ID); easy.Balance != deposit || loans.Balance != loan {
-		t.Errorf("controls easy %+v, loans %+v; want %d and %d", easy, loans, deposit, loan)
+	if easy, loans := f.control(gbp.EasyAccess().ID), f.control(gbp.PersonalLoan().ID); easy.Balance != -deposit || loans.Balance != loan {
+		t.Errorf("controls easy %+v, loans %+v; want %d (a liability) and %d", easy, loans, -deposit, loan)
 	}
 	// Through the month end: the applications of 31 Jan are journalled
 	// to the GL by 1 Feb's pass, and both ledgers' P&L accounts agree.
@@ -110,8 +110,8 @@ func TestATransferAcrossProductsMovesTheControls(t *testing.T) {
 	isaControl, _ := g.Control(gbp.ISA().ID)
 	easyBal, _ := g.Balance(easyControl)
 	isaBal, _ := g.Balance(isaControl)
-	if easyBal != 1100_00 || isaBal != 600_00 {
-		t.Errorf("controls easy %d, isa %d; want 110000 (the within-product transfer nets out) and 60000", easyBal, isaBal)
+	if easyBal != -1100_00 || isaBal != -600_00 {
+		t.Errorf("controls easy %d, isa %d; want -110000 (the within-product transfer nets out) and -60000: liabilities", easyBal, isaBal)
 	}
 	var movements int
 	f.db.QueryRow(`SELECT COUNT(*) FROM gl_movements`).Scan(&movements)
@@ -153,8 +153,8 @@ func TestTheGeneralLedgerAdoptsARunningBank(t *testing.T) {
 	if want := opening.AddDate(0, 0, 1); !gl.PostedThrough.Equal(want) || gl.Breaks != 0 {
 		t.Fatalf("GL %+v; want yesterday closed with no break: the opening balances taken from the sub-ledger", gl)
 	}
-	if easy := f.control(gbp.EasyAccess().ID); easy.Balance != 1000_00 {
-		t.Errorf("easy access control %+v, want the sub-ledger's 100000", easy)
+	if easy := f.control(gbp.EasyAccess().ID); easy.Balance != -1000_00 {
+		t.Errorf("easy access control %+v, want the sub-ledger's -100000", easy)
 	}
 	var kinds int
 	f.db.QueryRow(`SELECT COUNT(*) FROM gl_movements WHERE code = $1`, luca.CodeOpeningBalance).Scan(&kinds)

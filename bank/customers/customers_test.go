@@ -66,7 +66,8 @@ func reopen(t *testing.T, db *sql.DB) fixture {
 }
 
 // openCustomer plans and persists a customer in one transaction, funding
-// each account from equity on jan2 with the opening asked for.
+// each account on jan2 with the opening asked for: a deposit credits the
+// saver and debits cash, a drawdown credits cash and debits the loan.
 func (f fixture) openCustomer(t *testing.T, n core.NewCustomer) Record {
 	t.Helper()
 	ctx := context.Background()
@@ -84,7 +85,12 @@ func (f fixture) openCustomer(t *testing.T, n core.NewCustomer) Record {
 	}
 	for i, a := range n.Accounts {
 		if a.Opening > 0 {
-			if err := f.books.WithTx(tx).Post(f.books.Chart.EquityCapital, plan.Record.Accounts[i].LedgerAccountID, a.Opening, luca.CodeBookTransfer, jan2, "PAY-00000"+string(rune('1'+i))); err != nil {
+			acct := plan.Record.Accounts[i]
+			credit, debit := acct.LedgerAccountID, f.books.Chart.Cash
+			if acct.Family == gbp.FamilyLending {
+				credit, debit = f.books.Chart.Cash, acct.LedgerAccountID
+			}
+			if err := f.books.WithTx(tx).Post(credit, debit, a.Opening, luca.CodeBookTransfer, jan2, "PAY-00000"+string(rune('1'+i))); err != nil {
 				t.Fatal(err)
 			}
 		}
@@ -128,8 +134,8 @@ func TestOpenACustomer(t *testing.T) {
 			t.Errorf("account %d = %+v; want the sort code, an 8-digit number, a ledger account, opened 2 Jan", i, a)
 		}
 	}
-	if got.Accounts[0].Family != gbp.FamilySavings || got.Accounts[0].Balance != 1000_00 || got.Accounts[1].Family != gbp.FamilyLending || got.Accounts[1].Balance != 500_00 {
-		t.Errorf("accounts %+v; want savings 100000 and lending 50000 from the ledger", got.Accounts)
+	if got.Accounts[0].Family != gbp.FamilySavings || got.Accounts[0].Balance != -1000_00 || got.Accounts[1].Family != gbp.FamilyLending || got.Accounts[1].Balance != 500_00 {
+		t.Errorf("accounts %+v; want savings -100000 (a liability) and lending 50000 from the ledger", got.Accounts)
 	}
 	if !f.c.Exists(ctx, rec.ID) || f.c.Exists(ctx, "cust-999") {
 		t.Error("Exists is wrong about the register")
@@ -233,11 +239,13 @@ func TestStatementLines(t *testing.T) {
 	savings, loan := rec.Accounts[0], rec.Accounts[1]
 	other := f.openCustomer(t, core.NewCustomer{PII: core.PII{Name: "Other"}, Accounts: []core.NewAccount{{ProductID: gbp.EasyAccess().ID, Opening: 10_00}}})
 	jan3 := jan2.AddDate(0, 0, 1)
-	if err := f.books.Post(savings.LedgerAccountID, other.Accounts[0].LedgerAccountID, 200_00, luca.CodeBookTransfer, jan3, "PAY-000003"); err != nil {
+	// Ada pays Other: Other's account credited, Ada's debited; then
+	// interest credits Ada and debits the expense (ADR-0008).
+	if err := f.books.Post(other.Accounts[0].LedgerAccountID, savings.LedgerAccountID, 200_00, luca.CodeBookTransfer, jan3, "PAY-000003"); err != nil {
 		t.Fatal(err)
 	}
 	interest, _ := f.books.Account(ledger.ExpenseInterest)
-	if _, err := f.books.RecordMovement(interest, savings.LedgerAccountID, 1_23, luca.CodeInterestAccrual, jan3.Add(time.Hour), "Interest for January"); err != nil {
+	if _, err := f.books.RecordMovement(savings.LedgerAccountID, interest, 1_23, luca.CodeInterestAccrual, jan3.Add(time.Hour), "Interest for January"); err != nil {
 		t.Fatal(err)
 	}
 
@@ -257,7 +265,7 @@ func TestStatementLines(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if one.Total != 3 || one.Entries[0].Balance != 1000_00-200_00+1_23 || one.Entries[2].Balance != 1000_00 || one.Entries[0].Date != jan3.Format(time.DateOnly) {
+	if one.Total != 3 || one.Entries[0].Balance != -(1000_00-200_00+1_23) || one.Entries[2].Balance != -1000_00 || one.Entries[0].Date != jan3.Format(time.DateOnly) {
 		t.Errorf("savings statement %+v; want deposit, transfer out and interest with running balances", one.Entries)
 	}
 	if loanOnly, _ := f.c.AccountTransactions(ctx, rec.ID, 1, 1, 20); loanOnly.Total != 1 || loanOnly.Entries[0].Type != "Loan" || loanOnly.Entries[0].ProductName != loan.ProductName {
@@ -278,20 +286,20 @@ func TestStatementLines(t *testing.T) {
 func TestTxTypeOf(t *testing.T) {
 	cases := []struct {
 		code, counterparty string
-		in                 bool
+		debited            bool
 		family             gbp.ProductFamily
 		want               TxType
 	}{
-		{luca.CodeInterestAccrual, ledger.ExpenseInterest, true, gbp.FamilySavings, TxInterestCredit},
+		{luca.CodeInterestAccrual, ledger.ExpenseInterest, false, gbp.FamilySavings, TxInterestCredit},
 		{luca.CodeInterestAccrual, ledger.IncomeInterest, true, gbp.FamilyLending, TxInterestDebit},
-		{luca.CodeBookTransfer, ledger.EquityCapital, true, gbp.FamilySavings, TxDepositIn},
-		{luca.CodeBookTransfer, ledger.EquityCapital, true, gbp.FamilyLending, TxLoanDisbursement},
-		{luca.CodeBookTransfer, ledger.SavingsRoot + ":C000002:easy-access", true, gbp.FamilySavings, TxTransferIn},
-		{luca.CodeBookTransfer, ledger.SavingsRoot + ":C000002:easy-access", false, gbp.FamilySavings, TxTransferOut},
+		{luca.CodeBookTransfer, ledger.Cash, false, gbp.FamilySavings, TxDepositIn},
+		{luca.CodeBookTransfer, ledger.Cash, true, gbp.FamilyLending, TxLoanDisbursement},
+		{luca.CodeBookTransfer, ledger.SavingsRoot + ":C000002:easy-access", false, gbp.FamilySavings, TxTransferIn},
+		{luca.CodeBookTransfer, ledger.SavingsRoot + ":C000002:easy-access", true, gbp.FamilySavings, TxTransferOut},
 	}
 	for _, c := range cases {
-		if got := TxTypeOf(c.code, c.counterparty, c.in, c.family); got != c.want {
-			t.Errorf("TxTypeOf(%s, %s, in=%v, %s) = %s, want %s", c.code, c.counterparty, c.in, c.family, got, c.want)
+		if got := TxTypeOf(c.code, c.counterparty, c.debited, c.family); got != c.want {
+			t.Errorf("TxTypeOf(%s, %s, debited=%v, %s) = %s, want %s", c.code, c.counterparty, c.debited, c.family, got, c.want)
 		}
 	}
 }
@@ -304,12 +312,14 @@ func TestSavingsInterestByCustomer(t *testing.T) {
 	rec := f.openCustomer(t, ada)
 	f.openCustomer(t, core.NewCustomer{PII: core.PII{Name: "Borrower"}, Accounts: []core.NewAccount{{ProductID: gbp.PersonalLoan().ID, Opening: 100_00}}})
 	savings := rec.Accounts[0]
+	// Interest credits the saver and debits the expense; the saver's
+	// accrual is negative too (ADR-0008).
 	interest, _ := f.books.Account(ledger.ExpenseInterest)
-	if _, err := f.books.RecordMovement(interest, savings.LedgerAccountID, 2_50, luca.CodeInterestAccrual, jan2.Add(time.Hour), "Interest"); err != nil {
+	if _, err := f.books.RecordMovement(savings.LedgerAccountID, interest, 2_50, luca.CodeInterestAccrual, jan2.Add(time.Hour), "Interest"); err != nil {
 		t.Fatal(err)
 	}
 	// 1.7 pence accrued: 1 whole penny counts.
-	if _, err := f.books.Project(savings.LedgerAccountID, jan2, luca.Fraction{Num: 17 * gbp.AccrualDenominator / 10, Den: gbp.AccrualDenominator}); err != nil {
+	if _, err := f.books.Project(savings.LedgerAccountID, jan2, luca.Fraction{Num: -17 * gbp.AccrualDenominator / 10, Den: gbp.AccrualDenominator}); err != nil {
 		t.Fatal(err)
 	}
 	got, err := f.c.SavingsInterest(ctx)

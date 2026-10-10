@@ -293,12 +293,14 @@ const poundsE7PerPenny = 100_000
 // zero: what the rules apply as postable money.
 func pence(e7 int64) luca.Amount { return luca.Amount(e7 / poundsE7PerPenny) }
 
-// appliedInterest is the interest the rules have applied to an account:
-// the sum of its application movements.
+// appliedInterest is the interest the rules have applied to an account,
+// signed as its balance is (ADR-0008): the sum of its application
+// movements, those debiting it less those crediting it.
 func (c *Customers) appliedInterest(ctx context.Context, ledgerAccountID string) luca.Amount {
 	var applied luca.Amount
-	err := c.db.QueryRowContext(ctx, `SELECT COALESCE(SUM(amount), 0) FROM contract_ledger_movements WHERE to_account_id = $1 AND code = $2`,
-		ledgerAccountID, luca.CodeInterestAccrual).Scan(&applied)
+	err := c.db.QueryRowContext(ctx, `SELECT COALESCE(SUM(CASE WHEN to_account_id = $1 THEN amount ELSE -amount END), 0)
+		FROM contract_ledger_movements WHERE (to_account_id = $2 OR from_account_id = $3) AND code = $4`,
+		ledgerAccountID, ledgerAccountID, ledgerAccountID, luca.CodeInterestAccrual).Scan(&applied)
 	if err != nil {
 		log.Printf("customers: applied interest of %s: %v", ledgerAccountID, err)
 	}
@@ -306,8 +308,9 @@ func (c *Customers) appliedInterest(ctx context.Context, ledgerAccountID string)
 }
 
 // SavingsInterest lists every customer with savings interest to date,
-// applied plus accrued whole pence, oldest customer first (the BBSI
-// return).
+// applied plus accrued whole pence as the positive amount the bank paid
+// them (the ledger holds it negative, a credit to the saver: ADR-0008),
+// oldest customer first (the BBSI return).
 func (c *Customers) SavingsInterest(ctx context.Context) ([]core.CustomerInterest, error) {
 	rows, err := c.db.QueryContext(ctx, `SELECT customer_id, ledger_account_id, product_id FROM customer_accounts ORDER BY customer_id, idx`)
 	if err != nil {
@@ -325,7 +328,7 @@ func (c *Customers) SavingsInterest(ctx context.Context) ([]core.CustomerInteres
 		}
 		a := Account{LedgerAccountID: acctID}
 		c.fillFigures(ctx, &a)
-		if interest := a.Interest + a.Accrued; interest > 0 {
+		if interest := -(a.Interest + a.Accrued); interest > 0 {
 			if n := len(out); n > 0 && out[n-1].CustomerID == custID {
 				out[n-1].Interest += interest
 			} else {

@@ -61,8 +61,8 @@ func interestByFamily(t *testing.T, ds *DemoState) (appliedSavings, appliedLendi
 	for _, c := range allCustomers(t, ds) {
 		for _, a := range c.Accounts {
 			if a.Family == gbp.FamilySavings {
-				appliedSavings += a.Interest
-				accruedSavingsE7 += a.AccruedE7
+				appliedSavings -= a.Interest // a credit to the saver, negative (ADR-0008)
+				accruedSavingsE7 -= a.AccruedE7
 			} else {
 				appliedLending += a.Interest
 				accruedLendingE7 += a.AccruedE7

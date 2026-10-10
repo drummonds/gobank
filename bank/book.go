@@ -30,6 +30,7 @@ type bookFigures struct {
 	savings, lending luca.Amount
 	products         map[string]productBook // by product ID
 	customers        int
+	cash               luca.Amount // the Asset:Cash balance: deposits in, drawdowns out
 }
 
 // productBook is one product's share of the book.
@@ -49,12 +50,18 @@ func (b *Bank) readBook(ctx context.Context) (bookFigures, error) {
 	if err != nil {
 		return bookFigures{}, err
 	}
-	k := bookFigures{products: products, customers: customers}
+	cash, err := b.ledger.Balance(b.ledger.Chart.Cash)
+	if err != nil {
+		return bookFigures{}, fmt.Errorf("bank: cash: %w", err)
+	}
+	k := bookFigures{products: products, customers: customers, cash: cash}
+	// The book's totals are magnitudes read from the signed ledger
+	// (ADR-0008): savings balances are liabilities and negative.
 	for id, pb := range products {
 		if p, ok := b.products.ByID(id); ok && p.Family == gbp.FamilyLending {
 			k.lending += pb.balance
 		} else {
-			k.savings += pb.balance
+			k.savings -= pb.balance
 		}
 	}
 	return k, nil
@@ -134,9 +141,12 @@ func (b *Bank) readInterest(ctx context.Context) (interestFigures, error) {
 	if err != nil {
 		return interestFigures{}, err
 	}
+	// Income is a credit and runs negative, the expense a debit and
+	// positive; savings accrue negative (ADR-0008). Both figures are
+	// magnitudes.
 	return interestFigures{
 		loanIncome:     -income + accruedLending/poundsE7PerPenny,
-		depositExpense: -expense + accruedSavings/poundsE7PerPenny,
+		depositExpense: expense - accruedSavings/poundsE7PerPenny,
 	}, nil
 }
 
@@ -192,7 +202,7 @@ func (b *Bank) position(ctx context.Context) core.Position {
 		Customers:        k.customers,
 		Savings:          k.savings,
 		Lending:          k.lending,
-		Cash:             k.savings - k.lending,
+		Cash:             k.cash,
 		RequiredReserves: requiredReserves(k.savings, b.reserveRatio),
 		ReserveRatio:     b.reserveRatio,
 		BoERate:          b.boeRate,
@@ -250,7 +260,7 @@ func (b *Bank) BalanceSheet(ctx context.Context) (core.BalanceSheet, error) {
 		DayCount:           pos.DayCount,
 		Loans:              pos.Lending,
 		Gilts:              gilts,
-		CashAtBoE:          max(pos.Savings-pos.Lending+retained-gilts, 0), // gilts are bought from cash
+		CashAtBoE:          max(pos.Cash+pos.BoEInterest-gilts, 0), // the cash account plus the BoE interest received, less the gilts bought from it
 		Deposits:           pos.Savings,
 		RetainedEarnings:   retained,
 		RiskWeightedAssets: pos.Lending,

@@ -75,15 +75,17 @@ func TestOpenResolvesTheChartAndAControlPerProduct(t *testing.T) {
 		t.Errorf("reopened chart %+v, want the same accounts %+v", second.Chart, first.Chart)
 	}
 	var n int
-	if err := db.QueryRow(`SELECT COUNT(*) FROM gl_accounts`).Scan(&n); err != nil || n != 3+len(products.Catalogue()) {
+	if err := db.QueryRow(`SELECT COUNT(*) FROM gl_accounts`).Scan(&n); err != nil || n != 4+len(products.Catalogue()) {
 		t.Errorf("gl_accounts: %d rows, %v; want the chart and a control per product", n, err)
 	}
 }
 
-// What posts to the general ledger per sub-ledger event (ADR-0005):
-// funding is equity to the product's control, a transfer across products
-// is control to control, a transfer within one product is nothing. Each
-// is a movement insert only: no position moves until the close.
+// What posts to the general ledger per sub-ledger event (ADR-0005,
+// signed per ADR-0008): a deposit credits the product's control and
+// debits cash, a drawdown credits cash and debits the control, a transfer
+// across products credits the payee's control and debits the payer's, a
+// transfer within one product is nothing. Each is a movement insert
+// only: no position moves until the close.
 func TestWhatEachEventPosts(t *testing.T) {
 	g := open(t, openDB(t), false)
 	easy, isa, loan := gbp.EasyAccess().ID, gbp.ISA().ID, gbp.PersonalLoan().ID
@@ -104,11 +106,14 @@ func TestWhatEachEventPosts(t *testing.T) {
 		c, _ := g.Control(id)
 		balances[id], _ = g.Balance(c)
 	}
-	if balances[easy] != 900_00 || balances[isa] != 100_00 || balances[loan] != 850_00 {
-		t.Errorf("controls %v; want easy 90000, isa 10000, loan 85000", balances)
+	if balances[easy] != -900_00 || balances[isa] != -100_00 || balances[loan] != 850_00 {
+		t.Errorf("controls %v; want easy -90000, isa -10000 (liabilities), loan 85000", balances)
 	}
-	if equity, _ := g.Balance(g.Chart.EquityCapital); equity != -1850_00 {
-		t.Errorf("equity %d, want -185000: both fundings came from it", equity)
+	if cash, _ := g.Balance(g.Chart.Cash); cash != 1000_00-850_00 {
+		t.Errorf("cash %d, want 15000: the deposit in, the drawdown out", cash)
+	}
+	if equity, _ := g.Balance(g.Chart.EquityCapital); equity != 0 {
+		t.Errorf("equity %d, want untouched by customer flows", equity)
 	}
 	var movements, positions int
 	g.db.QueryRow(`SELECT COUNT(*) FROM gl_movements`).Scan(&movements)

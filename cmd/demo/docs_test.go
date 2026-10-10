@@ -34,7 +34,7 @@ func TestDocsPageCoversRegistryAndADRs(t *testing.T) {
 		}
 	}
 	for _, r := range adr.All() {
-		if !strings.Contains(page, r.Title) || !strings.Contains(page, `href="about/docs/adr/`+r.Slug+`"`) {
+		if !strings.Contains(page, html.EscapeString(r.Title)) || !strings.Contains(page, `href="about/docs/adr/`+r.Slug+`"`) {
 			t.Errorf("docs page missing ADR %d %q", r.Number, r.Title)
 		}
 	}

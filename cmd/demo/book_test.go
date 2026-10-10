@@ -35,9 +35,11 @@ func sumCustomerFigures(t *testing.T, ds *DemoState) (savings, lending, loanInte
 			pt.Balance += a.Balance
 			perProduct[a.ProductID] = pt
 			if a.Family == gbp.FamilySavings {
-				savings += a.Balance
-				depositInterest += a.Interest
-				accruedSavingsE7 += a.AccruedE7
+				// Liabilities are negative in the bank's view (ADR-0008);
+				// the totals are magnitudes.
+				savings -= a.Balance
+				depositInterest -= a.Interest
+				accruedSavingsE7 -= a.AccruedE7
 			} else {
 				lending += a.Balance
 				loanInterest += a.Interest
@@ -75,8 +77,8 @@ func TestBookTotalsFollowTheLedger(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got.Savings != ledgerSavings {
-		t.Errorf("position savings %d != ledger %d", got.Savings, ledgerSavings)
+	if got.Savings != -ledgerSavings { // the ledger holds the liability negative (ADR-0008)
+		t.Errorf("position savings %d != ledger %d", got.Savings, -ledgerSavings)
 	}
 
 	income, expense := ds.interestTotals()

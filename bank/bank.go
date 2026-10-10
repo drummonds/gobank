@@ -500,7 +500,7 @@ func (b *Bank) boeInterestTotalLocked() luca.Amount {
 func (b *Bank) snapshotLocked(savings, lending luca.Amount, count int) history.Snapshot {
 	// Today's interest in minor units, from the rules' exact accrual (rate
 	// maths for the NIM ratio, not storage).
-	depositInterest := float64(b.dayAccrualSavings) / gbp.AccrualDenominator
+	depositInterest := -float64(b.dayAccrualSavings) / gbp.AccrualDenominator // savings accrue negative (ADR-0008)
 	loanInterest := float64(b.dayAccrualLending) / gbp.AccrualDenominator
 	// NIM in bps: (loan interest income + BoE interest - deposit interest expense) / total deposits * 365 * 10000
 	excess := savings - lending - requiredReserves(savings, b.reserveRatio)
