@@ -411,7 +411,7 @@ func TestPositionsAndBoEInterestAreTheLedgers(t *testing.T) {
 	assertBoE(false)
 	var applications int
 	// Savings interest credits the saver: the account is the movement's from.
-	f.db.QueryRow(`SELECT COUNT(*) FROM contract_ledger_movements WHERE code = $1 AND from_path LIKE $2`, luca.CodeInterestAccrual, ledger.SavingsRoot+"%").Scan(&applications)
+	_ = f.db.QueryRow(`SELECT COUNT(*) FROM contract_ledger_movements WHERE code = $1 AND from_path LIKE $2`, luca.CodeInterestAccrual, ledger.SavingsRoot+"%").Scan(&applications)
 	if applications != 0 {
 		t.Errorf("%d customer applications before month end", applications)
 	}
@@ -420,7 +420,7 @@ func TestPositionsAndBoEInterestAreTheLedgers(t *testing.T) {
 	}
 	assertPositionsAreTheTruth(t, f)
 	assertBoE(true)
-	f.db.QueryRow(`SELECT COUNT(*) FROM contract_ledger_movements WHERE code = $1 AND from_path LIKE $2`, luca.CodeInterestAccrual, ledger.SavingsRoot+"%").Scan(&applications)
+	_ = f.db.QueryRow(`SELECT COUNT(*) FROM contract_ledger_movements WHERE code = $1 AND from_path LIKE $2`, luca.CodeInterestAccrual, ledger.SavingsRoot+"%").Scan(&applications)
 	if applications == 0 {
 		t.Error("no savings interest applied across the month end")
 	}
@@ -812,5 +812,39 @@ func TestLedgerIsTheBanksView(t *testing.T) {
 	pl, _ := f.bank.ProfitAndLoss(f.ctx)
 	if pl.DepositInterestExpense <= 0 || pl.LoanInterestIncome <= 0 {
 		t.Errorf("P&L %+v; want both interest figures positive magnitudes", pl)
+	}
+}
+
+// A movement is read as the journal entry it is: the account credited and
+// the account debited, each with the balance it was left with, in the
+// bank's view (ADR-0008). The statement line that shows it from one side
+// carries its ID.
+func TestMovementIsTheJournalEntry(t *testing.T) {
+	f := open(t)
+	if _, err := f.bank.OpenCustomer(f.ctx, saver("A", 10_00)); err != nil {
+		t.Fatal(err)
+	}
+	page, _ := f.bank.Transactions(f.ctx, core.CustomerID(1), 1)
+	if len(page.Entries) != 1 || page.Entries[0].Type != "Deposit" || page.Entries[0].Family != "Savings" {
+		t.Fatalf("statement %+v; want the deposit on a savings account", page.Entries)
+	}
+	m, err := f.bank.Movement(f.ctx, page.Entries[0].ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if m.ID != page.Entries[0].ID || m.Amount != 10_00 || m.Currency != "GBP" || m.Code != luca.CodeBookTransfer || m.Description != page.Entries[0].Reference {
+		t.Errorf("movement %+v", m)
+	}
+	if m.Credit.Type != "Liability" || !strings.HasPrefix(m.Credit.Path, ledger.SavingsRoot+":"+core.CustomerID(1)) || m.Credit.Balance != -10_00 {
+		t.Errorf("credit leg %+v; want the saver's account at -1000", m.Credit)
+	}
+	if m.Debit.Type != "Asset" || m.Debit.Path != ledger.Cash || m.Debit.Balance != 10_00 {
+		t.Errorf("debit leg %+v; want cash at 1000", m.Debit)
+	}
+	if !m.ValueTime.Equal(opening) || m.KnowledgeTime.IsZero() {
+		t.Errorf("movement times %v, %v; want valued on the opening day and known", m.ValueTime, m.KnowledgeTime)
+	}
+	if _, err := f.bank.Movement(f.ctx, "no-such-movement"); !errors.Is(err, core.ErrNotFound) {
+		t.Errorf("unknown movement: %v, want ErrNotFound", err)
 	}
 }

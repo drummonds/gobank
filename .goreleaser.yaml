@@ -10,6 +10,12 @@ project_name: gobank
 # GITEA_TOKEN; the release itself goes only to Forgejo.
 force_token: gitea
 
+# The staff web embeds pta2svg's browser renderer (ADR-0008): built here
+# so the release binaries carry it.
+before:
+  hooks:
+    - task wasm:pta2svg
+
 builds:
   - id: demo
     dir: cmd/demo

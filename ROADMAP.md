@@ -596,7 +596,8 @@ root module, `cmd/bff` is the service binary, and `app/` is the Flutter shell.
   `SimContext`, `Simulation` and `ParameterStore` retired. A library
   release; gobank stays on v0.3.0 until 1.8.2
 - **1.8.2a** the ledger is the bank's view (ADR-0008; taken before
-  1.8.2 completes) — posting directions per the ADR's table, `Asset:Cash`
+  1.8.2 completes; BUILT 2026-10-11 on branch stage-8-2a-ledger-bank-view,
+  awaiting release and the reset deploy) — posting directions per the ADR's table, `Asset:Cash`
   on both charts, the ledger wrapper's parameters named credit and debit,
   every read's sign correction gone, the staff web's view switch (bank's
   view by default) and the app's customer view with its position with the

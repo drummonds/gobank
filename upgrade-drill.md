@@ -24,6 +24,12 @@ path gets sorted out where a failure costs nothing.
 | 8 | Forward again: fetch N+1, redeploy | as 7 with N+1 | restart record: a row following an *unrecorded* process (N kept no record), downtime from the run row's last write; position as in step 6 |
 | 9 | Promote prod: redeploy prod to N+1, the drill done | gobank-deploy page on hydrogen | `Model Bank N+1` serving on prod; its restart record shows N stopped cleanly |
 
+## Exceptions
+
+| Release | Story | Why the drill differed |
+|---|---|---|
+| the release of story 1.8.2a | ADR-0008, the ledger is the bank's view | A running bank's history is in the old signs and the ledger is append-only. Rather than rewrite history, preprod and prod were reset on this release: the drill was a fresh deploy, step 7 (rollback) did not apply, and the record of the stop before it is the last of the old run. |
+
 ## What the record says
 
 | Previous column | Downtime column | Meaning |

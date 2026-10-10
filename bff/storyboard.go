@@ -5,8 +5,8 @@ import (
 	"fmt"
 	"time"
 
-	luca "git.bytestone.uk/hum3/go-luca"
 	"git.bytestone.uk/hum3/gobank/core"
+	"git.bytestone.uk/hum3/gobank/internal/view"
 	"git.bytestone.uk/hum3/gobank/screen"
 )
 
@@ -56,15 +56,8 @@ func proposedNav(active string) *screen.Nav {
 func HomeScreen(c core.Customer, accounts []core.Account, recent core.TransactionPage) screen.Screen {
 	s := screen.New("home", PathScreenHome2, "Hello, "+c.Name)
 	s.Subtitle = "Your money today"
-	var savings, lending luca.Amount
-	for _, a := range accounts {
-		if a.Family == "Lending" {
-			lending += a.Balance
-		} else {
-			savings += a.Balance
-		}
-	}
-	s.Add(screen.Hero("Net Position", FormatMoney(savings-lending), screen.ToneSavings,
+	savings, lending := familyTotals(accounts)
+	s.Add(screen.Hero("Net Position", FormatMoney(view.Customer.NetPosition(accounts)), screen.ToneSavings,
 		screen.Pair{Label: "Savings", Value: FormatMoney(savings)},
 		screen.Pair{Label: "Lending", Value: FormatMoney(lending)},
 	))
@@ -88,7 +81,7 @@ func PayScreen(accounts []core.Account) screen.Screen {
 	from := "your savings account"
 	for _, a := range accounts {
 		if a.Family == "Savings" {
-			from = a.ProductName + " · " + FormatMoney(a.Balance)
+			from = a.ProductName + " · " + FormatMoney(view.Customer.Balance(a))
 			break
 		}
 	}

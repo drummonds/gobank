@@ -285,3 +285,43 @@ func (l *Ledger) Lock(ids ...string) (unlock func()) {
 		}
 	}
 }
+
+// Movement is one movement as the journal entry it is (ADR-0008): the
+// account credited and the account debited, each with the balance it was
+// left with at the movement's value time.
+type Movement struct {
+	ID            string
+	Credit, Debit MovementLeg
+	Amount        luca.Amount
+	Code          string
+	ValueTime     time.Time
+	KnowledgeTime time.Time
+	Description   string
+}
+
+// MovementLeg is one side of a movement.
+type MovementLeg struct {
+	AccountID string
+	Path      string
+	Balance   luca.Amount // after the movement
+}
+
+// MovementByID reads one movement from the contract view; sql.ErrNoRows
+// when there is none.
+func (l *Ledger) MovementByID(ctx context.Context, id string) (Movement, error) {
+	var m Movement
+	err := l.db.QueryRowContext(ctx, `SELECT id, from_account_id, to_account_id, from_path, to_path, amount, code, value_time, knowledge_time, description
+		FROM contract_ledger_movements WHERE id = $1`, id).
+		Scan(&m.ID, &m.Credit.AccountID, &m.Debit.AccountID, &m.Credit.Path, &m.Debit.Path, &m.Amount, &m.Code, &m.ValueTime, &m.KnowledgeTime, &m.Description)
+	if err != nil {
+		return Movement{}, err
+	}
+	for _, leg := range []*MovementLeg{&m.Credit, &m.Debit} {
+		bal, err := l.BalanceAt(leg.AccountID, m.ValueTime)
+		if err != nil {
+			return Movement{}, fmt.Errorf("ledger: movement %s: balance of %s: %w", id, leg.Path, err)
+		}
+		leg.Balance = bal
+	}
+	return m, nil
+}

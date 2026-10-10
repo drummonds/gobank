@@ -149,6 +149,12 @@ tasks:
       - d2 app-access.d2 docs/app-access.svg
       - d2 app-bff.d2 docs/app-bff.svg
 
+  wasm:pta2svg:
+    desc: Build pta2svg's browser renderer into the staff web (ADR-0008 movement page); absent, the BFF draws
+    cmds:
+      - GOOS=js GOARCH=wasm go build -o bff/staff/wasm/pta2svg.wasm git.bytestone.uk/hum3/pta2svg/cmd/pta2svg-wasm
+      - cp "$(go env GOROOT)/lib/wasm/wasm_exec.js" bff/staff/wasm/wasm_exec.js
+
   docs:build:
     desc: Build WASM demo and all pages into docs/
     vars:
@@ -156,6 +162,7 @@ tasks:
         sh: '[ -n "{{.VERSION}}" ] && echo "{{.VERSION}}" || git describe --tags --always 2>/dev/null || echo dev'
     cmds:
       - task: diagrams
+      - task: wasm:pta2svg
       - mkdir -p docs/demo
       - cd cmd/demo && GOOS=js GOARCH=wasm go build -ldflags "-X main.version={{.GIT_TAG}}" -o main.wasm .
       # The demo runs in the tab from a service worker (ADR-0002 stage 6): wasm-deploy writes

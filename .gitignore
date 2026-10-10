@@ -11,3 +11,7 @@ cmd/chartcompare/chartcompare
 task-plus.local.yaml
 
 dist/
+
+# pta2svg's browser build, made by task wasm:pta2svg
+bff/staff/wasm/pta2svg.wasm
+bff/staff/wasm/wasm_exec.js

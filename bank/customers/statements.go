@@ -60,6 +60,7 @@ type Line struct {
 	Date        time.Time
 	AccountID   string // ledger account the line is for
 	ProductName string
+	Family      gbp.ProductFamily
 	Type        TxType
 	Currency    string      // the account's, ISO 4217
 	Amount      luca.Amount // minor units, always positive; direction implied by Type
@@ -133,7 +134,7 @@ func (c *Customers) accountLines(ctx context.Context, a Account) ([]Line, error)
 			balance -= amount
 		}
 		lines = append(lines, Line{
-			ID: id, Date: valueTime, AccountID: a.LedgerAccountID, ProductName: a.ProductName,
+			ID: id, Date: valueTime, AccountID: a.LedgerAccountID, ProductName: a.ProductName, Family: a.Family,
 			Type: TxTypeOf(code, counterparty, debited, a.Family), Currency: a.Currency,
 			Amount: amount, Balance: balance, Reference: description, known: knowledgeTime,
 		})
@@ -177,7 +178,7 @@ func pageOf(lines []Line, page, perPage int) core.TransactionPage {
 	}
 	for _, l := range lines[start:min(start+perPage, len(lines))] {
 		out.Entries = append(out.Entries, core.Transaction{
-			ID: l.ID, Date: l.Date.Format(time.DateOnly), ProductName: l.ProductName, Type: l.Type.String(),
+			ID: l.ID, Date: l.Date.Format(time.DateOnly), ProductName: l.ProductName, Family: string(l.Family), Type: l.Type.String(),
 			Currency: l.Currency, Reference: l.Reference, Amount: l.Amount, Balance: l.Balance,
 		})
 	}

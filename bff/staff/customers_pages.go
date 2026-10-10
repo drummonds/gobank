@@ -3,12 +3,14 @@ package staff
 import (
 	"context"
 	"fmt"
+	"html"
 	"strings"
 	"time"
 
 	luca "git.bytestone.uk/hum3/go-luca"
 	gbp "git.bytestone.uk/hum3/gobank-products"
 	"git.bytestone.uk/hum3/gobank/core"
+	"git.bytestone.uk/hum3/gobank/internal/view"
 )
 
 // The customers pages: the register, a customer and one of their
@@ -109,7 +111,7 @@ func customerLabel(q core.StaffQueries, id string, piiAuthorized bool) string {
 
 // BuildCustomerDetailHTML renders a single customer's detail page: summary,
 // PII, KYC, accounts table.
-func BuildCustomerDetailHTML(q core.StaffQueries, id string, piiAuthorized bool, txPage int) string {
+func BuildCustomerDetailHTML(q core.StaffQueries, id string, piiAuthorized bool, txPage int, v view.View) string {
 	ctx := context.Background()
 	cust, err := q.CustomerRecord(ctx, id)
 	if err != nil {
@@ -208,7 +210,7 @@ func BuildCustomerDetailHTML(q core.StaffQueries, id string, piiAuthorized bool,
 		s.WriteString(fmt.Sprintf(`<tr>
   <td>%s</td><td>%s</td><td><code>%s</code></td><td><code>%s</code></td><td>%.1f%%</td><td>%s</td><td>%s</td><td>%s</td>
   <td><a href="customers/%s/account/%d" class="button is-small is-link is-light">View</a></td>
-</tr>`, a.ProductName, familyTag(a.Family), a.SortCode, a.AccountNum, a.Rate*100, FormatMoney(a.Balance), FormatMoney(a.Interest), fmtISODate(a.OpenDate), cust.ID, i))
+</tr>`, a.ProductName, familyTag(a.Family), a.SortCode, a.AccountNum, a.Rate*100, FormatMoney(v.Balance(a)), FormatMoney(v.Interest(a)), fmtISODate(a.OpenDate), cust.ID, i))
 	}
 	s.WriteString(`</tbody></table></div>`)
 
@@ -216,7 +218,7 @@ func BuildCustomerDetailHTML(q core.StaffQueries, id string, piiAuthorized bool,
 }
 
 // BuildCustomerAccountHTML renders a per-account detail page with transactions.
-func BuildCustomerAccountHTML(q core.StaffQueries, custID string, accountIdx int, piiAuthorized bool, txPage int) string {
+func BuildCustomerAccountHTML(q core.StaffQueries, custID string, accountIdx int, piiAuthorized bool, txPage int, v view.View) string {
 	ctx := context.Background()
 	cust, err := q.CustomerRecord(ctx, custID)
 	if err != nil {
@@ -250,8 +252,8 @@ func BuildCustomerAccountHTML(q core.StaffQueries, custID string, accountIdx int
 	s.WriteString(fmt.Sprintf(`<div class="column"><strong>Account No.:</strong> <code>%s</code></div>`, a.AccountNum))
 	s.WriteString(fmt.Sprintf(`<div class="column"><strong>Rate:</strong> %.2f%%</div>`, a.Rate*100))
 	s.WriteString(`</div><div class="columns">`)
-	s.WriteString(fmt.Sprintf(`<div class="column"><strong>Balance:</strong> %s</div>`, FormatMoney(a.Balance)))
-	s.WriteString(fmt.Sprintf(`<div class="column"><strong>Interest:</strong> %s</div>`, FormatMoney(a.Interest)))
+	fmt.Fprintf(&s, `<div class="column"><strong>Balance:</strong> %s <span class="has-text-grey is-size-7">%s</span></div>`, FormatMoney(v.Balance(a)), strings.ToLower(v.Label()))
+	fmt.Fprintf(&s, `<div class="column"><strong>Interest:</strong> %s</div>`, FormatMoney(v.Interest(a)))
 	s.WriteString(fmt.Sprintf(`<div class="column"><strong>Opened:</strong> %s</div>`, fmtISODate(a.OpenDate)))
 	s.WriteString(`</div></div>`)
 
@@ -266,11 +268,13 @@ func BuildCustomerAccountHTML(q core.StaffQueries, custID string, accountIdx int
 	} else {
 		s.WriteString(fmt.Sprintf(`<p class="mb-2 has-text-grey is-size-7">%d transactions</p>`, txs.Total))
 		s.WriteString(`<div class="table-container"><table class="table is-fullwidth is-striped is-hoverable">`)
-		s.WriteString(`<thead><tr><th>Date</th><th>Type</th><th>Amount</th><th>Balance</th><th>Reference</th></tr></thead><tbody>`)
+		s.WriteString(`<thead><tr><th>Date</th><th>Type</th><th>Amount</th><th>Balance</th><th>Reference</th><th></th></tr></thead><tbody>`)
 		for _, tx := range txs.Entries {
+			// Beneath the line, the movement it is one side of (ADR-0008).
 			s.WriteString(fmt.Sprintf(`<tr>
   <td>%s</td><td>%s</td><td>%s</td><td>%s</td><td>%s</td>
-</tr>`, fmtISODate(tx.Date), tx.Type, FormatMoney(tx.Amount), FormatMoney(tx.Balance), tx.Reference))
+  <td><a href="movements/%s" class="button is-small is-light" title="The movement: both accounts, drawn">Movement</a></td>
+</tr>`, fmtISODate(tx.Date), tx.Type, FormatMoney(tx.Amount), FormatMoney(v.Running(tx)), tx.Reference, html.EscapeString(tx.ID)))
 		}
 		s.WriteString(`</tbody></table></div>`)
 

@@ -29,7 +29,9 @@ type Customer struct {
 	Name string
 }
 
-// Account is one product held by a customer. Money is integer minor units.
+// Account is one product held by a customer. Money is integer minor units
+// in the bank's view (ADR-0008): a savings balance is a liability and
+// negative, a loan an asset and positive; presentation converts.
 type Account struct {
 	Index       int // position in the customer's account list; stable for a session
 	ProductName string
@@ -47,11 +49,15 @@ type Account struct {
 	OpenDate   string
 }
 
-// Transaction is one ledger entry as shown to the customer.
+// Transaction is one ledger entry as shown to the customer: one movement
+// from one account's side. Amount is the movement's, positive, its
+// direction in Type; Balance is the account's after it, in the bank's
+// view (ADR-0008). The movement itself is read by its ID (LedgerQueries).
 type Transaction struct {
 	ID          string // the ledger movement's ID
 	Date        string
 	ProductName string
+	Family      string // the account's: "Savings" or "Lending"
 	Type        string // "Deposit", "Interest", "Transfer In", "Transfer Out", "Loan", "Loan Interest"
 	Currency    string // the account's, ISO 4217
 	Reference   string

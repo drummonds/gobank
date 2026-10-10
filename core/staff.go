@@ -126,6 +126,35 @@ type BookQueries interface {
 	History(ctx context.Context) (History, error)
 }
 
+// Movement is one ledger movement as the journal entry it is (ADR-0008):
+// amount credited to one account and debited to another, with the balance
+// each is left with, in the bank's view.
+type Movement struct {
+	ID            string
+	Credit, Debit Leg
+	Amount        luca.Amount
+	Currency      string
+	Code          string
+	ValueTime     time.Time
+	KnowledgeTime time.Time
+	Description   string
+}
+
+// Leg is one side of a movement: the account and the balance it was left
+// with, signed as the ledger holds it.
+type Leg struct {
+	AccountID string
+	Path      string // "Liability:Savings:cust-001:easy-access"
+	Type      string // the path's first segment: Asset, Liability, Equity, Income, Expense
+	Balance   luca.Amount
+}
+
+// LedgerQueries is the ledger as staff read a single movement.
+type LedgerQueries interface {
+	// Movement is one movement by its ID; an unknown ID is ErrNotFound.
+	Movement(ctx context.Context, id string) (Movement, error)
+}
+
 // KYC is a customer's Know Your Customer standing.
 type KYC struct {
 	Verified   bool
@@ -299,4 +328,5 @@ type StaffQueries interface {
 	PaymentQueries
 	ProductQueries
 	TreasuryQueries
+	LedgerQueries
 }

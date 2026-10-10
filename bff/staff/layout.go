@@ -82,6 +82,9 @@ const layout = `<!DOCTYPE html>
         <div class="navbar-item">
           <span class="signed-in">{{ .login }} <span class="tag is-light">{{ .role_label }}</span></span>
         </div>
+        <a class="navbar-item" href="view/{{ .other_view }}?back={{ .path }}" title="Balances shown in the {{ .view_label }}; switch to the {{ .other_view_label }}" hx-boost="false">
+          <span class="tag {{if eq .view "bank"}}is-dark{{else}}is-info{{end}}">{{ .view_label }}</span>
+        </a>
         <div class="navbar-item">
           <form action="logout" method="post" hx-boost="false">
             <button class="button is-small is-light" type="submit">Log out</button>

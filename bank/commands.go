@@ -2,13 +2,17 @@ package bank
 
 import (
 	"context"
+	"database/sql"
+	"errors"
 	"fmt"
 	"log"
+	"strings"
 	"time"
 
 	luca "git.bytestone.uk/hum3/go-luca"
 	gbp "git.bytestone.uk/hum3/gobank-products"
 	"git.bytestone.uk/hum3/gobank/bank/customers"
+	"git.bytestone.uk/hum3/gobank/bank/ledger"
 	"git.bytestone.uk/hum3/gobank/bank/payments"
 	"git.bytestone.uk/hum3/gobank/bank/products"
 	"git.bytestone.uk/hum3/gobank/core"
@@ -446,3 +450,27 @@ var (
 	_ core.StaffQueries = (*Bank)(nil)
 	_ core.Commands     = (*Bank)(nil)
 )
+
+// --- The ledger ---
+
+// Movement implements core.LedgerQueries: one movement as the journal
+// entry it is, in the bank's view (ADR-0008).
+func (b *Bank) Movement(ctx context.Context, id string) (core.Movement, error) {
+	b.open.RLock()
+	defer b.open.RUnlock()
+	m, err := b.ledger.MovementByID(ctx, id)
+	if errors.Is(err, sql.ErrNoRows) {
+		return core.Movement{}, core.ErrNotFound
+	}
+	if err != nil {
+		return core.Movement{}, err
+	}
+	leg := func(l ledger.MovementLeg) core.Leg {
+		kind, _, _ := strings.Cut(l.Path, ":")
+		return core.Leg{AccountID: l.AccountID, Path: l.Path, Type: kind, Balance: l.Balance}
+	}
+	return core.Movement{
+		ID: m.ID, Credit: leg(m.Credit), Debit: leg(m.Debit), Amount: m.Amount, Currency: ledger.Currency,
+		Code: m.Code, ValueTime: m.ValueTime, KnowledgeTime: m.KnowledgeTime, Description: m.Description,
+	}, nil
+}

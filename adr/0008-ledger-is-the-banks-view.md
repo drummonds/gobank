@@ -1,7 +1,7 @@
 # ADR-0008: The ledger is the bank's view
 
-Status: Proposed
-Date: 2026-10-10
+Status: Accepted
+Date: 2026-10-10, accepted 2026-10-11
 Stage: ADR-0002 stage 8 (roadmap 1.8), story 1.8.2a, before 1.8.2 completes
 
 ## Context

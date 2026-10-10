@@ -3,6 +3,7 @@ package bff
 import (
 	"fmt"
 	"git.bytestone.uk/hum3/gobank/core"
+	"git.bytestone.uk/hum3/gobank/internal/view"
 	"strconv"
 
 	luca "git.bytestone.uk/hum3/go-luca"
@@ -54,19 +55,15 @@ func loginScreen(notice, note string) screen.Screen {
 	return s
 }
 
-// AccountsScreen is the home screen after login.
+// AccountsScreen is the home screen after login. The app is the
+// customer's view (ADR-0008): savings and loans both positive, and the
+// customer's position with the bank, what the bank owes them net of what
+// they owe it, as the headline.
 func AccountsScreen(c core.Customer, accounts []core.Account) screen.Screen {
 	s := screen.New("accounts", PathScreenHome, c.Name)
 	s.Subtitle = c.ID
-	var savings, lending luca.Amount
-	for _, a := range accounts {
-		if a.Family == "Lending" {
-			lending += a.Balance
-		} else {
-			savings += a.Balance
-		}
-	}
-	s.Add(screen.Hero("Net Balance", FormatMoney(savings-lending), screen.ToneSavings,
+	savings, lending := familyTotals(accounts)
+	s.Add(screen.Hero("Your position with the bank", FormatMoney(view.Customer.NetPosition(accounts)), screen.ToneSavings,
 		screen.Pair{Label: "Savings", Value: FormatMoney(savings)},
 		screen.Pair{Label: "Lending", Value: FormatMoney(lending)},
 	))
@@ -76,7 +73,7 @@ func AccountsScreen(c core.Customer, accounts []core.Account) screen.Screen {
 			icon, tone = screen.IconLending, screen.ToneLending
 		}
 		row := screen.Row(icon, a.ProductName, fmt.Sprintf("%.2f%% APR", a.Rate*100),
-			FormatMoney(a.Balance), "Interest: "+FormatMoney(a.Interest), tone, screen.Go(productPath(a.Index)))
+			FormatMoney(view.Customer.Balance(a)), "Interest: "+FormatMoney(view.Customer.Interest(a)), tone, screen.Go(productPath(a.Index)))
 		row.Currency = a.Currency
 		s.Add(row)
 	}
@@ -107,8 +104,8 @@ func ProductScreen(c core.Customer, a core.Account, page core.TransactionPage) s
 		tone = screen.ToneLending
 	}
 	s.Add(
-		screen.Hero("Balance", FormatMoney(a.Balance), tone,
-			screen.Pair{Label: "Interest", Value: FormatMoney(a.Interest)},
+		screen.Hero("Balance", FormatMoney(view.Customer.Balance(a)), tone,
+			screen.Pair{Label: "Interest", Value: FormatMoney(view.Customer.Interest(a))},
 			screen.Pair{Label: "APR", Value: fmt.Sprintf("%.2f%%", a.Rate*100)},
 		),
 		screen.Details("Account Details",
@@ -145,7 +142,7 @@ func addTransactions(s *screen.Screen, page core.TransactionPage, showProduct bo
 		if showProduct {
 			sub = tx.ProductName + " · " + tx.Reference
 		}
-		row := screen.Tx(icon, tx.Type, sub, sign+FormatMoney(tx.Amount), "Bal: "+FormatMoney(tx.Balance), tone)
+		row := screen.Tx(icon, tx.Type, sub, sign+FormatMoney(tx.Amount), "Bal: "+FormatMoney(view.Customer.Running(tx)), tone)
 		row.Currency = tx.Currency
 		s.Add(row)
 	}
@@ -167,4 +164,17 @@ func txStyle(txType string) (sign string, tone screen.Tone, icon screen.Icon) {
 		tone, icon = screen.ToneLending, screen.IconLoan
 	}
 	return sign, tone, icon
+}
+
+// familyTotals is a customer's savings and lending in the customer's view:
+// what they hold and what they owe, both positive.
+func familyTotals(accounts []core.Account) (savings, lending luca.Amount) {
+	for _, a := range accounts {
+		if a.Family == "Lending" {
+			lending += view.Customer.Balance(a)
+		} else {
+			savings += view.Customer.Balance(a)
+		}
+	}
+	return savings, lending
 }

@@ -8,6 +8,7 @@ import (
 	luca "git.bytestone.uk/hum3/go-luca"
 	gbp "git.bytestone.uk/hum3/gobank-products"
 	"git.bytestone.uk/hum3/gobank/core"
+	"git.bytestone.uk/hum3/gobank/internal/view"
 )
 
 // BuildChartsHTML renders historical charts: NIM, balances, customer count, BoE rate.
@@ -159,15 +160,16 @@ func BuildCustomerViewHTML(q core.StaffQueries, id string, piiAuthorized bool) s
 	s.WriteString(`<div class="table-container"><table class="table is-fullwidth is-striped">`)
 	s.WriteString(`<thead><tr><th>Product</th><th>Type</th><th>Rate</th><th>Balance</th><th>Interest Accrued</th><th>Opened</th></tr></thead><tbody>`)
 	for _, a := range cust.Accounts {
-		interestCell := FormatMoney(a.Interest)
-		if accrued := PoundsE7(a.AccruedE7); accrued != 0 {
+		// The report is the customer's view by name (ADR-0008).
+		interestCell := FormatMoney(view.Customer.Interest(a))
+		if accrued := PoundsE7(view.Customer.AccruedE7(a)); accrued != 0 {
 			// Accrued-but-unapplied interest modelled as 7dp pounds; it
 			// converts to whole pence on application.
 			interestCell += fmt.Sprintf(` <span class="has-text-grey is-size-7">+%s accruing</span>`, accrued)
 		}
 		s.WriteString(fmt.Sprintf(`<tr>
   <td>%s</td><td>%s</td><td>%.1f%%</td><td>%s</td><td>%s</td><td>%s</td>
-</tr>`, a.ProductName, familyTag(a.Family), a.Rate*100, FormatMoney(a.Balance), interestCell, fmtISODate(a.OpenDate)))
+</tr>`, a.ProductName, familyTag(a.Family), a.Rate*100, FormatMoney(view.Customer.Balance(a)), interestCell, fmtISODate(a.OpenDate)))
 	}
 	s.WriteString(`</tbody></table></div>`)
 

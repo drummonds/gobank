@@ -30,7 +30,7 @@ type bookFigures struct {
 	savings, lending luca.Amount
 	products         map[string]productBook // by product ID
 	customers        int
-	cash               luca.Amount // the Asset:Cash balance: deposits in, drawdowns out
+	cash             luca.Amount // the Asset:Cash balance: deposits in, drawdowns out
 }
 
 // productBook is one product's share of the book.

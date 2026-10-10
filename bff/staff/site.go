@@ -98,6 +98,8 @@ func New(cfg Config) *Site {
 	}
 	s.loginRoutes()
 	s.routes()
+	s.viewRoutes()
+	s.movementRoutes()
 	if cfg.Console != nil {
 		s.consoleRoutes()
 	}
@@ -185,18 +187,23 @@ func (s *Site) staticPage(w http.ResponseWriter, r *http.Request, content string
 
 func (s *Site) render(w http.ResponseWriter, r *http.Request, content, polling string) {
 	sess, signedIn := signedIn(r)
+	v := s.view(r)
 	s.ctrl.RenderTemplate(w, lofigui.TemplateContext{
-		"request":         r,
-		"version":         "Model Bank " + s.cfg.Version,
-		"controller_name": s.ctrl.Name,
-		"results":         template.HTML(content),
-		"polling":         polling,
-		"signed_in":       signedIn,
-		"login":           sess.user.Login,
-		"role":            string(sess.role),
-		"role_label":      sess.role.Label(),
-		"scope":           s.cfg.Scope,
-		"path":            strings.TrimPrefix(r.URL.Path, "/"),
+		"request":          r,
+		"view":             string(v),
+		"view_label":       v.Label(),
+		"other_view":       string(v.Other()),
+		"other_view_label": v.Other().Label(),
+		"version":          "Model Bank " + s.cfg.Version,
+		"controller_name":  s.ctrl.Name,
+		"results":          template.HTML(content),
+		"polling":          polling,
+		"signed_in":        signedIn,
+		"login":            sess.user.Login,
+		"role":             string(sess.role),
+		"role_label":       sess.role.Label(),
+		"scope":            s.cfg.Scope,
+		"path":             strings.TrimPrefix(r.URL.Path, "/"),
 	})
 }
 
@@ -282,10 +289,10 @@ func (s *Site) routes() {
 				http.NotFound(w, r)
 				return
 			}
-			s.page(w, r, func() string { return BuildCustomerAccountHTML(bank, parts[0], idx, pii, txPage) })
+			s.page(w, r, func() string { return BuildCustomerAccountHTML(bank, parts[0], idx, pii, txPage, s.view(r)) })
 			return
 		}
-		s.page(w, r, func() string { return BuildCustomerDetailHTML(bank, parts[0], pii, txPage) })
+		s.page(w, r, func() string { return BuildCustomerDetailHTML(bank, parts[0], pii, txPage, s.view(r)) })
 	})
 
 	// Payments: the detail; the list carries the console's controls until 1.6.4

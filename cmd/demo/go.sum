@@ -16,6 +16,8 @@ git.bytestone.uk/hum3/gotreesitter v0.7.0 h1:KVytGephPEdUy0HZnS1+aO6rlmB9Y3z0wzk
 git.bytestone.uk/hum3/gotreesitter v0.7.0/go.mod h1:Wypi8nYsGD8zsHzKvZoU6Cy/aSW3Z3v8E9BCvKzR1wM=
 git.bytestone.uk/hum3/lofigui v0.17.40 h1:RqHNJvf3fE/7iJ9QGKZU54c6NumxTE3gUEW9sPNgCQQ=
 git.bytestone.uk/hum3/lofigui v0.17.40/go.mod h1:R8bGnSaKoR9fca7SC8MDFm5BhAtXOADaoIBxpi+Lt54=
+git.bytestone.uk/hum3/pta2svg v0.2.0 h1:JKSHkIVu0t8L+uWz48UfiY0lM4nlxGERBQ4U+cHcJPA=
+git.bytestone.uk/hum3/pta2svg v0.2.0/go.mod h1:USDEX7sBk6OCCHuj+gmrcrgEIIGdWYtFnFyCHkpb43U=
 github.com/davecgh/go-spew v1.1.0/go.mod h1:J7Y8YcW2NihsgmVo/mv3lAwl/skON4iLHjSsI+c5H38=
 github.com/davecgh/go-spew v1.1.1 h1:vj9j/u1bqnvCEfJOwUhtlOARqs3+rkHYY13jYWTU97c=
 github.com/davecgh/go-spew v1.1.1/go.mod h1:J7Y8YcW2NihsgmVo/mv3lAwl/skON4iLHjSsI+c5H38=
@@ -41,6 +43,8 @@ github.com/nlepage/go-js-promise v1.1.0 h1:BfvywsIMo4cpNOKyoReBWkxEW8f9HMwXqGc45
 github.com/nlepage/go-js-promise v1.1.0/go.mod h1:bdOP0wObXu34euibyK39K1hoBCtlgTKXGc56AGflaRo=
 github.com/nlepage/go-wasm-http-server/v2 v2.2.1 h1:4tzhSb3HKQ3Ykt2TPfqEnmcPfw8n1E8agv4OzAyckr8=
 github.com/nlepage/go-wasm-http-server/v2 v2.2.1/go.mod h1:r8j7cEOeUqNp+c+C52sNuWaFTvvT/cNqIwBuEtA36HA=
+github.com/nulab/autog v0.11.0 h1:1w8BNrUisUKH+bp2C2rA8ITOhjhOfhXUaWDgUrh8DeU=
+github.com/nulab/autog v0.11.0/go.mod h1:TpDSpSHSnYARdruVLdlNEwLS8jknWb224gLBfAFqr/8=
 github.com/pmezard/go-difflib v1.0.0 h1:4DBwDE0NGyQoBHbLQYPwSUPoCMWR5BEzIk/f1lZbAQM=
 github.com/pmezard/go-difflib v1.0.0/go.mod h1:iKH77koFhYxTK1pcRnkKkqfTogsbg7gZNVY4sRDYZ/4=
 github.com/russross/blackfriday/v2 v2.1.0 h1:JIOH55/0cWyOuilr9/qlrm0BSXldqnqwMsf35Ld67mk=

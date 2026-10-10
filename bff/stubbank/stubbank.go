@@ -54,6 +54,13 @@ func (b *Bank) add(id, name string, accts []core.Account) {
 	for i := range accts {
 		a := &accts[i]
 		a.Index = i
+		// The stub, like the bank, speaks the bank's view (ADR-0008): a
+		// savings balance is a liability and negative. The script below
+		// runs in the customer's terms and is negated for savings.
+		sign := luca.Amount(1)
+		if a.Family == "Savings" {
+			sign = -1
+		}
 		var bal luca.Amount
 		post := func(day int, typ, ref string, amt luca.Amount) {
 			bal += amt
@@ -62,7 +69,7 @@ func (b *Bank) add(id, name string, accts []core.Account) {
 			}
 			txID++
 			all = append(all, core.Transaction{ID: fmt.Sprintf("m%04d", txID), Date: start.AddDate(0, 0, day).Format("2006-01-02"),
-				ProductName: a.ProductName, Type: typ, Currency: a.Currency, Reference: ref, Amount: abs(amt), Balance: bal})
+				ProductName: a.ProductName, Family: a.Family, Type: typ, Currency: a.Currency, Reference: ref, Amount: abs(amt), Balance: sign * bal})
 		}
 		if a.Family == "Lending" {
 			post(0, "Loan", "Drawdown", 500000)
@@ -79,8 +86,8 @@ func (b *Bank) add(id, name string, accts []core.Account) {
 				}
 			}
 		}
-		a.Balance = bal
-		a.Interest = 12 * luca.Amount(i+1)
+		a.Balance = sign * bal
+		a.Interest = sign * 12 * luca.Amount(i+1)
 	}
 	// newest first
 	for i, j := 0, len(all)-1; i < j; i, j = i+1, j-1 {
@@ -181,3 +188,9 @@ var _ core.Authenticator = (*Bank)(nil)
 
 // String describes the stub for the startup log.
 func (b *Bank) String() string { return fmt.Sprintf("stubbank (%d customers)", len(b.customers)) }
+
+// Movement implements core.LedgerQueries: the stub keeps no ledger, so
+// every movement is unknown.
+func (b *Bank) Movement(_ context.Context, _ string) (core.Movement, error) {
+	return core.Movement{}, core.ErrNotFound
+}

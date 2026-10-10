@@ -2,6 +2,47 @@
 
 ## [Unreleased]
 
+ - Stage 8 story 1.8.2a: the ledger is the bank's view (ADR-0008), the movement page drawn by pta2svg, the staff view switch; preprod and prod are reset on this release
+
+### Added
+- ADR-0007 (accepted): the bank's definition is a module of its own, the
+  client bank's repository on its own cadence, over a stable interface.
+- ADR-0008 (accepted): the ledger is the bank's view. Credit-normal
+  accounts (liabilities, equity, income) are negative, debit-normal
+  (assets, expenses) positive, and a movement runs from the account
+  credited to the account debited. `Asset:Cash` is the counterparty of
+  customer flows on both charts: a deposit credits the saver and debits
+  cash, a drawdown credits cash and debits the loan, savings interest
+  credits the saver and debits the expense. All contracts and code speak
+  this view; presentation varies.
+- The movement page beneath every statement line (`movements/{id}`): the
+  journal entry's two legs with the balances they are left with, the
+  amount, code, value and knowledge times, and the movement drawn by
+  pta2svg from goluca text; served as the page, as goluca
+  (`movements/{id}.goluca`) and as JSON. The core gains
+  `LedgerQueries.Movement`. The page draws in the browser with pta2svg's
+  WASM build when `task wasm:pta2svg` has put it in the binary (the
+  release build does), else by the BFF. The build is 26 MB of
+  tree-sitter grammars; a small model-input build is pta2svg #8.
+- The staff web's view switch: balances in the bank's view by default,
+  the customer's per session from the navbar. The customer app is the
+  customer's view, savings and loans both positive, with the customer's
+  position with the bank as the headline. `internal/view`.
+- `core.Transaction.Family`.
+
+### Changed
+- Every read of a balance stops correcting signs: the book negates the
+  savings positions, interest expense is the expense account's balance,
+  the transfer funds check reads the liability, statement running
+  balances are the bank's view, the BBSI figure is the positive amount
+  paid, the position's cash is the `Asset:Cash` balance and the balance
+  sheet's cash follows it. The GL's funding, transfer and journal post
+  the same directions; `ledger.Post` names its parameters credit and
+  debit.
+- Preprod and prod are reset on this release rather than their history
+  converted: the first story whose drill is a fresh deploy, named as
+  ADR-0003's exception (see upgrade-drill.md).
+
 ## [0.28.0] - 2026-10-09
 
  - Stage 7 story 1.7.1: the users component and the staff login

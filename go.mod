@@ -10,6 +10,7 @@ require (
 	git.bytestone.uk/hum3/gobanks-customers v0.2.1
 	git.bytestone.uk/hum3/gogal v0.2.0
 	git.bytestone.uk/hum3/lofigui v0.17.40
+	git.bytestone.uk/hum3/pta2svg v0.2.0
 	github.com/yuin/goldmark v1.8.6
 	golang.org/x/crypto v0.57.0
 )
@@ -28,6 +29,7 @@ require (
 	github.com/ncruces/julianday v1.0.0 // indirect
 	github.com/nlepage/go-js-promise v1.1.0 // indirect
 	github.com/nlepage/go-wasm-http-server/v2 v2.2.1 // indirect
+	github.com/nulab/autog v0.11.0 // indirect
 	github.com/russross/blackfriday/v2 v2.1.0 // indirect
 	github.com/shopspring/decimal v1.5.0 // indirect
 	golang.org/x/sync v0.23.0 // indirect

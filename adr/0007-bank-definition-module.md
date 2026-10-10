@@ -1,7 +1,7 @@
 # ADR-0007: The bank's definition is a module of its own
 
-Status: Proposed
-Date: 2026-10-10
+Status: Accepted
+Date: 2026-10-10, accepted 2026-10-11
 Stage: ADR-0002 stage 8 (roadmap 1.8), stories 1.8.2, 1.8.4 and 1.8.5
 
 ## Context
