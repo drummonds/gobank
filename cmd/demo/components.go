@@ -60,9 +60,16 @@ var components = []Component{
 	},
 	{
 		Name:    "products",
-		Purpose: "The product catalogue and the interest rules, run for one account at a time by the start-of-day pass and by every event that moves a balance; positions live in the ledger.",
+		Purpose: "The product catalogue (the versions the bank's definition carries, their adoption and withdrawal on record) and the runner of the product contract (ADR-0006): each event is dispatched to the version an account runs on, one account at a time, and every rule posting is recorded with the version, the event, the parameters read and the position they applied to; positions live in the ledger.",
 		Library: "gobank-products",
 		Package: "bank/products",
+		Tables:  []string{"products", "product_postings"},
+	},
+	{
+		Name:    "parameters",
+		Purpose: "The bank's settings (ADR-0006): the stored values of the parameters product versions and the bank's policy declare, each with the day it is effective from and the moment it was decided, append-only, resolved for a day as known at a moment.",
+		Package: "bank/parameters",
+		Tables:  []string{"parameter_settings"},
 	},
 	{
 		Name:    "payments",

@@ -14,7 +14,9 @@ import (
 // libraries it is built on; it knows nothing of the UI, the simulation or
 // the demo's wiring, which are in package main and cmd/demo/sim. The
 // compiler keeps the demo out (a main package cannot be imported); this
-// test keeps the rest out.
+// test keeps the rest out. A component's tests run it against the Model
+// Bank (ADR-0007), so they alone may know its definition and the product
+// versions it carries.
 func TestBankPackagesKnowOnlyTheCoreAndEachOther(t *testing.T) {
 	files, err := filepath.Glob("../../bank/*/*.go")
 	if err != nil || len(files) == 0 {
@@ -31,6 +33,10 @@ func TestBankPackagesKnowOnlyTheCoreAndEachOther(t *testing.T) {
 		"git.bytestone.uk/hum3/gobanks-customers",
 		"golang.org/x/crypto/argon2", // the users component's password hash
 	}
+	testOnly := []string{
+		"git.bytestone.uk/hum3/gobank/modelbank",
+		"git.bytestone.uk/hum3/gobank-products/",
+	}
 	fset := token.NewFileSet()
 	for _, name := range files {
 		f, err := parser.ParseFile(fset, name, nil, parser.ImportsOnly)
@@ -46,7 +52,11 @@ func TestBankPackagesKnowOnlyTheCoreAndEachOther(t *testing.T) {
 				continue // tests open a pglike database
 			}
 			ok := false
-			for _, a := range allowed {
+			permitted := allowed
+			if strings.HasSuffix(name, "_test.go") {
+				permitted = append(permitted, testOnly...)
+			}
+			for _, a := range permitted {
 				if path == a || (strings.HasSuffix(a, "/") && strings.HasPrefix(path, a)) {
 					ok = true
 				}

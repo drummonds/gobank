@@ -113,8 +113,8 @@ func TestInterestAppliedMonthly(t *testing.T) {
 	var applied luca.Amount
 	for _, a := range firstCustomerAccounts(t, ds) {
 		applied += a.Interest
-		if a.Rate > 0 && a.Balance > 0 && a.Interest == 0 {
-			t.Errorf("%s: no interest applied after month end (balance %d, rate %v)", a.ProductName, a.Balance, a.Rate)
+		if a.RateBps > 0 && a.Balance > 0 && a.Interest == 0 {
+			t.Errorf("%s: no interest applied after month end (balance %d, rate %d bps)", a.ProductName, a.Balance, a.RateBps)
 		}
 		bal, err := ds.Ledger().Balance(a.LedgerAccountID)
 		if err != nil {

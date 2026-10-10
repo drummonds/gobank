@@ -10,10 +10,8 @@ import (
 // account and its transactions; the customer web's screens pick the
 // symbol from it (TestCustomerWebNeedsASession).
 func TestCurrencyComesFromTheProduct(t *testing.T) {
-	for _, p := range products.Catalogue() {
-		if p.Currency != "GBP" {
-			t.Errorf("product %s has currency %q, want GBP", p.ID, p.Currency)
-		}
+	if products.Currency != "GBP" {
+		t.Errorf("the products' currency is %q, want GBP", products.Currency)
 	}
 	ds := NewDemoState()
 	addFundedCustomer(ds)

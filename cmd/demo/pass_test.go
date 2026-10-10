@@ -45,7 +45,7 @@ func TestEventRewritesTheProvisionalAccrual(t *testing.T) {
 			t.Fatalf("%s: today's position: %v %v", c.acc.ProductName, now, err)
 		}
 		wantBalance := c.acc.Balance + c.delta
-		wantAccrued := prev.Accrued.Num + int64(wantBalance)*gbp.RateBps(c.acc.Rate)
+		wantAccrued := prev.Accrued.Num + int64(wantBalance)*c.acc.RateBps
 		if !now.Day.Equal(day) || now.Balance != wantBalance || now.Accrued.Num != wantAccrued || now.Accrued.Den != gbp.AccrualDenominator {
 			t.Errorf("%s: today's position after the transfer = %s %d accrued %d/%d; want %s %d accrued %d/%d (yesterday's %d plus the new balance's day)",
 				c.acc.ProductName, now.Day.Format("2006-01-02"), now.Balance, now.Accrued.Num, now.Accrued.Den,
@@ -113,7 +113,7 @@ func TestPassResumesFromProjectionsAfterRestart(t *testing.T) {
 			if prev.Accrued.Num/gbp.AccrualDenominator != 0 {
 				t.Errorf("%s %s: 31 Jan still holds %d/%d unapplied after the pass", c.ID, a.ProductName, prev.Accrued.Num, prev.Accrued.Den)
 			}
-			if want := prev.Accrued.Num + int64(now.Balance)*gbp.RateBps(a.Rate); now.Accrued.Num != want {
+			if want := prev.Accrued.Num + int64(now.Balance)*a.RateBps; now.Accrued.Num != want {
 				t.Errorf("%s %s: 1 Feb accrued %d, want %d", c.ID, a.ProductName, now.Accrued.Num, want)
 			}
 			var applications int
@@ -122,7 +122,7 @@ func TestPassResumesFromProjectionsAfterRestart(t *testing.T) {
 				t.Fatal(err)
 			}
 			want := 0
-			if a.Balance > 0 && a.Rate > 0 {
+			if a.Balance > 0 && a.RateBps > 0 {
 				want = 1
 			}
 			if applications != want {

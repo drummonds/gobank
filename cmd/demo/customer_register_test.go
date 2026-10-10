@@ -26,7 +26,7 @@ func TestCustomerReadableFromDatabase(t *testing.T) {
 		t.Fatal("no accounts loaded")
 	}
 	for i, a := range cust.Accounts {
-		if a.ProductID == "" || a.ProductName == "" || a.Family == "" || a.Rate == 0 ||
+		if a.ProductID == "" || a.ProductName == "" || a.Family == "" || a.RateBps == 0 ||
 			a.SortCode == "" || a.AccountNum == "" || a.LedgerAccountID == "" || a.OpenDate.IsZero() {
 			t.Errorf("account %d incomplete: %+v", i, a)
 		}

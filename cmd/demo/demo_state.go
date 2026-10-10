@@ -11,6 +11,7 @@ import (
 	"git.bytestone.uk/hum3/gobank/bank"
 	"git.bytestone.uk/hum3/gobank/cmd/demo/sim"
 	"git.bytestone.uk/hum3/gobank/core"
+	"git.bytestone.uk/hum3/gobank/modelbank"
 )
 
 // passWindow is the batch window the pass's throughput is quoted against:
@@ -91,6 +92,7 @@ func (ds *DemoState) openOn(db *sql.DB, dsn string) *DemoState {
 // reopens the same handle, so the simulation and the pages keep it.
 func (ds *DemoState) openBank() {
 	opts := bank.Options{
+		Definition:    modelbank.Definition(),
 		Clock:         core.ClockFunc(func() time.Time { return ds.clock.Now() }),
 		Rates:         core.BaseRateFunc(func(day time.Time) float64 { return ds.rates.BaseRate(day) }),
 		Seed:          42,
