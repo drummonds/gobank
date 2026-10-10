@@ -128,16 +128,21 @@ view or is left with the data until it has a renderer of its own. The
 core gains a query for one movement by its ID, with both legs, and the
 BFF serves it as the page, as goluca text and as data.
 
-What pta2svg needs for this, as of v0.1.6: a public library package (its
-parser, layout and renderer are internal today), a WASM build, and
-opening balances so that a single movement is drawn with the balances
-the accounts are left with rather than the movement's own net; and its
-goluca parser currently yields an empty diagram where the pta parser
-reads the same text, which is why the files here are rendered with
-`-format pta`; a hyphen in an account path (`easy-access`) empties the
-diagram too, so the movement above spells the product without one; and
-names with spaces, which d2 takes in its stride, are needed for the
-labels a page shows. These are pta2svg stories, raised there.
+What pta2svg needs for this, as of v0.1.6, raised as its issues: a
+public library package, its parser, layout and renderer being internal
+today ([#5](https://git.bytestone.uk/hum3/pta2svg/issues/5)); a WASM
+build ([#6](https://git.bytestone.uk/hum3/pta2svg/issues/6)); opening
+balances, so that a single movement is drawn with the balances the
+accounts are left with rather than the movement's own net
+([#4](https://git.bytestone.uk/hum3/pta2svg/issues/4)); names with
+spaces, which d2 takes in its stride, for the labels a page shows
+([#3](https://git.bytestone.uk/hum3/pta2svg/issues/3)); and two faults:
+the goluca parser yields an empty diagram where the pta parser reads the
+same text, which is why the files here are rendered with `-format pta`
+([#1](https://git.bytestone.uk/hum3/pta2svg/issues/1)), and a hyphen in
+an account path (`easy-access`) empties the diagram, so the movement
+above spells the product without one
+([#2](https://git.bytestone.uk/hum3/pta2svg/issues/2)).
 
 ### Running banks
 
