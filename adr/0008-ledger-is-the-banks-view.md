@@ -11,28 +11,40 @@ amount from one account to another. The bank posts a deposit from
 `Equity:Capital` to the customer's savings account, so a savings balance
 is positive, like a loan's; interest applied to savings posts from
 `Expense:Interest` to the account, so the expense runs negative; a loan
-drawdown posts from equity too, so equity runs negative. The chart is
-signed by the direction each event happened to be written in, not by
-what the accounts are. Every read, from the book to the balance sheet
-to the P&L, carries a sign correction for it.
+drawdown posts from equity too, so equity runs negative.
 
-*Accounting for Programmers* ([bytestone.uk/afp](https://www.bytestone.uk/afp/))
-sets out the view this ADR adopts: double entry as a directed graph,
-accounts as nodes carrying signed balances, movements as arrows, debit
-and credit as nothing more than positive and negative. Its diagrams are
-the ones to read beside this decision.
+This is the crux. A worked month as the bank writes it today, drawn by
+[pta2svg](https://git.bytestone.uk/hum3/pta2svg) from
+[0008-today.goluca](0008-today.goluca): Alice deposits £1,000, Bob draws
+an £800 loan, and at the month end 1.5% and 6.9% are applied. Each node
+carries the balance it is left with, computed from the movements as
+go-luca computes it.
+
+![Today: the postings as the bank writes them](0008-today.svg)
+
+The chart is signed by the direction each event happened to be written
+in, not by what the accounts are. Every read, from the book to the
+balance sheet to the P&L, carries a sign correction for it.
 
 The product contract (ADR-0006, gobank-products v0.6.0) is written in
 the bank's view: a savings balance is a liability and negative, a loan
 an asset and positive, and the term, allowance and overdraft rules read
-a movement's direction that way. Integrating it (story 1.8.2) the ISA
-counted every deposit as a withdrawal. Two conventions met, and one has
-to go.
+a movement's direction that way. The same month in that view
+([0008-decided.goluca](0008-decided.goluca)), with cash where equity was:
+
+![The bank's view: the postings as the contract reads them](0008-decided.svg)
+
+Integrating the contract (story 1.8.2) the ISA counted every deposit as
+a withdrawal. Two conventions met, and one has to go. For the view
+itself, double entry as a directed graph with debit and credit as
+nothing more than positive and negative, see *Accounting for
+Programmers* ([bytestone.uk/afp](https://www.bytestone.uk/afp/)).
 
 ## Decision
 
-The ledger, the sub-ledger and the general ledger alike, holds the
-bank's view: debit-normal accounts (assets, expenses) carry positive
+All contracts and code are written from the bank's view; presentation
+may vary. The ledger, the sub-ledger and the general ledger alike, holds
+the bank's view: debit-normal accounts (assets, expenses) carry positive
 balances, credit-normal accounts (liabilities, equity, income) negative.
 A movement is from the account credited to the account debited. That is
 go-luca's semantics read as accounting, and the directed-graph approach
@@ -69,19 +81,8 @@ The ledger wrapper names its parameters for what they are, `credit` and
 `debit`, so a reader is not left to infer which is which from a
 direction word.
 
-A worked month, drawn as *Accounting for Programmers* draws it, by
-[pta2svg](https://git.bytestone.uk/hum3/pta2svg) from the goluca files
-beside this ADR: Alice deposits £1,000, Bob draws an £800 loan, and at
-the month end 1.5% and 6.9% are applied. Each node carries the balance it
-is left with, computed by the tool from the movements as go-luca would.
-
-Today ([0008-today.goluca](0008-today.goluca)):
-
-![The postings today](0008-today.svg)
-
-Decided ([0008-decided.goluca](0008-decided.goluca)):
-
-![The postings decided](0008-decided.svg)
+The two diagrams in the context are these directions, today's and the
+decided, over one worked month.
 
 ### Reads
 
@@ -133,9 +134,10 @@ opening balances so that a single movement is drawn with the balances
 the accounts are left with rather than the movement's own net; and its
 goluca parser currently yields an empty diagram where the pta parser
 reads the same text, which is why the files here are rendered with
-`-format pta`; and a hyphen in an account path (`easy-access`) empties
-the diagram too, so the movement above spells the product without one.
-These are pta2svg stories, raised there.
+`-format pta`; a hyphen in an account path (`easy-access`) empties the
+diagram too, so the movement above spells the product without one; and
+names with spaces, which d2 takes in its stride, are needed for the
+labels a page shows. These are pta2svg stories, raised there.
 
 ### Running banks
 
