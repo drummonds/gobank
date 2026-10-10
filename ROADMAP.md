@@ -578,6 +578,16 @@ root module, `cmd/bff` is the service binary, and `app/` is the Flutter shell.
   migration between versions (the per-account event is in), notice
   periods, corrections as adjustment postings, negotiated per-account
   rates. Stories:
+- **1.8** also carries two decisions taken while 1.8.2 was in hand:
+  ADR-0007 (proposed 2026-10-10), the bank's definition as a module of
+  its own — name, the product versions carried with their withdrawals,
+  the policy, later its own products — with gobank the capabilities, a
+  white label another definition; and ADR-0008 (proposed 2026-10-10),
+  the ledger is the bank's view — credit-normal accounts negative, a
+  movement from the account credited to the account debited, `Asset:Cash`
+  the counterparty of customer flows, the customer's positive view a
+  presentation setting — found when the contract's rules met the bank's
+  positive savings balances
 - **1.8.1** gobank-products: the contract and v1 of every product —
   `Version`, `Facts`, events and intents, parameter declarations with
   scope and derivation; six `<product>/v1` packages reproducing today's
@@ -585,24 +595,49 @@ root module, `cmd/bff` is the service binary, and `app/` is the Flutter shell.
   points; goldens re-pinned per package; the feature framework,
   `SimContext`, `Simulation` and `ParameterStore` retired. A library
   release; gobank stays on v0.3.0 until 1.8.2
-- **1.8.2** the catalogue and the runner — `products` and
-  `product_postings`, `product_version` on accounts (the migration
-  adopts the six and stamps every account 1), `bank/products`
-  dispatching open, post-posting, day and close to the account's
-  version; the `float64` rate and the defaults map gone from the bank;
-  the products page showing versions and the accounts on each
-- **1.8.3** parameters and the bank's rates — `bank/parameters` with
-  settings and resolution; `policy/v1` in gobank-products declaring the
-  base rate (written by the simulation, read by the treasury) and the
-  bank savings and lending rates as lagged derivations (a cut reaches
-  savers at once and a rise after a lag, borrowers the other way about;
-  spread and lag published, changeable by setting), lagged derivations
-  added to the contract; a staff page setting a product rate or a bank
-  spread effective on a future day; `easyaccess/v2` tracking the bank
-  savings rate at − 15 bps, floor 0, adopted on preprod mid-run, new
-  accounts opening on it, its accrual seen moving when the base rate
-  does, at once on a cut and after the lag on a rise
-- **1.8.4** the remaining events — pre-posting (term lock, ISA
+- **1.8.2a** the ledger is the bank's view (ADR-0008; taken before
+  1.8.2 completes) — posting directions per the ADR's table, `Asset:Cash`
+  on both charts, the ledger wrapper's parameters named credit and debit,
+  every read's sign correction gone, the staff web's view switch (bank's
+  view by default) and the app's customer view with its position with the
+  bank; a movement page beneath every statement line, the journal entry
+  drawn as the directed graph of Accounting for Programmers, served as a
+  page and as data (the core gains a movement-by-ID query); the one-time
+  conversion of a running bank's history as the ledger
+  component's migration, drilled on preprod with the rollback step
+  replaced by before-and-after verification
+- **1.8.2** the catalogue and the runner — `products` (adoption and
+  withdrawal days) and `product_postings`, `product_version` on accounts
+  (the migration stamps every account 1; the bank adopts the six at
+  open), `bank/parameters` with its settings table (the rules' account
+  settings need it from the start), `bank/products` dispatching open,
+  post-posting and day to the account's version and leaving accounts on
+  versions the build lacks unprojected and counted, the bank opened with
+  its definition (`bank/definition`, package `modelbank`); the `float64`
+  rate and the defaults map gone from the bank; the products page showing
+  versions, parameters and the accounts on each. Built to WIP on branch
+  stage-8-2-catalogue-runner (2026-10-10), waiting on 1.8.2a
+- **1.8.3** parameters — bitemporal resolution in use beyond account
+  settings: the base rate as a bank-scoped parameter the simulation
+  writes (decided before effective, as the Bank of England announces)
+  and the treasury reads, `core.BaseRateSource` retired; lagged
+  derivations added to the contract; a staff page setting a product rate
+  or a bank parameter effective on a future day, with upcoming settings
+  shown on the products page
+- **1.8.4** the bank module — `modelbank` extracted into a module of its
+  own (ADR-0007) carrying the Model Bank's policy: its savings and
+  lending base rates as lagged derivations of the Bank of England rate
+  (a cut reaches savers at once and a rise after a lag, borrowers the
+  other way about; spread and lag published, changeable by setting), and
+  a documentation structure for a bank definition with the graphs that
+  show it: the base rate against the bank's savings and lending rates
+  over the run. `easyaccess/v2` tracking the bank savings rate at − 15
+  bps, floor 0, adopted on preprod mid-run, new accounts opening on it,
+  its accrual seen moving when the base rate does
+- **1.8.5** a product of the bank's own — one product version moves from
+  gobank-products into the bank module, the contract and the engine
+  staying in the library, proving a bank defines its own products
+- **1.8.6** the remaining events — pre-posting (term lock, ISA
   allowance, overdraft limit as rules the payments path asks),
   parameter change, start-up, manual commands from the console, change
   of version per account from the staff account page. Done-when of the
