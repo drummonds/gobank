@@ -36,6 +36,35 @@ The package becomes the module `modelbank`, in its own repository, in
 story 1.8.4 when the policy joins it: a module with one product list and
 no policy is not yet worth a repository.
 
+### Ownership and cadence
+
+The definition module is a separate repository with a release cadence of
+its own, because it is the client bank's: its staff and engineers change
+it, not gobank's maintainers, and they change it on their timetable (a
+product launched, a policy revised) rather than gobank's. gobank is
+released by its maintainers and taken up by a bank when it chooses.
+
+### The interface
+
+What the two repositories share is therefore a contract that must stay
+stable across many gobank releases:
+
+| Surface | Lives in | Used by the definition to |
+|---|---|---|
+| `bank/definition.Bank` and `products.Listing` | gobank | say what the bank is and carries |
+| `gbp.Version`, `Facts`, `Intents`, `Declaration` (ADR-0006) | gobank-products | write the bank's own rules versions and policy |
+| `bank.Open` and its options | gobank | run |
+
+Rules for it: a change is additive, a new field or method with a
+default, never a removal or a change of meaning in a minor release; a
+removal is deprecated for a release first and named in the changelog;
+the definition pins the gobank and gobank-products versions it was built
+against and declares the oldest it supports; gobank's own test suite
+builds against the Model Bank's definition at that oldest version, so a
+break is found by the maintainers, not the client. Anything the
+definition needs that is not on this surface is a change to gobank,
+released first, and a bank waits for it.
+
 ### Release or setting
 
 Not everything about the bank is a release. The parameter tree
@@ -68,11 +97,13 @@ Easier: a white label is a module; a product change is a diff in one
 place; the capabilities are tested against more than one definition
 (stage 9's scenario tests build a definition each).
 
-Harder: two repositories to release for a change that touches both, in
-order (gobank first, the definition pinning it); the definition's module
+Harder: an interface that must be kept stable and widened only
+additively, which slows gobank's own refactoring where it touches the
+definition's surface; a change that needs both repositories is released
+in order, gobank first, and the bank waits; the definition's module
 version becomes part of what a deployment names; ADR-0006's product
 identity moves out of the rules package into the catalogue (its
-amendment below).
+amendment there).
 
 Given up: a product list that can be read off the definition alone.
 The definition says what the bank started with and what it may build
