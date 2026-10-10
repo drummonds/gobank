@@ -69,12 +69,19 @@ The ledger wrapper names its parameters for what they are, `credit` and
 `debit`, so a reader is not left to infer which is which from a
 direction word.
 
-A worked month, drawn as *Accounting for Programmers* draws it: Alice
-deposits £1,000, Bob draws an £800 loan, and at the month end 1.5% and
-6.9% are applied. Today's chart on the left, the decided one on the
-right; each node carries the balance it is left with.
+A worked month, drawn as *Accounting for Programmers* draws it, by
+[pta2svg](https://git.bytestone.uk/hum3/pta2svg) from the goluca files
+beside this ADR: Alice deposits £1,000, Bob draws an £800 loan, and at
+the month end 1.5% and 6.9% are applied. Each node carries the balance it
+is left with, computed by the tool from the movements as go-luca would.
 
-![The postings, today and decided](0008-postings.svg)
+Today ([0008-today.goluca](0008-today.goluca)):
+
+![The postings today](0008-today.svg)
+
+Decided ([0008-decided.goluca](0008-decided.goluca)):
+
+![The postings decided](0008-decided.svg)
 
 ### Reads
 
@@ -111,11 +118,24 @@ Every statement line on the staff web links to it; the app follows.
 
 ![The movement beneath the statement line](0008-movement.svg)
 
-The core gains a query for one movement by its ID, with both legs, and
-the BFF serves it as a page and as data. The page is drawn by the BFF
-today, as the rate graphs are; the data is there because this is the
-kind of rendering a general WASM client takes on from the BFF later, and
-a movement is the unit it would render.
+The renderer is pta2svg, the same tool that drew this ADR: the movement
+is handed over as goluca text, which is the ledger's own export format,
+and drawn where it is shown. On the staff web and the customer web that
+is a WASM component built from pta2svg, the first rendering a general
+client takes on from the BFF; the Flutter app reaches it through a web
+view or is left with the data until it has a renderer of its own. The
+core gains a query for one movement by its ID, with both legs, and the
+BFF serves it as the page, as goluca text and as data.
+
+What pta2svg needs for this, as of v0.1.6: a public library package (its
+parser, layout and renderer are internal today), a WASM build, and
+opening balances so that a single movement is drawn with the balances
+the accounts are left with rather than the movement's own net; and its
+goluca parser currently yields an empty diagram where the pta parser
+reads the same text, which is why the files here are rendered with
+`-format pta`; and a hyphen in an account path (`easy-access`) empties
+the diagram too, so the movement above spells the product without one.
+These are pta2svg stories, raised there.
 
 ### Running banks
 

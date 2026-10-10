@@ -1,0 +1,12 @@
+# Today: signed by the direction each event happened to be written in.
+# Alice deposits £1,000, Bob draws an £800 loan, month-end interest at 1.5% and 6.9%.
+
+2026-01-01 * Alice deposits
+  Equity:Capital -> Liability:Savings:alice deposit 1000.00 GBP
+
+2026-01-01 * Bob draws his loan
+  Equity:Capital -> Asset:Loans:bob drawdown 800.00 GBP
+
+2026-01-31 * Interest applied
+  Expense:Interest -> Liability:Savings:alice interest 1.27 GBP
+  Income:Interest -> Asset:Loans:bob interest 4.69 GBP

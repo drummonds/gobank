@@ -1,0 +1,5 @@
+# The movement beneath the statement line "2026-01-31 Interest £1.27" on Alice's Easy Access.
+# Code LDAS:FTDP:ACRU, value 2026-01-31 23:59:59, known 2026-02-01 00:00:04.
+
+2026-01-31 * Interest applied for month ending 2026-01-31
+  Liability:Savings:alice:easyaccess -> Expense:Interest interest applied 1.27 GBP

@@ -1,0 +1,12 @@
+# Decided: the bank's view. A movement runs from the account credited to the account debited.
+# Alice deposits £1,000, Bob draws an £800 loan, month-end interest at 1.5% and 6.9%.
+
+2026-01-01 * Alice deposits
+  Liability:Savings:alice -> Asset:Cash deposit 1000.00 GBP
+
+2026-01-01 * Bob draws his loan
+  Asset:Cash -> Asset:Loans:bob drawdown 800.00 GBP
+
+2026-01-31 * Interest applied
+  Liability:Savings:alice -> Expense:Interest interest 1.27 GBP
+  Income:Interest -> Asset:Loans:bob interest 4.69 GBP

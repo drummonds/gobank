@@ -601,8 +601,11 @@ root module, `cmd/bff` is the service binary, and `app/` is the Flutter shell.
   every read's sign correction gone, the staff web's view switch (bank's
   view by default) and the app's customer view with its position with the
   bank; a movement page beneath every statement line, the journal entry
-  drawn as the directed graph of Accounting for Programmers, served as a
-  page and as data (the core gains a movement-by-ID query); no conversion
+  drawn as the directed graph of Accounting for Programmers by pta2svg,
+  as a WASM component on the staff and customer web, the movement served
+  as goluca text and as data (the core gains a movement-by-ID query;
+  pta2svg needs a public package, a WASM build and opening balances
+  first, raised there); no conversion
   of running banks: preprod and prod are reset on this release, the
   drill a fresh deploy named as ADR-0003's exception
 - **1.8.2** the catalogue and the runner — `products` (adoption and
