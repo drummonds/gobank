@@ -113,6 +113,15 @@ func (b *Bank) persistCustomer(ctx context.Context, day time.Time, plan *custome
 	unlock := books.Lock(locked...)
 	defer unlock()
 	general := b.gl.WithTx(tx)
+	// An account has a position from the day it opens, funded or not: the
+	// version's open event runs now (its settings, its first position), so
+	// the day's pass has nothing left to do for it and a day is complete
+	// when every registered account has its position.
+	for _, a := range rec.Accounts {
+		if err := b.products.Open(books, products.Account{ID: a.LedgerAccountID, Product: a.ProductID, Version: a.Version}, day); err != nil {
+			log.Printf("bank: open customer %s: %s: %v", rec.ID, a.LedgerAccountID, err)
+		}
+	}
 	for _, f := range fundings {
 		if err := b.payments.Insert(tx, f.payment); err != nil {
 			log.Printf("bank: open customer %s: %v", rec.ID, err)
@@ -125,22 +134,15 @@ func (b *Bank) persistCustomer(ctx context.Context, day time.Time, plan *custome
 		if a.Family == gbp.FamilyLending {
 			credit, debit = books.Chart.Cash, a.LedgerAccountID
 		}
-		if _, err := b.products.PostEvent(books, day, credit, debit, f.payment.Amount, luca.CodeBookTransfer, f.payment.Reference); err != nil {
+		// The version's post-posting rule then projects the day on the
+		// funded balance.
+		funded := products.Account{ID: a.LedgerAccountID, Product: a.ProductID, Version: a.Version}
+		if _, err := b.products.PostEvent(books, day, credit, debit, f.payment.Amount, luca.CodeBookTransfer, f.payment.Reference, funded); err != nil {
 			log.Printf("bank: open customer %s: %v", rec.ID, err)
 		}
 		// The GL sees the funding the same way, on the product's control.
 		if err := general.Funding(day, a.ProductID, f.payment.Amount, f.payment.Reference); err != nil {
 			log.Printf("bank: open customer %s: %v", rec.ID, err)
-		}
-	}
-	// An account has a position from the day it opens, funded or not: the
-	// day's rules run on it now, so the day's pass has nothing left to do
-	// for it and a day is complete when every registered account has its
-	// position. A new account has nothing applied, so nothing is booked.
-	for _, a := range rec.Accounts {
-		product, _ := b.products.ByID(a.ProductID)
-		if _, err := b.products.AccountDay(books, products.Account{ID: a.LedgerAccountID, Product: product}, day); err != nil {
-			log.Printf("bank: open customer %s: %s: %v", rec.ID, a.LedgerAccountID, err)
 		}
 	}
 	if err := tx.Commit(); err != nil {
@@ -193,8 +195,6 @@ func (b *Bank) Transfer(ctx context.Context, t core.Transfer) (core.Payment, err
 		return core.Payment{}, core.ErrInsufficientFunds
 	}
 	pay := b.payments.New(payments.Transfer, t.From, t.To, t.Amount, payments.Pending, b.clock.Now())
-	fromProduct, _ := b.products.ByID(fromAcc.ProductID)
-	toProduct, _ := b.products.ByID(toAcc.ProductID)
 	day := b.businessDay()
 	tx, err := b.db.BeginTx(ctx, nil)
 	if err != nil {
@@ -203,11 +203,12 @@ func (b *Bank) Transfer(ctx context.Context, t core.Transfer) (core.Payment, err
 	books := b.ledger.WithTx(tx)
 	// A pays B: B's account is credited (the bank owes B more), A's debited.
 	if _, err := b.products.PostEvent(books, day, toAcc.LedgerAccountID, fromAcc.LedgerAccountID, t.Amount, luca.CodeBookTransfer, pay.Reference,
-		products.Account{ID: fromAcc.LedgerAccountID, Product: fromProduct}, products.Account{ID: toAcc.LedgerAccountID, Product: toProduct}); err != nil {
+		products.Account{ID: fromAcc.LedgerAccountID, Product: fromAcc.ProductID, Version: fromAcc.Version},
+		products.Account{ID: toAcc.LedgerAccountID, Product: toAcc.ProductID, Version: toAcc.Version}); err != nil {
 		_ = tx.Rollback()
 		return core.Payment{}, err
 	}
-	if err := b.gl.WithTx(tx).Transfer(day, fromProduct.ID, toProduct.ID, t.Amount, pay.Reference); err != nil {
+	if err := b.gl.WithTx(tx).Transfer(day, fromAcc.ProductID, toAcc.ProductID, t.Amount, pay.Reference); err != nil {
 		_ = tx.Rollback()
 		return core.Payment{}, err
 	}
@@ -425,25 +426,57 @@ func (b *Bank) ClearPayments(ctx context.Context) error {
 
 // --- Products ---
 
-// Products implements core.ProductQueries: the catalogue with each
-// product's share of the book — its open accounts and their balance —
-// from the same reading as the position, so the products page costs
-// what the dashboard does.
+// Products implements core.ProductQueries: the catalogue, a row per
+// adopted version, with the product's share of the book — its balance,
+// from the same reading as the position — and the accounts on each
+// version.
 func (b *Bank) Products(ctx context.Context) ([]core.Product, error) {
 	b.open.RLock()
 	defer b.open.RUnlock()
 	k := b.book.get(ctx)
+	byVersion, err := b.products.AccountsByVersion(ctx)
+	if err != nil {
+		return nil, err
+	}
 	catalogue := b.products.All()
 	out := make([]core.Product, 0, len(catalogue))
 	for _, prod := range catalogue {
-		pb := k.products[prod.ID]
+		onSale, _ := b.products.ByID(prod.ID)
+		v := prod.Version
+		var params []core.Parameter
+		for _, d := range v.Parameters() {
+			value := d.Published
+			if d.Derived != nil {
+				value = describeDerivation(*d.Derived)
+			}
+			params = append(params, core.Parameter{Key: d.Key, Scope: string(d.Scope), Kind: string(d.Kind), Value: value})
+		}
 		out = append(out, core.Product{
-			ID: prod.ID, Name: prod.Name, Family: string(prod.Family), Currency: prod.Currency,
-			Rate: prod.Rate, Terms: prod.Terms, Description: prod.Description,
-			Accounts: pb.accounts, Balance: pb.balance,
+			ID: prod.ID, Version: v.Version(), Name: v.Name(), Family: string(v.Family()), Currency: prod.Currency,
+			RateBps: prod.RateBps(), Parameters: params, Description: prod.Description,
+			Adopted: prod.Adopted, ModuleVersion: prod.ModuleVersion, OnSale: onSale.Version.Version() == v.Version() && prod.OnSale(),
+			Accounts: byVersion[products.VersionKey{Product: prod.ID, Version: v.Version()}], Balance: k.products[prod.ID].balance,
 		})
 	}
 	return out, nil
+}
+
+// describeDerivation is a derived parameter in words: "boe.base_rate_bps − 15 bps, floor 0".
+func describeDerivation(d gbp.Derivation) string {
+	s := d.Source
+	switch {
+	case d.SpreadBps > 0:
+		s += fmt.Sprintf(" + %d bps", d.SpreadBps)
+	case d.SpreadBps < 0:
+		s += fmt.Sprintf(" − %d bps", -d.SpreadBps)
+	}
+	if d.Floor != nil {
+		s += fmt.Sprintf(", floor %d", *d.Floor)
+	}
+	if d.Cap != nil {
+		s += fmt.Sprintf(", cap %d", *d.Cap)
+	}
+	return s
 }
 
 var (

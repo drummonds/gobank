@@ -21,9 +21,11 @@ import (
 	luca "git.bytestone.uk/hum3/go-luca"
 	gbp "git.bytestone.uk/hum3/gobank-products"
 	"git.bytestone.uk/hum3/gobank/bank/customers"
+	"git.bytestone.uk/hum3/gobank/bank/definition"
 	"git.bytestone.uk/hum3/gobank/bank/gl"
 	"git.bytestone.uk/hum3/gobank/bank/history"
 	"git.bytestone.uk/hum3/gobank/bank/ledger"
+	"git.bytestone.uk/hum3/gobank/bank/parameters"
 	"git.bytestone.uk/hum3/gobank/bank/payments"
 	"git.bytestone.uk/hum3/gobank/bank/products"
 	"git.bytestone.uk/hum3/gobank/bank/schema"
@@ -36,7 +38,7 @@ import (
 // Schemas is every component's schema, for the wiring to apply at start
 // (the ledger's tables are go-luca's own and not listed).
 func Schemas() []schema.Component {
-	return []schema.Component{products.Schema, customers.Schema, payments.Schema, treasury.Schema, history.Schema, gl.Schema, users.Schema}
+	return []schema.Component{products.Schema, parameters.Schema, customers.Schema, payments.Schema, treasury.Schema, history.Schema, gl.Schema, users.Schema}
 }
 
 // DefaultReserveRatio is the fraction of deposits the bank holds as BoE
@@ -54,11 +56,12 @@ const CodeDailyAccrual = "LDAS:FTDP:ACRU"
 
 // Options wire a Bank.
 type Options struct {
-	Clock    core.Clock          // where the bank reads the time; nil is the wall clock
-	Rates    core.BaseRateSource // where the bank reads the base rate; nil is a flat 5.25%
-	PIIKey   store.KeyProvider   // the key the customers' PII is encrypted with; nil is the demo's fixed key
-	Seed     int64               // the account numbers' randomness
-	PassHook func()              // called after each account the pass visits; tests cut a pass short with it
+	Definition definition.Bank     // what makes this bank this bank (ADR-0007): its name and the product versions it carries
+	Clock      core.Clock          // where the bank reads the time; nil is the wall clock
+	Rates      core.BaseRateSource // where the bank reads the base rate; nil is a flat 5.25%
+	PIIKey     store.KeyProvider   // the key the customers' PII is encrypted with; nil is the demo's fixed key
+	Seed       int64               // the account numbers' randomness
+	PassHook   func()              // called after each account the pass visits; tests cut a pass short with it
 	// AdminPassword is the first admin's password, the deployment's
 	// secret: the bank opens with the user "admin" signing in with it.
 	// Empty opens the bank with no admin, so nobody signs in to the staff
@@ -73,6 +76,7 @@ type Bank struct {
 	open sync.RWMutex
 
 	db            *sql.DB
+	definition    definition.Bank
 	clock         core.Clock
 	rates         core.BaseRateSource
 	key           store.KeyProvider
@@ -117,7 +121,10 @@ type Bank struct {
 // bank's own record, the daily snapshots, and the books are read back
 // from the ledger.
 func Open(db *sql.DB, opts Options) (*Bank, error) {
-	b := &Bank{clock: opts.Clock, rates: opts.Rates, key: opts.PIIKey, seed: opts.Seed, passHook: opts.PassHook, adminPassword: opts.AdminPassword}
+	if len(opts.Definition.Products) == 0 {
+		return nil, fmt.Errorf("bank: a definition with products is needed")
+	}
+	b := &Bank{definition: opts.Definition, clock: opts.Clock, rates: opts.Rates, key: opts.PIIKey, seed: opts.Seed, passHook: opts.PassHook, adminPassword: opts.AdminPassword}
 	b.book = newReading(b.readBook, bookTTL)
 	b.interest = newReading(b.readInterest, bookTTL)
 	if b.clock == nil {
@@ -165,7 +172,11 @@ func (b *Bank) openOn(db *sql.DB) error {
 	if resumed {
 		day, dayCount = latest, int(latest.Sub(first).Hours()/24)
 	}
-	catalogue := products.New(db)
+	settings := parameters.Open(db)
+	catalogue := products.New(db, settings, b.definition.Products)
+	if err := catalogue.Adopt(ctx, day); err != nil {
+		return err
+	}
 	// A bank on record that the GL has never been posted for is adopted:
 	// the GL's first close takes its balances from the sub-ledger.
 	general, err := gl.Open(db, catalogue.All(), day, resumed)
@@ -234,6 +245,9 @@ func (b *Bank) openOn(db *sql.DB) error {
 	}
 	return nil
 }
+
+// Name is the bank's name, from its definition.
+func (b *Bank) Name() string { return b.definition.Name }
 
 // The components, for the wiring and for tests.
 func (b *Bank) Ledger() *ledger.Ledger          { return b.ledger }
@@ -375,6 +389,12 @@ func (b *Bank) StartDay(ctx context.Context) (time.Time, error) {
 		if err == nil && !left {
 			b.progress.phase("closing the general ledger", 0)
 			b.closeGL(ctx, day)
+		}
+		if res.Visited == 0 && res.Skipped > 0 && left {
+			// Only accounts on versions this build does not carry are left:
+			// the day cannot complete here, and spinning on it helps nobody.
+			b.progress.finish()
+			return day, fmt.Errorf("bank: %d accounts are on product versions this build does not carry", res.Skipped)
 		}
 
 		// The throughput the dashboard quotes is the accounts the pass

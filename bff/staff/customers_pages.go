@@ -208,9 +208,9 @@ func BuildCustomerDetailHTML(q core.StaffQueries, id string, piiAuthorized bool,
 	s.WriteString(`<thead><tr><th>Product</th><th>Type</th><th>Sort Code</th><th>Account No.</th><th>Rate</th><th>Balance</th><th>Interest</th><th>Opened</th><th></th></tr></thead><tbody>`)
 	for i, a := range cust.Accounts {
 		s.WriteString(fmt.Sprintf(`<tr>
-  <td>%s</td><td>%s</td><td><code>%s</code></td><td><code>%s</code></td><td>%.1f%%</td><td>%s</td><td>%s</td><td>%s</td>
+  <td>%s</td><td>%s</td><td><code>%s</code></td><td><code>%s</code></td><td>%s</td><td>%s</td><td>%s</td><td>%s</td>
   <td><a href="customers/%s/account/%d" class="button is-small is-link is-light">View</a></td>
-</tr>`, a.ProductName, familyTag(a.Family), a.SortCode, a.AccountNum, a.Rate*100, FormatMoney(v.Balance(a)), FormatMoney(v.Interest(a)), fmtISODate(a.OpenDate), cust.ID, i))
+</tr>`, a.ProductName, familyTag(a.Family), a.SortCode, a.AccountNum, FormatRateBps(a.RateBps), FormatMoney(v.Balance(a)), FormatMoney(v.Interest(a)), fmtISODate(a.OpenDate), cust.ID, i))
 	}
 	s.WriteString(`</tbody></table></div>`)
 
@@ -250,7 +250,8 @@ func BuildCustomerAccountHTML(q core.StaffQueries, custID string, accountIdx int
 	s.WriteString(`<div class="columns">`)
 	s.WriteString(fmt.Sprintf(`<div class="column"><strong>Sort Code:</strong> <code>%s</code></div>`, a.SortCode))
 	s.WriteString(fmt.Sprintf(`<div class="column"><strong>Account No.:</strong> <code>%s</code></div>`, a.AccountNum))
-	s.WriteString(fmt.Sprintf(`<div class="column"><strong>Rate:</strong> %.2f%%</div>`, a.Rate*100))
+	s.WriteString(fmt.Sprintf(`<div class="column"><strong>Rate:</strong> %s</div>`, FormatRateBps(a.RateBps)))
+	s.WriteString(fmt.Sprintf(`<div class="column"><strong>Version:</strong> v%d</div>`, a.Version))
 	s.WriteString(`</div><div class="columns">`)
 	fmt.Fprintf(&s, `<div class="column"><strong>Balance:</strong> %s <span class="has-text-grey is-size-7">%s</span></div>`, FormatMoney(v.Balance(a)), strings.ToLower(v.Label()))
 	fmt.Fprintf(&s, `<div class="column"><strong>Interest:</strong> %s</div>`, FormatMoney(v.Interest(a)))

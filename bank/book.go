@@ -58,7 +58,7 @@ func (b *Bank) readBook(ctx context.Context) (bookFigures, error) {
 	// The book's totals are magnitudes read from the signed ledger
 	// (ADR-0008): savings balances are liabilities and negative.
 	for id, pb := range products {
-		if p, ok := b.products.ByID(id); ok && p.Family == gbp.FamilyLending {
+		if family, ok := b.products.Family(id); ok && family == gbp.FamilyLending {
 			k.lending += pb.balance
 		} else {
 			k.savings -= pb.balance
@@ -173,7 +173,7 @@ func (b *Bank) accruedByFamily(ctx context.Context) (savings, lending luca.Amoun
 		if err := rows.Scan(&productID, &e7); err != nil {
 			return 0, 0, fmt.Errorf("bank: accrued interest: %w", err)
 		}
-		if p, ok := b.products.ByID(productID); ok && p.Family == gbp.FamilyLending {
+		if family, ok := b.products.Family(productID); ok && family == gbp.FamilyLending {
 			lending += luca.Amount(e7)
 		} else {
 			savings += luca.Amount(e7)

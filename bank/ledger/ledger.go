@@ -85,7 +85,25 @@ type Ledger struct {
 	*luca.SQLLedger
 	Chart Chart
 	db    *sql.DB
+	tx    *sql.Tx // set when bound to a transaction
 	locks *locks
+}
+
+// Querier is *sql.DB or *sql.Tx.
+type Querier interface {
+	ExecContext(ctx context.Context, query string, args ...any) (sql.Result, error)
+	QueryRowContext(ctx context.Context, query string, args ...any) *sql.Row
+	QueryContext(ctx context.Context, query string, args ...any) (*sql.Rows, error)
+}
+
+// Querier is the transaction the books are bound to, or the database: a
+// component that writes a record of its own beside a posting writes it
+// through this, so the record and the posting commit together.
+func (l *Ledger) Querier() Querier {
+	if l.tx != nil {
+		return l.tx
+	}
+	return l.db
 }
 
 // Open opens the books on db, creating go-luca's tables and views on first
@@ -121,7 +139,7 @@ func Open(db *sql.DB) (*Ledger, error) {
 // WithTx is the same books bound to tx: what it writes is in the
 // transaction. The chart and the locks are shared.
 func (l *Ledger) WithTx(tx *sql.Tx) *Ledger {
-	return &Ledger{SQLLedger: l.SQLLedger.WithTx(tx), Chart: l.Chart, db: l.db, locks: l.locks}
+	return &Ledger{SQLLedger: l.SQLLedger.WithTx(tx), Chart: l.Chart, db: l.db, tx: tx, locks: l.locks}
 }
 
 // Account is the ID of the account at path, opened if it is not there.

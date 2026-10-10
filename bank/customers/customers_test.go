@@ -12,8 +12,11 @@ import (
 	_ "git.bytestone.uk/hum3/go-postgres"
 	gbp "git.bytestone.uk/hum3/gobank-products"
 	"git.bytestone.uk/hum3/gobank/bank/ledger"
+	"git.bytestone.uk/hum3/gobank/bank/parameters"
 	"git.bytestone.uk/hum3/gobank/bank/products"
+	"git.bytestone.uk/hum3/gobank/bank/schema"
 	"git.bytestone.uk/hum3/gobank/core"
+	"git.bytestone.uk/hum3/gobank/modelbank"
 	store "git.bytestone.uk/hum3/gobanks-customers"
 )
 
@@ -28,10 +31,12 @@ func openDB(t *testing.T) *sql.DB {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { db.Close() })
-	for _, m := range Schema.Migrations {
-		for _, stmt := range m.Statements {
-			if _, err := db.Exec(stmt); err != nil {
-				t.Fatalf("schema v%d: %v", m.Version, err)
+	for _, c := range []schema.Component{Schema, products.Schema, parameters.Schema} {
+		for _, m := range c.Migrations {
+			for _, stmt := range m.Statements {
+				if _, err := db.Exec(stmt); err != nil {
+					t.Fatalf("%s schema v%d: %v", c.Name, m.Version, err)
+				}
 			}
 		}
 	}
@@ -57,7 +62,10 @@ func reopen(t *testing.T, db *sql.DB) fixture {
 	if err != nil {
 		t.Fatal(err)
 	}
-	catalogue := products.New(db)
+	catalogue := products.New(db, parameters.Open(db), modelbank.Definition().Products)
+	if err := catalogue.Adopt(context.Background(), jan2); err != nil {
+		t.Fatal(err)
+	}
 	c, err := Open(db, key, books, catalogue, 42)
 	if err != nil {
 		t.Fatal(err)
@@ -104,7 +112,7 @@ func (f fixture) openCustomer(t *testing.T, n core.NewCustomer) Record {
 var ada = core.NewCustomer{
 	KYC:      core.KYC{Verified: true, RiskRating: "Standard"},
 	PII:      core.PII{Name: "Ada Lovelace", NI: "AB123456C", DOB: "1815-12-10", Address: "12 St James's Square", Email: "ada@example.com", Phone: "07000 000001"},
-	Accounts: []core.NewAccount{{ProductID: gbp.EasyAccess().ID, Opening: 1000_00}, {ProductID: gbp.PersonalLoan().ID, Opening: 500_00}},
+	Accounts: []core.NewAccount{{ProductID: "easy-access", Opening: 1000_00}, {ProductID: "personal-loan", Opening: 500_00}},
 }
 
 // A planned customer gets the next number, is dated on the day, and each
@@ -156,7 +164,7 @@ func TestOpenACustomer(t *testing.T) {
 	if _, err := f.c.PII(ctx, "cust-999"); !errors.Is(err, core.ErrNotFound) {
 		t.Errorf("unknown customer's PII: %v, want ErrNotFound", err)
 	}
-	second := f.openCustomer(t, core.NewCustomer{PII: core.PII{Name: "Second"}, Accounts: []core.NewAccount{{ProductID: gbp.ISA().ID}}})
+	second := f.openCustomer(t, core.NewCustomer{PII: core.PII{Name: "Second"}, Accounts: []core.NewAccount{{ProductID: "isa"}}})
 	if second.ID != core.CustomerID(2) {
 		t.Errorf("second customer is %s", second.ID)
 	}
@@ -175,7 +183,7 @@ func TestPlanRefusesBadRequests(t *testing.T) {
 		want error
 	}{
 		{core.NewCustomer{}, core.ErrInvalidAmount},
-		{core.NewCustomer{Accounts: []core.NewAccount{{ProductID: gbp.ISA().ID, Opening: -1}}}, core.ErrInvalidAmount},
+		{core.NewCustomer{Accounts: []core.NewAccount{{ProductID: "isa", Opening: -1}}}, core.ErrInvalidAmount},
 		{core.NewCustomer{Accounts: []core.NewAccount{{ProductID: "no-such-product"}}}, core.ErrNotFound},
 	} {
 		if _, err := f.c.Plan(jan2, c.n); !errors.Is(err, c.want) {
@@ -210,7 +218,7 @@ func TestRefusedCustomerLeavesNoTrace(t *testing.T) {
 	if registered != 0 {
 		t.Errorf("%d accounts registered for a refused customer", registered)
 	}
-	next := f.openCustomer(t, core.NewCustomer{PII: core.PII{Name: "Next"}, Accounts: []core.NewAccount{{ProductID: gbp.ISA().ID}}})
+	next := f.openCustomer(t, core.NewCustomer{PII: core.PII{Name: "Next"}, Accounts: []core.NewAccount{{ProductID: "isa"}}})
 	if next.ID != core.CustomerID(2) {
 		t.Errorf("the customer after a refusal is %s, want cust-002", next.ID)
 	}
@@ -221,10 +229,10 @@ func TestRefusedCustomerLeavesNoTrace(t *testing.T) {
 func TestReopenContinuesTheNumbering(t *testing.T) {
 	f := open(t)
 	for range 3 {
-		f.openCustomer(t, core.NewCustomer{PII: core.PII{Name: "N"}, Accounts: []core.NewAccount{{ProductID: gbp.ISA().ID}}})
+		f.openCustomer(t, core.NewCustomer{PII: core.PII{Name: "N"}, Accounts: []core.NewAccount{{ProductID: "isa"}}})
 	}
 	g := reopen(t, f.db)
-	rec := g.openCustomer(t, core.NewCustomer{PII: core.PII{Name: "Fourth"}, Accounts: []core.NewAccount{{ProductID: gbp.ISA().ID}}})
+	rec := g.openCustomer(t, core.NewCustomer{PII: core.PII{Name: "Fourth"}, Accounts: []core.NewAccount{{ProductID: "isa"}}})
 	if rec.ID != core.CustomerID(4) {
 		t.Errorf("after reopening the next customer is %s, want cust-004", rec.ID)
 	}
@@ -237,7 +245,7 @@ func TestStatementLines(t *testing.T) {
 	ctx := context.Background()
 	rec := f.openCustomer(t, ada)
 	savings, loan := rec.Accounts[0], rec.Accounts[1]
-	other := f.openCustomer(t, core.NewCustomer{PII: core.PII{Name: "Other"}, Accounts: []core.NewAccount{{ProductID: gbp.EasyAccess().ID, Opening: 10_00}}})
+	other := f.openCustomer(t, core.NewCustomer{PII: core.PII{Name: "Other"}, Accounts: []core.NewAccount{{ProductID: "easy-access", Opening: 10_00}}})
 	jan3 := jan2.AddDate(0, 0, 1)
 	// Ada pays Other: Other's account credited, Ada's debited; then
 	// interest credits Ada and debits the expense (ADR-0008).
@@ -310,7 +318,7 @@ func TestSavingsInterestByCustomer(t *testing.T) {
 	f := open(t)
 	ctx := context.Background()
 	rec := f.openCustomer(t, ada)
-	f.openCustomer(t, core.NewCustomer{PII: core.PII{Name: "Borrower"}, Accounts: []core.NewAccount{{ProductID: gbp.PersonalLoan().ID, Opening: 100_00}}})
+	f.openCustomer(t, core.NewCustomer{PII: core.PII{Name: "Borrower"}, Accounts: []core.NewAccount{{ProductID: "personal-loan", Opening: 100_00}}})
 	savings := rec.Accounts[0]
 	// Interest credits the saver and debits the expense; the saver's
 	// accrual is negative too (ADR-0008).

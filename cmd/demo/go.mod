@@ -6,7 +6,7 @@ require (
 	git.bytestone.uk/hum3/go-luca v0.5.0
 	git.bytestone.uk/hum3/go-postgres v0.8.0
 	git.bytestone.uk/hum3/gobank v0.3.44
-	git.bytestone.uk/hum3/gobank-products v0.3.0
+	git.bytestone.uk/hum3/gobank-products v0.6.0
 	git.bytestone.uk/hum3/gobanks-customers v0.2.1
 	git.bytestone.uk/hum3/lofigui v0.17.40
 	github.com/jackc/pgx/v5 v5.11.0

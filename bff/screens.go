@@ -72,7 +72,7 @@ func AccountsScreen(c core.Customer, accounts []core.Account) screen.Screen {
 		if a.Family == "Lending" {
 			icon, tone = screen.IconLending, screen.ToneLending
 		}
-		row := screen.Row(icon, a.ProductName, fmt.Sprintf("%.2f%% APR", a.Rate*100),
+		row := screen.Row(icon, a.ProductName, FormatRateBps(a.RateBps)+" APR",
 			FormatMoney(view.Customer.Balance(a)), "Interest: "+FormatMoney(view.Customer.Interest(a)), tone, screen.Go(productPath(a.Index)))
 		row.Currency = a.Currency
 		s.Add(row)
@@ -106,13 +106,13 @@ func ProductScreen(c core.Customer, a core.Account, page core.TransactionPage) s
 	s.Add(
 		screen.Hero("Balance", FormatMoney(view.Customer.Balance(a)), tone,
 			screen.Pair{Label: "Interest", Value: FormatMoney(view.Customer.Interest(a))},
-			screen.Pair{Label: "APR", Value: fmt.Sprintf("%.2f%%", a.Rate*100)},
+			screen.Pair{Label: "APR", Value: FormatRateBps(a.RateBps)},
 		),
 		screen.Details("Account Details",
 			screen.Pair{Label: "Sort Code", Value: a.SortCode},
 			screen.Pair{Label: "Account No.", Value: a.AccountNum},
 			screen.Pair{Label: "Opened", Value: a.OpenDate},
-			screen.Pair{Label: "Rate", Value: fmt.Sprintf("%.2f%%", a.Rate*100)},
+			screen.Pair{Label: "Rate", Value: FormatRateBps(a.RateBps)},
 		),
 		screen.Heading("Recent Activity"),
 	)

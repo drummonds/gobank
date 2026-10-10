@@ -1,71 +1,71 @@
-// Package products is the bank's product catalogue and the interest rules
-// run for one account at a time (ADR-0002 stage 5, story 1.5.4). The
-// component keeps no state of its own: an account's balance and its
-// accrued-but-unapplied interest are its ledger position (go-luca),
-// written for the day by the start-of-day pass (pass.go) and again by
-// every event that moves the balance. gobank-products holds the rules;
-// this package runs them.
+// Package products is the bank's product catalogue and the runner of the
+// product contract (ADR-0006): the versions this build carries, their
+// adoption on record, and the dispatch of each event to the version an
+// account runs on. A rule reads facts through the interface the runner
+// implements over the ledger and the bank's settings, and returns
+// intents; the runner carries them out under the account's lock, in the
+// caller's transaction, and records on every posting the version, the
+// event, the parameters the rule read and the position it applied them
+// to, so the posting stands without the version's code. The component
+// keeps no state of its own beyond those records: an account's balance
+// and its accrued-but-unapplied interest are its ledger position.
 package products
 
 import (
+	"context"
 	"database/sql"
 	"fmt"
+	"runtime/debug"
+	"sort"
+	"strings"
 	"time"
 
-	luca "git.bytestone.uk/hum3/go-luca"
 	gbp "git.bytestone.uk/hum3/gobank-products"
-	"git.bytestone.uk/hum3/gobank/bank/ledger"
+	"git.bytestone.uk/hum3/gobank/bank/parameters"
 	"git.bytestone.uk/hum3/gobank/bank/schema"
 )
 
-// Product is a gobank-products product as the bank sells it.
-type Product struct {
-	*gbp.Product
-	Currency    string  // ISO 4217 code of the product's money; every product is GBP today
-	Rate        float64 // annual rate as a decimal
-	Terms       string
+// Listing is one product version as the bank's definition lists it: the
+// version, the bank's blurb for it, and whether the bank has withdrawn it
+// from sale (its accounts run on; no new account opens on it).
+type Listing struct {
+	Version     gbp.Version
 	Description string
+	Withdrawn   bool
 }
 
-// Catalogue is every product the bank offers.
-func Catalogue() []Product {
-	return []Product{
-		{Product: gbp.EasyAccess(), Currency: "GBP", Rate: 0.015, Terms: "No notice", Description: "Instant access savings with competitive rate"},
-		{Product: gbp.FixedTerm(), Currency: "GBP", Rate: 0.040, Terms: "2 year fixed", Description: "Higher rate for locking funds for 2 years"},
-		{Product: gbp.ISA(), Currency: "GBP", Rate: 0.035, Terms: "Annual allowance", Description: "Tax-free savings up to annual ISA allowance"},
-		{Product: gbp.PersonalLoan(), Currency: "GBP", Rate: 0.069, Terms: "1-5 years", Description: "Unsecured personal loan for any purpose"},
-		{Product: gbp.Mortgage(), Currency: "GBP", Rate: 0.045, Terms: "25 year", Description: "Residential mortgage with fixed rate period"},
-		{Product: gbp.Overdraft(), Currency: "GBP", Rate: 0.159, Terms: "Revolving", Description: "Arranged overdraft facility on current account"},
-	}
+// Currency is every product's money today.
+const Currency = "GBP"
+
+// Product is an adopted version as the bank sells it.
+type Product struct {
+	gbp.Version
+	ID            string // Version.Product(): the key the register and the GL use
+	Currency      string
+	Description   string
+	Adopted       time.Time // the business day it went on sale
+	Withdrawn     time.Time // the business day it came off sale; zero while on sale
+	ModuleVersion string    // the gobank-products release that carried it
 }
 
-// Products is the catalogue over the bank's database.
-type Products struct {
-	db        *sql.DB
-	catalogue []Product
-}
+// OnSale reports whether new accounts open on the version.
+func (p Product) OnSale() bool { return p.Withdrawn.IsZero() }
 
-// New is the catalogue on db.
-func New(db *sql.DB) *Products {
-	return &Products{db: db, catalogue: Catalogue()}
-}
-
-// All is the catalogue.
-func (p *Products) All() []Product { return p.catalogue }
-
-// ByID looks a product up in the catalogue.
-func (p *Products) ByID(id string) (Product, bool) {
-	for _, prod := range p.catalogue {
-		if prod.ID == id {
-			return prod, true
+// RateBps is the version's published rate, the parameter named rate_bps.
+// A version that derives its rate publishes none and answers zero here;
+// the rate an account earns on a day is resolved by the runner.
+func (p Product) RateBps() int64 {
+	if d, ok := gbp.Declared(p.Version, "rate_bps"); ok && d.Published != "" {
+		param, err := d.Parse(d.Published)
+		if err == nil {
+			return param.Bps()
 		}
 	}
-	return Product{}, false
+	return 0
 }
 
-// Schema: the component owns no table. accrual_state held
-// accrued-but-unapplied interest before positions did (gobank ≤ v0.10);
-// v0.11 stopped writing it and version 2 drops it.
+// Schema: the adoption record and the rule postings. accrual_state (v1,
+// dropped in v2) held accrued interest before positions did.
 var Schema = schema.Component{Name: "products", Migrations: []schema.Migration{
 	{Version: 1, Statements: []string{`CREATE TABLE IF NOT EXISTS accrual_state (
 		account_id VARCHAR(64) PRIMARY KEY,
@@ -74,105 +74,208 @@ var Schema = schema.Component{Name: "products", Migrations: []schema.Migration{
 		as_of TIMESTAMP NOT NULL
 	)`}},
 	{Version: 2, Statements: []string{`DROP TABLE IF EXISTS accrual_state`}},
+	{Version: 3, Statements: []string{
+		`CREATE TABLE IF NOT EXISTS products (
+			product_id VARCHAR(50) NOT NULL,
+			version INTEGER NOT NULL,
+			adopted TIMESTAMP NOT NULL,
+			withdrawn TIMESTAMP,
+			module_version VARCHAR(50) NOT NULL,
+			parameters VARCHAR(400) NOT NULL,
+			PRIMARY KEY (product_id, version)
+		)`,
+		`CREATE TABLE IF NOT EXISTS product_postings (
+			movement_id VARCHAR(64) PRIMARY KEY,
+			account_id VARCHAR(64) NOT NULL,
+			product_id VARCHAR(50) NOT NULL,
+			version INTEGER NOT NULL,
+			event VARCHAR(20) NOT NULL,
+			parameters VARCHAR(400) NOT NULL,
+			input_balance BIGINT NOT NULL,
+			input_accrued_num BIGINT NOT NULL,
+			posted_at TIMESTAMP NOT NULL
+		)`,
+		`CREATE INDEX IF NOT EXISTS product_postings_account ON product_postings (account_id)`,
+	}},
 }}
 
-// Account is an account the day's rules run for: its ledger account and
-// the product whose rules apply.
-type Account struct {
-	ID      string
-	Product Product
+// Products is the catalogue over the bank's database.
+type Products struct {
+	db       *sql.DB
+	params   *parameters.Parameters
+	listings []Listing // what the bank's definition carries, catalogue order
+	adopted  []Product // the same, on record
+	now      func() time.Time
 }
 
-// DayResult is what one account's daily work changed in the bank's
-// totals: the interest applied to its balance (yesterday's cycle end,
-// booked today) and the day's accrual, in numerator units over
-// gbp.AccrualDenominator.
-type DayResult struct {
-	Family  gbp.ProductFamily
-	Applied luca.Amount
-	Accrued int64
+// New is the catalogue on db for the versions the bank's definition
+// lists, with nothing on record until Adopt runs.
+func New(db *sql.DB, params *parameters.Parameters, listings []Listing) *Products {
+	return &Products{db: db, params: params, listings: listings, now: time.Now}
 }
 
-// AccountDay is one account's share of the day, run under the account's
-// lock (ledger.Lock) by the pass and by every event that moves the
-// balance. Yesterday is closed first: if the product's cycle ended on it
-// and its position still holds whole pence of accrual, the application is
-// booked at yesterday's last second and yesterday's position reprojected
-// with the remainder. Then today is projected: the day's interest accrues
-// on the balance as it stands, and the position for today is written.
-// Both steps are the same however often they run — an applied position
-// has nothing left to apply, and the accrual is computed from yesterday's
-// position each time — so an account may be visited again after a
-// restart, or by an event after the pass, and the last writer's answer is
-// the right one. The books may be bound to the caller's transaction.
-func (p *Products) AccountDay(books *ledger.Ledger, a Account, day time.Time) (DayResult, error) {
-	res := DayResult{Family: a.Product.Family}
-	yesterday := day.AddDate(0, 0, -1)
-	prev, err := books.PositionAt(a.ID, yesterday)
+// Adopt is each listed version's up, and its down: a version not yet on
+// record is recorded as adopted on day, with the module version that
+// carried it and its parameters as published; a version the definition
+// has withdrawn is recorded as withdrawn on day, once. A record already
+// there stands, so the days are those of the first run that knew. The
+// catalogue is then every listed version on record.
+func (p *Products) Adopt(ctx context.Context, day time.Time) error {
+	module := moduleVersion()
+	p.adopted = p.adopted[:0]
+	for _, l := range p.listings {
+		v := l.Version
+		prod := Product{Version: v, ID: v.Product(), Currency: Currency, Description: l.Description}
+		var withdrawn sql.NullTime
+		err := p.db.QueryRowContext(ctx, `SELECT adopted, withdrawn, module_version FROM products WHERE product_id = $1 AND version = $2`, v.Product(), v.Version()).
+			Scan(&prod.Adopted, &withdrawn, &prod.ModuleVersion)
+		switch {
+		case err == sql.ErrNoRows:
+			prod.Adopted, prod.ModuleVersion = day.UTC(), module
+			if _, err := p.db.ExecContext(ctx, `INSERT INTO products (product_id, version, adopted, module_version, parameters) VALUES ($1, $2, $3, $4, $5)`,
+				v.Product(), v.Version(), prod.Adopted, module, published(v)); err != nil {
+				return fmt.Errorf("products: adopt %s v%d: %w", v.Product(), v.Version(), err)
+			}
+		case err != nil:
+			return fmt.Errorf("products: adoption of %s v%d: %w", v.Product(), v.Version(), err)
+		case withdrawn.Valid:
+			prod.Withdrawn = withdrawn.Time
+		}
+		if l.Withdrawn && prod.Withdrawn.IsZero() {
+			prod.Withdrawn = day.UTC()
+			if _, err := p.db.ExecContext(ctx, `UPDATE products SET withdrawn = $1 WHERE product_id = $2 AND version = $3`, prod.Withdrawn, v.Product(), v.Version()); err != nil {
+				return fmt.Errorf("products: withdraw %s v%d: %w", v.Product(), v.Version(), err)
+			}
+		}
+		p.adopted = append(p.adopted, prod)
+	}
+	return nil
+}
+
+// published is a version's version-scoped parameters as text: "rate_bps=150 cycle=monthly".
+func published(v gbp.Version) string {
+	var parts []string
+	for _, d := range v.Parameters() {
+		if d.Scope == gbp.ScopeVersion && d.Published != "" {
+			parts = append(parts, d.Key+"="+d.Published)
+		}
+	}
+	return strings.Join(parts, " ")
+}
+
+// moduleVersion is the gobank-products release built in, "(devel)" when
+// the build carries no record of it.
+func moduleVersion() string {
+	if info, ok := debug.ReadBuildInfo(); ok {
+		for _, dep := range info.Deps {
+			if dep.Path == "git.bytestone.uk/hum3/gobank-products" {
+				return dep.Version
+			}
+		}
+	}
+	return "(devel)"
+}
+
+// All is the catalogue: every carried version on record, in catalogue
+// order.
+func (p *Products) All() []Product { return p.adopted }
+
+// ByID is the version of a product on sale: the highest listed version
+// not withdrawn. A product every version of which is withdrawn is found
+// by its highest version, so its accounts still read as the product.
+func (p *Products) ByID(product string) (Product, bool) {
+	var best Product
+	found := false
+	better := func(c Product) bool {
+		if !found {
+			return true
+		}
+		if c.OnSale() != best.OnSale() {
+			return c.OnSale()
+		}
+		return c.Version.Version() > best.Version.Version()
+	}
+	for _, prod := range p.adopted {
+		if prod.ID == product && better(prod) {
+			best, found = prod, true
+		}
+	}
+	return best, found
+}
+
+// At is one version of a product, if the build carries it.
+func (p *Products) At(product string, version int) (Product, bool) {
+	for _, prod := range p.adopted {
+		if prod.ID == product && prod.Version.Version() == version {
+			return prod, true
+		}
+	}
+	return Product{}, false
+}
+
+// Family is a product's family, by any version of it.
+func (p *Products) Family(product string) (gbp.ProductFamily, bool) {
+	prod, ok := p.ByID(product)
+	if !ok {
+		return "", false
+	}
+	return prod.Family(), true
+}
+
+// AccountsByVersion counts the registered accounts on each version.
+func (p *Products) AccountsByVersion(ctx context.Context) (map[VersionKey]int, error) {
+	rows, err := p.db.QueryContext(ctx, `SELECT product_id, product_version, COUNT(*) FROM contract_customer_accounts GROUP BY product_id, product_version`)
 	if err != nil {
-		return res, err
+		return nil, fmt.Errorf("products: accounts by version: %w", err)
 	}
-	if prev == nil {
-		prev = &luca.Position{AccountID: a.ID, Day: yesterday} // opened today: nothing carried in
-	}
-	closed, postings := a.Product.Apply(*prev)
-	if len(postings) > 0 {
-		for _, posting := range postings {
-			// The posting names its counterparty by path: a P&L account on
-			// the ledger's chart. Its amount is signed as the balance is, so
-			// savings interest is negative: credited to the saver, debited to
-			// the expense (ADR-0008), which is posted the other way about
-			// with the amount positive.
-			counter, err := books.Account(posting.Counterparty)
-			if err != nil {
-				return res, err
-			}
-			credit, debit, amount := counter, a.ID, posting.Amount
-			if amount < 0 {
-				credit, debit, amount = a.ID, counter, -amount
-			}
-			if _, err := books.RecordMovement(credit, debit, amount, posting.Code, posting.ValueTime, posting.Description); err != nil {
-				return res, err
-			}
-			res.Applied += posting.Amount
+	defer rows.Close()
+	out := map[VersionKey]int{}
+	for rows.Next() {
+		var k VersionKey
+		var n int
+		if err := rows.Scan(&k.Product, &k.Version, &n); err != nil {
+			return nil, fmt.Errorf("products: accounts by version: %w", err)
 		}
-		if _, err := books.Project(a.ID, prev.Day, closed.Accrued); err != nil {
-			return res, err
-		}
+		out[k] = n
 	}
-	balance, err := books.Balance(a.ID)
-	if err != nil {
-		return res, err
-	}
-	next := a.Product.Accrue(day, closed, balance, gbp.RateBps(a.Product.Rate))
-	if _, err := books.Project(a.ID, day, next.Accrued); err != nil {
-		return res, err
-	}
-	res.Accrued = int64(balance) * gbp.RateBps(a.Product.Rate)
-	return res, nil
+	return out, rows.Err()
 }
 
-// PostEvent posts a customer event — a transfer, a funding — to the
-// ledger (ledger.Post: amount credited to the first account, debited to
-// the second, both positions for the day moving at once), then runs the
-// day's rules again for the product accounts it touched: the projection the pass wrote was on the balance as it stood,
-// and the day's interest accrues on the closing balance. The caller holds
-// the accounts' locks for as long as its transaction holds their rows, so
-// the event and the daily pass take turns on an account. What the rules
-// changed in the bank's totals is returned; the day's accrual is counted
-// by the pass alone, so an event's results carry none.
-func (p *Products) PostEvent(books *ledger.Ledger, day time.Time, creditID, debitID string, amount luca.Amount, code, description string, touched ...Account) ([]DayResult, error) {
-	if err := books.Post(creditID, debitID, amount, code, day, description); err != nil {
-		return nil, err
+// VersionKey names a version: product and number.
+type VersionKey struct {
+	Product string
+	Version int
+}
+
+// Posting is a rule posting as recorded: why a movement was made.
+type Posting struct {
+	MovementID      string
+	AccountID       string
+	Product         string
+	Version         int
+	Event           gbp.Event
+	Parameters      string // what the rule read, "rate_bps=150 cycle=monthly"
+	InputBalance    int64  // the position the rule applied them to
+	InputAccruedNum int64
+	PostedAt        time.Time
+}
+
+// Postings is an account's rule postings, oldest first.
+func (p *Products) Postings(ctx context.Context, accountID string) ([]Posting, error) {
+	rows, err := p.db.QueryContext(ctx, `SELECT movement_id, account_id, product_id, version, event, parameters, input_balance, input_accrued_num, posted_at
+		FROM product_postings WHERE account_id = $1 ORDER BY posted_at`, accountID)
+	if err != nil {
+		return nil, fmt.Errorf("products: postings of %s: %w", accountID, err)
 	}
-	var results []DayResult
-	for _, a := range touched {
-		r, err := p.AccountDay(books, a, day)
-		if err != nil {
-			return results, fmt.Errorf("products: %s after %s: %w", a.ID, description, err)
+	defer rows.Close()
+	var out []Posting
+	for rows.Next() {
+		var r Posting
+		if err := rows.Scan(&r.MovementID, &r.AccountID, &r.Product, &r.Version, &r.Event, &r.Parameters, &r.InputBalance, &r.InputAccruedNum, &r.PostedAt); err != nil {
+			return nil, fmt.Errorf("products: postings of %s: %w", accountID, err)
 		}
-		r.Accrued = 0
-		results = append(results, r)
+		out = append(out, r)
 	}
-	return results, nil
+	sort.SliceStable(out, func(i, j int) bool { return out[i].PostedAt.Before(out[j].PostedAt) })
+	return out, rows.Err()
 }

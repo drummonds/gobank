@@ -249,7 +249,7 @@ func averageRate(catalogue []core.Product, family string) float64 {
 	sum, count := 0.0, 0
 	for _, p := range catalogue {
 		if p.Family == family {
-			sum += p.Rate
+			sum += float64(p.RateBps) / 10000 // the published rate as a decimal
 			count++
 		}
 	}

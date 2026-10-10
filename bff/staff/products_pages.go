@@ -27,17 +27,24 @@ func BuildProductsHTML(q core.StaffQueries, family gbp.ProductFamily) string {
 		if p.Family != string(family) {
 			continue
 		}
-		count, totalBal := p.Accounts, p.Balance
-
+		sale := `<span class="tag is-success is-light">on sale</span>`
+		if !p.OnSale {
+			sale = `<span class="tag is-light">withdrawn</span>`
+		}
 		s.WriteString(`<div class="box">`)
-		s.WriteString(fmt.Sprintf(`<h3 class="title is-5">%s</h3>`, p.Name))
+		s.WriteString(fmt.Sprintf(`<h3 class="title is-5">%s <span class="tag is-info is-light">v%d</span> %s</h3>`, p.Name, p.Version, sale))
 		s.WriteString(fmt.Sprintf(`<p class="subtitle is-6 has-text-grey">%s</p>`, p.Description))
 		s.WriteString(`<div class="columns">`)
-		s.WriteString(fmt.Sprintf(`<div class="column"><strong>Rate:</strong> %.1f%%</div>`, p.Rate*100))
-		s.WriteString(fmt.Sprintf(`<div class="column"><strong>Terms:</strong> %s</div>`, p.Terms))
-		s.WriteString(fmt.Sprintf(`<div class="column"><strong>Accounts:</strong> %d</div>`, count))
-		s.WriteString(fmt.Sprintf(`<div class="column"><strong>Total:</strong> %s</div>`, FormatMoney(totalBal)))
-		s.WriteString(`</div></div>`)
+		s.WriteString(fmt.Sprintf(`<div class="column"><strong>Rate:</strong> %s</div>`, FormatRateBps(p.RateBps)))
+		s.WriteString(fmt.Sprintf(`<div class="column"><strong>Accounts on v%d:</strong> %d</div>`, p.Version, p.Accounts))
+		s.WriteString(fmt.Sprintf(`<div class="column"><strong>Product total:</strong> %s</div>`, FormatMoney(p.Balance)))
+		s.WriteString(fmt.Sprintf(`<div class="column"><strong>Adopted:</strong> %s <span class="has-text-grey is-size-7">gobank-products %s</span></div>`, p.Adopted.Format("2006-01-02"), p.ModuleVersion))
+		s.WriteString(`</div>`)
+		s.WriteString(`<table class="table is-narrow is-size-7"><thead><tr><th>Parameter</th><th>Scope</th><th>Kind</th><th>Published</th></tr></thead><tbody>`)
+		for _, param := range p.Parameters {
+			s.WriteString(fmt.Sprintf(`<tr><td><code>%s</code></td><td>%s</td><td>%s</td><td>%s</td></tr>`, param.Key, param.Scope, param.Kind, param.Value))
+		}
+		s.WriteString(`</tbody></table></div>`)
 	}
 
 	// Append BoE rate graph for savings family

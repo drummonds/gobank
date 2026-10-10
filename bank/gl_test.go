@@ -5,7 +5,6 @@ import (
 	"time"
 
 	luca "git.bytestone.uk/hum3/go-luca"
-	gbp "git.bytestone.uk/hum3/gobank-products"
 	"git.bytestone.uk/hum3/gobank/core"
 )
 
@@ -45,7 +44,7 @@ func TestTheGeneralLedgerClosesYesterdayBehindThePass(t *testing.T) {
 		t.Fatalf("GL %+v after the first pass; want posted through the opening day with no break", gl)
 	}
 	const deposit, loan = luca.Amount(1000_00), luca.Amount(850_00)
-	if easy, loans := f.control(gbp.EasyAccess().ID), f.control(gbp.PersonalLoan().ID); easy.Balance != -deposit || loans.Balance != loan {
+	if easy, loans := f.control("easy-access"), f.control("personal-loan"); easy.Balance != -deposit || loans.Balance != loan {
 		t.Errorf("controls easy %+v, loans %+v; want %d (a liability) and %d", easy, loans, -deposit, loan)
 	}
 	// Through the month end: the applications of 31 Jan are journalled
@@ -76,7 +75,7 @@ func TestTheGeneralLedgerClosesYesterdayBehindThePass(t *testing.T) {
 	if journalled != 2 {
 		t.Errorf("%d journal lines for 31 Jan, want one per product with an application (easy access, personal loan)", journalled)
 	}
-	easy := f.control(gbp.EasyAccess().ID)
+	easy := f.control("easy-access")
 	if easy.Accrued.Num == 0 {
 		t.Errorf("easy access control %+v; want the accrued interest carried from the sub-ledger", easy)
 	}
@@ -97,7 +96,7 @@ func TestTheGeneralLedgerClosesYesterdayBehindThePass(t *testing.T) {
 func TestATransferAcrossProductsMovesTheControls(t *testing.T) {
 	f := open(t)
 	from, _ := f.bank.OpenCustomer(f.ctx, saver("Easy", 1000_00))
-	isa, _ := f.bank.OpenCustomer(f.ctx, core.NewCustomer{PII: core.PII{Name: "Isa"}, Accounts: []core.NewAccount{{ProductID: gbp.ISA().ID, Opening: 500_00}}})
+	isa, _ := f.bank.OpenCustomer(f.ctx, core.NewCustomer{PII: core.PII{Name: "Isa"}, Accounts: []core.NewAccount{{ProductID: "isa", Opening: 500_00}}})
 	easy, _ := f.bank.OpenCustomer(f.ctx, saver("Easy Too", 200_00))
 	if _, err := f.bank.Transfer(f.ctx, core.Transfer{From: from.ID, To: isa.ID, Amount: 100_00}); err != nil {
 		t.Fatal(err)
@@ -106,8 +105,8 @@ func TestATransferAcrossProductsMovesTheControls(t *testing.T) {
 		t.Fatal(err)
 	}
 	g := f.bank.GeneralLedger()
-	easyControl, _ := g.Control(gbp.EasyAccess().ID)
-	isaControl, _ := g.Control(gbp.ISA().ID)
+	easyControl, _ := g.Control("easy-access")
+	isaControl, _ := g.Control("isa")
 	easyBal, _ := g.Balance(easyControl)
 	isaBal, _ := g.Balance(isaControl)
 	if easyBal != -1100_00 || isaBal != -600_00 {
@@ -153,7 +152,7 @@ func TestTheGeneralLedgerAdoptsARunningBank(t *testing.T) {
 	if want := opening.AddDate(0, 0, 1); !gl.PostedThrough.Equal(want) || gl.Breaks != 0 {
 		t.Fatalf("GL %+v; want yesterday closed with no break: the opening balances taken from the sub-ledger", gl)
 	}
-	if easy := f.control(gbp.EasyAccess().ID); easy.Balance != -1000_00 {
+	if easy := f.control("easy-access"); easy.Balance != -1000_00 {
 		t.Errorf("easy access control %+v, want the sub-ledger's -100000", easy)
 	}
 	var kinds int

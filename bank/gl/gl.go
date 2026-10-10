@@ -98,7 +98,7 @@ func Open(db *sql.DB, catalogue []products.Product, day time.Time, adopting bool
 	}
 	for _, p := range catalogue {
 		root := SavingsRoot
-		if p.Family == gbp.FamilyLending {
+		if p.Family() == gbp.FamilyLending {
 			root = LoansRoot
 		}
 		id, err := g.account(root + ":" + p.ID)
@@ -106,7 +106,7 @@ func Open(db *sql.DB, catalogue []products.Product, day time.Time, adopting bool
 			return nil, err
 		}
 		g.controls[p.ID] = id
-		g.lending[p.ID] = p.Family == gbp.FamilyLending
+		g.lending[p.ID] = p.Family() == gbp.FamilyLending
 	}
 	if err := g.recordOpening(context.Background(), day, adopting); err != nil {
 		return nil, err

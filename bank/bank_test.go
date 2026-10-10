@@ -16,6 +16,7 @@ import (
 	"git.bytestone.uk/hum3/gobank/bank/ledger"
 	"git.bytestone.uk/hum3/gobank/bank/schema"
 	"git.bytestone.uk/hum3/gobank/core"
+	"git.bytestone.uk/hum3/gobank/modelbank"
 )
 
 // A bank in a test: over an in-memory database with every component's
@@ -65,9 +66,10 @@ func reopen(t *testing.T, db *sql.DB, at time.Time) *fixture {
 	t.Helper()
 	f := &fixture{t: t, db: db, now: at, ctx: context.Background(), ratio: DefaultReserveRatio}
 	b, err := Open(db, Options{
-		Clock: core.ClockFunc(func() time.Time { return f.now }),
-		Rates: core.BaseRateFunc(func(time.Time) float64 { return 0.05 }),
-		Seed:  42,
+		Definition: modelbank.Definition(),
+		Clock:      core.ClockFunc(func() time.Time { return f.now }),
+		Rates:      core.BaseRateFunc(func(time.Time) float64 { return 0.05 }),
+		Seed:       42,
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -97,11 +99,11 @@ func (f *fixture) position() core.Position {
 var ada = core.NewCustomer{
 	KYC:      core.KYC{Verified: true, RiskRating: "Standard"},
 	PII:      core.PII{Name: "Ada Lovelace", NI: "AB123456C", DOB: "1815-12-10", Address: "12 St James's Square", Email: "ada@example.com", Phone: "07000 000001"},
-	Accounts: []core.NewAccount{{ProductID: gbp.EasyAccess().ID, Opening: 1000_00}, {ProductID: gbp.PersonalLoan().ID, Opening: 2000_00}},
+	Accounts: []core.NewAccount{{ProductID: "easy-access", Opening: 1000_00}, {ProductID: "personal-loan", Opening: 2000_00}},
 }
 
 func saver(name string, amount luca.Amount) core.NewCustomer {
-	return core.NewCustomer{PII: core.PII{Name: name}, Accounts: []core.NewAccount{{ProductID: gbp.EasyAccess().ID, Opening: amount}}}
+	return core.NewCustomer{PII: core.PII{Name: name}, Accounts: []core.NewAccount{{ProductID: "easy-access", Opening: amount}}}
 }
 
 // The bank opens with its first admin (story 1.7.1): the user "admin"
@@ -111,7 +113,7 @@ func saver(name string, amount luca.Amount) core.NewCustomer {
 func TestBankOpensWithItsFirstAdmin(t *testing.T) {
 	ctx := context.Background()
 	db := openDB(t)
-	b, err := Open(db, Options{AdminPassword: "s3cret"})
+	b, err := Open(db, Options{Definition: modelbank.Definition(), AdminPassword: "s3cret"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -122,7 +124,7 @@ func TestBankOpensWithItsFirstAdmin(t *testing.T) {
 	if got, err := b.User(ctx, admin.ID); err != nil || got.Login != "admin" {
 		t.Errorf("User(%s) = %+v, %v", admin.ID, got, err)
 	}
-	if b, err = Open(db, Options{AdminPassword: "rotated"}); err != nil {
+	if b, err = Open(db, Options{Definition: modelbank.Definition(), AdminPassword: "rotated"}); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := b.AuthenticateUser(ctx, "admin", "rotated"); err != nil {
@@ -131,7 +133,7 @@ func TestBankOpensWithItsFirstAdmin(t *testing.T) {
 	if _, err := b.AuthenticateUser(ctx, "admin", "s3cret"); !errors.Is(err, core.ErrBadCredentials) {
 		t.Errorf("the old password still signs in: %v", err)
 	}
-	if b, err = Open(openDB(t), Options{}); err != nil {
+	if b, err = Open(openDB(t), Options{Definition: modelbank.Definition()}); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := b.AuthenticateUser(ctx, "admin", ""); !errors.Is(err, core.ErrBadCredentials) {
@@ -199,8 +201,8 @@ func TestOpenCustomerFundsAndProjectsOnTheOpeningDay(t *testing.T) {
 		if err != nil || pos == nil {
 			t.Fatalf("%s: no position on the opening day: %v %v", a.ProductName, pos, err)
 		}
-		if pos.Balance != a.Balance || pos.Accrued.Num != int64(a.Balance)*gbp.RateBps(a.Rate) {
-			t.Errorf("%s: position %+v; want balance %d accruing a day at %v", a.ProductName, pos, a.Balance, a.Rate)
+		if pos.Balance != a.Balance || pos.Accrued.Num != int64(a.Balance)*a.RateBps {
+			t.Errorf("%s: position %+v; want balance %d accruing a day at %d bps", a.ProductName, pos, a.Balance, a.RateBps)
 		}
 	}
 	if pp, _ := f.bank.PaymentPage(f.ctx, 1); pp.Total != 2 || pp.Payments[0].Type != core.PaymentLoan || pp.Payments[1].Type != core.PaymentDeposit {
@@ -214,7 +216,7 @@ func TestOpenCustomerFundsAndProjectsOnTheOpeningDay(t *testing.T) {
 		t.Error("the day's pass has work left after the opening")
 	}
 	// A lending-only opening with no deposits on the books lends nothing.
-	none, err := f.bank.OpenCustomer(f.ctx, core.NewCustomer{PII: core.PII{Name: "No Headroom"}, Accounts: []core.NewAccount{{ProductID: gbp.Mortgage().ID, Opening: 50_000_00}}})
+	none, err := f.bank.OpenCustomer(f.ctx, core.NewCustomer{PII: core.PII{Name: "No Headroom"}, Accounts: []core.NewAccount{{ProductID: "mortgage", Opening: 50_000_00}}})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -728,7 +730,7 @@ func TestProductsAreTheBookPerProduct(t *testing.T) {
 	want := map[string]struct {
 		accounts int
 		balance  luca.Amount
-	}{gbp.EasyAccess().ID: {2, -1250_00}, gbp.PersonalLoan().ID: {1, pos.Lending}} // a product's balance is the bank's view: savings negative
+	}{"easy-access": {2, -1250_00}, "personal-loan": {1, pos.Lending}} // a product's balance is the bank's view: savings negative
 	var savings, lending luca.Amount
 	for _, p := range products {
 		w := want[p.ID]

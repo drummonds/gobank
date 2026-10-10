@@ -280,17 +280,30 @@ type PaymentQueries interface {
 	PaymentsOf(ctx context.Context, customerID string) ([]Payment, error)
 }
 
-// Product is one product in the catalogue with its book.
+// Product is one adopted product version in the catalogue with its book
+// (ADR-0006).
 type Product struct {
-	ID          string
-	Name        string
-	Family      string // "Savings" or "Lending"
-	Currency    string // ISO 4217 code of the product's money, e.g. "GBP"
-	Rate        float64
-	Terms       string
-	Description string
-	Accounts    int         // accounts open on the product
-	Balance     luca.Amount // their combined balance
+	ID            string
+	Version       int
+	Name          string
+	Family        string // "Savings" or "Lending"
+	Currency      string // ISO 4217 code of the product's money, e.g. "GBP"
+	RateBps       int64  // the published rate in basis points; zero when the version derives it
+	Parameters    []Parameter
+	Description   string
+	Adopted       time.Time   // the business day the version went on sale
+	ModuleVersion string      // the gobank-products release that carried it
+	OnSale        bool        // the version new accounts open on
+	Accounts      int         // accounts open on this version
+	Balance       luca.Amount // the product's combined balance, every version
+}
+
+// Parameter is one of a version's declared parameters as published.
+type Parameter struct {
+	Key   string
+	Scope string // bank, version or account
+	Kind  string
+	Value string // the published value, or the derivation in words
 }
 
 // ProductQueries is the products component as staff read it.

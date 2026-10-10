@@ -27,15 +27,10 @@ import (
 // passChunk is how many unprojected accounts are fetched at a time.
 const passChunk = 256
 
-// unprojectedAccount is one account the pass has still to visit today.
-type unprojectedAccount struct {
-	id, productID string
-}
-
 // unprojected lists up to limit registered accounts, after cursor in
 // ledger-account-ID order, that have no position for day.
-func (p *Products) unprojected(ctx context.Context, day time.Time, cursor string, limit int) ([]unprojectedAccount, error) {
-	rows, err := p.db.QueryContext(ctx, fmt.Sprintf(`SELECT ca.ledger_account_id, ca.product_id FROM contract_customer_accounts ca
+func (p *Products) unprojected(ctx context.Context, day time.Time, cursor string, limit int) ([]Account, error) {
+	rows, err := p.db.QueryContext(ctx, fmt.Sprintf(`SELECT ca.ledger_account_id, ca.product_id, ca.product_version FROM contract_customer_accounts ca
 		WHERE ca.ledger_account_id > $1
 		  AND NOT EXISTS (SELECT 1 FROM contract_ledger_eod_positions p
 		                  WHERE p.account_id = ca.ledger_account_id AND p.day = $2)
@@ -44,10 +39,10 @@ func (p *Products) unprojected(ctx context.Context, day time.Time, cursor string
 		return nil, fmt.Errorf("unprojected accounts: %w", err)
 	}
 	defer rows.Close()
-	var out []unprojectedAccount
+	var out []Account
 	for rows.Next() {
-		var a unprojectedAccount
-		if err := rows.Scan(&a.id, &a.productID); err != nil {
+		var a Account
+		if err := rows.Scan(&a.ID, &a.Product, &a.Version); err != nil {
 			return nil, fmt.Errorf("unprojected accounts: scan: %w", err)
 		}
 		out = append(out, a)
@@ -81,11 +76,13 @@ type Progress interface {
 	Add(n int)
 }
 
-// PassResult is what the pass did: the accounts it visited and what the
+// PassResult is what the pass did: the accounts it visited, the accounts
+// it left because this build does not carry their version, and what the
 // rules changed in the bank's totals, per family, in numerator units
 // (Accrued) and whole pence applied (Applied).
 type PassResult struct {
 	Visited        int
+	Skipped        int
 	AccruedSavings int64
 	AccruedLending int64
 	AppliedSavings luca.Amount
@@ -115,6 +112,7 @@ func (p *Products) RunPass(ctx context.Context, books *ledger.Ledger, day time.T
 	}
 	progress.Phase("projecting positions", total)
 	cursor := ""
+	unknown := map[VersionKey]bool{}
 	for ctx.Err() == nil {
 		accounts, err := p.unprojected(ctx, day, cursor, passChunk)
 		if err != nil {
@@ -129,17 +127,22 @@ func (p *Products) RunPass(ctx context.Context, books *ledger.Ledger, day time.T
 			if ctx.Err() != nil {
 				break
 			}
-			cursor = a.id
-			product, ok := p.ByID(a.productID)
-			if !ok {
-				log.Printf("pass: account %s is on unknown product %s", a.id, a.productID)
+			cursor = a.ID
+			if _, ok := p.At(a.Product, a.Version); !ok {
+				// Left for the build that carries the version; reported once
+				// per pass per version.
+				if !unknown[VersionKey{a.Product, a.Version}] {
+					unknown[VersionKey{a.Product, a.Version}] = true
+					log.Printf("pass: accounts on %s v%d are left unprojected: this build does not carry it", a.Product, a.Version)
+				}
+				res.Skipped++
 				continue
 			}
-			unlock := books.Lock(a.id)
-			r, err := p.AccountDay(books, Account{ID: a.id, Product: product}, day)
+			unlock := books.Lock(a.ID)
+			r, err := p.AccountDay(books, a, day)
 			unlock()
 			if err != nil {
-				log.Printf("pass: %s: %v", a.id, err)
+				log.Printf("pass: %s: %v", a.ID, err)
 				continue
 			}
 			res.add(r)

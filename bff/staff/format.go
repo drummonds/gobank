@@ -37,6 +37,16 @@ func FormatUTC(t time.Time) string {
 	return t.UTC().Format("2006-01-02 15:04:05Z")
 }
 
+// FormatRateBps renders an annual rate held in basis points as a
+// percentage to two places: 150 is "1.50%".
+func FormatRateBps(bps int64) string {
+	sign := ""
+	if bps < 0 {
+		sign, bps = "-", -bps
+	}
+	return fmt.Sprintf("%s%d.%02d%%", sign, bps/100, bps%100)
+}
+
 func FormatMoney(v luca.Amount) string {
 	prefix := "£"
 	if v < 0 {

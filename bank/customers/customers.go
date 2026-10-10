@@ -40,6 +40,9 @@ var Schema = schema.Component{Name: "customers", Migrations: []schema.Migration{
 		opened TIMESTAMP NOT NULL,
 		PRIMARY KEY (customer_id, idx)
 	)`}},
+	// v2 (ADR-0006): the version an account runs on; every account before
+	// it is on version 1.
+	{Version: 2, Statements: []string{`ALTER TABLE customer_accounts ADD COLUMN product_version INTEGER NOT NULL DEFAULT 1`}},
 }}
 
 // CreateView (re)creates the contract view: the register as other
@@ -49,7 +52,7 @@ func CreateView(db *sql.DB) error {
 	for _, stmt := range []string{
 		`DROP VIEW IF EXISTS contract_customer_accounts`,
 		`CREATE VIEW contract_customer_accounts AS
-			SELECT customer_id, idx, ledger_account_id, product_id, sort_code, account_num, opened FROM customer_accounts`,
+			SELECT customer_id, idx, ledger_account_id, product_id, product_version, sort_code, account_num, opened FROM customer_accounts`,
 	} {
 		if _, err := db.Exec(stmt); err != nil {
 			return fmt.Errorf("customers: contract_customer_accounts: %w", err)
@@ -65,11 +68,12 @@ const SortCode = "30-90-01"
 // ledger show it.
 type Account struct {
 	ProductID       string
+	Version         int // the product version the account runs on
 	ProductName     string
 	Family          gbp.ProductFamily
 	Currency        string      // ISO 4217, from the product
 	Balance         luca.Amount // minor units (pence); principal plus applied interest
-	Rate            float64     // annual rate (a rate, not money)
+	RateBps         int64       // the annual rate in basis points (a rate, not money)
 	Interest        luca.Amount // minor units; lifetime interest applied to the balance
 	Accrued         luca.Amount // minor units; accrued-but-unapplied interest, whole pence
 	AccruedE7       int64       // the same accrual to 7 decimal places of a pound, from the ledger's live position
@@ -98,7 +102,7 @@ func CoreAccounts(accounts []Account) []core.Account {
 	out := make([]core.Account, len(accounts))
 	for i, a := range accounts {
 		out[i] = core.Account{
-			Index: i, ProductName: a.ProductName, Family: string(a.Family), Currency: a.Currency, Rate: a.Rate,
+			Index: i, ProductName: a.ProductName, Family: string(a.Family), Currency: a.Currency, Version: a.Version, RateBps: a.RateBps,
 			Balance: a.Balance, Interest: a.Interest, AccruedE7: a.AccruedE7,
 			SortCode: a.SortCode, AccountNum: a.AccountNum, OpenDate: a.OpenDate.Format(time.DateOnly),
 		}
@@ -251,7 +255,7 @@ func (c *Customers) PII(ctx context.Context, id string) (core.PII, error) {
 // accountsOf reads a customer's accounts from the register in index order
 // and fills in balances, accrual and applied interest.
 func (c *Customers) accountsOf(ctx context.Context, customerID string) ([]Account, error) {
-	rows, err := c.db.QueryContext(ctx, `SELECT ledger_account_id, product_id, sort_code, account_num, opened
+	rows, err := c.db.QueryContext(ctx, `SELECT ledger_account_id, product_id, product_version, sort_code, account_num, opened
 		FROM customer_accounts WHERE customer_id = $1 ORDER BY idx`, customerID)
 	if err != nil {
 		return nil, fmt.Errorf("customers: accounts of %s: %w", customerID, err)
@@ -260,11 +264,11 @@ func (c *Customers) accountsOf(ctx context.Context, customerID string) ([]Accoun
 	var accounts []Account
 	for rows.Next() {
 		var a Account
-		if err := rows.Scan(&a.LedgerAccountID, &a.ProductID, &a.SortCode, &a.AccountNum, &a.OpenDate); err != nil {
+		if err := rows.Scan(&a.LedgerAccountID, &a.ProductID, &a.Version, &a.SortCode, &a.AccountNum, &a.OpenDate); err != nil {
 			return nil, fmt.Errorf("customers: accounts of %s: %w", customerID, err)
 		}
-		if p, ok := c.products.ByID(a.ProductID); ok {
-			a.ProductName, a.Family, a.Rate, a.Currency = p.Name, p.Family, p.Rate, p.Currency
+		if p, ok := c.products.At(a.ProductID, a.Version); ok {
+			a.ProductName, a.Family, a.RateBps, a.Currency = p.Name(), p.Family(), p.RateBps(), p.Currency
 		}
 		accounts = append(accounts, a)
 	}
@@ -323,7 +327,7 @@ func (c *Customers) SavingsInterest(ctx context.Context) ([]core.CustomerInteres
 		if err := rows.Scan(&custID, &acctID, &productID); err != nil {
 			return nil, fmt.Errorf("customers: savings interest: %w", err)
 		}
-		if p, ok := c.products.ByID(productID); !ok || p.Family != gbp.FamilySavings {
+		if family, ok := c.products.Family(productID); !ok || family != gbp.FamilySavings {
 			continue
 		}
 		a := Account{LedgerAccountID: acctID}
@@ -377,9 +381,9 @@ func (c *Customers) Plan(day time.Time, n core.NewCustomer) (Plan, error) {
 	}
 	c.mu.Lock()
 	for _, a := range n.Accounts {
-		product, _ := c.products.ByID(a.ProductID)
+		product, _ := c.products.ByID(a.ProductID) // the version on sale
 		rec.Accounts = append(rec.Accounts, Account{
-			ProductID: product.ID, ProductName: product.Name, Family: product.Family, Currency: product.Currency, Rate: product.Rate,
+			ProductID: product.ID, Version: product.Version.Version(), ProductName: product.Name(), Family: product.Family(), Currency: product.Currency, RateBps: product.RateBps(),
 			OpenDate: day, SortCode: SortCode, AccountNum: fmt.Sprintf("%08d", c.rng.Intn(100000000)),
 		})
 	}
@@ -418,9 +422,9 @@ func (c *Customers) Persist(ctx context.Context, tx *sql.Tx, q Execer, books *le
 		}
 		a.LedgerAccountID = id
 		if _, err := q.Exec(`INSERT INTO customer_accounts
-			(customer_id, idx, ledger_account_id, product_id, sort_code, account_num, opened)
-			VALUES ($1, $2, $3, $4, $5, $6, $7)`,
-			rec.ID, i, a.LedgerAccountID, a.ProductID, a.SortCode, a.AccountNum, a.OpenDate.UTC()); err != nil {
+			(customer_id, idx, ledger_account_id, product_id, product_version, sort_code, account_num, opened)
+			VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
+			rec.ID, i, a.LedgerAccountID, a.ProductID, a.Version, a.SortCode, a.AccountNum, a.OpenDate.UTC()); err != nil {
 			return fmt.Errorf("customers: register account %d of %s: %w", i, rec.ID, err)
 		}
 	}

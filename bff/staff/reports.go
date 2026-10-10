@@ -168,8 +168,8 @@ func BuildCustomerViewHTML(q core.StaffQueries, id string, piiAuthorized bool) s
 			interestCell += fmt.Sprintf(` <span class="has-text-grey is-size-7">+%s accruing</span>`, accrued)
 		}
 		s.WriteString(fmt.Sprintf(`<tr>
-  <td>%s</td><td>%s</td><td>%.1f%%</td><td>%s</td><td>%s</td><td>%s</td>
-</tr>`, a.ProductName, familyTag(a.Family), a.Rate*100, FormatMoney(view.Customer.Balance(a)), interestCell, fmtISODate(a.OpenDate)))
+  <td>%s</td><td>%s</td><td>%s</td><td>%s</td><td>%s</td><td>%s</td>
+</tr>`, a.ProductName, familyTag(a.Family), FormatRateBps(a.RateBps), FormatMoney(view.Customer.Balance(a)), interestCell, fmtISODate(a.OpenDate)))
 	}
 	s.WriteString(`</tbody></table></div>`)
 

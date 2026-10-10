@@ -35,3 +35,13 @@ func groupThousands(s string) string {
 	}
 	return b.String()
 }
+
+// FormatRateBps renders an annual rate held in basis points as a
+// percentage to two places: 150 is "1.50%".
+func FormatRateBps(bps int64) string {
+	sign := ""
+	if bps < 0 {
+		sign, bps = "-", -bps
+	}
+	return fmt.Sprintf("%s%d.%02d%%", sign, bps/100, bps%100)
+}

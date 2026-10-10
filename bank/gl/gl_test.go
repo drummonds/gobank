@@ -10,9 +10,20 @@ import (
 	_ "git.bytestone.uk/hum3/go-postgres"
 	gbp "git.bytestone.uk/hum3/gobank-products"
 	"git.bytestone.uk/hum3/gobank/bank/products"
+	"git.bytestone.uk/hum3/gobank/modelbank"
 )
 
 var day = time.Date(2024, 3, 15, 0, 0, 0, 0, time.UTC)
+
+// catalogue is the Model Bank's products as adopted, without the record:
+// the general ledger wants only their IDs and families.
+func catalogue() []products.Product {
+	var out []products.Product
+	for _, l := range modelbank.Definition().Products {
+		out = append(out, products.Product{Version: l.Version, ID: l.Version.Product(), Currency: products.Currency, Description: l.Description})
+	}
+	return out
+}
 
 func openDB(t *testing.T) *sql.DB {
 	t.Helper()
@@ -33,7 +44,7 @@ func openDB(t *testing.T) *sql.DB {
 
 func open(t *testing.T, db *sql.DB, adopting bool) *Ledger {
 	t.Helper()
-	g, err := Open(db, products.Catalogue(), day, adopting)
+	g, err := Open(db, catalogue(), day, adopting)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -55,7 +66,7 @@ func TestOpenResolvesTheChartAndAControlPerProduct(t *testing.T) {
 			t.Errorf("%s: resolved to %q, account %+v, %v", path, id, acct, err)
 		}
 	}
-	for _, p := range products.Catalogue() {
+	for _, p := range catalogue() {
 		id, ok := first.Control(p.ID)
 		if !ok {
 			t.Errorf("%s: no control account", p.ID)
@@ -63,7 +74,7 @@ func TestOpenResolvesTheChartAndAControlPerProduct(t *testing.T) {
 		}
 		acct, _ := first.GetAccountByID(id)
 		want := SavingsRoot + ":" + p.ID
-		if p.Family == gbp.FamilyLending {
+		if p.Family() == gbp.FamilyLending {
 			want = LoansRoot + ":" + p.ID
 		}
 		if acct == nil || acct.FullPath != want {
@@ -75,7 +86,7 @@ func TestOpenResolvesTheChartAndAControlPerProduct(t *testing.T) {
 		t.Errorf("reopened chart %+v, want the same accounts %+v", second.Chart, first.Chart)
 	}
 	var n int
-	if err := db.QueryRow(`SELECT COUNT(*) FROM gl_accounts`).Scan(&n); err != nil || n != 4+len(products.Catalogue()) {
+	if err := db.QueryRow(`SELECT COUNT(*) FROM gl_accounts`).Scan(&n); err != nil || n != 4+len(catalogue()) {
 		t.Errorf("gl_accounts: %d rows, %v; want the chart and a control per product", n, err)
 	}
 }
@@ -88,7 +99,7 @@ func TestOpenResolvesTheChartAndAControlPerProduct(t *testing.T) {
 // only: no position moves until the close.
 func TestWhatEachEventPosts(t *testing.T) {
 	g := open(t, openDB(t), false)
-	easy, isa, loan := gbp.EasyAccess().ID, gbp.ISA().ID, gbp.PersonalLoan().ID
+	easy, isa, loan := "easy-access", "isa", "personal-loan"
 	if err := g.Funding(day, easy, 1000_00, "PAY-000001"); err != nil {
 		t.Fatal(err)
 	}
