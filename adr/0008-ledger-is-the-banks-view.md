@@ -16,6 +16,12 @@ signed by the direction each event happened to be written in, not by
 what the accounts are. Every read, from the book to the balance sheet
 to the P&L, carries a sign correction for it.
 
+*Accounting for Programmers* ([bytestone.uk/afp](https://www.bytestone.uk/afp/))
+sets out the view this ADR adopts: double entry as a directed graph,
+accounts as nodes carrying signed balances, movements as arrows, debit
+and credit as nothing more than positive and negative. Its diagrams are
+the ones to read beside this decision.
+
 The product contract (ADR-0006, gobank-products v0.6.0) is written in
 the bank's view: a savings balance is a liability and negative, a loan
 an asset and positive, and the term, allowance and overdraft rules read
@@ -29,8 +35,9 @@ The ledger, the sub-ledger and the general ledger alike, holds the
 bank's view: debit-normal accounts (assets, expenses) carry positive
 balances, credit-normal accounts (liabilities, equity, income) negative.
 A movement is from the account credited to the account debited. That is
-go-luca's semantics read as accounting: the account money leaves is
-credited, the account it reaches is debited. Engineers read and write in
+go-luca's semantics read as accounting, and the directed-graph approach
+of *Accounting for Programmers*: the account money leaves is credited,
+the account it reaches is debited. Engineers read and write in
 this view; the customer's view, in which both savings and loans are
 positive, is presentation and switchable.
 
@@ -103,19 +110,18 @@ a movement is the unit it would render.
 
 ### Running banks
 
-A running bank holds its history in today's signs. The ledger is
-append-only, so the change is a one-time conversion of the facts, not a
-new fact: every movement with a savings account on either side has its
-direction reversed; a funding's counterparty moves from equity to cash;
-every savings position and live balance is negated, in the sub-ledger
-and the GL's controls alike; cash and equity are recomputed from their
-movements. It runs once, as the ledger component's migration, before
-the bank opens; a fresh database needs nothing. It is the first
-migration that rewrites history and is named as the exception to
-ADR-0003's additive rule that it is: the build before it cannot run on
-the converted database, so the drill's rollback step is replaced by a
-verification step: the book's magnitudes, the customer count and the GL
-reconciliation equal before and after.
+A running bank holds its history in today's signs, and the ledger is
+append-only. The demo's data is synthetic, so rather than rewrite its
+history the current runs are abandoned: preprod and prod are reset and
+start again on this release. The drill for this story is therefore a
+fresh deploy, not an upgrade in place, named as the exception to
+ADR-0003 that it is: the rollback step does not apply, and the record
+says why. A fresh database needs no conversion. A real bank would need
+the conversion this ADR does not write; its shape is known (reverse
+every movement with a savings account on a side, move funding
+counterparties from equity to cash, negate the savings positions and
+controls, recompute cash and equity) and it stays unwritten until a bank
+with history that matters needs it.
 
 ## Choices made, and the alternative to each
 
@@ -125,7 +131,7 @@ reconciliation equal before and after.
 | A sign the contract legislates | a sign the rule reads from the runner | two conventions in one system is the problem, not something to abstract over |
 | `Asset:Cash` as the counterparty of customer flows | equity, as today | a deposit is not capital; cash is what the balance sheet is missing |
 | Presentation converts; the core does not | a view parameter on the core's queries | one API, one truth; a view is a rendering |
-| Convert the stored history once | reset preprod and prod | the mechanism of a correcting migration matters more than the synthetic data; the reset stays available if the conversion is not worth its cost on the day |
+| Reset preprod and prod | convert the stored history once | the data is synthetic and the conversion is a history-rewriting migration nobody needs yet; its shape is recorded for the bank that will |
 
 ## Consequences
 
@@ -134,9 +140,9 @@ from the ledger; the GL reconciles signed sums without special cases;
 an engineer reading a movement reads a journal entry, and the movement
 page draws it as one.
 
-Harder: one history-rewriting migration, drilled with its rollback step
-replaced; every place that shows a balance decides its view; the demo
-books no capital yet, so equity reads zero until it does.
+Harder: the first story whose drill is a reset rather than an upgrade in
+place; every place that shows a balance decides its view; the demo books
+no capital yet, so equity reads zero until it does.
 
-Given up: the comfort of positive numbers everywhere. The customer gets
-it back in the app.
+Given up: the simple confusion of positive numbers everywhere. Debt reads
+as what it is, and the customer gets the positive view back in the app.

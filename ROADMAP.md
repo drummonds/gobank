@@ -602,10 +602,9 @@ root module, `cmd/bff` is the service binary, and `app/` is the Flutter shell.
   view by default) and the app's customer view with its position with the
   bank; a movement page beneath every statement line, the journal entry
   drawn as the directed graph of Accounting for Programmers, served as a
-  page and as data (the core gains a movement-by-ID query); the one-time
-  conversion of a running bank's history as the ledger
-  component's migration, drilled on preprod with the rollback step
-  replaced by before-and-after verification
+  page and as data (the core gains a movement-by-ID query); no conversion
+  of running banks: preprod and prod are reset on this release, the
+  drill a fresh deploy named as ADR-0003's exception
 - **1.8.2** the catalogue and the runner — `products` (adoption and
   withdrawal days) and `product_postings`, `product_version` on accounts
   (the migration stamps every account 1; the bank adopts the six at
