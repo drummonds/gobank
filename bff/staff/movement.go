@@ -42,8 +42,8 @@ func (s *Site) movementRoutes() {
 		id := r.PathValue("id")
 		format := ""
 		for _, suffix := range []string{".goluca", ".json"} {
-			if strings.HasSuffix(id, suffix) {
-				id, format = strings.TrimSuffix(id, suffix), suffix
+			if before, ok := strings.CutSuffix(id, suffix); ok {
+				id, format = before, suffix
 			}
 		}
 		m, err := bank.Movement(r.Context(), id)

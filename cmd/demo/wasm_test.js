@@ -120,7 +120,7 @@ async function testCustomerWeb(demo) {
     assert(res.status === 303 && res.location === Demo.scope + 'v1/screen/accounts', 'login lands on accounts (got ' + res.status + ' ' + res.location + ')');
     res = await demo.get('/v1/screen/accounts');
     assertPage(res, 'accounts with the tab\'s session');
-    assert(res.body.includes('cust-001') && res.body.includes('Net Balance'), 'accounts shows the customer\'s figures');
+    assert(res.body.includes('cust-001') && res.body.includes('Your position with the bank'), 'accounts shows the customer\'s position');
     for (const gone of ['/app/', '/api/customers', '/api/customer/cust-001/accounts']) {
         res = await demo.get(gone);
         assert(res.status === 404, gone + ' is retired (got ' + res.status + ')');
