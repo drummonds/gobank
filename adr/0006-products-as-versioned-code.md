@@ -260,6 +260,28 @@ deployed and drilled before the next:
    stage: an account moved from easy-access v1 to v2 on preprod, its v1
    cycle closed by postings that record v1.
 
+## Amendment, 2026-10-10 (ADR-0007)
+
+A product is an instance of a rules version, not the rules version
+itself. The vocabulary above read a product's identity off its package
+(`easyaccess/v1` *is* easy access); ADR-0007 separates them so that a
+new product on existing rules, a fixed-rate saver with another term, is
+configuration and not a release:
+
+| Term | Was | Now |
+|---|---|---|
+| Rules version | "Version": a package with identity, parameters and rules | a package with parameters and rules, and a name for the kind of product it makes: `fixedterm/v1` makes fixed-term savers |
+| Product | identity and family only | an instance: its own ID and name, the rules version it runs, its parameter values, its adoption and withdrawal; created and withdrawn without a release |
+| Parameter scope "version" | the rules version's parameters, published | the product's parameters, defaulted from what the rules version publishes and set per product |
+| The catalogue | the rules versions adopted | the products instantiated, each naming its rules version |
+| Account version | product and version | the product (which names its rules version) |
+
+The rules version still publishes defaults, still declares what a
+product of its kind reads, and is still immutable and tested on its own.
+The definition (ADR-0007) lists the bank's initial products and the
+rules versions it may instantiate. Story 1.8.2 builds the catalogue in
+this shape.
+
 ## Consequences
 
 Easier: a product change is a package with a golden, reviewed as code;

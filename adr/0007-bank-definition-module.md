@@ -36,11 +36,31 @@ The package becomes the module `modelbank`, in its own repository, in
 story 1.8.4 when the policy joins it: a module with one product list and
 no policy is not yet worth a repository.
 
-What the definition is not: configuration read at run time. It is
-compiled in, versioned with the bank, reviewed as code, and a change to
-it is a release. A product version coming off sale is a line in the
-definition; its adoption and withdrawal days are recorded by the bank
-when it first runs with the change.
+### Release or setting
+
+Not everything about the bank is a release. The parameter tree
+(ADR-0006) is run-time configuration: a rate, a spread, a lag, an
+allowance, a term is changed by a setting, decided for a day, with no
+release. Rules are code, and a change to rules is a tested release: a
+new rules version in gobank-products or in the bank module, and the
+definition carrying it. Between the two sits the product itself: a
+product is an instance of a tested rules version with its own name and
+its own parameter values. A new fixed-rate saver with a different term
+is the same rules with another term, and that is configuration, not a
+release: the bank creates it, names it, sets its parameters and later
+withdraws it through the parameters it already has.
+
+| Change | How | Who |
+|---|---|---|
+| A rate, a spread, a lag, an allowance, a term | a setting, effective from a day | the bank's staff, through the parameters |
+| A new product on existing rules: another term, another rate, another name | a product instance created in the catalogue, its parameters set | the bank's staff |
+| A product withdrawn from sale | the instance withdrawn | the bank's staff |
+| New or changed rules: a new event answer, a new derivation, a new parameter | a rules version, tested, released; the definition lists it | engineers, a release |
+| The definition's own contents: name, the rules it carries, the policy, the overrides | the module, released | engineers, a release |
+
+The definition therefore carries the bank's *initial* catalogue and the
+rules versions it is allowed to instantiate; what the bank has done with
+them since is in the database, as every other setting is.
 
 ## Consequences
 
@@ -50,6 +70,10 @@ place; the capabilities are tested against more than one definition
 
 Harder: two repositories to release for a change that touches both, in
 order (gobank first, the definition pinning it); the definition's module
-version becomes part of what a deployment names.
+version becomes part of what a deployment names; ADR-0006's product
+identity moves out of the rules package into the catalogue (its
+amendment below).
 
-Given up: a bank that can be reconfigured without a release.
+Given up: a product list that can be read off the definition alone.
+The definition says what the bank started with and what it may build
+products from; the catalogue in the database says what it sells today.
