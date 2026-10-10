@@ -69,6 +69,13 @@ The ledger wrapper names its parameters for what they are, `credit` and
 `debit`, so a reader is not left to infer which is which from a
 direction word.
 
+A worked month, drawn as *Accounting for Programmers* draws it: Alice
+deposits £1,000, Bob draws an £800 loan, and at the month end 1.5% and
+6.9% are applied. Today's chart on the left, the decided one on the
+right; each node carries the balance it is left with.
+
+![The postings, today and decided](0008-postings.svg)
+
 ### Reads
 
 | Read | Today | Decided |
@@ -101,6 +108,8 @@ parameters read and the position applied). Drawn as the directed graph
 of *Accounting for Programmers* (bytestone.uk/afp): two nodes carrying
 their balances, one arrow carrying the amount, coloured by account type.
 Every statement line on the staff web links to it; the app follows.
+
+![The movement beneath the statement line](0008-movement.svg)
 
 The core gains a query for one movement by its ID, with both legs, and
 the BFF serves it as a page and as data. The page is drawn by the BFF

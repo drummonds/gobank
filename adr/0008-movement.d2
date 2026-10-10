@@ -1,0 +1,23 @@
+direction: right
+
+title: "The movement page: one journal entry as the statement line's underside" {
+  shape: text
+  near: top-center
+  style.font-size: 18
+}
+
+line: "Statement line (alice, Easy Access)\n2026-01-31  Interest  £1.27  balance £1,001.27  customer view" {
+  shape: page
+}
+
+movement: "Movement 7f3a…" {
+  savings: "Liability:Savings:alice:easy-access\nliability · after −1,001.27" {style: {fill: "#f4cccc"; stroke: "#cc0000"}}
+  expense: "Expense:Interest\nexpense · after +1.27" {style: {fill: "#ead1dc"; stroke: "#a64d79"}}
+  savings -> expense: "1.27  LDAS:FTDP:ACRU\nvalue 2026-01-31 23:59:59 · known 2026-02-01 00:00:04"
+  record: "Rule posting (ADR-0006)\neasy-access v1 · day\nrate_bps=150 cycle=monthly\napplied to balance −1,000.00, accrued 1,581,000,000/3,650,000" {
+    shape: document
+  }
+  savings -> record: {style.stroke-dash: 3}
+}
+
+line -> movement: "beneath it"
