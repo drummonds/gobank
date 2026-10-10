@@ -2,6 +2,8 @@
 
 ## [Unreleased]
 
+## [0.29.0] - 2026-10-10
+
  - Stage 8 story 1.8.2a: the ledger is the bank's view (ADR-0008), the movement page drawn by pta2svg, the staff view switch; preprod and prod are reset on this release
 
 ### Added
