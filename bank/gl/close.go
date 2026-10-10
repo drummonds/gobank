@@ -179,16 +179,24 @@ func (g *Ledger) openingBalances(day time.Time, sub map[string]subPosition) erro
 // interest credits income and debits the loan), valued at the day's last
 // second as the applications are, and recorded in the journal.
 func (g *Ledger) journal(ctx context.Context, day time.Time) error {
-	rows, err := g.q.QueryContext(ctx, `SELECT ca.product_id, m.code, m.from_path, m.to_path, COALESCE(SUM(m.amount), 0)
+	// Grouped by the P&L account and the side it is on, not by the
+	// customer account's own path: a product's accounts all journal to
+	// one line.
+	rows, err := g.q.QueryContext(ctx, `SELECT ca.product_id, m.code,
+			CASE WHEN m.from_path IN ($3, $4) THEN m.from_path ELSE '' END,
+			CASE WHEN m.to_path IN ($5, $6) THEN m.to_path ELSE '' END,
+			COALESCE(SUM(m.amount), 0)
 		FROM contract_ledger_movements m
 		JOIN contract_customer_accounts ca ON ca.ledger_account_id = m.to_account_id OR ca.ledger_account_id = m.from_account_id
-		WHERE m.value_time >= $1 AND m.value_time < $2 AND (m.from_path IN ($3, $4) OR m.to_path IN ($5, $6))
-		GROUP BY ca.product_id, m.code, m.from_path, m.to_path`, day, day.AddDate(0, 0, 1), ledger.ExpenseInterest, ledger.IncomeInterest, ledger.ExpenseInterest, ledger.IncomeInterest)
+		WHERE m.value_time >= $1 AND m.value_time < $2 AND (m.from_path IN ($7, $8) OR m.to_path IN ($9, $10))
+		GROUP BY 1, 2, 3, 4`, day, day.AddDate(0, 0, 1),
+		ledger.ExpenseInterest, ledger.IncomeInterest, ledger.ExpenseInterest, ledger.IncomeInterest,
+		ledger.ExpenseInterest, ledger.IncomeInterest, ledger.ExpenseInterest, ledger.IncomeInterest)
 	if err != nil {
 		return fmt.Errorf("gl: journal %s: %w", day.Format(time.DateOnly), err)
 	}
 	type line struct {
-		productID, code, from, to string
+		productID, code, from, to string // from and to: the P&L path on that side, else ""
 		amount                    luca.Amount
 	}
 	var lines []line

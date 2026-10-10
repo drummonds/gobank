@@ -166,3 +166,33 @@ func TestTheGeneralLedgerAdoptsARunningBank(t *testing.T) {
 		t.Errorf("GL %+v; want the next day closed normally", gl)
 	}
 }
+
+// The journal aggregates a product's applications: however many accounts
+// a product has, the day's interest is one journal line per product and
+// code, and the close goes through.
+func TestTheJournalAggregatesAProductsAccounts(t *testing.T) {
+	f := open(t)
+	for _, name := range []string{"Ada", "Bea", "Cy"} {
+		if _, err := f.bank.OpenCustomer(f.ctx, saver(name, 1000_00)); err != nil {
+			t.Fatal(err)
+		}
+	}
+	for f.now.Month() == time.January {
+		f.nextDay()
+	}
+	gl := f.position().GL
+	if want := time.Date(2020, 1, 31, 0, 0, 0, 0, time.UTC); !gl.PostedThrough.Equal(want) || gl.Breaks != 0 {
+		t.Fatalf("GL %+v on 1 Feb; want posted through 31 Jan with no break", gl)
+	}
+	var lines int
+	f.db.QueryRow(`SELECT COUNT(*) FROM gl_journal WHERE day = $1`, gl.PostedThrough).Scan(&lines)
+	if lines != 1 {
+		t.Errorf("%d journal lines for 31 Jan, want one for easy access however many accounts it has", lines)
+	}
+	sub, g := f.bank.Ledger(), f.bank.GeneralLedger()
+	subBal, _ := sub.Balance(sub.Chart.ExpenseInterest)
+	glBal, _ := g.Balance(g.Chart.ExpenseInterest)
+	if subBal == 0 || subBal != glBal {
+		t.Errorf("interest expense: sub-ledger %d, GL %d; want equal and non-zero", subBal, glBal)
+	}
+}

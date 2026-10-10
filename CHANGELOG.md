@@ -2,6 +2,14 @@
 
 ## [Unreleased]
 
+### Fixed
+- The GL close failed at every month end once a product had more than
+  one account: the journal grouped the day's interest applications by
+  each customer account's own path, so a product with several
+  applications inserted duplicate journal lines and the close stopped at
+  the day before. The journal now groups by the P&L account and its side,
+  one line per product and code, and the GL posts through the month end.
+
 ## [0.29.0] - 2026-10-10
 
  - Stage 8 story 1.8.2a: the ledger is the bank's view (ADR-0008), the movement page drawn by pta2svg, the staff view switch; preprod and prod are reset on this release
