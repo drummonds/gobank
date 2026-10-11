@@ -43,7 +43,8 @@ a parameter at a scope of its own and written only by its feed.
 | Market | The process that sets a currency's official risk-free rate and publishes it: for GBP the Bank of England, Bank Rate. One per currency. |
 | Risk-free rate | The rate the market publishes, in basis points, signed. What a bank's policy derives its own rates from and what the treasury earns on reserves. |
 | Source | Where the market publishes: a page for people, a feed for machines, a publication time. GBP: the Bank's Bank Rate page, the IADB series `IUDBEDR`, 12:00 London. Code in `bank/market`, one entry per currency. |
-| Publication | One change: the new rate, effective at the instant published, decided at that instant, by the market. A setting at the `market` scope, owner the currency, key `risk_free_rate_bps`. |
+| Decision day | A day the market has said it will publish, from the calendar it issues ahead (the Bank's MPC dates are set a year out). Known in advance; what will be published is not, and often it is no change. |
+| Publication | One change: the new rate, effective at the instant published, decided at that instant, by the market. A setting at the `market` scope, owner the currency, key `risk_free_rate_bps`. A decision day that leaves the rate as it was publishes nothing the bank records. |
 | Feed | What writes publications into the bank: in the demo the simulation replaying the historical series; in a deployment a poller on the source's feed. Either goes through one core command. |
 | Instant | A moment, not a day. A setting is effective from an instant; a rule's parameter for a day is its value at the end of that day. |
 
@@ -139,10 +140,14 @@ publications are settings. `core.BaseRateSource`, `BaseRateFunc`,
 - The sim's `RateSeries` becomes a replay of publications; its CSV and
   `cmd/boefetch` stay as the series' source, now named by `bank/market`'s
   GBP entry.
-- Nothing is ever upcoming at the market scope: a publication is
-  effective when made, and the simulation publishes at the roll that
-  closes the day. Upcoming settings on the products page are staff's,
-  and arrive with the event clock (ADR-0010, story 1.8.5).
+- What is upcoming at the market scope is a decision day, never a value:
+  the market's calendar says when it will speak, not what it will say,
+  and a publication is effective when made. The calendar is data of the
+  source, not built here; with the event clock (ADR-0010, story 1.8.5)
+  a decision day is an event on the timeline, at which the feed publishes
+  a change or nothing, and the products page can name the next one.
+  Upcoming values on the products page are staff's settings, from the
+  same story.
 - A day the market has published no rate for is refused, and the console
   shows the refusal beside the day until a publication lets it start.
 - A second currency is a second `Source`, a second owner in the settings

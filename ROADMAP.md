@@ -650,8 +650,10 @@ root module, `cmd/bff` is the service binary, and `app/` is the Flutter shell.
   rules ignore a parameter change and the day rule reads the rate for its
   day. Drill: preprod accrues the same reserve interest as before
 - **1.8.5** the event clock (ADR-0010) — the simulation moves by events,
-  not slots: a timeline of the start of day, the market's publications,
-  the payments the generator raises and the settings staff make. The
+  not slots: a timeline of the start of day, the market's decision days
+  (its published calendar: an event at which the feed publishes a change
+  or nothing, the next one named on the products page), the payments the
+  generator raises and the settings staff make. The
   clock stands at an event while the bank processes it and all it
   causes — a market change reaching the policy, the policy the product
   rates, the rates every account through the `ParameterChange` event,
