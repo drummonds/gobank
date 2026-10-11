@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+## [0.29.1] - 2026-10-11
+
+ - Fix: the GL close failed at every month end once a product had more than one account (the journal now aggregates a product's applications)
+
 ### Fixed
 - The GL close failed at every month end once a product had more than
   one account: the journal grouped the day's interest applications by
