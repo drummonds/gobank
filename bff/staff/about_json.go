@@ -42,6 +42,7 @@ type AboutSim struct {
 	AccountDaysPer12h int64   `json:"account_days_per_12h"`
 	LastDayDuration   string  `json:"last_day_duration"` // Go duration; "" before the first day
 	LastDayAccounts   int     `json:"last_day_accounts"`
+	DayRefused        string  `json:"day_refused,omitempty"` // why the bank would not start the last day asked of it
 }
 
 // AboutPosition is the bank's position: what the dashboard leads with.
@@ -99,7 +100,7 @@ func aboutSim(sim SimStatus, last DayProgress) AboutSim {
 		Running: sim.Running, DayEndsIn: sim.DayEndsIn.Round(time.Second).String(),
 		Wall: sim.Wall.UTC().Format(time.RFC3339), Clock: sim.Clock.UTC().Format(time.RFC3339), Warp: sim.Warp,
 		AddingCustomers: sim.AddingCust, CustomersPerSec: sim.LastCustomersPerSec, AccountDaysPer12h: sim.AccountDaysPer12h,
-		LastDayAccounts: last.LastAccounts,
+		LastDayAccounts: last.LastAccounts, DayRefused: sim.DayRefused,
 	}
 	if sim.AddingCust {
 		a.CustomersPerSec = sim.CustomersPerSec

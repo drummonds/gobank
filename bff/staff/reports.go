@@ -11,12 +11,12 @@ import (
 	"git.bytestone.uk/hum3/gobank/internal/view"
 )
 
-// BuildChartsHTML renders historical charts: NIM, balances, customer count, BoE rate.
+// BuildChartsHTML renders historical charts: NIM, balances, customer count, Bank Rate.
 func BuildChartsHTML(q core.BookQueries) string {
 	ctx := context.Background()
 	hist, _ := q.History(ctx)
 	pos, _ := q.Position(ctx)
-	nimHist, balHist, custHist, boeHist := hist.NIM, hist.Balances, hist.Customers, hist.BoERate
+	nimHist, balHist, custHist, boeHist := hist.NIM, hist.Balances, hist.Customers, hist.RiskFree
 	dayCount := pos.DayCount
 
 	var s strings.Builder
@@ -39,7 +39,7 @@ func BuildChartsHTML(q core.BookQueries) string {
 	s.WriteString(`</div>`)
 
 	s.WriteString(`<div class="box">`)
-	s.WriteString(`<h3 class="title is-5">BoE Base Rate</h3>`)
+	s.WriteString(`<h3 class="title is-5">Bank Rate (Bank of England)</h3>`)
 	s.WriteString(buildBoERateGraph(boeHist))
 	s.WriteString(`</div>`)
 

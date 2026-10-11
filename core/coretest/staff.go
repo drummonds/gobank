@@ -161,16 +161,16 @@ func runStaff(t *testing.T, f Fixture) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		if len(h.Balances) == 0 || len(h.Customers) == 0 || len(h.BoERate) == 0 {
-			t.Errorf("History has empty series: %d balances, %d customers, %d rates", len(h.Balances), len(h.Customers), len(h.BoERate))
+		if len(h.Balances) == 0 || len(h.Customers) == 0 || len(h.RiskFree) == 0 {
+			t.Errorf("History has empty series: %d balances, %d customers, %d rates", len(h.Balances), len(h.Customers), len(h.RiskFree))
 		}
 		for i := 1; i < len(h.Balances); i++ {
 			if h.Balances[i].Date.Before(h.Balances[i-1].Date) {
 				t.Errorf("balances out of order at %d", i)
 			}
 		}
-		for i := 1; i < len(h.BoERate); i++ {
-			if h.BoERate[i].Date.Before(h.BoERate[i-1].Date) {
+		for i := 1; i < len(h.RiskFree); i++ {
+			if h.RiskFree[i].Date.Before(h.RiskFree[i-1].Date) {
 				t.Errorf("rates out of order at %d", i)
 			}
 		}
@@ -531,6 +531,27 @@ func runCommands(t *testing.T, f Fixture) {
 		}
 		if again, _ := s.GiltHoldings(ctx); len(again) != len(after) {
 			t.Errorf("a refused purchase added a holding")
+		}
+	})
+
+	t.Run("a publication is the rate the bank runs on", func(t *testing.T) {
+		// A market's publication (ADR-0009) in force by the end of the
+		// bank's day is the risk-free rate the position shows; a currency
+		// the bank knows no market for is refused.
+		before, err := s.Position(ctx)
+		if err != nil {
+			t.Fatal(err)
+		}
+		late := before.Day.Add(23 * time.Hour)
+		if err := c.Publish(ctx, core.Publication{Currency: "GBP", Bps: before.RiskFreeBps + 25, At: late}); err != nil {
+			t.Fatal(err)
+		}
+		after, err := s.Position(ctx)
+		if err != nil || after.RiskFreeBps != before.RiskFreeBps+25 {
+			t.Errorf("risk-free rate after the publication %d, %v; want %d", after.RiskFreeBps, err, before.RiskFreeBps+25)
+		}
+		if err := c.Publish(ctx, core.Publication{Currency: "XXX", Bps: 100, At: late}); err == nil {
+			t.Error("a currency with no market was published")
 		}
 	})
 }

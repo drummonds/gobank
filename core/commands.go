@@ -87,10 +87,28 @@ type DayCommands interface {
 	StartDay(ctx context.Context) (time.Time, error)
 }
 
+// Publication is a market publishing a currency's official risk-free
+// rate (ADR-0009): the new rate in basis points, effective at the instant
+// it was published, which is also when it was decided. GBP's market is
+// the Bank of England, publishing Bank Rate at noon London time.
+type Publication struct {
+	Currency string
+	Bps      int64
+	At       time.Time
+}
+
+// MarketCommands is the feed's one command: the simulation replaying a
+// historical series, or a deployment's poller on the market's feed.
+// Publish refuses a currency the bank knows no market for.
+type MarketCommands interface {
+	Publish(ctx context.Context, p Publication) error
+}
+
 // Commands is every command the core accepts.
 type Commands interface {
 	CustomerCommands
 	PaymentCommands
 	TreasuryCommands
 	DayCommands
+	MarketCommands
 }

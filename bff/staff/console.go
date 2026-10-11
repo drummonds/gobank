@@ -60,6 +60,7 @@ type SimStatus struct {
 	Wall                time.Time     // the wall clock now
 	Clock               time.Time     // the bank's clock now: simulated time
 	Warp                float64       // simulated seconds per wall second; zero when flat out
+	DayRefused          string        // why the bank would not start the last day asked of it; empty once a day starts
 }
 
 // Busy says whether anything is going: the run loop, the payments

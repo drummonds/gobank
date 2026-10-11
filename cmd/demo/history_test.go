@@ -31,9 +31,9 @@ func TestRestartKeepsTheDailySeries(t *testing.T) {
 	if n := len(before.Balances); n != 11 { // the opening day and ten more
 		t.Fatalf("balance points before restart = %d, want 11", n)
 	}
-	if len(before.Customers) != 11 || len(before.NIM) != 11 || len(before.BoERate) != 11 {
+	if len(before.Customers) != 11 || len(before.NIM) != 11 || len(before.RiskFree) != 11 {
 		t.Fatalf("series lengths before restart: customers %d, NIM %d, BoE %d; want 11 each",
-			len(before.Customers), len(before.NIM), len(before.BoERate))
+			len(before.Customers), len(before.NIM), len(before.RiskFree))
 	}
 
 	second := newDemoStateOn(first.db, "")
@@ -51,8 +51,8 @@ func TestRestartKeepsTheDailySeries(t *testing.T) {
 		if after.NIM[i] != before.NIM[i] {
 			t.Errorf("NIM point %d = %+v after restart, want %+v", i, after.NIM[i], before.NIM[i])
 		}
-		if after.BoERate[i] != before.BoERate[i] {
-			t.Errorf("BoE point %d = %+v after restart, want %+v", i, after.BoERate[i], before.BoERate[i])
+		if after.RiskFree[i] != before.RiskFree[i] {
+			t.Errorf("BoE point %d = %+v after restart, want %+v", i, after.RiskFree[i], before.RiskFree[i])
 		}
 	}
 	if got, want := second.position().NIMBps, before.NIM[len(before.NIM)-1].NIM; got != want {
@@ -74,8 +74,8 @@ func TestResetClearsTheDailySeries(t *testing.T) {
 	}
 	ds.Reset()
 	h := series(t, ds)
-	if len(h.Balances) != 1 || len(h.BoERate) != 1 {
-		t.Fatalf("series after reset: %d balance points, %d BoE points; want 1 each", len(h.Balances), len(h.BoERate))
+	if len(h.Balances) != 1 || len(h.RiskFree) != 1 {
+		t.Fatalf("series after reset: %d balance points, %d BoE points; want 1 each", len(h.Balances), len(h.RiskFree))
 	}
 	if !h.Balances[0].Date.Equal(ds.position().Day) {
 		t.Errorf("first point after reset is %s, want the opening day %s", h.Balances[0].Date, ds.position().Day)

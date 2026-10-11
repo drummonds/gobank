@@ -2,6 +2,7 @@ package staff
 
 import (
 	"fmt"
+	"html"
 	"math"
 	"strconv"
 	"strings"
@@ -39,6 +40,9 @@ func BuildDashboardHTML(d DashData) string {
 	if d.Sim.DayEndsIn > 0 {
 		countdown = fmt.Sprintf(`<p class="heading">ends in %s</p>`, d.Sim.DayEndsIn.Round(time.Second))
 	}
+	if d.Sim.DayRefused != "" {
+		countdown += fmt.Sprintf(`<p class="heading has-text-danger">%s</p>`, html.EscapeString(d.Sim.DayRefused))
+	}
 	s.WriteString(fmt.Sprintf(`<div class="level-item has-text-centered"><div><p class="heading">Day</p><p class="title is-5">%d &mdash; %s</p>%s</div></div>`, d.Bank.DayCount, dateStr, countdown))
 	// The two clocks side by side give a feel for the rate simulated time
 	// passes at.
@@ -72,8 +76,8 @@ func BuildDashboardHTML(d DashData) string {
 	if d.Bank.Cash < d.Bank.RequiredReserves {
 		reserveClass = "has-background-danger-light"
 	}
-	s.WriteString(fmt.Sprintf(`<div class="column"><div class="box dash-box %s"><p class="heading">BoE Cash Reserve</p><p class="title is-5">%s</p><p class="subtitle is-7 mb-0">Required: %s (%.0f%%) | BoE: %.2f%%</p></div></div>`,
-		reserveClass, FormatMoney(d.Bank.Cash), FormatMoney(d.Bank.RequiredReserves), d.Bank.ReserveRatio*100, d.Bank.BoERate*100))
+	s.WriteString(fmt.Sprintf(`<div class="column"><div class="box dash-box %s"><p class="heading">BoE Cash Reserve</p><p class="title is-5">%s</p><p class="subtitle is-7 mb-0">Required: %s (%.0f%%) | Bank Rate: %s</p></div></div>`,
+		reserveClass, FormatMoney(d.Bank.Cash), FormatMoney(d.Bank.RequiredReserves), d.Bank.ReserveRatio*100, FormatRateBps(d.Bank.RiskFreeBps)))
 	s.WriteString(`</div>`)
 
 	// Balance chart

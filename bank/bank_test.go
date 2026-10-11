@@ -61,14 +61,25 @@ func open(t *testing.T) *fixture {
 	return reopen(t, openDB(t), opening)
 }
 
-// reopen is the next process over db: a bank opened on it at wall time at.
+// reopen is the next process over db: a bank opened on it at wall time
+// at, with the market's rate for the pound published at 5% (a replay of
+// the same publication changes nothing).
 func reopen(t *testing.T, db *sql.DB, at time.Time) *fixture {
+	t.Helper()
+	f := reopenSilent(t, db, at)
+	if err := f.bank.Publish(f.ctx, core.Publication{Currency: "GBP", Bps: 500, At: opening}); err != nil {
+		t.Fatal(err)
+	}
+	return f
+}
+
+// reopenSilent is reopen with the market silent: no rate published.
+func reopenSilent(t *testing.T, db *sql.DB, at time.Time) *fixture {
 	t.Helper()
 	f := &fixture{t: t, db: db, now: at, ctx: context.Background(), ratio: DefaultReserveRatio}
 	b, err := Open(db, Options{
 		Definition: modelbank.Definition(),
 		Clock:      core.ClockFunc(func() time.Time { return f.now }),
-		Rates:      core.BaseRateFunc(func(time.Time) float64 { return 0.05 }),
 		Seed:       42,
 	})
 	if err != nil {
@@ -168,7 +179,7 @@ func TestSchemasAreEveryComponents(t *testing.T) {
 func TestAFreshBankIsOnItsClocksDay(t *testing.T) {
 	f := open(t)
 	p := f.position()
-	if !p.Day.Equal(opening) || p.DayCount != 0 || p.Customers != 0 || p.Savings != 0 || p.Lending != 0 || !p.DayComplete || p.BoERate != 0.05 {
+	if !p.Day.Equal(opening) || p.DayCount != 0 || p.Customers != 0 || p.Savings != 0 || p.Lending != 0 || !p.DayComplete || p.RiskFreeBps != 500 {
 		t.Errorf("position %+v; want the opening day, empty, complete", p)
 	}
 	h, _ := f.bank.History(f.ctx)
@@ -848,5 +859,37 @@ func TestMovementIsTheJournalEntry(t *testing.T) {
 	}
 	if _, err := f.bank.Movement(f.ctx, "no-such-movement"); !errors.Is(err, core.ErrNotFound) {
 		t.Errorf("unknown movement: %v, want ErrNotFound", err)
+	}
+}
+
+// Without a publication for the pound the bank cannot start a day
+// (ADR-0009): the reserve accrual has no rate, so the day is refused with
+// nothing changed, and starts once the market has spoken. A publication at
+// noon counts for its whole day.
+func TestTheDayCannotStartWhileTheMarketIsSilent(t *testing.T) {
+	f := reopenSilent(t, openDB(t), opening)
+	if p := f.position(); p.RiskFreeBps != 0 {
+		t.Errorf("a silent market has a rate: %+v", p)
+	}
+	f.now = f.now.AddDate(0, 0, 1)
+	day, err := f.bank.StartDay(f.ctx)
+	if err == nil || !strings.Contains(err.Error(), "Bank of England") || !day.Equal(opening) {
+		t.Fatalf("StartDay with the market silent: %v, %v; want a refusal naming the market, still on the opening day", day, err)
+	}
+	if p := f.position(); !p.Day.Equal(opening) || p.DayCount != 0 {
+		t.Errorf("the refused day moved the bank: %+v", p)
+	}
+	noon := opening.Add(12 * time.Hour)
+	if err := f.bank.Publish(f.ctx, core.Publication{Currency: "GBP", Bps: 475, At: noon}); err != nil {
+		t.Fatal(err)
+	}
+	if p := f.position(); p.RiskFreeBps != 475 {
+		t.Errorf("after the publication the position shows %d, want 475", p.RiskFreeBps)
+	}
+	if _, err := f.bank.StartDay(f.ctx); err != nil {
+		t.Fatalf("StartDay after the publication: %v", err)
+	}
+	if p := f.position(); p.DayCount != 1 || p.RiskFreeBps != 475 {
+		t.Errorf("after the day started: %+v", p)
 	}
 }

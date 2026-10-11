@@ -33,13 +33,12 @@ type DemoState struct {
 	restartID      int64  // this process's row in the restart record (mu)
 	dsn            string // the database this state was opened on, "" for in-memory
 	db             *sql.DB
-	dbBackend      string              // human-readable data store description, set by attachDB
-	dbIsPostgres   bool                // real PostgreSQL (pgx) rather than in-memory pglike
-	sim            *sim.Simulation     // the simulation driving this bank through the core (wiring; console.go forwards to it)
-	clock          core.Clock          // where the bank reads the time (ADR-0002 stage 4); tests replace it
-	rates          core.BaseRateSource // where the bank reads the base rate
-	memoryLimit    uint64              // auto-stop threshold, see SetMemoryLimit (mu)
-	memoryExceeded bool                // true when heap > memoryLimit; simulation pauses (mu)
+	dbBackend      string          // human-readable data store description, set by attachDB
+	dbIsPostgres   bool            // real PostgreSQL (pgx) rather than in-memory pglike
+	sim            *sim.Simulation // the simulation driving this bank through the core (wiring; console.go forwards to it)
+	clock          core.Clock      // where the bank reads the time (ADR-0002 stage 4); tests replace it
+	memoryLimit    uint64          // auto-stop threshold, see SetMemoryLimit (mu)
+	memoryExceeded bool            // true when heap > memoryLimit; simulation pauses (mu)
 }
 
 func NewDemoState() *DemoState {
@@ -76,6 +75,7 @@ func (ds *DemoState) openOn(db *sql.DB, dsn string) *DemoState {
 		ds.sim.Resume(sim.Run{Day: run.Day, DayCount: run.DayCount, Running: run.Running, SlotStart: run.SlotStart}, run.DayLength, run.DayLengthSet)
 	}
 	ds.openBank()
+	ds.sim.CatchUp() // the feed: the market's publications up to the day in progress (ADR-0009)
 	if !resumed {
 		saveRun(ds.db, runState{Day: ds.position().Day})
 		saveSlotStart(ds.db, time.Now())
@@ -88,13 +88,13 @@ func (ds *DemoState) openOn(db *sql.DB, dsn string) *DemoState {
 }
 
 // openBank opens the bank over the demo's database, on the simulation's
-// clock and rate series. A fresh bank over a wiped database (Reset)
+// clock; the risk-free rate reaches it as the simulation publishes the
+// market's series (ADR-0009). A fresh bank over a wiped database (Reset)
 // reopens the same handle, so the simulation and the pages keep it.
 func (ds *DemoState) openBank() {
 	opts := bank.Options{
 		Definition:    modelbank.Definition(),
 		Clock:         core.ClockFunc(func() time.Time { return ds.clock.Now() }),
-		Rates:         core.BaseRateFunc(func(day time.Time) float64 { return ds.rates.BaseRate(day) }),
 		Seed:          42,
 		AdminPassword: adminPassword(),
 	}
@@ -112,10 +112,11 @@ func (ds *DemoState) openBank() {
 }
 
 // wireSimulation puts the simulation on the bank (stage 4): the bank reads
-// the time and the base rate from the simulation's clock and its replayed
-// series, and the simulation drives the bank through the core, with the
-// run recorded in the simulation component's table. A real deployment
-// would wire the wall clock and a rate feed here, and no simulation.
+// the time from the simulation's clock, the simulation publishes the
+// market's series as its feed and drives the bank through the core, with
+// the run recorded in the simulation component's table. A real deployment
+// would wire the wall clock and a poller on the market's feed here, and no
+// simulation.
 func (ds *DemoState) wireSimulation() {
 	ds.sim = sim.New(ds, runStore{ds}, sim.Options{
 		Workers: ds.dbWriters(),
@@ -123,7 +124,6 @@ func (ds *DemoState) wireSimulation() {
 		Seed:    42,
 	})
 	ds.clock = ds.sim.Clock()
-	ds.rates = sim.BoERates
 }
 
 // position is the bank's position, for the wiring.
@@ -162,6 +162,7 @@ func (ds *DemoState) Reset() {
 		ds.initDB()
 	}
 	ds.openBank()
+	ds.sim.CatchUp() // the feed: the series up to the opening day
 	saveRun(ds.db, runState{Day: ds.position().Day})
 	saveSlotStart(ds.db, time.Now())
 	if ds.sim.DayLengthRecorded() { // the console's setting outlives the run it was made in

@@ -205,7 +205,7 @@ func (b *Bank) position(ctx context.Context) core.Position {
 		Cash:             k.cash,
 		RequiredReserves: requiredReserves(k.savings, b.reserveRatio),
 		ReserveRatio:     b.reserveRatio,
-		BoERate:          b.boeRate,
+		RiskFreeBps:      b.riskFreeBps,
 		BoEInterest:      b.boeInterestTotalLocked(),
 		NIMBps:           b.nimBps,
 		DayComplete:      b.dayComplete,

@@ -1,7 +1,7 @@
 // Package sim is the simulation (ADR-0002 stage 4): the generators that
 // make a population and its payments, the warped clock the bank reads,
-// the replayed base rate, and the run loop and console knobs that drive
-// them. It is built on the core alone: it raises events on the bank
+// the market's series replayed as the feed, and the run loop and console
+// knobs that drive them. It is built on the core alone: it raises events on the bank
 // through core.Commands and decides them from core.StaffQueries, and
 // knows nothing else of the bank (cmd/demo's TestSimulationImportsOnlyTheCore).
 // A real bank has none of this; the console that drives it is part of the
@@ -10,6 +10,7 @@ package sim
 
 import (
 	"context"
+	"log"
 	"math/rand"
 	"sync"
 	"time"
@@ -99,6 +100,9 @@ type Simulation struct {
 	lastAddRate        float64 // customers/s of the last finished batch
 
 	catalogue []core.Product // the generators' copy of the product catalogue, read once (mu)
+
+	published  int    // the next of BoERates the feed has yet to publish; the whole series is replayed from a reset or a resume (mu)
+	dayRefused string // the bank's refusal of the last day asked of it, for the console (mu)
 }
 
 // New is a simulation over bank, its clock on OpeningDay.
@@ -141,13 +145,22 @@ func (s *Simulation) SetWall(wall func() time.Time) {
 func (s *Simulation) Resume(run Run, dayLength time.Duration, dayLengthSet bool) {
 	s.clock.Resume(run.Day, run.SlotStart)
 	s.mu.Lock()
-	defer s.mu.Unlock()
 	s.resumedRunning = run.Running
 	s.rng = rand.New(rand.NewSource(42 + int64(run.DayCount)))
 	if dayLengthSet {
 		s.settings.Update(func(v *Settings) { v.DayLength = dayLength })
 		s.dayLengthRecorded = true
 	}
+	s.published = 0
+	s.mu.Unlock()
+}
+
+// CatchUp is the feed catching up with the clock once the bank is open:
+// every publication of the series up to the end of the day in progress
+// goes to the bank. A run from before the market was a parameter has none
+// of its publications; a replay of those the bank has changes nothing.
+func (s *Simulation) CatchUp() {
+	s.publishDue(context.Background(), s.clock.Day().AddDate(0, 0, 1))
 }
 
 // ResumedRunning reports whether the run was going when the previous
@@ -167,7 +180,8 @@ func (s *Simulation) DayLengthRecorded() bool {
 }
 
 // Reset stops everything and puts the clock back on day for a fresh run;
-// the caller resets the bank and records the run.
+// the caller resets the bank, has the feed catch up (CatchUp) and records
+// the run.
 func (s *Simulation) Reset(day time.Time) {
 	s.mu.Lock()
 	if s.running {
@@ -195,8 +209,32 @@ func (s *Simulation) Reset(day time.Time) {
 	s.dayEndsAt = time.Time{}
 	s.shuttingDown = false
 	s.resumedRunning = false
+	s.published = 0
 	s.mu.Unlock()
 	s.clock.BeginDay(day)
+}
+
+// publishDue is the feed (ADR-0009): every publication of the series
+// before the instant that is not yet published goes to the bank through
+// the core, in order. Until the clock moves by events (ADR-0010) a
+// publication lands at the day roll that follows it, which is where the
+// day's rate is read; a paced day shows it the morning after.
+func (s *Simulation) publishDue(ctx context.Context, before time.Time) {
+	for {
+		s.mu.Lock()
+		i := s.published
+		s.mu.Unlock()
+		if i >= len(BoERates) || !BoERates[i].At.Before(before) {
+			return
+		}
+		if err := s.bank.Publish(ctx, BoERates[i]); err != nil {
+			log.Printf("sim: publish %+v: %v", BoERates[i], err)
+			return
+		}
+		s.mu.Lock()
+		s.published = i + 1
+		s.mu.Unlock()
+	}
 }
 
 // --- The run loop ---
@@ -341,7 +379,16 @@ func (s *Simulation) Step(ctx context.Context) {
 	default:
 		s.clock.RestartSlot()
 	}
-	s.bank.StartDay(ctx) //nolint:errcheck // a cut-short pass is resumed next slot
+	// The feed is level with the clock before the bank closes the day
+	// behind it: the day's rate is what the market had published by its end.
+	s.publishDue(ctx, s.clock.Day())
+	_, err = s.bank.StartDay(ctx) // a cut-short pass is resumed next slot
+	s.mu.Lock()
+	s.dayRefused = ""
+	if err != nil && ctx.Err() == nil {
+		s.dayRefused = err.Error()
+	}
+	s.mu.Unlock()
 	// Recorded once the bank has begun the day, so the record never makes
 	// the day wait on the database; a restart before this point starts the
 	// slot again (Resume).
@@ -447,6 +494,7 @@ type Status struct {
 	Wall                time.Time     // the wall clock now
 	Clock               time.Time     // the bank's clock now: simulated time
 	Warp                float64       // simulated seconds per wall second; zero when flat out
+	DayRefused          string        // why the bank would not start the last day asked of it (a silent market, ADR-0009); empty once a day starts
 }
 
 // Status is a snapshot of the simulation.
@@ -480,6 +528,7 @@ func (s *Simulation) Status() Status {
 		Wall:                now,
 		Clock:               clock,
 		Warp:                warp,
+		DayRefused:          s.dayRefused,
 	}
 }
 

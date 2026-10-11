@@ -11,14 +11,14 @@ import (
 )
 
 // BuildProductsHTML renders product cards for a given family, with each
-// product's book from the core. For savings, appends the BoE base rate
+// product's book from the core. For savings, appends the pound's risk-free rate
 // history graph.
 func BuildProductsHTML(q core.StaffQueries, family gbp.ProductFamily) string {
 	ctx := context.Background()
 	products, _ := q.Products(ctx)
 	pos, _ := q.Position(ctx)
 	hist, _ := q.History(ctx)
-	boeHistory, boeRate := hist.BoERate, pos.BoERate
+	rateHistory, riskFree := hist.RiskFree, pos.RiskFreeBps
 
 	var s strings.Builder
 	s.WriteString(fmt.Sprintf(`<h2 class="title is-4">%s Products</h2>`, family))
@@ -51,19 +51,19 @@ func BuildProductsHTML(q core.StaffQueries, family gbp.ProductFamily) string {
 		s.WriteString(`</tbody></table></div>`)
 	}
 
-	// Append BoE rate graph for savings family
+	// The pound's risk-free rate (ADR-0009), for the savings family
 	if family == gbp.FamilySavings {
 		s.WriteString(fmt.Sprintf(`<div class="box mt-4">
-  <h3 class="title is-5">BoE Base Rate History</h3>
-  <p class="subtitle is-6 has-text-grey">Current: %.2f%%</p>`, boeRate*100))
-		s.WriteString(buildBoERateGraph(boeHistory))
+  <h3 class="title is-5">Bank Rate (Bank of England)</h3>
+  <p class="subtitle is-6 has-text-grey">In force: %s</p>`, FormatRateBps(riskFree)))
+		s.WriteString(buildBoERateGraph(rateHistory))
 		s.WriteString(`</div>`)
 	}
 
 	return s.String()
 }
 
-// buildBoERateGraph renders an SVG line chart of BoE base rate over simulated time.
+// buildBoERateGraph renders an SVG line chart of the risk-free rate (basis points, drawn as a percentage) over simulated time.
 func buildBoERateGraph(history []RatePoint) string {
 	if len(history) == 0 {
 		return `<p class="has-text-grey">No rate history yet.</p>`
@@ -81,14 +81,14 @@ func buildBoERateGraph(history []RatePoint) string {
 	)
 
 	// Find min/max rate for Y-axis scaling
-	minRate := history[0].Rate
-	maxRate := history[0].Rate
+	minRate := float64(history[0].Bps) / 10000
+	maxRate := float64(history[0].Bps) / 10000
 	for _, rp := range history {
-		if rp.Rate < minRate {
-			minRate = rp.Rate
+		if float64(rp.Bps)/10000 < minRate {
+			minRate = float64(rp.Bps) / 10000
 		}
-		if rp.Rate > maxRate {
-			maxRate = rp.Rate
+		if float64(rp.Bps)/10000 > maxRate {
+			maxRate = float64(rp.Bps) / 10000
 		}
 	}
 	// Add padding to range
@@ -149,7 +149,7 @@ func buildBoERateGraph(history []RatePoint) string {
 		var points strings.Builder
 		for i, rp := range history {
 			x := float64(padL) + float64(chartW)*float64(i)/float64(len(history)-1)
-			y := float64(padT+chartH) - float64(chartH)*(rp.Rate-minRate)/rateRange
+			y := float64(padT+chartH) - float64(chartH)*(float64(rp.Bps)/10000-minRate)/rateRange
 			y = math.Max(float64(padT), math.Min(float64(padT+chartH), y))
 			if i == 0 {
 				points.WriteString(fmt.Sprintf("%.1f,%.1f", x, y))

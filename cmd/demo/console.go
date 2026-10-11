@@ -69,7 +69,7 @@ func (ds *DemoState) SimStatus() staff.SimStatus {
 		Running: st.Running, PaymentsRunning: ds.sim.IsPaymentsRunning(),
 		AddingCust: st.AddingCust, AddingProgress: st.AddingProgress, AddingTarget: st.AddingTarget,
 		CustomersPerSec: st.CustomersPerSec, LastCustomersPerSec: st.LastCustomersPerSec,
-		DayLength: st.DayLength, DayEndsIn: st.DayEndsIn, Wall: st.Wall, Clock: ds.clock.Now(), Warp: st.Warp,
+		DayLength: st.DayLength, DayEndsIn: st.DayEndsIn, Wall: st.Wall, Clock: ds.clock.Now(), Warp: st.Warp, DayRefused: st.DayRefused,
 		AccountDaysPer12h: ds.AccountDaysPer(passWindow),
 		MemoryExceeded:    ds.memoryExceeded,
 	}

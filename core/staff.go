@@ -22,7 +22,7 @@ type Position struct {
 	Cash             luca.Amount // deposits less loans, held as reserves at the BoE
 	RequiredReserves luca.Amount // ReserveRatio of deposits
 	ReserveRatio     float64     // fraction of deposits held as reserves
-	BoERate          float64     // Bank of England base rate, annual
+	RiskFreeBps      int64       // the risk-free rate in force: GBP's market rate, basis points (ADR-0009)
 	BoEInterest      luca.Amount // interest earned on reserves to date
 	NIMBps           float64     // latest net interest margin, annualised basis points
 	DayComplete      bool        // every account has its position for Day: the start-of-day pass is done
@@ -104,10 +104,11 @@ type NIMPoint struct {
 	NIM  float64
 }
 
-// RatePoint is the BoE base rate on one day.
+// RatePoint is the risk-free rate in force at the end of one day, in
+// basis points.
 type RatePoint struct {
 	Date time.Time
-	Rate float64
+	Bps  int64
 }
 
 // History is the bank's daily series since it opened, oldest first.
@@ -115,7 +116,7 @@ type History struct {
 	Balances  []BalancePoint
 	Customers []CustomerPoint
 	NIM       []NIMPoint
-	BoERate   []RatePoint
+	RiskFree  []RatePoint
 }
 
 // BookQueries is the ledger as staff read it: the bank as a whole.

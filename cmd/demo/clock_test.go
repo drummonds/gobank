@@ -2,7 +2,9 @@ package main
 
 import (
 	"context"
+	"git.bytestone.uk/hum3/gobank/bank/parameters"
 	"git.bytestone.uk/hum3/gobank/bank/payments"
+	"git.bytestone.uk/hum3/gobank/cmd/demo/sim"
 	"testing"
 	"time"
 
@@ -105,20 +107,23 @@ func TestStartDayCatchesUpWithTheClock(t *testing.T) {
 	}
 }
 
-// The base rate comes from the injected source: the day's rate is what the
-// source says for that day, in the position and in the day's books.
-func TestBaseRateComesFromTheSource(t *testing.T) {
+// The risk-free rate is the market's publication (ADR-0009): the
+// simulation replays the Bank of England's series as the pound's feed, so
+// the rate a day closed at is the series' rate in force at its end, in the
+// position and in the day's snapshot.
+func TestTheRateIsTheMarketsPublication(t *testing.T) {
 	ds := NewDemoState()
 	defer ds.db.Close()
-	ds.rates = core.BaseRateFunc(func(day time.Time) float64 { return 0.01 + float64(day.Day())/1000 })
 	addFundedCustomer(ds)
 	ds.AdvanceDay()
 	pos := ds.position()
-	if want := 0.01 + float64(pos.Day.Day())/1000; pos.BoERate != want {
-		t.Errorf("BoE rate %v on %v, want the source's %v", pos.BoERate, pos.Day, want)
+	closed := pos.Day.AddDate(0, 0, -1)
+	want, ok := sim.BoERates.InForce(parameters.EndOfDay(closed))
+	if !ok || pos.RiskFreeBps != want || want == 0 {
+		t.Errorf("risk-free rate %d on %v, want the series' %d, %v", pos.RiskFreeBps, pos.Day, want, ok)
 	}
-	if h, err := ds.History(context.Background()); err != nil || len(h.BoERate) == 0 || h.BoERate[len(h.BoERate)-1].Rate != pos.BoERate {
-		t.Errorf("day's snapshot rate %+v, want the source's %v", h.BoERate, pos.BoERate)
+	if h, err := ds.History(context.Background()); err != nil || len(h.RiskFree) == 0 || h.RiskFree[len(h.RiskFree)-1].Bps != pos.RiskFreeBps {
+		t.Errorf("day's snapshot rate %+v, want the market's %d", h.RiskFree, pos.RiskFreeBps)
 	}
 }
 

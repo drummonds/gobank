@@ -453,3 +453,51 @@ func TestSchemaVersionsRunFromOne(t *testing.T) {
 		}
 	}
 }
+
+// tracker is a rules version that reads the market (ADR-0009): its rate
+// derives from the currency's risk-free rate, a parameter at the market
+// scope that the version declares by key alone.
+type tracker struct{ gbp.Interest }
+
+func (tracker) Product() string           { return "tracker" }
+func (tracker) Version() int              { return 1 }
+func (tracker) Name() string              { return "Tracker" }
+func (tracker) Family() gbp.ProductFamily { return gbp.FamilySavings }
+func (tracker) Parameters() []gbp.Declaration {
+	floor := int64(0)
+	return []gbp.Declaration{
+		{Key: gbp.RiskFreeRateKey, Scope: gbp.ScopeMarket, Kind: gbp.KindBps},
+		{Key: "rate_bps", Scope: gbp.ScopeVersion, Kind: gbp.KindBps, Derived: &gbp.Derivation{Source: gbp.RiskFreeRateKey, SpreadBps: -15, Floor: &floor}},
+		{Key: "cycle", Scope: gbp.ScopeVersion, Kind: gbp.KindCycle, Published: "monthly"},
+	}
+}
+
+// A market-scope parameter resolves for the currency of the product whose
+// rules read it, from the market's publications; with none published the
+// product cannot run.
+func TestMarketParametersResolveForTheProductsCurrency(t *testing.T) {
+	p, _ := open(t)
+	ctx := context.Background()
+	p.listings = append(p.listings, Listing{ID: "tracker", Name: "Tracker", Rules: tracker{}, Description: "tracks the market"})
+	if err := p.Adopt(ctx, jan2); err != nil {
+		t.Fatal(err)
+	}
+	trk, ok := p.ByID("tracker")
+	if !ok || trk.Currency != "GBP" {
+		t.Fatalf("tracker = %+v, %v", trk, ok)
+	}
+	if _, err := p.resolve(ctx, p.db, trk, "", "rate_bps", jan2, p.now()); err == nil || !strings.Contains(err.Error(), "market") {
+		t.Errorf("with nothing published: %v, want a refusal naming the market", err)
+	}
+	noon := jan2.Add(12 * time.Hour)
+	if err := p.params.Set(ctx, nil, parameters.Setting{Scope: gbp.ScopeMarket, Owner: "GBP", Key: gbp.RiskFreeRateKey, Value: "525", Effective: noon, Decided: noon, By: "Bank of England"}); err != nil {
+		t.Fatal(err)
+	}
+	rate, err := p.resolve(ctx, p.db, trk, "", "rate_bps", jan2, noon.Add(time.Second))
+	if err != nil || rate.Bps() != 510 {
+		t.Errorf("tracker rate on the day of a noon publication = %v, %v; want 525 − 15", rate.Bps(), err)
+	}
+	if rate, _ := p.resolve(ctx, p.db, trk, "", "rate_bps", jan2.AddDate(0, 0, -1), noon.Add(time.Second)); rate.Bps() == 510 {
+		t.Error("the publication reached the day before")
+	}
+}

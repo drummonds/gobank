@@ -115,3 +115,40 @@ func (stub) Version() int                  { return 1 }
 func (stub) Name() string                  { return "" }
 func (stub) Family() gbp.ProductFamily     { return gbp.FamilySavings }
 func (stub) Parameters() []gbp.Declaration { return nil }
+
+// A setting is effective from an instant, not a day (ADR-0009): the Bank
+// of England publishes at noon. A reader asking for a day's value asks at
+// the end of that day, so a noon publication counts for the whole of its
+// day and for none of the day before.
+func TestResolveAtAnInstant(t *testing.T) {
+	p := open(t)
+	ctx := context.Background()
+	noon := time.Date(2026, 3, 19, 12, 0, 0, 0, time.UTC)
+	for _, s := range []Setting{
+		{gbp.ScopeMarket, "GBP", "risk_free_rate_bps", "450", d(2026, 1, 1), d(2026, 1, 1), "Bank of England"},
+		{gbp.ScopeMarket, "GBP", "risk_free_rate_bps", "425", noon, noon, "Bank of England"},
+	} {
+		if err := p.Set(ctx, nil, s); err != nil {
+			t.Fatal(err)
+		}
+	}
+	known := d(2026, 6, 1)
+	for _, c := range []struct {
+		name string
+		at   time.Time
+		want string
+	}{
+		{"the end of the day before", EndOfDay(d(2026, 3, 18)), "450"},
+		{"the morning of the day", noon.Add(-time.Hour), "450"},
+		{"the instant published", noon, "425"},
+		{"the end of the day", EndOfDay(d(2026, 3, 19)), "425"},
+	} {
+		got, ok, err := p.Resolve(ctx, nil, gbp.ScopeMarket, "GBP", "risk_free_rate_bps", c.at, known)
+		if err != nil || !ok || got != c.want {
+			t.Errorf("%s (%s): %q, %v, %v; want %q", c.name, c.at.Format(time.RFC3339), got, ok, err, c.want)
+		}
+	}
+	if end := EndOfDay(noon); !end.Before(d(2026, 3, 20)) || !end.After(noon) {
+		t.Errorf("EndOfDay(%v) = %v, want inside the day after noon", noon, end)
+	}
+}

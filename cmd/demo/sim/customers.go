@@ -143,7 +143,7 @@ func (s *Simulation) OpenCustomer(ctx context.Context) bool {
 }
 
 // rollNewCustomer is the day's chance of a new customer: the more
-// attractive the bank's rates against the base rate, the likelier someone
+// attractive the bank's rates against the risk-free rate, the likelier someone
 // joins, up to the population cap.
 func (s *Simulation) rollNewCustomer(ctx context.Context) {
 	pos, err := s.bank.Position(ctx)
@@ -155,9 +155,9 @@ func (s *Simulation) rollNewCustomer(ctx context.Context) {
 	avgLending := averageRate(catalogue, "Lending")
 
 	savingsAttract, lendingAttract := 0.0, 0.0
-	if pos.BoERate > 0 {
-		savingsAttract = (avgSavings - pos.BoERate) / pos.BoERate
-		lendingAttract = (pos.BoERate - avgLending) / pos.BoERate
+	if riskFree := float64(pos.RiskFreeBps) / 10000; riskFree > 0 {
+		savingsAttract = (avgSavings - riskFree) / riskFree
+		lendingAttract = (riskFree - avgLending) / riskFree
 	}
 	attractiveness := clamp((savingsAttract+lendingAttract)/2, 0, 1)
 	dailyProb := 0.10 + attractiveness*0.20

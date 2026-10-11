@@ -41,7 +41,7 @@ func BuildCashPositionHTML(q core.BookQueries) string {
 	s.WriteString(`<h3 class="title is-5">Cash Detail</h3>`)
 	s.WriteString(`<table class="table is-fullwidth is-striped">`)
 	s.WriteString(`<tbody>`)
-	s.WriteString(fmt.Sprintf(`<tr><td>BoE Base Rate</td><td class="has-text-right"><strong>%.2f%%</strong></td></tr>`, t.BoERate*100))
+	s.WriteString(fmt.Sprintf(`<tr><td>Bank Rate (Bank of England)</td><td class="has-text-right"><strong>%s</strong></td></tr>`, FormatRateBps(t.RiskFreeBps)))
 	s.WriteString(fmt.Sprintf(`<tr><td>BoE Interest Earned (cumulative)</td><td class="has-text-right"><strong>%s</strong></td></tr>`, FormatMoney(t.BoEInterest)))
 	s.WriteString(fmt.Sprintf(`<tr><td>Reserve Ratio</td><td class="has-text-right"><strong>%.0f%%</strong></td></tr>`, t.ReserveRatio*100))
 	s.WriteString(fmt.Sprintf(`<tr><td>Simulation Day</td><td class="has-text-right"><strong>%d &mdash; %s</strong></td></tr>`, t.DayCount, t.Day.Format("2 Jan 2006")))

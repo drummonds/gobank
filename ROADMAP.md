@@ -642,12 +642,13 @@ root module, `cmd/bff` is the service binary, and `app/` is the Flutter shell.
   noon publication counts for the whole day, as the Bank intends. The
   simulation replays the historical series through the component as the
   feed would; a deployment polls. The treasury's reserve accrual reads
-  GBP's rate; `core.BaseRateSource`, the last `float64` rates and the
-  `boe_rate` column go, basis points in their place; the products page
-  shows the rate's history and a publication the clock has not reached.
-  Nothing cascades yet: the v1 rules ignore a parameter change and the
-  day rule reads the rate for its day. Drill: preprod accrues the same
-  reserve interest as before
+  GBP's rate; `core.BaseRateSource` and the last `float64` rates go,
+  basis points in their place (`boe_rate` written beside them for one
+  release, for the drill's rollback); the products page shows the rate's
+  history and the rate in force; a day the market has published no rate
+  for is refused, the console showing why. Nothing cascades yet: the v1
+  rules ignore a parameter change and the day rule reads the rate for its
+  day. Drill: preprod accrues the same reserve interest as before
 - **1.8.5** the event clock (ADR-0010) — the simulation moves by events,
   not slots: a timeline of the start of day, the market's publications,
   the payments the generator raises and the settings staff make. The

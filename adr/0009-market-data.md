@@ -90,13 +90,16 @@ UTC; the source names its local time (12:00 London) and the feed converts.
 ### Who writes, and when
 
 The core gains `MarketCommands.Publish(ctx, Publication)`, one command
-for both feeds. The simulation replays the series: at reset it publishes
-the rate in force on the opening day, and thereafter each change when its
-clock reaches the publication instant; until ADR-0010 the clock is the
-warped wall clock of stage 4, so the publication lands during the day's
-slot, as a payment does. A deployment's poller is named here and not
-built: it reads the feed, compares with the rate resolved now, and
-publishes a difference.
+for both feeds. The simulation replays the series: when the bank opens it
+publishes everything up to the end of the day in progress, and thereafter
+each day's publications at the day roll that closes the day, before the
+bank reads the day's rate; until ADR-0010 the clock is the warped wall
+clock of stage 4, which flat out never reaches noon, so a publication is
+seen on the console the morning after. A publication the bank already has
+is not recorded again, so a resumed run, or one upgraded from before the
+market was a parameter, replays its whole past once. A deployment's
+poller is named here and not built: it reads the feed, compares with the
+rate resolved now, and publishes a difference.
 
 A bank with no market setting for its currency on a day cannot start
 that day: `StartDay` refuses before the pass and the console names the
@@ -109,7 +112,7 @@ feed is a core command and so runs after the bank opens.
 | Table | Owner | Change |
 |---|---|---|
 | `parameter_settings` | bank/parameters | none: the market scope is a value of `scope`; `effective_from` keeps its full precision |
-| `daily_snapshots` | bank/history | `risk_free_bps BIGINT` added, backfilled from `boe_rate` rounded; `boe_rate` left for the older build of the drill, written no more |
+| `daily_snapshots` | bank/history | `risk_free_bps BIGINT` added; rows from before it are read from `boe_rate` rounded; `boe_rate` is still written as the decimal for the older build of the drill's rollback, and goes a release later |
 
 `bank/market` owns no table (ADR-0001): the sources are code and the
 publications are settings. `core.BaseRateSource`, `BaseRateFunc`,
@@ -125,7 +128,7 @@ publications are settings. `core.BaseRateSource`, `BaseRateFunc`,
 | Lag and take left out of the contract | `Derivation{Lag, Take}` as data | pass-through is the bank's policy, an algorithm in its own module (ADR-0007); data would be a product designer by another name |
 | Effective at an instant; a day's value is its end-of-day value | effective by day, publications dated the day | the Bank publishes at noon and means that day; by-day storage could not say when, and the event clock (ADR-0010) needs the instant |
 | Refuse the day, not the open, when the market is silent | refuse the open | the feed is a command on an open bank; refusing the open would need a second path into the settings before the bank exists |
-| A rate column in basis points beside the double | convert the column in place | the drill's rollback runs the older build on the same database; it reads `boe_rate` and ignores the new column |
+| A rate column in basis points beside the double, both written for a release | convert the column in place | the drill's rollback runs the older build on the same database; it reads `boe_rate` and ignores the new column |
 
 ## Consequences
 
@@ -136,10 +139,12 @@ publications are settings. `core.BaseRateSource`, `BaseRateFunc`,
 - The sim's `RateSeries` becomes a replay of publications; its CSV and
   `cmd/boefetch` stay as the series' source, now named by `bank/market`'s
   GBP entry.
-- The products page lists a publication the clock has not reached as
-  upcoming, which only the simulation can produce (a deployment's feed
-  publishes the present); a staff member seeing the future is the
-  demo's tell, and acceptable.
+- Nothing is ever upcoming at the market scope: a publication is
+  effective when made, and the simulation publishes at the roll that
+  closes the day. Upcoming settings on the products page are staff's,
+  and arrive with the event clock (ADR-0010, story 1.8.5).
+- A day the market has published no rate for is refused, and the console
+  shows the refusal beside the day until a publication lets it start.
 - A second currency is a second `Source`, a second owner in the settings
   and, for the treasury, a question this ADR does not answer: which
   currencies' reserves it holds. Out of scope until a product is not GBP.

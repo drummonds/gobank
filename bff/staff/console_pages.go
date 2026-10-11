@@ -148,13 +148,13 @@ func BuildSettingsHTML(q core.BookQueries, settings Settings, polling bool, rest
 	s.WriteString(`<p class="help">Wall-clock length of a simulated day, e.g. 2h or 90m; 0 runs flat out. Takes effect from the next day</p>`)
 	s.WriteString(`</div>`)
 
-	// BoE Base Rate (read-only)
+	// The pound's risk-free rate (read-only: the market's, ADR-0009)
 	s.WriteString(`<div class="field">`)
-	s.WriteString(`<label class="label">BoE Base Rate</label>`)
+	s.WriteString(`<label class="label">Bank Rate (Bank of England)</label>`)
 	s.WriteString(`<div class="control">`)
-	s.WriteString(fmt.Sprintf(`<span class="tag is-medium is-info">%.2f%%</span>`, pos.BoERate*100))
+	s.WriteString(fmt.Sprintf(`<span class="tag is-medium is-info">%s</span>`, FormatRateBps(pos.RiskFreeBps)))
 	s.WriteString(`</div>`)
-	s.WriteString(`<p class="help">Driven by historical Bank of England data</p>`)
+	s.WriteString(`<p class="help">Published by the market: the simulation replays the Bank of England's series</p>`)
 	s.WriteString(`</div>`)
 
 	// Capital Reserve Ratio (read-only)
@@ -262,7 +262,6 @@ func BuildRuntimeHTML(q core.StaffQueries, rt Runtime, version string) string {
 	customerCount := pos.Customers
 	products, _ := q.Products(ctx)
 	productCount := len(products)
-	boeRate := pos.BoERate * 100
 	paymentCount := 0
 	if pp, err := q.PaymentPage(ctx, 1); err == nil {
 		paymentCount = pp.Total
@@ -340,7 +339,7 @@ func BuildRuntimeHTML(q core.StaffQueries, rt Runtime, version string) string {
 	s.WriteString(fmt.Sprintf(`<tr><th>Customers</th><td>%d</td></tr>`, customerCount))
 	s.WriteString(fmt.Sprintf(`<tr><th>Products</th><td>%d</td></tr>`, productCount))
 	s.WriteString(fmt.Sprintf(`<tr><th>Payments</th><td>%d</td></tr>`, paymentCount))
-	s.WriteString(fmt.Sprintf(`<tr><th>BoE base rate</th><td>%.2f%%</td></tr>`, boeRate))
+	s.WriteString(fmt.Sprintf(`<tr><th>Bank Rate (Bank of England)</th><td>%s</td></tr>`, FormatRateBps(pos.RiskFreeBps)))
 	s.WriteString(`</table></div>`)
 
 	return s.String()

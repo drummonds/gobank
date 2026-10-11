@@ -2,6 +2,28 @@
 
 ## [Unreleased]
 
+### Added
+- Stage 8 story 1.8.4: the risk-free rate is market data (ADR-0009). A
+  currency's official rate comes from its market: `bank/market` names the
+  pound's (the Bank of England's Bank Rate, its page and feed, published
+  at noon London time) and records each publication as a setting at the
+  contract's new `market` scope, owner the currency, that only the feed
+  writes through the one new core command, `Publish`. Settings are
+  effective from an instant rather than a day, and a rule's parameter for
+  a day is its value at the end of that day, so a noon publication counts
+  for the whole day. The treasury's reserve accrual reads the pound's
+  rate; a day the market has published no rate for is refused, with the
+  reason on the dashboard and in `/about.json`. The simulation replays
+  the Bank's historical series as the feed, catching up when the bank
+  opens so a run from before this release has its publications.
+
+### Changed
+- The last floating-point rates are gone: `core.BaseRateSource` is
+  retired, the position, the history and the charts carry the rate in
+  basis points, and `daily_snapshots` gains `risk_free_bps` (the decimal
+  column is still written for one release, for the drill's rollback).
+- gobank-products pinned at v0.7.0 (the `market` scope).
+
 ## [0.30.0] - 2026-10-11
 
  - Stage 8 story 1.8.2: the catalogue as products on rules versions (ADR-0006 as amended), the runner over the product contract, the parameters component

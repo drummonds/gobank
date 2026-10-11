@@ -25,6 +25,7 @@ import (
 	"git.bytestone.uk/hum3/gobank/bank/gl"
 	"git.bytestone.uk/hum3/gobank/bank/history"
 	"git.bytestone.uk/hum3/gobank/bank/ledger"
+	"git.bytestone.uk/hum3/gobank/bank/market"
 	"git.bytestone.uk/hum3/gobank/bank/parameters"
 	"git.bytestone.uk/hum3/gobank/bank/payments"
 	"git.bytestone.uk/hum3/gobank/bank/products"
@@ -56,12 +57,11 @@ const CodeDailyAccrual = "LDAS:FTDP:ACRU"
 
 // Options wire a Bank.
 type Options struct {
-	Definition definition.Bank     // what makes this bank this bank (ADR-0007): its name and the product versions it carries
-	Clock      core.Clock          // where the bank reads the time; nil is the wall clock
-	Rates      core.BaseRateSource // where the bank reads the base rate; nil is a flat 5.25%
-	PIIKey     store.KeyProvider   // the key the customers' PII is encrypted with; nil is the demo's fixed key
-	Seed       int64               // the account numbers' randomness
-	PassHook   func()              // called after each account the pass visits; tests cut a pass short with it
+	Definition definition.Bank   // what makes this bank this bank (ADR-0007): its name and the product versions it carries
+	Clock      core.Clock        // where the bank reads the time; nil is the wall clock
+	PIIKey     store.KeyProvider // the key the customers' PII is encrypted with; nil is the demo's fixed key
+	Seed       int64             // the account numbers' randomness
+	PassHook   func()            // called after each account the pass visits; tests cut a pass short with it
 	// AdminPassword is the first admin's password, the deployment's
 	// secret: the bank opens with the user "admin" signing in with it.
 	// Empty opens the bank with no admin, so nobody signs in to the staff
@@ -78,7 +78,7 @@ type Bank struct {
 	db            *sql.DB
 	definition    definition.Bank
 	clock         core.Clock
-	rates         core.BaseRateSource
+	market        *market.Market // where the risk-free rate comes from (ADR-0009): the market's publications in the settings
 	key           store.KeyProvider
 	seed          int64
 	adminPassword string
@@ -93,12 +93,12 @@ type Bank struct {
 	users     *users.Users
 
 	// mu guards the day and the figures only its start writes: the day
-	// itself, the base rate, the BoE reserve's accrual, the day's accrual
-	// for the NIM, and the pass's state.
+	// itself, the risk-free rate, the BoE reserve's accrual, the day's
+	// accrual for the NIM, and the pass's state.
 	mu                  sync.Mutex
 	day                 time.Time
 	dayCount            int
-	boeRate             float64            // BoE base rate as a decimal, e.g. 0.0525; moves with the rate source
+	riskFreeBps         int64              // GBP's risk-free rate in basis points as last known: the market's latest publication by the end of the day the bank closed
 	reserveRatio        float64            // fraction of deposits held as BoE reserves, e.g. 0.15
 	dayComplete         bool               // every account has its position for day: the start-of-day pass is done
 	glStatus            core.GeneralLedger // the GL as of its last close, for the position
@@ -124,14 +124,11 @@ func Open(db *sql.DB, opts Options) (*Bank, error) {
 	if len(opts.Definition.Products) == 0 {
 		return nil, fmt.Errorf("bank: a definition with products is needed")
 	}
-	b := &Bank{definition: opts.Definition, clock: opts.Clock, rates: opts.Rates, key: opts.PIIKey, seed: opts.Seed, passHook: opts.PassHook, adminPassword: opts.AdminPassword}
+	b := &Bank{definition: opts.Definition, clock: opts.Clock, key: opts.PIIKey, seed: opts.Seed, passHook: opts.PassHook, adminPassword: opts.AdminPassword}
 	b.book = newReading(b.readBook, bookTTL)
 	b.interest = newReading(b.readInterest, bookTTL)
 	if b.clock == nil {
 		b.clock = core.ClockFunc(time.Now)
-	}
-	if b.rates == nil {
-		b.rates = core.BaseRateFunc(func(time.Time) float64 { return 0.0525 })
 	}
 	if b.key == nil {
 		b.key = DemoPIIKey
@@ -173,6 +170,7 @@ func (b *Bank) openOn(db *sql.DB) error {
 		day, dayCount = latest, int(latest.Sub(first).Hours()/24)
 	}
 	settings := parameters.Open(db)
+	b.market = market.New(settings)
 	catalogue := products.New(db, settings, b.definition.Products)
 	if err := catalogue.Adopt(ctx, day); err != nil {
 		return err
@@ -207,7 +205,7 @@ func (b *Bank) openOn(db *sql.DB) error {
 	b.glStatus = glReport(glStatus)
 	b.treasury = treasury.New(db, b.businessDay)
 	b.day, b.dayCount = day, dayCount
-	b.boeRate = b.rates.BaseRate(day)
+	b.riskFreeBps, _, _ = b.market.Rate(ctx, nil, products.Currency, parameters.EndOfDay(day))
 	b.reserveRatio = DefaultReserveRatio
 	b.dayComplete = true
 	b.nimBps = 0
@@ -367,7 +365,9 @@ func (b *Bank) StartDay(ctx context.Context) (time.Time, error) {
 		if pending {
 			b.progress.begin(day) // resuming the day's pass
 		} else if day.Before(core.BusinessDay(b.clock.Now())) {
-			day = b.startDay(ctx)
+			if day, err = b.startDay(ctx); err != nil {
+				return day, err
+			}
 		} else {
 			// On the clock's day with the day's work done: a fresh bank
 			// or a restart; the ledgers' day is this one, and a GL close
@@ -414,19 +414,30 @@ func (b *Bank) StartDay(ctx context.Context) (time.Time, error) {
 }
 
 // startDay closes yesterday's bank-level books and begins the next day:
-// BoE interest accrues on the excess reserves yesterday closed with and is
-// projected on the reserve account; the date and the base rate move on;
+// BoE interest accrues on the excess reserves yesterday closed with, at
+// the risk-free rate the market had published by the end of that day
+// (ADR-0009), and is projected on the reserve account; the date moves on;
 // the day's snapshot is written, so a restart from here resumes this
-// day. Returns the new day. Who joins the bank on the new day is the
-// simulation's business, not the bank's.
-func (b *Bank) startDay(ctx context.Context) time.Time {
+// day. Returns the new day. Refused, with nothing changed, while the
+// market has published no rate for the day being closed: the bank cannot
+// accrue at a rate it does not have. Who joins the bank on the new day is
+// the simulation's business, not the bank's.
+func (b *Bank) startDay(ctx context.Context) (time.Time, error) {
+	closing := b.businessDay()
+	bps, ok, err := b.market.Rate(ctx, nil, products.Currency, parameters.EndOfDay(closing))
+	if err != nil {
+		return closing, err
+	}
+	if !ok {
+		return closing, fmt.Errorf("bank: %s has published no %s rate for %s: the day cannot start", market.GBP.Name, products.Currency, closing.Format(time.DateOnly))
+	}
 	savings, lending, count := b.freshBook(ctx)
 	b.mu.Lock()
 	closed := b.day
 	excess := savings - lending - requiredReserves(savings, b.reserveRatio)
 	if excess > 0 {
 		// Exact BoE interest accrual: numerator over gbp.AccrualDenominator.
-		b.boeAccruedNumerator += int64(excess) * gbp.RateBps(b.boeRate)
+		b.boeAccruedNumerator += int64(excess) * bps
 	}
 	movements := b.collectBoEInterestLocked(closed)
 	numerator := b.boeAccruedNumerator
@@ -434,7 +445,7 @@ func (b *Bank) startDay(ctx context.Context) time.Time {
 	b.day = closed.AddDate(0, 0, 1)
 	b.dayCount++
 	b.dayComplete = false
-	b.boeRate = b.rates.BaseRate(b.day)
+	b.riskFreeBps = bps
 	day := b.day
 
 	// The snapshot is the day the bank starts, with the NIM of the day
@@ -460,7 +471,32 @@ func (b *Bank) startDay(ctx context.Context) time.Time {
 	// The day's snapshot is the bank's record of having begun it: a
 	// restart from here resumes it.
 	b.saveSnapshot(snapshot)
-	return day
+	return day, nil
+}
+
+// Publish is the feed's command (core.MarketCommands, ADR-0009): a
+// market's publication, recorded as a setting at the market scope. The
+// bank's own figure for the rate follows at once when the publication is
+// in force by the end of the day the bank is on; the next day's start
+// accrues at it.
+func (b *Bank) Publish(ctx context.Context, p core.Publication) error {
+	b.open.RLock()
+	defer b.open.RUnlock()
+	if err := b.market.Publish(ctx, nil, p); err != nil {
+		return err
+	}
+	day := b.businessDay()
+	if p.Currency != products.Currency || p.At.After(parameters.EndOfDay(day)) {
+		return nil
+	}
+	bps, ok, err := b.market.Rate(ctx, nil, products.Currency, parameters.EndOfDay(day))
+	if err != nil || !ok {
+		return err
+	}
+	b.mu.Lock()
+	b.riskFreeBps = bps
+	b.mu.Unlock()
+	return nil
 }
 
 // requiredReserves is the ratio of deposits the bank must hold at the BoE.
@@ -515,7 +551,7 @@ func (b *Bank) boeInterestTotalLocked() luca.Amount {
 }
 
 // snapshotLocked takes the day's snapshot — the book, the customers, the
-// NIM and the base rate — for the caller to store off the lock. Must be
+// NIM and the risk-free rate — for the caller to store off the lock. Must be
 // called with mu held.
 func (b *Bank) snapshotLocked(savings, lending luca.Amount, count int) history.Snapshot {
 	// Today's interest in minor units, from the rules' exact accrual (rate
@@ -526,14 +562,14 @@ func (b *Bank) snapshotLocked(savings, lending luca.Amount, count int) history.S
 	excess := savings - lending - requiredReserves(savings, b.reserveRatio)
 	boeInterest := 0.0
 	if excess > 0 {
-		boeInterest = float64(excess) * b.boeRate / 365.0
+		boeInterest = float64(excess) * float64(b.riskFreeBps) / 10000 / 365.0
 	}
 	nimBps := 0.0
 	if savings > 0 {
 		nimBps = (loanInterest + boeInterest - depositInterest) / float64(savings) * 365.0 * 10000.0
 	}
 	b.nimBps = nimBps
-	return history.Snapshot{Day: b.day, Savings: savings, Lending: lending, Customers: count, NIMBps: nimBps, BoERate: b.boeRate}
+	return history.Snapshot{Day: b.day, Savings: savings, Lending: lending, Customers: count, NIMBps: nimBps, RiskFreeBps: b.riskFreeBps}
 }
 
 // saveSnapshot stores a day's snapshot on the bank's record and logs a

@@ -26,7 +26,7 @@ var components = []Component{
 	},
 	{
 		Name:    "simulation",
-		Purpose: "The run's place in time (the day the bank is on, whether the run loop is going, so a restart resumes), the restart record (each process start against the stop before it, for an upgrade's downtime) and the simulation (package sim): the warped clock the bank reads, the replayed base rate, the generators for the population and its payments, and the run loop, all reaching the bank through the core alone.",
+		Purpose: "The run's place in time (the day the bank is on, whether the run loop is going, so a restart resumes), the restart record (each process start against the stop before it, for an upgrade's downtime) and the simulation (package sim): the warped clock the bank reads, the Bank of England's series replayed as the pound's feed, the generators for the population and its payments, and the run loop, all reaching the bank through the core alone.",
 		Files:   []string{"run.go", "restarts.go", "console.go", "sim/sim.go", "sim/clock.go", "sim/customers.go", "sim/payments.go", "sim/rates.go", "sim/daylength.go"},
 		Tables:  []string{"sim_run", "restarts"},
 	},
@@ -67,9 +67,14 @@ var components = []Component{
 	},
 	{
 		Name:    "parameters",
-		Purpose: "The bank's settings (ADR-0006): the stored values of the parameters product versions and the bank's policy declare, each with the day it is effective from and the moment it was decided, append-only, resolved for a day as known at a moment.",
+		Purpose: "The bank's settings (ADR-0006): the stored values of the parameters product versions, the bank's policy and the markets declare, each with the instant it is effective from and the moment it was decided, append-only, resolved at an instant as known at a moment; a day's value is its end-of-day value (ADR-0009).",
 		Package: "bank/parameters",
 		Tables:  []string{"parameter_settings"},
+	},
+	{
+		Name:    "market",
+		Purpose: "Where a currency's official risk-free rate comes from (ADR-0009): the markets the bank knows (GBP: the Bank of England's Bank Rate, published at noon London time on a decision day), each publication a setting at the market scope that only the market's feed writes, through one core command. Owns no table.",
+		Package: "bank/market",
 	},
 	{
 		Name:    "payments",
@@ -80,7 +85,7 @@ var components = []Component{
 	},
 	{
 		Name:    "history",
-		Purpose: "The bank's daily series for the dashboard charts: one snapshot a day of the book, the customers, the NIM and the base rate.",
+		Purpose: "The bank's daily series for the dashboard charts: one snapshot a day of the book, the customers, the NIM and the risk-free rate.",
 		Package: "bank/history",
 		Tables:  []string{"daily_snapshots"},
 	},

@@ -12,6 +12,12 @@ import (
 
 func open(t *testing.T) *History {
 	t.Helper()
+	h, _ := openDB(t)
+	return h
+}
+
+func openDB(t *testing.T) (*History, *sql.DB) {
+	t.Helper()
 	db, err := sql.Open("pglike", ":memory:")
 	if err != nil {
 		t.Fatal(err)
@@ -24,7 +30,7 @@ func open(t *testing.T) *History {
 			}
 		}
 	}
-	return New(db)
+	return New(db), db
 }
 
 func amount(n int) luca.Amount { return luca.Amount(n * 100) }
@@ -38,7 +44,7 @@ func day(n int) time.Time {
 func TestADayIsSnapshottedOnce(t *testing.T) {
 	h := open(t)
 	ctx := context.Background()
-	first := Snapshot{Day: day(0), Savings: 100_00, Lending: 40_00, Customers: 3, NIMBps: 120.5, BoERate: 0.0525}
+	first := Snapshot{Day: day(0), Savings: 100_00, Lending: 40_00, Customers: 3, NIMBps: 120.5, RiskFreeBps: 525}
 	if err := h.Save(ctx, first); err != nil {
 		t.Fatal(err)
 	}
@@ -78,7 +84,7 @@ func TestSpanAndSeriesAreInDayOrder(t *testing.T) {
 	h := open(t)
 	ctx := context.Background()
 	for _, n := range []int{2, 0, 1} {
-		if err := h.Save(ctx, Snapshot{Day: day(n), Savings: amount(n), Customers: n, NIMBps: float64(n), BoERate: 0.05}); err != nil {
+		if err := h.Save(ctx, Snapshot{Day: day(n), Savings: amount(n), Customers: n, NIMBps: float64(n), RiskFreeBps: 500}); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -90,12 +96,12 @@ func TestSpanAndSeriesAreInDayOrder(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(s.Balances) != 3 || len(s.Customers) != 3 || len(s.NIM) != 3 || len(s.BoERate) != 3 {
-		t.Fatalf("series lengths %d %d %d %d, want 3 each", len(s.Balances), len(s.Customers), len(s.NIM), len(s.BoERate))
+	if len(s.Balances) != 3 || len(s.Customers) != 3 || len(s.NIM) != 3 || len(s.RiskFree) != 3 {
+		t.Fatalf("series lengths %d %d %d %d, want 3 each", len(s.Balances), len(s.Customers), len(s.NIM), len(s.RiskFree))
 	}
 	for i := range 3 {
-		if !s.Balances[i].Date.Equal(day(i)) || s.Balances[i].Savings != amount(i) || s.Customers[i].Count != i || s.NIM[i].NIM != float64(i) || s.BoERate[i].Rate != 0.05 {
-			t.Errorf("point %d = %+v %+v %+v %+v", i, s.Balances[i], s.Customers[i], s.NIM[i], s.BoERate[i])
+		if !s.Balances[i].Date.Equal(day(i)) || s.Balances[i].Savings != amount(i) || s.Customers[i].Count != i || s.NIM[i].NIM != float64(i) || s.RiskFree[i].Bps != 500 {
+			t.Errorf("point %d = %+v %+v %+v %+v", i, s.Balances[i], s.Customers[i], s.NIM[i], s.RiskFree[i])
 		}
 	}
 }
@@ -130,5 +136,29 @@ func TestSchemaVersionsRunFromOne(t *testing.T) {
 		if m.Version != i+1 {
 			t.Errorf("migration %d listed where version %d is due", m.Version, i+1)
 		}
+	}
+}
+
+// The risk-free rate is stored in basis points (ADR-0009); rows written
+// before the column existed are read back from the decimal they carried.
+func TestRiskFreeRateIsBasisPoints(t *testing.T) {
+	h, db := openDB(t)
+	ctx := context.Background()
+	if _, err := db.Exec(`INSERT INTO daily_snapshots (day, savings, lending, customers, nim_bps, boe_rate) VALUES ($1, 0, 0, 0, 0, 0.0525)`, day(0)); err != nil {
+		t.Fatal(err)
+	}
+	if err := h.Save(ctx, Snapshot{Day: day(1), RiskFreeBps: 400}); err != nil {
+		t.Fatal(err)
+	}
+	s, err := h.Series(ctx)
+	if err != nil || len(s.RiskFree) != 2 {
+		t.Fatalf("series %+v, %v", s.RiskFree, err)
+	}
+	if s.RiskFree[0].Bps != 525 || s.RiskFree[1].Bps != 400 {
+		t.Errorf("rates %+v, want 525 then 400", s.RiskFree)
+	}
+	latest, ok, err := h.Latest(ctx)
+	if err != nil || !ok || latest.RiskFreeBps != 400 {
+		t.Errorf("latest %+v, %v, %v", latest, ok, err)
 	}
 }

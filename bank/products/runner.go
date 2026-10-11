@@ -233,9 +233,11 @@ func (f *facts) readsText() string {
 
 // resolve is the parameter resolution of ADR-0006: a derived parameter
 // from its source and the formula; a declared one from the latest setting
-// effective on or before the day at its scope, as known at knownAt, or,
-// at the product's scope (the contract's "version" scope), the value the
-// rules publish.
+// in effect at the end of the day at its scope (ADR-0009: a setting is
+// effective from an instant, and a noon publication counts for its day),
+// as known at knownAt, or, at the product's scope (the contract's
+// "version" scope), the value the rules publish. A market-scope parameter
+// is the product's currency's.
 func (p *Products) resolve(ctx context.Context, q ledger.Querier, prod Product, accountID, key string, day, knownAt time.Time) (gbp.Param, error) {
 	d, ok := gbp.Declared(prod.Rules, key)
 	if !ok {
@@ -250,12 +252,14 @@ func (p *Products) resolve(ctx context.Context, q ledger.Querier, prod Product, 
 	}
 	owner := parameters.OwnerBank
 	switch d.Scope {
+	case gbp.ScopeMarket:
+		owner = prod.Currency
 	case gbp.ScopeVersion:
 		owner = prod.ID
 	case gbp.ScopeAccount:
 		owner = accountID
 	}
-	text, found, err := p.params.Resolve(ctx, q, d.Scope, owner, key, day, knownAt)
+	text, found, err := p.params.Resolve(ctx, q, d.Scope, owner, key, parameters.EndOfDay(day), knownAt)
 	if err != nil {
 		return gbp.Param{}, err
 	}
