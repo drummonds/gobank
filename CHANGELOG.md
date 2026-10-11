@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+## [0.31.0] - 2026-10-11
+
+ - Story 1.8.4: the risk-free rate is market data (ADR-0009) — bank/market, settings effective at an instant, Publish command, float rates retired
+
 ### Added
 - Stage 8 story 1.8.4: the risk-free rate is market data (ADR-0009). A
   currency's official rate comes from its market: `bank/market` names the
