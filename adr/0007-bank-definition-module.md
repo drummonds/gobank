@@ -2,7 +2,7 @@
 
 Status: Accepted
 Date: 2026-10-10, accepted 2026-10-11
-Stage: ADR-0002 stage 8 (roadmap 1.8), stories 1.8.2, 1.8.4 and 1.8.5
+Stage: ADR-0002 stage 8 (roadmap 1.8), stories 1.8.2, 1.8.4 and 1.8.5 (renumbered 2026-10-11: 1.8.3, 1.8.6 and 1.8.7)
 
 ## Context
 
@@ -25,15 +25,15 @@ definition module over the same capabilities.
 |---|---|
 | The bank's name | the ledger, the GL, customers, payments, users, the BFF and apps |
 | The product versions it carries at one time, in catalogue order, each with the bank's blurb and whether it is withdrawn from sale: the catalogue and its migration data, release by release | the product contract (gobank-products), the runner, the adoption record |
-| Its policy: the savings and lending base rates derived from the market rate, their spreads and lags (ADR-0006, story 1.8.4) | the parameters component that stores settings and resolves them |
-| Its own products, once a product is the bank's rather than the library's (story 1.8.5) | products a bank shares with others |
+| Its policy: the savings and lending base rates derived from the market rate, their spreads and lags (ADR-0006, story 1.8.4, now 1.8.6) | the parameters component that stores settings and resolves them |
+| Its own products, once a product is the bank's rather than the library's (story 1.8.5, now 1.8.7) | products a bank shares with others |
 | Customisation that overrules defaults as it arises: data lifetime, security settings | the defaults |
 
 The shape today is `bank/definition.Bank` (name, product listings) and
 the package `modelbank` in gobank that implements it for the Model
 Bank; `bank.Open` takes the definition and refuses to open without one.
 The package becomes the module `modelbank`, in its own repository, in
-story 1.8.4 when the policy joins it: a module with one product list and
+story 1.8.4 (now 1.8.6) when the policy joins it: a module with one product list and
 no policy is not yet worth a repository.
 
 ### Ownership and cadence

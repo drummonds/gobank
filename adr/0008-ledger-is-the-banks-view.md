@@ -2,7 +2,7 @@
 
 Status: Accepted
 Date: 2026-10-10, accepted 2026-10-11
-Stage: ADR-0002 stage 8 (roadmap 1.8), story 1.8.2a, before 1.8.2 completes
+Stage: ADR-0002 stage 8 (roadmap 1.8), story 1.8.2a, before 1.8.2 completes (renumbered 2026-10-11: 1.8.2 and 1.8.3)
 
 ## Context
 
@@ -34,7 +34,7 @@ a movement's direction that way. The same month in that view
 
 ![The bank's view: the postings as the contract reads them](0008-decided.svg)
 
-Integrating the contract (story 1.8.2) the ISA counted every deposit as
+Integrating the contract (story 1.8.2, now 1.8.3) the ISA counted every deposit as
 a withdrawal. Two conventions met, and one has to go. For the view
 itself, double entry as a directed graph with debit and credit as
 nothing more than positive and negative, see *Accounting for

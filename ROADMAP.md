@@ -549,55 +549,58 @@ root module, `cmd/bff` is the service binary, and `app/` is the Flutter shell.
   change of version, close) as pure rules: facts read through an
   interface, intents (positions, postings, refusals) returned, the bank's
   runner carrying them out under the account's lock. A rate is a
-  parameter the version declares with a scope (bank, product version,
+  parameter the version declares with a scope (market, bank, product,
   account) and a source: a stored setting, or a derivation from another
   parameter in code (base rate − 15 bps, floor 0, possibly negative).
   A product rate derives by default from a bank rate for its family,
-  itself derived from the Bank of England rate by the bank's policy
-  (versioned code too) with a spread and an asymmetric lag; a version
-  with logic of its own publishes a fixed rate or answers the parameter
-  change event itself.
+  itself derived from the currency's risk-free rate by the bank's policy
+  (code in the bank's own module) with a spread and an asymmetric lag; a
+  version with logic of its own publishes a fixed rate or answers the
+  parameter change event itself.
   Settings are bitemporal (effective-from, decided-at, append-only), so a
-  rate change is decided today for a future day and takes effect with
-  nothing to do; a rule change is a new version, a value change a
+  rate change is decided today for a future instant and takes effect
+  with nothing to do; a rule change is a new version, a value change a
   setting. The bank stores adoption (`products`), the account's version,
   the settings (`bank/parameters`) and on every rule posting the
-  version, event and resolved values (`product_postings`). The base rate
-  becomes a bank parameter the simulation writes and the treasury reads;
-  `core.BaseRateSource` goes. Settled from the earlier opens: the version
-  is a per-product integer in code with the module version recorded on
-  adoption; the posting's version is a bank table, not go-luca
-  metadata. The build carries only the versions the bank has (on sale
-  or with accounts on them); each version ships its own up (adoption)
-  and down (withdrawal) migration, both additive, applied by the bank's
-  migration and the drill's rollback like any component's; a retired
-  version's package goes, and its postings and their records stay,
-  carrying the inputs so they verify by arithmetic without the code; an
-  older build leaves accounts on versions it lacks unprojected and
-  counted. Out of scope: a product designer, products as data, bulk
+  version, event and resolved values (`product_postings`). The Bank of
+  England rate becomes market data (ADR-0009) the feed writes and the
+  treasury reads; `core.BaseRateSource` goes. Settled from the earlier
+  opens: the version is a per-product integer in code with the module
+  version recorded on adoption; the posting's version is a bank table,
+  not go-luca metadata. The build carries only the versions the bank has
+  (on sale or with accounts on them); each version ships its own up
+  (adoption) and down (withdrawal) migration, both additive, applied by
+  the bank's migration and the drill's rollback like any component's; a
+  retired version's package goes, and its postings and their records
+  stay, carrying the inputs so they verify by arithmetic without the
+  code; an older build leaves accounts on versions it lacks unprojected
+  and counted. Out of scope: a product designer, products as data, bulk
   migration between versions (the per-account event is in), notice
   periods, corrections as adjustment postings, negotiated per-account
-  rates. Stories:
-- **1.8** also carries two decisions taken while 1.8.2 was in hand:
-  ADR-0007 (proposed 2026-10-10), the bank's definition as a module of
-  its own — name, the product versions carried with their withdrawals,
-  the policy, later its own products — with gobank the capabilities, a
-  white label another definition; and ADR-0008 (proposed 2026-10-10),
-  the ledger is the bank's view — credit-normal accounts negative, a
-  movement from the account credited to the account debited, `Asset:Cash`
-  the counterparty of customer flows, the customer's positive view a
-  presentation setting — found when the contract's rules met the bank's
-  positive savings balances
-- **1.8.1** gobank-products: the contract and v1 of every product —
+  rates.
+  The stage also carries two decisions taken while the catalogue (1.8.3,
+  then numbered 1.8.2) was in hand: ADR-0007 (proposed 2026-10-10), the
+  bank's definition as a module of its own — name, the product versions
+  carried with their withdrawals, the policy, later its own products —
+  with gobank the capabilities, a white label another definition; and
+  ADR-0008 (proposed 2026-10-10), the ledger is the bank's view —
+  credit-normal accounts negative, a movement from the account credited
+  to the account debited, `Asset:Cash` the counterparty of customer
+  flows, the customer's positive view a presentation setting — found
+  when the contract's rules met the bank's positive savings balances.
+  Stories renumbered 2026-10-11 into shipping order (`tp roadmap
+  renumber`); an item that moved names the number it had. Stories:
+- **1.8.1** [x] (gobank-products v0.6.0) gobank-products: the contract
+  and v1 of every product —
   `Version`, `Facts`, events and intents, parameter declarations with
   scope and derivation; six `<product>/v1` packages reproducing today's
   behaviour exactly with the bank's rates moved in as published basis
   points; goldens re-pinned per package; the feature framework,
   `SimContext`, `Simulation` and `ParameterStore` retired. A library
-  release; gobank stays on v0.3.0 until 1.8.2
-- **1.8.2a** the ledger is the bank's view (ADR-0008; taken before
-  1.8.2 completes; SHIPPED v0.29.0 2026-10-10, preprod and prod reset on
-  it) — posting directions per the ADR's table, `Asset:Cash`
+  release; gobank stayed on v0.3.0 until the catalogue
+- **1.8.2** [x] (v0.29.0) (was 1.8.2a) the ledger is the bank's view
+  (ADR-0008; taken before the catalogue completed; preprod and prod
+  reset on it) — posting directions per the ADR's table, `Asset:Cash`
   on both charts, the ledger wrapper's parameters named credit and debit,
   every read's sign correction gone, the staff web's view switch (bank's
   view by default) and the app's customer view with its position with the
@@ -609,8 +612,7 @@ root module, `cmd/bff` is the service binary, and `app/` is the Flutter shell.
   first, raised there); no conversion
   of running banks: preprod and prod are reset on this release, the
   drill a fresh deploy named as ADR-0003's exception
-- **1.8.2** the catalogue and the runner (BUILT 2026-10-11 on branch
-  stage-8-2-catalogue-runner, awaiting release and the preprod drill) —
+- **1.8.3** [x] (v0.30.0) (was 1.8.2) the catalogue and the runner —
   `products` as instances of rules versions (ADR-0006 as amended: each
   with its own ID and name, the rules version it runs on, adoption and
   withdrawal days; the six initial products adopted from the definition
@@ -627,32 +629,60 @@ root module, `cmd/bff` is the service binary, and `app/` is the Flutter shell.
   products page showing each product's rules, parameters and accounts.
   Found and fixed on the way: the GL journal collision at month end
   (v0.29.1)
-- **1.8.3** parameters — bitemporal resolution in use beyond account
-  settings: the base rate as a bank-scoped parameter the simulation
-  writes (decided before effective, as the Bank of England announces)
-  and the treasury reads, `core.BaseRateSource` retired; lagged
-  derivations added to the contract; a staff page setting a product rate
-  or a bank parameter effective on a future day, with upcoming settings
-  shown on the products page
-- **1.8.4** the bank module — `modelbank` extracted into a module of its
-  own (ADR-0007) carrying the Model Bank's policy: its savings and
-  lending base rates as lagged derivations of the Bank of England rate
-  (a cut reaches savers at once and a rise after a lag, borrowers the
-  other way about; spread and lag published, changeable by setting), and
-  a documentation structure for a bank definition with the graphs that
-  show it: the base rate against the bank's savings and lending rates
-  over the run. `easyaccess/v2` tracking the bank savings rate at − 15
-  bps, floor 0, adopted on preprod mid-run, new accounts opening on it,
-  its accrual seen moving when the base rate does
-- **1.8.5** a product of the bank's own — one product version moves from
-  gobank-products into the bank module, the contract and the engine
-  staying in the library, proving a bank defines its own products
-- **1.8.6** the remaining events — pre-posting (term lock, ISA
-  allowance, overdraft limit as rules the payments path asks),
-  parameter change, start-up, manual commands from the console, change
-  of version per account from the staff account page. Done-when of the
-  stage: an account moved from easy-access v1 to v2 on preprod, its v1
-  cycle closed by postings that record v1
+- **1.8.4** the risk-free rate (ADR-0009; the first half of what was
+  1.8.3) — a currency's official risk-free rate is market data, not the
+  bank's: `bank/market` names each currency's source (GBP: the Bank of
+  England Bank Rate, its page and the IADB feed `cmd/boefetch` already
+  reads, published 12:00 London on decision days; EUR and USD later,
+  each with its own process) and writes each publication as a setting at
+  the contract's new `market` scope, owner the currency, key
+  `risk_free_rate_bps`, effective at the instant published and decided
+  then. Settings become effective at an instant rather than a day, and a
+  rule's parameter for a day is its value at the end of that day, so a
+  noon publication counts for the whole day, as the Bank intends. The
+  simulation replays the historical series through the component as the
+  feed would; a deployment polls. The treasury's reserve accrual reads
+  GBP's rate; `core.BaseRateSource`, the last `float64` rates and the
+  `boe_rate` column go, basis points in their place; the products page
+  shows the rate's history and a publication the clock has not reached.
+  Nothing cascades yet: the v1 rules ignore a parameter change and the
+  day rule reads the rate for its day. Drill: preprod accrues the same
+  reserve interest as before
+- **1.8.5** the event clock (ADR-0010) — the simulation moves by events,
+  not slots: a timeline of the start of day, the market's publications,
+  the payments the generator raises and the settings staff make. The
+  clock stands at an event while the bank processes it and all it
+  causes — a market change reaching the policy, the policy the product
+  rates, the rates every account through the `ParameterChange` event,
+  fired here (moved up from the last story) — and moves to the next
+  event only when the bank reports itself at rest: the pass complete, no
+  account unprojected, no parameter change unfired, no payment in
+  flight. The day-length knob paces the wall clock between events. A
+  staff page sets a product's declared parameter effective at a future
+  instant, one more event on the timeline, with upcoming settings shown
+  on the products page
+- **1.8.6** (was 1.8.4) policy as code — the contract gains a parameter
+  derived by code, the hook ADR-0006's lag and take become, and
+  `modelbank` is extracted into a module of its own (ADR-0007) carrying
+  the Model Bank's policy as code: its savings and lending base rates
+  from the GBP risk-free rate with a spread and an asymmetric lag (a cut
+  reaches savers at once and a rise after a lag, borrowers the other way
+  about), the decision an algorithm the bank's module owns, spread and
+  lag published and changeable by setting; and a documentation structure
+  for a bank definition with the graphs that show it: the risk-free rate
+  against the bank's savings and lending rates over the run.
+  `easyaccess/v2` tracking the bank savings rate at − 15 bps, floor 0,
+  adopted on preprod mid-run, new accounts opening on it, its accrual
+  seen moving when the risk-free rate does
+- **1.8.7** (was 1.8.5) a product of the bank's own — one product version
+  moves from gobank-products into the bank module, the contract and the
+  engine staying in the library, proving a bank defines its own products
+- **1.8.8** (was 1.8.6) the remaining events — pre-posting (term lock,
+  ISA allowance, overdraft limit as rules the payments path asks),
+  start-up, manual commands from the console, change of version per
+  account from the staff account page. Done-when of the stage: an
+  account moved from easy-access v1 to v2 on preprod, its v1 cycle
+  closed by postings that record v1
 - **1.9** Speed — the demo is slow to use. Found by hand on 2026-10-08
   at the Hetzner scale: savings and lending 8 s (a movement sum per
   request), customers 9 s (not attributed), P&L and balance sheet never

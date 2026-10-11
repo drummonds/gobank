@@ -1,0 +1,26 @@
+shape: sequence_diagram
+
+sim: simulation
+clock: sim.Clock
+core: core
+market: bank/market
+params: bank/parameters
+runner: bank/products runner
+accounts: accounts on tracking products
+
+sim -> clock: tick to 12:00 (at rest, next event)
+sim -> core: Publish(GBP, 400 bps)
+core -> market: publication
+market -> params: Set(market/GBP/risk_free_rate_bps, effective 12:00)
+sim -> core: "Owed()?"
+core -> sim: "parameter changes owed: n accounts"
+sim -> core: drive the cascade
+core -> runner: apply parameter changes up to 12:00
+loop: each account {
+  runner -> params: resolve at applied-to, resolve at 12:00
+  runner -> accounts: ParameterChange(from, to) → postings
+  runner -> runner: applied_to = 12:00
+}
+sim -> core: "Owed()?"
+core -> sim: "nothing owed: at rest"
+sim -> clock: wait the paced share, tick to the next event

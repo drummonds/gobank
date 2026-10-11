@@ -279,7 +279,7 @@ configuration and not a release:
 The rules version still publishes defaults, still declares what a
 product of its kind reads, and is still immutable and tested on its own.
 The definition (ADR-0007) lists the bank's initial products and the
-rules versions it may instantiate. Story 1.8.2 built the catalogue in
+rules versions it may instantiate. Story 1.8.2 (now 1.8.3) built the catalogue in
 this shape: `products` keyed by product ID with the rules version as
 columns, `customer_accounts` naming the product alone, a product's
 parameters resolved at the contract's "version" scope with the product

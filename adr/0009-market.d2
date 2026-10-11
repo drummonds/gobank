@@ -1,0 +1,45 @@
+direction: right
+
+boe: Bank of England (GBP market) {
+  page: Bank Rate page
+  feed: "IADB series IUDBEDR"
+}
+later: "ECB (EUR), Fed (USD) — later" {
+  style.stroke-dash: 3
+}
+
+feeds: the feed {
+  sim: "simulation: replays the series"
+  poller: "deployment: polls the source (not built)" {
+    style.stroke-dash: 3
+  }
+}
+
+core: core.MarketCommands.Publish {
+  shape: hexagon
+}
+
+bank: gobank {
+  market: bank/market {
+    sources: "Source per currency: page, feed, 12:00 London"
+  }
+  params: bank/parameters {
+    shape: cylinder
+    settings: "parameter_settings\nscope=market owner=GBP key=risk_free_rate_bps\neffective: an instant"
+  }
+  treasury: treasury reserve accrual
+  policy: "policy (bank module, 1.8.6)" {
+    style.stroke-dash: 3
+  }
+  runner: bank/products runner
+}
+
+boe.feed -> feeds.sim: "boe_rates.csv (boefetch)"
+boe.feed -> feeds.poller
+feeds.sim -> core
+feeds.poller -> core
+core -> bank.market: publication
+bank.market -> bank.params: Set
+bank.params -> bank.treasury: "GBP rate at end of day"
+bank.params -> bank.policy: "source of bank rates"
+bank.params -> bank.runner: "resolve(scope=market, owner=product currency)"
