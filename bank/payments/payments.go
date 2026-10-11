@@ -254,6 +254,26 @@ func (p *Payments) Count(ctx context.Context) (int, error) {
 	return n, nil
 }
 
+// CountInFlight is how many payments are accepted and not yet completed
+// (ADR-0010: the bank is not at rest while one is).
+func (p *Payments) CountInFlight(ctx context.Context) (int, error) {
+	var n int
+	if err := p.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM payments WHERE status <> $1`, int(Completed)).Scan(&n); err != nil {
+		return 0, fmt.Errorf("payments: count in flight: %w", err)
+	}
+	return n, nil
+}
+
+// SettleInFlight completes every payment in flight at an instant: a
+// payment is posted when accepted, so one a previous process left in
+// flight is settled, not lost.
+func (p *Payments) SettleInFlight(ctx context.Context, at time.Time) error {
+	if _, err := p.db.ExecContext(ctx, `UPDATE payments SET status = $1, settled_at = $2 WHERE status <> $1`, int(Completed), at.UTC()); err != nil {
+		return fmt.Errorf("payments: settle in flight: %w", err)
+	}
+	return nil
+}
+
 // Clear removes every payment and restarts the numbering.
 func (p *Payments) Clear(ctx context.Context) error {
 	if _, err := p.db.ExecContext(ctx, `DELETE FROM payments`); err != nil {

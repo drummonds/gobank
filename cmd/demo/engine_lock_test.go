@@ -14,6 +14,7 @@ func TestDayWaitsForDatabaseWithoutStateLock(t *testing.T) {
 	ds := NewDemoState()
 	defer ds.db.Close()
 	addFundedCustomer(ds)
+	ds.AdvanceDay() // past the opening day's publication: the next step's first write is the day's
 
 	tx, err := ds.db.Begin() // pglike begins IMMEDIATE: takes the write lock
 	if err != nil {

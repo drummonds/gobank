@@ -119,12 +119,32 @@ type History struct {
 	RiskFree  []RatePoint
 }
 
+// Owed is what the bank has still to do for the instant its clock is at
+// (ADR-0010): the counts of what one event and everything it causes have
+// left undone. The bank is at rest when every count is zero, and only
+// then may the simulation's clock move to the next event; the console
+// shows the counts, and a drill reads them to know a deploy has settled.
+type Owed struct {
+	Days             int // business days the bank is behind its clock: days still to start
+	Unprojected      int // accounts without a position for the bank's day: the pass has them still to visit
+	ParameterChanges int // accounts a setting became effective for since their parameters were last applied: ParameterChange events still to fire
+	Payments         int // payments accepted and not yet settled
+}
+
+// AtRest reports that nothing is owed.
+func (o Owed) AtRest() bool {
+	return o.Days == 0 && o.Unprojected == 0 && o.ParameterChanges == 0 && o.Payments == 0
+}
+
 // BookQueries is the ledger as staff read it: the bank as a whole.
 type BookQueries interface {
 	Position(ctx context.Context) (Position, error)
 	ProfitAndLoss(ctx context.Context) (ProfitAndLoss, error)
 	BalanceSheet(ctx context.Context) (BalanceSheet, error)
 	History(ctx context.Context) (History, error)
+	// Owed is what the bank has still to do for the instant its clock is
+	// at; at rest when every count is zero.
+	Owed(ctx context.Context) (Owed, error)
 }
 
 // Movement is one ledger movement as the journal entry it is (ADR-0008):
@@ -303,15 +323,51 @@ type Product struct {
 
 // Parameter is one of a version's declared parameters as published.
 type Parameter struct {
-	Key   string
-	Scope string // bank, version or account
-	Kind  string
-	Value string // the published value, or the derivation in words
+	Key     string
+	Scope   string // market, bank, version or account
+	Kind    string
+	Value   string // the published value, or the derivation in words
+	Derived bool   // derived by code from another parameter: not set, only read
+}
+
+// Setting is a parameter setting on record (ADR-0006): a value at a
+// scope for its owner, effective from an instant, decided at a moment by
+// someone.
+type Setting struct {
+	Scope     string // market, bank, version (a product's) or account
+	Owner     string // the currency, "bank", the product's ID or the account's
+	Key       string
+	Value     string
+	Effective time.Time
+	Decided   time.Time
+	By        string
 }
 
 // ProductQueries is the products component as staff read it.
 type ProductQueries interface {
 	Products(ctx context.Context) ([]Product, error)
+	// UpcomingSettings is every setting effective after the bank's
+	// clock's instant, soonest first: what is decided and not yet in
+	// force, each an event the simulation's timeline carries (ADR-0010).
+	UpcomingSettings(ctx context.Context) ([]Setting, error)
+}
+
+// Market is a currency's market as the bank knows it (ADR-0009): who
+// publishes its risk-free rate, the rate in force, and the next decision
+// day on the calendar the market has issued, at which it publishes a
+// change or nothing.
+type Market struct {
+	Currency     string
+	Name         string // "Bank of England"
+	Rate         string // "Bank Rate"
+	Page         string
+	RateBps      int64     // the rate the bank's day runs on, in force by its end (as Position.RiskFreeBps); zero before the first publication
+	NextDecision time.Time // the next instant the market has said it will publish; zero when its calendar runs out
+}
+
+// MarketQueries is the market component as staff read it.
+type MarketQueries interface {
+	Markets(ctx context.Context) ([]Market, error)
 }
 
 // GiltYield is the current yield on gilts of one tenor.
@@ -343,6 +399,7 @@ type StaffQueries interface {
 	CustomerRegister
 	PaymentQueries
 	ProductQueries
+	MarketQueries
 	TreasuryQueries
 	LedgerQueries
 }

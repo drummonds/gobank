@@ -78,7 +78,8 @@ type Bank struct {
 	db            *sql.DB
 	definition    definition.Bank
 	clock         core.Clock
-	market        *market.Market // where the risk-free rate comes from (ADR-0009): the market's publications in the settings
+	market        *market.Market         // where the risk-free rate comes from (ADR-0009): the market's publications in the settings
+	settings      *parameters.Parameters // the bank's settings (ADR-0006)
 	key           store.KeyProvider
 	seed          int64
 	adminPassword string
@@ -169,6 +170,9 @@ func (b *Bank) openOn(db *sql.DB) error {
 	if resumed {
 		day, dayCount = latest, int(latest.Sub(first).Hours()/24)
 	}
+	if err := parameters.CreateView(db); err != nil {
+		return err
+	}
 	settings := parameters.Open(db)
 	b.market = market.New(settings)
 	catalogue := products.New(db, settings, b.definition.Products)
@@ -201,6 +205,7 @@ func (b *Bank) openOn(db *sql.DB) error {
 	}
 	b.mu.Lock()
 	b.db = db
+	b.settings = settings
 	b.ledger, b.gl, b.products, b.customers, b.payments, b.history, b.users = books, general, catalogue, custs, pays, hist, people
 	b.glStatus = glReport(glStatus)
 	b.treasury = treasury.New(db, b.businessDay)
@@ -238,6 +243,11 @@ func (b *Bank) openOn(db *sql.DB) error {
 		b.mu.Unlock()
 	}
 	if resumed {
+		// A payment is posted when accepted: one the previous process
+		// left in flight is settled, so the bank is at rest (ADR-0010).
+		if err := pays.SettleInFlight(ctx, b.clock.Now()); err != nil {
+			return err
+		}
 		pos, _ := b.Position(ctx)
 		log.Printf("resume: day %d (%s), %d customers, savings %d, lending %d", pos.DayCount, pos.Day.Format(time.DateOnly), pos.Customers, pos.Savings, pos.Lending)
 	}
@@ -350,9 +360,10 @@ func (b *Bank) syncFromLedgerLocked() {
 // StartDay is the bank following its clock (core.DayCommands): a pass
 // the day in progress still owes is finished first, then every day the
 // clock has moved on to is started and its pass run, one day at a time,
-// until the bank is on the clock's day. Stops early when ctx ends,
+// until the bank is on the clock's day; then the parameter changes owed
+// by the clock's instant are fired (ADR-0010). Stops early when ctx ends,
 // leaving the rest for the next call. Nothing happens while the clock is
-// still on the bank's day.
+// still where the bank is.
 func (b *Bank) StartDay(ctx context.Context) (time.Time, error) {
 	b.open.RLock()
 	defer b.open.RUnlock()
@@ -376,6 +387,7 @@ func (b *Bank) StartDay(ctx context.Context) (time.Time, error) {
 				return day, err
 			}
 			b.closeGL(ctx, day)
+			b.applyParameterChanges(ctx)
 			return day, nil
 		}
 		if err := b.advanceLedgerDay(day); err != nil {
@@ -411,6 +423,68 @@ func (b *Bank) StartDay(ctx context.Context) (time.Time, error) {
 		b.interest.invalidate()
 	}
 	return b.businessDay(), ctx.Err()
+}
+
+// applyParameterChanges is the cascade of every setting that became
+// effective by the clock's instant (ADR-0010): each account owed a
+// ParameterChange has it fired. What the rules posted moves the book.
+func (b *Bank) applyParameterChanges(ctx context.Context) {
+	now := b.clock.Now()
+	res := b.products.ApplyParameterChanges(ctx, b.ledger, now, &b.progress)
+	if res.Visited == 0 {
+		return
+	}
+	if res.Fired > 0 {
+		b.book.invalidate()
+		b.interest.invalidate()
+	}
+}
+
+// Owed implements core.BookQueries: what the bank has still to do for the
+// instant its clock is at (ADR-0010).
+func (b *Bank) Owed(ctx context.Context) (core.Owed, error) {
+	b.open.RLock()
+	defer b.open.RUnlock()
+	now := b.clock.Now()
+	day := b.businessDay()
+	var o core.Owed
+	if clockDay := core.BusinessDay(now); clockDay.After(day) {
+		o.Days = int(clockDay.Sub(day).Hours() / 24)
+	}
+	var err error
+	if o.Unprojected, err = b.products.CountUnprojected(ctx, day); err != nil {
+		return o, err
+	}
+	if o.ParameterChanges, err = b.products.CountParameterChangesOwed(ctx, now); err != nil {
+		return o, err
+	}
+	if o.Payments, err = b.payments.CountInFlight(ctx); err != nil {
+		return o, err
+	}
+	return o, nil
+}
+
+// Markets implements core.MarketQueries: each market the bank knows, with
+// the rate the bank's day runs on (in force by its end, as the position
+// has it) and its next decision day after the clock's instant.
+func (b *Bank) Markets(ctx context.Context) ([]core.Market, error) {
+	b.open.RLock()
+	defer b.open.RUnlock()
+	now := b.clock.Now()
+	day := b.businessDay()
+	var out []core.Market
+	for _, src := range market.Sources() {
+		bps, _, err := b.market.Rate(ctx, nil, src.Currency, parameters.EndOfDay(day))
+		if err != nil {
+			return nil, err
+		}
+		m := core.Market{Currency: src.Currency, Name: src.Name, Rate: src.Rate, Page: src.Page, RateBps: bps}
+		if next, ok := src.NextDecision(now); ok {
+			m.NextDecision = next
+		}
+		out = append(out, m)
+	}
+	return out, nil
 }
 
 // startDay closes yesterday's bank-level books and begins the next day:

@@ -629,7 +629,7 @@ root module, `cmd/bff` is the service binary, and `app/` is the Flutter shell.
   products page showing each product's rules, parameters and accounts.
   Found and fixed on the way: the GL journal collision at month end
   (v0.29.1)
-- **1.8.4** the risk-free rate (ADR-0009; the first half of what was
+- **1.8.4** [x] (v0.31.0) the risk-free rate (ADR-0009; the first half of what was
   1.8.3) — a currency's official risk-free rate is market data, not the
   bank's: `bank/market` names each currency's source (GBP: the Bank of
   England Bank Rate, its page and the IADB feed `cmd/boefetch` already

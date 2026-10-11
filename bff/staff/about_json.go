@@ -32,17 +32,28 @@ type AboutSettings struct {
 // else the last batch's) and account days per 12h at the pass's measured
 // whole-day rate, with the last day it is made of.
 type AboutSim struct {
-	Running           bool    `json:"running"`
-	Wall              string  `json:"wall"`        // the wall clock now, RFC 3339 UTC
-	Clock             string  `json:"clock"`       // the bank's clock now (simulated time), RFC 3339 UTC
-	Warp              float64 `json:"warp"`        // simulated seconds per wall second; 0 when flat out
-	DayEndsIn         string  `json:"day_ends_in"` // Go duration; "0s" when flat out or stopped
-	AddingCustomers   bool    `json:"adding_customers"`
-	CustomersPerSec   float64 `json:"customers_per_sec"`
-	AccountDaysPer12h int64   `json:"account_days_per_12h"`
-	LastDayDuration   string  `json:"last_day_duration"` // Go duration; "" before the first day
-	LastDayAccounts   int     `json:"last_day_accounts"`
-	DayRefused        string  `json:"day_refused,omitempty"` // why the bank would not start the last day asked of it
+	Running           bool      `json:"running"`
+	Wall              string    `json:"wall"`        // the wall clock now, RFC 3339 UTC
+	Clock             string    `json:"clock"`       // the bank's clock now (simulated time), RFC 3339 UTC
+	Warp              float64   `json:"warp"`        // simulated seconds per wall second; 0 when flat out
+	DayEndsIn         string    `json:"day_ends_in"` // Go duration; "0s" when flat out or stopped
+	AddingCustomers   bool      `json:"adding_customers"`
+	CustomersPerSec   float64   `json:"customers_per_sec"`
+	AccountDaysPer12h int64     `json:"account_days_per_12h"`
+	LastDayDuration   string    `json:"last_day_duration"` // Go duration; "" before the first day
+	LastDayAccounts   int       `json:"last_day_accounts"`
+	DayRefused        string    `json:"day_refused,omitempty"` // why the bank would not follow the clock when last asked
+	Owed              AboutOwed `json:"owed"`                  // what the bank owed when last asked (ADR-0010); a drill waits for at_rest
+	NextEvent         string    `json:"next_event,omitempty"`  // the event the run loop waits for: "payment at 2020-03-04T10:32:00Z"
+}
+
+// AboutOwed is core.Owed as another program reads it.
+type AboutOwed struct {
+	AtRest           bool `json:"at_rest"`
+	Days             int  `json:"days"`
+	Unprojected      int  `json:"unprojected"`
+	ParameterChanges int  `json:"parameter_changes"`
+	Payments         int  `json:"payments"`
 }
 
 // AboutPosition is the bank's position: what the dashboard leads with.
@@ -101,6 +112,10 @@ func aboutSim(sim SimStatus, last DayProgress) AboutSim {
 		Wall: sim.Wall.UTC().Format(time.RFC3339), Clock: sim.Clock.UTC().Format(time.RFC3339), Warp: sim.Warp,
 		AddingCustomers: sim.AddingCust, CustomersPerSec: sim.LastCustomersPerSec, AccountDaysPer12h: sim.AccountDaysPer12h,
 		LastDayAccounts: last.LastAccounts, DayRefused: sim.DayRefused,
+		Owed: AboutOwed{AtRest: sim.Owed.AtRest(), Days: sim.Owed.Days, Unprojected: sim.Owed.Unprojected, ParameterChanges: sim.Owed.ParameterChanges, Payments: sim.Owed.Payments},
+	}
+	if sim.Running && sim.Next.Kind != "" {
+		a.NextEvent = sim.Next.Kind + " at " + sim.Next.At.UTC().Format(time.RFC3339)
 	}
 	if sim.AddingCust {
 		a.CustomersPerSec = sim.CustomersPerSec

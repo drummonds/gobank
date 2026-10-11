@@ -42,7 +42,7 @@ func TestPaymentReadableFromDatabase(t *testing.T) {
 	}
 	if got.Reference != fmt.Sprintf("PAY-%06d", p.ID) || got.FromID == got.ToID ||
 		!strings.HasPrefix(got.FromID, "cust-") || !strings.HasPrefix(got.ToID, "cust-") ||
-		got.Amount < 100 || got.Status != payments.Pending || got.CreatedAt.IsZero() || !got.SettledAt.IsZero() {
+		got.Amount < 100 || got.Status != payments.Completed || got.CreatedAt.IsZero() || !got.SettledAt.Equal(got.CreatedAt) {
 		t.Errorf("transfer read back incomplete: %+v", got)
 	}
 	for _, id := range []string{got.FromID, got.ToID} {
@@ -70,23 +70,30 @@ func TestPaymentReadableFromDatabase(t *testing.T) {
 	}
 }
 
-// Status transitions are written to the payment's row.
+// A transfer is completed when accepted: the posting is the settlement
+// (ADR-0010), stamped by the clock, and the bank is at rest. Status
+// transitions are still written to the payment's row when recorded.
 func TestPaymentSettlementRecorded(t *testing.T) {
 	ds := NewDemoState()
 	twoFundedCustomers(ds)
 	ds.SendPayment()
 	page, _ := ds.paymentPage(1)
 	id := page[0].ID
-
-	ds.setPaymentStatus(id, payments.Processing, time.Time{})
 	p, _ := ds.paymentByID(id)
-	if p.Status != payments.Processing || !p.SettledAt.IsZero() {
+	if p.Status != payments.Completed || !p.SettledAt.Equal(ds.clock.Now()) {
+		t.Errorf("accepted transfer: %+v; want completed at the clock's instant", p)
+	}
+	if owed, _ := ds.Owed(context.Background()); owed.Payments != 0 {
+		t.Errorf("%d payments in flight after a transfer", owed.Payments)
+	}
+
+	at := time.Date(2026, 9, 26, 12, 0, 0, 0, time.UTC)
+	ds.setPaymentStatus(id, payments.Processing, time.Time{})
+	if p, _ := ds.paymentByID(id); p.Status != payments.Processing {
 		t.Errorf("after processing: %+v", p)
 	}
-	at := time.Date(2026, 9, 26, 12, 0, 0, 0, time.UTC)
 	ds.setPaymentStatus(id, payments.Completed, at)
-	p, _ = ds.paymentByID(id)
-	if p.Status != payments.Completed || !p.SettledAt.Equal(at) {
+	if p, _ := ds.paymentByID(id); p.Status != payments.Completed || !p.SettledAt.Equal(at) {
 		t.Errorf("after completion: %+v", p)
 	}
 }

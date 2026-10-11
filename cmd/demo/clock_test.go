@@ -43,20 +43,9 @@ func TestBankingFactsAreStampedByTheClock(t *testing.T) {
 	if !p.CreatedAt.Equal(at) {
 		t.Errorf("transfer created %v, want the clock's %v", p.CreatedAt, at)
 	}
-	at = at.Add(20 * time.Minute) // the clock moves on while the payment settles
-	deadline := time.Now().Add(5 * time.Second)
-	for {
-		settled, _ := ds.paymentByID(p.ID)
-		if settled.Status == payments.Completed {
-			if !settled.SettledAt.Equal(at) {
-				t.Errorf("transfer settled %v, want the clock's %v", settled.SettledAt, at)
-			}
-			break
-		}
-		if time.Now().After(deadline) {
-			t.Fatal("transfer never settled")
-		}
-		time.Sleep(50 * time.Millisecond)
+	// The posting is the settlement (ADR-0010): completed at the same instant.
+	if settled, _ := ds.paymentByID(p.ID); settled.Status != payments.Completed || !settled.SettledAt.Equal(at) {
+		t.Errorf("transfer %+v, want completed at the clock's %v", settled, at)
 	}
 	page, _ := bank.Transactions(ctx, "cust-001", 1)
 	if len(page.Entries) == 0 || page.Entries[0].Date != "2020-01-01" {
@@ -76,6 +65,11 @@ func TestStartDayCatchesUpWithTheClock(t *testing.T) {
 	bank := ds.Bank
 	ctx := context.Background()
 	addFundedCustomer(ds)
+	// The test moves the bank's clock itself, past the simulation's
+	// timeline: the market's opening publication is made by hand.
+	if err := bank.Publish(ctx, sim.BoERates[0]); err != nil {
+		t.Fatal(err)
+	}
 
 	day, err := bank.StartDay(ctx)
 	if err != nil || !day.Equal(core.BusinessDay(at)) {
@@ -141,8 +135,8 @@ func TestRestartRecordKeepsTheWallClock(t *testing.T) {
 	}
 }
 
-// The simulation's clock's day and when it began are on the run row, so
-// the next process resumes the same simulated day and the bank is on it.
+// The instant the simulation's clock stands at is on the run row, so the
+// next process resumes at the same instant and the bank is on its day.
 func TestSimulatedClockResumesFromTheRunRow(t *testing.T) {
 	first := NewDemoState()
 	addFundedCustomer(first)
@@ -160,7 +154,7 @@ func TestSimulatedClockResumesFromTheRunRow(t *testing.T) {
 	if pos := second.position(); !pos.Day.Equal(day) || pos.DayCount != 2 {
 		t.Errorf("resumed bank position %+v, want day %v count 2", pos, day)
 	}
-	if now := second.sim.Clock().Now(); !now.After(day) || now.After(day.Add(24*time.Hour)) {
-		t.Errorf("resumed clock Now = %v, want inside %v", now, day)
+	if now := second.sim.Clock().Now(); !now.Equal(first.sim.Clock().Now()) {
+		t.Errorf("resumed clock Now = %v, want the recorded instant %v", now, first.sim.Clock().Now())
 	}
 }

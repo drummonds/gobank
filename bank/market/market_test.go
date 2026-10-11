@@ -120,3 +120,38 @@ func TestAReplayedPublicationWritesNothing(t *testing.T) {
 		t.Errorf("%d settings after three publications of one rate, want 1", n)
 	}
 }
+
+// A market's calendar is the decision days it has issued ahead
+// (ADR-0009): the next decision after an instant is an event at which the
+// feed publishes a change or nothing (ADR-0010). The pound's calendar is
+// the MPC's announcement dates, each publishing at noon London.
+func TestTheCalendarNamesTheNextDecision(t *testing.T) {
+	src, _ := ByCurrency("GBP")
+	if len(src.Calendar) == 0 {
+		t.Fatal("GBP has no calendar")
+	}
+	for i, day := range src.Calendar {
+		if i > 0 && !day.After(src.Calendar[i-1]) {
+			t.Errorf("calendar not in order at %s", day.Format(time.DateOnly))
+		}
+		if day.Hour() != 0 || day.Location() != time.UTC {
+			t.Errorf("calendar day %v is not a UTC date", day)
+		}
+	}
+	next, ok := src.NextDecision(at(2026, 3, 19, 11))
+	if !ok || !next.Equal(src.PublishedAt(at(2026, 3, 19, 0))) {
+		t.Errorf("next decision after the morning of 19 Mar 2026 = %v, %v; want noon that day", next, ok)
+	}
+	next, ok = src.NextDecision(src.PublishedAt(at(2026, 3, 19, 0)))
+	if !ok || !next.Equal(src.PublishedAt(at(2026, 4, 30, 0))) {
+		t.Errorf("next decision after noon 19 Mar 2026 = %v, %v; want 30 Apr (the instant itself is not next)", next, ok)
+	}
+	if _, ok := src.NextDecision(at(2030, 1, 1, 0)); ok {
+		t.Error("a decision was found beyond the calendar")
+	}
+	for _, special := range []time.Time{at(2020, 3, 11, 0), at(2020, 3, 19, 0)} {
+		if next, _ := src.NextDecision(special.Add(-time.Hour)); !next.Equal(src.PublishedAt(special)) {
+			t.Errorf("the special meeting of %s is not on the calendar", special.Format(time.DateOnly))
+		}
+	}
+}

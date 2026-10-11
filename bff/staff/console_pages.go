@@ -108,7 +108,8 @@ func renderPaymentsPage(q core.StaffQueries, running, piiAuth bool, page int, ro
 		fmt.Fprintf(&s, `<div class="buttons mt-4">
   <form action="payments/send" method="post" style="display:inline"><button class="button is-primary" type="submit">Send Payment</button></form>
   %s
-</div>`, startStopBtn)
+</div>
+<p class="help">Send Payment is an event at the clock's instant, run at once. Auto Send puts the generator's payments on the timeline, raised as the run reaches them: the simulation must be running for them to flow (ADR-0010).</p>`, startStopBtn)
 	}
 	return s.String()
 }
@@ -145,7 +146,16 @@ func BuildSettingsHTML(q core.BookQueries, settings Settings, polling bool, rest
 	s.WriteString(`<div class="control">`)
 	s.WriteString(fmt.Sprintf(`<input class="input" type="text" name="day_length" value="%s">`, settings.DayLength))
 	s.WriteString(`</div>`)
-	s.WriteString(`<p class="help">Wall-clock length of a simulated day, e.g. 2h or 90m; 0 runs flat out. Takes effect from the next day</p>`)
+	s.WriteString(`<p class="help">Wall-clock length of a simulated day, e.g. 2h or 90m; 0 runs flat out. Spread between the day's events; applies to the wait in progress</p>`)
+	s.WriteString(`</div>`)
+
+	// Payments per day
+	s.WriteString(`<div class="field">`)
+	s.WriteString(`<label class="label">Payments per day</label>`)
+	s.WriteString(`<div class="control">`)
+	s.WriteString(fmt.Sprintf(`<input class="input" type="number" name="payments_per_day" value="%d" min="1" max="10000">`, settings.PaymentsPerDay))
+	s.WriteString(`</div>`)
+	s.WriteString(`<p class="help">Payments the generator puts on each simulated day while Auto Send is on (1-10,000)</p>`)
 	s.WriteString(`</div>`)
 
 	// The pound's risk-free rate (read-only: the market's, ADR-0009)

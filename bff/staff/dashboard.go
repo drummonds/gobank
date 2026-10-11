@@ -22,6 +22,32 @@ type (
 	NIMPoint      = core.NIMPoint
 )
 
+// describeOwed is what the bank still owes at the clock's instant, in
+// words: the non-zero counts (ADR-0010).
+func describeOwed(o core.Owed) string {
+	var parts []string
+	if o.Days > 0 {
+		parts = append(parts, plural(o.Days, "day"))
+	}
+	if o.Unprojected > 0 {
+		parts = append(parts, plural(o.Unprojected, "account")+" unprojected")
+	}
+	if o.ParameterChanges > 0 {
+		parts = append(parts, plural(o.ParameterChanges, "parameter change"))
+	}
+	if o.Payments > 0 {
+		parts = append(parts, plural(o.Payments, "payment")+" in flight")
+	}
+	return strings.Join(parts, ", ")
+}
+
+func plural(n int, noun string) string {
+	if n == 1 {
+		return "1 " + noun
+	}
+	return fmt.Sprintf("%s %ss", GroupThousands(strconv.Itoa(n)), noun)
+}
+
 // BuildDashboardHTML renders the dashboard's data sections, without the
 // console's controls.
 func BuildDashboardHTML(d DashData) string {
@@ -42,6 +68,12 @@ func BuildDashboardHTML(d DashData) string {
 	}
 	if d.Sim.DayRefused != "" {
 		countdown += fmt.Sprintf(`<p class="heading has-text-danger">%s</p>`, html.EscapeString(d.Sim.DayRefused))
+	}
+	if !d.Sim.Owed.AtRest() {
+		countdown += fmt.Sprintf(`<p class="heading has-text-warning-dark">owed: %s</p>`, describeOwed(d.Sim.Owed))
+	}
+	if d.Sim.Running && d.Sim.Next.Kind != "" {
+		countdown += fmt.Sprintf(`<p class="heading">next: %s %s</p>`, html.EscapeString(d.Sim.Next.Kind), d.Sim.Next.At.UTC().Format("2 Jan 15:04"))
 	}
 	s.WriteString(fmt.Sprintf(`<div class="level-item has-text-centered"><div><p class="heading">Day</p><p class="title is-5">%d &mdash; %s</p>%s</div></div>`, d.Bank.DayCount, dateStr, countdown))
 	// The two clocks side by side give a feel for the rate simulated time

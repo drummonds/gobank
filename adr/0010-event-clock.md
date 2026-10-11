@@ -131,4 +131,35 @@ them.
   timeline (payments per simulated day) rather than of the wall, which
   the throughput readings on the console must be re-stated in.
 - The at-rest counts are the first thing the drill can wait on that is
-  not a page: gobank-deploy may use them to know a restart has settled.
+  not a page: gobank-deploy may use them to know a restart has settled
+  (`/about.json`, `sim.owed.at_rest`).
+
+## As built (story 1.8.5)
+
+- The cascade is part of `StartDay`: the bank follows its clock in one
+  command, the days first and then the parameter changes owed by the
+  instant, so the simulation drives the bank with one call until `Owed`
+  is zero. `Owed` lives in `core.BookQueries`.
+- A payment is completed when accepted: the posting is the settlement,
+  stamped by the clock. The asynchronous Pending → Processing →
+  Completed walk of the earlier demo is gone, since a payment "settling"
+  at a later event's instant would be a stamp with no cause; a payment a
+  previous process left in flight is settled when the bank reopens.
+- The market's calendar is code in `bank/market` (`Source.Calendar`,
+  the MPC's announcement dates from 2020), read through
+  `core.MarketQueries`; the series' publications are events of their
+  own, so a change the calendar does not know is still raised at its
+  instant.
+- Which accounts are owed is a query over stored facts: a setting at a
+  scope the account's rules read, effective after the account's
+  applied-to instant and by the clock's, through the parameters
+  component's `contract_parameter_settings` view (ADR-0001). An account
+  from before the record is adopted silently at the first cascade.
+- The changes for an account are found before any rule fires, so what a
+  rule writes in answer (an account setting) is not a change of its own.
+- The feed catches up only to the clock's instant when the bank opens:
+  the opening day's rate arrives with the noon publication, an event.
+- A staff setting's instant is UTC and not before the clock; empty means
+  the bank's day, in force at once. The set is a core command,
+  `SetParameter`, refusing a derived or undeclared key, a value not of
+  the parameter's kind, or an instant in the past.

@@ -8,9 +8,10 @@ import (
 	"time"
 )
 
-// With a day length set, the running simulation knows when the current
-// day ends, and the dashboard's day tile counts down to it. Flat out or
-// stopped, there is nothing to count down.
+// With a day length set, the running simulation knows when the next
+// start of day is due by the wall (the day length's share of what is
+// left of the day, ADR-0010), and the dashboard's day tile counts down
+// to it. Flat out or stopped, there is nothing to count down.
 func TestDayEndsInCountsDownWhileRunning(t *testing.T) {
 	ds := NewDemoState()
 	var clock sync.Mutex // the run loop reads the clock while the test moves it
@@ -21,6 +22,8 @@ func TestDayEndsInCountsDownWhileRunning(t *testing.T) {
 		t.Fatalf("stopped: DayEndsIn = %v; want 0", got)
 	}
 
+	// The first event of the opening day is the market's noon publication:
+	// a start just raises it, and half a 2h day is left.
 	ds.SetDayLength(2 * time.Hour)
 	ds.Start()
 	defer ds.Stop()
@@ -30,12 +33,12 @@ func TestDayEndsInCountsDownWhileRunning(t *testing.T) {
 			break
 		}
 	}
-	if got != 2*time.Hour {
-		t.Fatalf("running with a 2h day: DayEndsIn = %v; want 2h (the clock is frozen)", got)
+	if got != time.Hour || !ds.clock.Now().Equal(time.Date(2020, 1, 1, 12, 0, 0, 0, time.UTC)) {
+		t.Fatalf("running with a 2h day from the opening day's noon: DayEndsIn = %v at %v; want 1h (the wall is frozen)", got, ds.clock.Now())
 	}
-	advance(90 * time.Minute)
-	if got := ds.SimStatus().DayEndsIn; got != 30*time.Minute {
-		t.Errorf("ninety minutes on: DayEndsIn = %v; want 30m", got)
+	advance(45 * time.Minute)
+	if got := ds.SimStatus().DayEndsIn; got != 15*time.Minute {
+		t.Errorf("forty-five minutes on: DayEndsIn = %v; want 15m", got)
 	}
 	ds.Stop()
 	if got := ds.SimStatus().DayEndsIn; got != 0 {

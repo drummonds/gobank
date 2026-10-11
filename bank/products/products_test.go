@@ -55,6 +55,9 @@ func open(t *testing.T) (*Products, *ledger.Ledger) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	if err := parameters.CreateView(db); err != nil {
+		t.Fatal(err)
+	}
 	for _, stmt := range []string{
 		`CREATE TABLE registered (ledger_account_id VARCHAR(64) PRIMARY KEY, product_id VARCHAR(50) NOT NULL)`,
 		`CREATE VIEW contract_customer_accounts AS SELECT ledger_account_id, product_id FROM registered`,
@@ -173,7 +176,7 @@ func TestProductOnRulesTheBuildLacksIsNotCarried(t *testing.T) {
 		t.Errorf("%d products, want the six and the one on record", n)
 	}
 	a := register(t, q, books, "fixed-5y", "cust-001", 100_00, jan2)
-	if err := q.Open(books, a, jan2); !errors.Is(err, ErrNotCarried) {
+	if err := q.Open(books, a, jan2, jan2); !errors.Is(err, ErrNotCarried) {
 		t.Errorf("opening on rules the build lacks: %v, want ErrNotCarried", err)
 	}
 }
@@ -302,7 +305,7 @@ func TestPostEventRewritesTheDaysPositions(t *testing.T) {
 func TestOpenWritesTheVersionsAccountSettings(t *testing.T) {
 	p, books := open(t)
 	fixed := register(t, p, books, "fixed-term", "cust-001", 0, jan2)
-	if err := p.Open(books, fixed, jan2); err != nil {
+	if err := p.Open(books, fixed, jan2, jan2); err != nil {
 		t.Fatal(err)
 	}
 	v, _ := p.ByID("fixed-term")
@@ -315,7 +318,7 @@ func TestOpenWritesTheVersionsAccountSettings(t *testing.T) {
 	}
 
 	saver := register(t, p, books, "isa", "cust-002", 0, jan2)
-	if err := p.Open(books, saver, jan2); err != nil {
+	if err := p.Open(books, saver, jan2, jan2); err != nil {
 		t.Fatal(err)
 	}
 	// A deposit credits the saver and debits cash (ADR-0008).
@@ -327,7 +330,7 @@ func TestOpenWritesTheVersionsAccountSettings(t *testing.T) {
 	if err != nil || deposited.Money() != 5000_00 {
 		t.Errorf("deposited = %v, %v; want the funding counted", deposited.Money(), err)
 	}
-	if err := p.Open(books, Account{ID: "x", Product: "no-such-product"}, jan2); !errors.Is(err, ErrNotCarried) {
+	if err := p.Open(books, Account{ID: "x", Product: "no-such-product"}, jan2, jan2); !errors.Is(err, ErrNotCarried) {
 		t.Errorf("opening on a product the catalogue lacks: %v, want ErrNotCarried", err)
 	}
 }
@@ -499,5 +502,169 @@ func TestMarketParametersResolveForTheProductsCurrency(t *testing.T) {
 	}
 	if rate, _ := p.resolve(ctx, p.db, trk, "", "rate_bps", jan2.AddDate(0, 0, -1), noon.Add(time.Second)); rate.Bps() == 510 {
 		t.Error("the publication reached the day before")
+	}
+}
+
+// recorder is a tracker whose ParameterChange rule leaves a trace: an
+// account setting naming the change, so a test sees the event fire.
+type recorder struct{ tracker }
+
+func (recorder) Product() string { return "recorder" }
+func (recorder) Parameters() []gbp.Declaration {
+	return append(tracker{}.Parameters(), gbp.Declaration{Key: "last_change", Scope: gbp.ScopeAccount, Kind: gbp.KindText})
+}
+func (recorder) ParameterChange(f gbp.Facts, c gbp.Change) (gbp.Intents, error) {
+	return gbp.Intents{Settings: []gbp.Setting{{Key: "last_change", Text: c.Key + ":" + c.From.Text + ">" + c.To.Text, Effective: c.Effective}}}, nil
+}
+
+// openRecorder is the catalogue with the recorder adopted and the market
+// publishing 500 bps at the start of jan2.
+func openRecorder(t *testing.T) (*Products, *ledger.Ledger) {
+	t.Helper()
+	p, books := open(t)
+	ctx := context.Background()
+	rules := recorder{tracker{gbp.Interest{Family: gbp.FamilySavings, RateKey: "rate_bps", CycleKey: "cycle"}}}
+	p.listings = append(p.listings, Listing{ID: "recorder", Name: "Recorder", Rules: rules, Description: "records changes"})
+	if err := p.Adopt(ctx, jan2); err != nil {
+		t.Fatal(err)
+	}
+	if err := p.params.Set(ctx, nil, parameters.Setting{Scope: gbp.ScopeMarket, Owner: "GBP", Key: gbp.RiskFreeRateKey, Value: "500", Effective: jan2, Decided: jan2, By: "Bank of England"}); err != nil {
+		t.Fatal(err)
+	}
+	return p, books
+}
+
+func lastChange(t *testing.T, p *Products, a Account, at time.Time) string {
+	t.Helper()
+	prod, _ := p.ByID(a.Product)
+	param, err := p.resolveAt(context.Background(), p.db, prod, a.ID, "last_change", at, p.now())
+	if err != nil {
+		return ""
+	}
+	return param.Text
+}
+
+// A parameter change is a cascade (ADR-0010): an account's parameters
+// count as applied up to an instant, recorded at open; when a setting at
+// a scope the account's rules read becomes effective after that instant,
+// the account is owed a ParameterChange, which the runner fires with the
+// value then and now and advances the instant. A setting ahead of the
+// clock is owed only when the clock reaches it; an account nothing
+// reached is advanced silently or not at all.
+func TestParameterChangeFiresWhenASettingBecomesEffective(t *testing.T) {
+	p, books := openRecorder(t)
+	ctx := context.Background()
+	nine := jan2.Add(9 * time.Hour)
+	rec := register(t, p, books, "recorder", "cust-001", 1000_00, jan2)
+	easy := register(t, p, books, "easy-access", "cust-002", 1000_00, jan2)
+	for _, a := range []Account{rec, easy} {
+		if err := p.Open(books, a, jan2, nine); err != nil {
+			t.Fatal(err)
+		}
+	}
+	var applied time.Time
+	if err := p.db.QueryRow(`SELECT applied_to FROM product_account_parameters WHERE account_id = $1`, rec.ID).Scan(&applied); err != nil || !applied.UTC().Equal(nine) {
+		t.Fatalf("applied_to after open = %v, %v; want the open instant %v", applied, err, nine)
+	}
+	if n, err := p.CountParameterChangesOwed(ctx, nine.Add(time.Hour)); err != nil || n != 0 {
+		t.Fatalf("owed with nothing changed = %d, %v; want 0", n, err)
+	}
+
+	// The market publishes at noon: both accounts read the market, the
+	// recorder directly and through its derived rate, easy-access not at
+	// all.
+	noon := jan2.Add(12 * time.Hour)
+	if err := p.params.Set(ctx, nil, parameters.Setting{Scope: gbp.ScopeMarket, Owner: "GBP", Key: gbp.RiskFreeRateKey, Value: "525", Effective: noon, Decided: noon, By: "Bank of England"}); err != nil {
+		t.Fatal(err)
+	}
+	if n, _ := p.CountParameterChangesOwed(ctx, noon.Add(-time.Minute)); n != 0 {
+		t.Errorf("owed before the publication's instant = %d, want 0", n)
+	}
+	if n, _ := p.CountParameterChangesOwed(ctx, noon); n != 2 {
+		t.Errorf("owed at the publication's instant = %d, want both accounts (every product reads the market, or may)", n)
+	}
+	var prog progress
+	res := p.ApplyParameterChanges(ctx, books, noon, &prog)
+	if res.Visited != 2 || res.Fired != 1 || prog.phase != "applying parameter changes" || prog.total != 2 {
+		t.Errorf("cascade: %+v, progress %+v; want 2 visited, 1 fired (easy-access reads no market parameter)", res, prog)
+	}
+	if got := lastChange(t, p, rec, noon); got != "risk_free_rate_bps:500>525" && got != "rate_bps:485>510" {
+		t.Errorf("recorder's last change = %q, want the market's or the derived rate's change", got)
+	}
+	if n, _ := p.CountParameterChangesOwed(ctx, noon); n != 0 {
+		t.Errorf("still owed after the cascade: %d", n)
+	}
+	if again := p.ApplyParameterChanges(ctx, books, noon.Add(time.Hour), &prog); again.Visited != 0 {
+		t.Errorf("a second cascade visited %d", again.Visited)
+	}
+
+	// A product setting decided now for later is owed at its instant,
+	// for the product's accounts alone.
+	later := jan2.AddDate(0, 0, 3)
+	if err := p.params.Set(ctx, nil, parameters.Setting{Scope: gbp.ScopeVersion, Owner: "easy-access", Key: "rate_bps", Value: "200", Effective: later, Decided: noon, By: "alice"}); err != nil {
+		t.Fatal(err)
+	}
+	if n, _ := p.CountParameterChangesOwed(ctx, later.Add(-time.Second)); n != 0 {
+		t.Errorf("owed before the setting's instant = %d, want 0", n)
+	}
+	if n, _ := p.CountParameterChangesOwed(ctx, later); n != 1 {
+		t.Errorf("owed at the setting's instant = %d, want the one easy-access account", n)
+	}
+	res = p.ApplyParameterChanges(ctx, books, later, &prog)
+	if res.Visited != 1 || res.Fired != 1 {
+		t.Errorf("cascade for the product setting: %+v; want the one account visited and fired", res)
+	}
+	if n, _ := p.CountParameterChangesOwed(ctx, later); n != 0 {
+		t.Errorf("still owed after the cascade: %d", n)
+	}
+}
+
+// An account from before the record (an upgrade) counts as applied up to
+// the first instant the cascade runs: it is owed once, stamped and not
+// fired. An account whose rules the build lacks is skipped and counted,
+// as the pass does.
+func TestAccountsWithoutARecordAreAdoptedAndNotCarriedSkipped(t *testing.T) {
+	p, books := openRecorder(t)
+	ctx := context.Background()
+	rec := register(t, p, books, "recorder", "cust-001", 1000_00, jan2)
+	if err := p.Open(books, rec, jan2, jan2); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := p.db.Exec(`DELETE FROM product_account_parameters`); err != nil {
+		t.Fatal(err)
+	}
+	noon := jan2.Add(12 * time.Hour)
+	if err := p.params.Set(ctx, nil, parameters.Setting{Scope: gbp.ScopeMarket, Owner: "GBP", Key: gbp.RiskFreeRateKey, Value: "525", Effective: noon, Decided: noon, By: "Bank of England"}); err != nil {
+		t.Fatal(err)
+	}
+	if n, _ := p.CountParameterChangesOwed(ctx, noon); n != 1 {
+		t.Fatalf("an account without a record is owed: %d, want 1", n)
+	}
+	var prog progress
+	if res := p.ApplyParameterChanges(ctx, books, noon, &prog); res.Visited != 1 || res.Fired != 0 {
+		t.Errorf("cascade over an unrecorded account: %+v; want it adopted, nothing fired", res)
+	}
+	if got := lastChange(t, p, rec, noon); got != "" {
+		t.Errorf("a change fired on adoption: %q", got)
+	}
+	if n, _ := p.CountParameterChangesOwed(ctx, noon); n != 0 {
+		t.Errorf("still owed after adoption: %d", n)
+	}
+
+	if _, err := p.db.Exec(`INSERT INTO products (product_id, name, rules, rules_version, adopted, module_version) VALUES ('recorder-v7', 'Recorder 7', 'recorder', 7, $1, 'v9.9.9')`, jan2); err != nil {
+		t.Fatal(err)
+	}
+	if err := p.Adopt(ctx, jan2); err != nil {
+		t.Fatal(err)
+	}
+	register(t, p, books, "recorder-v7", "cust-002", 100_00, jan2)
+	if n, _ := p.CountParameterChangesOwed(ctx, noon); n != 1 {
+		t.Fatalf("the uncarried account is owed: %d, want 1", n)
+	}
+	if res := p.ApplyParameterChanges(ctx, books, noon, &prog); res.Visited != 0 || res.Skipped != 1 {
+		t.Errorf("cascade with a product not carried: %+v; want nothing visited, one skipped", res)
+	}
+	if n, _ := p.CountParameterChangesOwed(ctx, noon); n != 1 {
+		t.Errorf("the skipped account counts as applied")
 	}
 }

@@ -152,3 +152,34 @@ func TestResolveAtAnInstant(t *testing.T) {
 		t.Errorf("EndOfDay(%v) = %v, want inside the day after noon", noon, end)
 	}
 }
+
+// What is upcoming is every setting effective after an instant, soonest
+// first: decided and not yet in force, so the simulation's timeline can
+// carry each as an event (ADR-0010).
+func TestUpcomingIsWhatIsEffectiveAhead(t *testing.T) {
+	p := open(t)
+	ctx := context.Background()
+	for _, s := range []Setting{
+		{gbp.ScopeVersion, "easy-access", "rate_bps", "150", d(2026, 1, 1), d(2026, 1, 1), "migration"},
+		{gbp.ScopeVersion, "easy-access", "rate_bps", "175", d(2026, 3, 1), d(2026, 2, 1), "alice"},
+		{gbp.ScopeBank, "bank", "spread_bps", "50", d(2026, 2, 15), d(2026, 2, 1), "bob"},
+		{gbp.ScopeAccount, "acct-1", "maturity_day", "2026-02-10", d(2026, 2, 10), d(2026, 1, 5), "rule"},
+	} {
+		if err := p.Set(ctx, nil, s); err != nil {
+			t.Fatal(err)
+		}
+	}
+	got, err := p.Upcoming(ctx, nil, d(2026, 2, 1))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(got) != 3 || got[0].Owner != "acct-1" || got[1].Key != "spread_bps" || got[2].Value != "175" || got[2].By != "alice" {
+		t.Errorf("Upcoming after 1 Feb = %+v; want the maturity, the spread then the rate", got)
+	}
+	if got, _ := p.Upcoming(ctx, nil, d(2026, 2, 15)); len(got) != 1 || got[0].Value != "175" {
+		t.Errorf("Upcoming after 15 Feb = %+v; want only the rate (a setting effective at the instant is in force)", got)
+	}
+	if got, _ := p.Upcoming(ctx, nil, d(2026, 3, 1)); len(got) != 0 {
+		t.Errorf("Upcoming after 1 Mar = %+v; want nothing", got)
+	}
+}

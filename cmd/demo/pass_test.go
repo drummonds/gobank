@@ -140,43 +140,47 @@ func TestPassResumesFromProjectionsAfterRestart(t *testing.T) {
 // The pass runs at the start of the day at the system's capacity whatever
 // the day length: the day length is headroom, not a pace, and the rest of
 // the day is idle. A real bank's overnight run is the same: done as early
-// as the machine allows, with the night as the margin.
+// as the machine allows, with the night as the margin. A start raises the
+// next event at once; the pace applies from there.
 func TestPassRunsFlatOutWhateverTheDayLength(t *testing.T) {
 	ds := NewDemoState()
 	addFundedCustomer(ds)
+	ds.AdvanceDay() // to the start of day 2, at rest
 	ds.SetDayLength(2 * time.Hour)
 	ds.Start()
 	defer ds.Stop()
 
 	deadline := time.Now().Add(3 * time.Second)
-	for ds.Progress().LastDay.IsZero() {
+	for ds.position().DayCount < 2 {
 		if time.Now().After(deadline) {
-			t.Fatalf("the first day's pass did not finish within 3s of a 2h day: %+v", ds.Progress())
+			t.Fatalf("the next day's pass did not finish within 3s of a 2h day: %+v", ds.Progress())
 		}
 		time.Sleep(10 * time.Millisecond)
 	}
 	if left := ds.SimStatus().DayEndsIn; left < 2*time.Hour-time.Minute {
 		t.Errorf("the pass finished with %v of the day left; want nearly all of it", left)
 	}
-	if p := ds.position(); p.DayCount != 1 {
-		t.Errorf("day count %d after the first day; want 1: the loop idles for the rest of the day", p.DayCount)
+	time.Sleep(300 * time.Millisecond)
+	if p := ds.position(); p.DayCount != 2 {
+		t.Errorf("day count %d after the day; want 2: the loop idles for the rest of the day", p.DayCount)
 	}
 }
 
 // Setting the day length to zero while the loop idles ends the wait: the
-// next day begins at once, and the console's new length applies to the
-// day in progress rather than the one after.
+// next event comes at once, and the console's new length applies to the
+// wait in progress rather than the one after.
 func TestDayLengthToZeroEndsTheIdleWait(t *testing.T) {
 	ds := NewDemoState()
 	addFundedCustomer(ds)
+	ds.AdvanceDay() // to the start of day 2, at rest
 	ds.SetDayLength(time.Hour)
 	ds.Start()
 	defer ds.Stop()
 
 	deadline := time.Now().Add(3 * time.Second)
-	for ds.position().DayCount < 1 {
+	for ds.position().DayCount < 2 {
 		if time.Now().After(deadline) {
-			t.Fatal("the first day did not run")
+			t.Fatal("the next day did not run")
 		}
 		time.Sleep(10 * time.Millisecond)
 	}
@@ -187,7 +191,7 @@ func TestDayLengthToZeroEndsTheIdleWait(t *testing.T) {
 	ds.SetDayLength(0)
 
 	deadline = time.Now().Add(3 * time.Second)
-	for ds.position().DayCount < 3 {
+	for ds.position().DayCount < 4 {
 		if time.Now().After(deadline) {
 			t.Fatalf("flat out from an idle day: day count %d after 3s, want days to follow at once", ds.position().DayCount)
 		}

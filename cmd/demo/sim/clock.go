@@ -3,89 +3,38 @@ package sim
 import (
 	"sync"
 	"time"
+
+	"git.bytestone.uk/hum3/gobank/core"
 )
 
-// Clock is the simulation's clock (ADR-0002 stage 4): the bank reads the
-// time from it as it would from the wall clock, and the simulation warps
-// it. A simulated day begins at the start of its slot and the day length
-// sets how fast simulated time passes in it: an hour into a two-hour day
-// is noon. Flat out, simulated time passes at the wall's pace. The clock
-// stays inside its day until the next begins, however long the slot runs
-// on. Its day and the slot's start are recorded with the run (Store), so
-// the next process resumes the same simulated day.
+// Clock is the simulation's clock (ADR-0010): stepped, not flowing. It
+// stands at an event's instant while the bank processes the event and
+// everything it causes, and moves to the next event's instant only when
+// the bank is at rest. The bank reads it as it would the wall (core.Clock)
+// and sees the same instant until the tick, so a cascade cut short by a
+// restart is finished at the same instant by the next process: the
+// instant is recorded with the run (Store).
 type Clock struct {
-	mu        sync.Mutex
-	wall      func() time.Time     // the wall clock, injectable
-	dayLength func() time.Duration // the slot's length; zero is flat out
-	length    time.Duration        // what dayLength reads when nothing else is wired
-	day       time.Time            // the simulated day in progress (UTC midnight)
-	slotStart time.Time            // the wall time the day began
+	mu sync.Mutex
+	at time.Time
 }
 
-// NewClock is a clock on no day yet; BeginDay or Resume sets one.
-func NewClock(wall func() time.Time) *Clock {
-	c := &Clock{wall: wall}
-	c.dayLength = func() time.Duration { c.mu.Lock(); defer c.mu.Unlock(); return c.length }
-	return c
-}
+// NewClock is a clock at no instant yet; Set puts it at one.
+func NewClock() *Clock { return &Clock{} }
 
-// Now implements core.Clock: the simulated time of day.
+// Now implements core.Clock: the instant the clock stands at.
 func (c *Clock) Now() time.Time {
-	length := c.dayLength()
 	c.mu.Lock()
 	defer c.mu.Unlock()
-	elapsed := max(c.wall().Sub(c.slotStart), 0)
-	if length > 0 {
-		elapsed = time.Duration(float64(elapsed) * float64(24*time.Hour) / float64(length))
-	}
-	return c.day.Add(min(elapsed, 24*time.Hour-time.Second))
+	return c.at
 }
 
-// Day is the simulated day in progress.
-func (c *Clock) Day() time.Time {
+// Day is the simulated day the clock stands in.
+func (c *Clock) Day() time.Time { return core.BusinessDay(c.Now()) }
+
+// Set is the tick: the clock moves to at and stands there.
+func (c *Clock) Set(at time.Time) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
-	return c.day
-}
-
-// SlotStart is the wall time the day in progress began.
-func (c *Clock) SlotStart() time.Time {
-	c.mu.Lock()
-	defer c.mu.Unlock()
-	return c.slotStart
-}
-
-// BeginDay starts day now: its slot begins at this wall time.
-func (c *Clock) BeginDay(day time.Time) {
-	c.mu.Lock()
-	defer c.mu.Unlock()
-	c.day, c.slotStart = day, c.wall()
-}
-
-// RestartSlot begins the day in progress again from now: a resumed day's
-// slot, or a slot the bank spends finishing the day before.
-func (c *Clock) RestartSlot() {
-	c.mu.Lock()
-	c.slotStart = c.wall()
-	c.mu.Unlock()
-}
-
-// Resume puts the clock back on a day a previous process began; a zero
-// slot start (a run recorded before the clock) starts the slot now.
-func (c *Clock) Resume(day, slotStart time.Time) {
-	c.mu.Lock()
-	defer c.mu.Unlock()
-	c.day = day
-	c.slotStart = slotStart
-	if slotStart.IsZero() {
-		c.slotStart = c.wall()
-	}
-}
-
-// SetDayLength sets the slot length the clock warps by, when nothing else
-// is wired to answer dayLength.
-func (c *Clock) SetDayLength(d time.Duration) {
-	c.mu.Lock()
-	c.length = d
-	c.mu.Unlock()
+	c.at = at
 }

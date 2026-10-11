@@ -72,13 +72,12 @@ func (ds *DemoState) openOn(db *sql.DB, dsn string) *DemoState {
 	if resumed {
 		// The simulation resumes its clock's day; the bank's business day
 		// is the latest on its own record, the daily snapshots.
-		ds.sim.Resume(sim.Run{Day: run.Day, DayCount: run.DayCount, Running: run.Running, SlotStart: run.SlotStart}, run.DayLength, run.DayLengthSet)
+		ds.sim.Resume(sim.Run{At: run.At, DayCount: run.DayCount, Running: run.Running}, run.DayLength, run.DayLengthSet)
 	}
 	ds.openBank()
-	ds.sim.CatchUp() // the feed: the market's publications up to the day in progress (ADR-0009)
+	ds.sim.CatchUp() // the feed: the market's publications up to the clock (ADR-0009)
 	if !resumed {
-		saveRun(ds.db, runState{Day: ds.position().Day})
-		saveSlotStart(ds.db, time.Now())
+		saveRun(ds.db, runState{At: ds.clock.Now()})
 	}
 	pos := ds.position()
 	ds.mu.Lock()
@@ -163,8 +162,7 @@ func (ds *DemoState) Reset() {
 	}
 	ds.openBank()
 	ds.sim.CatchUp() // the feed: the series up to the opening day
-	saveRun(ds.db, runState{Day: ds.position().Day})
-	saveSlotStart(ds.db, time.Now())
+	saveRun(ds.db, runState{At: ds.clock.Now()})
 	if ds.sim.DayLengthRecorded() { // the console's setting outlives the run it was made in
 		saveDayLength(ds.db, ds.sim.Settings().DayLength)
 	}

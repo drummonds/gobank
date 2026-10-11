@@ -120,3 +120,35 @@ func TestSchemaVersionsRunFromOne(t *testing.T) {
 		}
 	}
 }
+
+// A payment is in flight until it is completed (ADR-0010: the bank is
+// not at rest while one is). Settling what is in flight completes every
+// such payment at an instant: what a process finds left by the one before.
+func TestInFlightPaymentsAreCountedAndSettled(t *testing.T) {
+	p, _ := open(t)
+	ctx := context.Background()
+	for _, status := range []Status{Pending, Processing, Completed} {
+		if err := p.Insert(p.db, p.New(Transfer, "cust-001", "cust-002", 10_00, status, now)); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if n, err := p.CountInFlight(ctx); err != nil || n != 2 {
+		t.Fatalf("CountInFlight = %d, %v; want 2", n, err)
+	}
+	at := now.Add(time.Hour)
+	if err := p.SettleInFlight(ctx, at); err != nil {
+		t.Fatal(err)
+	}
+	if n, _ := p.CountInFlight(ctx); n != 0 {
+		t.Errorf("CountInFlight after settling = %d", n)
+	}
+	for id := 1; id <= 3; id++ {
+		got, err := p.ByID(ctx, id)
+		if err != nil || got.Status != Completed || got.SettledAt.IsZero() {
+			t.Errorf("payment %d = %+v, %v; want completed", id, got, err)
+		}
+		if id == 3 && !got.SettledAt.Equal(now) {
+			t.Errorf("the completed payment was re-settled at %v", got.SettledAt)
+		}
+	}
+}

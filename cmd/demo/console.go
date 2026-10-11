@@ -40,20 +40,23 @@ func (ds *DemoState) ResetPayments() {
 	}
 }
 
-// UpdateSettings sets the population cap, within the console's bounds.
-func (ds *DemoState) UpdateSettings(maxCust int) {
-	if maxCust < 3 || maxCust > 1_000_000 {
-		return
+// UpdateSettings sets the population cap and the generator's payments a
+// day, each within the console's bounds; an out-of-range value leaves
+// its setting as it was.
+func (ds *DemoState) UpdateSettings(maxCust, paymentsPerDay int) {
+	if maxCust >= 3 && maxCust <= 1_000_000 {
+		ds.sim.SetMaxCustomers(maxCust)
 	}
-	ds.sim.SetMaxCustomers(maxCust)
+	if paymentsPerDay >= 1 && paymentsPerDay <= 10_000 {
+		ds.sim.SetPaymentsPerDay(paymentsPerDay)
+	}
 }
 
 // runStore records the run in the simulation component's table (run.go).
 type runStore struct{ ds *DemoState }
 
 func (r runStore) SaveRun(run sim.Run) {
-	saveRun(r.ds.db, runState{Day: run.Day, DayCount: run.DayCount, Running: run.Running})
-	saveSlotStart(r.ds.db, run.SlotStart)
+	saveRun(r.ds.db, runState{At: run.At, DayCount: run.DayCount, Running: run.Running})
 }
 
 func (r runStore) SaveDayLength(d time.Duration) { saveDayLength(r.ds.db, d) }
@@ -70,6 +73,7 @@ func (ds *DemoState) SimStatus() staff.SimStatus {
 		AddingCust: st.AddingCust, AddingProgress: st.AddingProgress, AddingTarget: st.AddingTarget,
 		CustomersPerSec: st.CustomersPerSec, LastCustomersPerSec: st.LastCustomersPerSec,
 		DayLength: st.DayLength, DayEndsIn: st.DayEndsIn, Wall: st.Wall, Clock: ds.clock.Now(), Warp: st.Warp, DayRefused: st.DayRefused,
+		Owed: st.Owed, Next: staff.Event{Kind: string(st.Next.Kind), At: st.Next.At},
 		AccountDaysPer12h: ds.AccountDaysPer(passWindow),
 		MemoryExceeded:    ds.memoryExceeded,
 	}

@@ -122,6 +122,14 @@ var Schema = schema.Component{Name: "products", Migrations: []schema.Migration{
 		)`,
 		`CREATE INDEX IF NOT EXISTS product_postings_account ON product_postings (account_id)`,
 	}},
+	// The instant up to which each account's parameters have been applied
+	// (ADR-0010): a setting effective after it is a ParameterChange owed.
+	// An account with no row is from before the record and counts as
+	// applied up to the first instant the cascade runs.
+	{Version: 4, Statements: []string{`CREATE TABLE IF NOT EXISTS product_account_parameters (
+		account_id VARCHAR(64) PRIMARY KEY,
+		applied_to TIMESTAMP NOT NULL
+	)`}},
 }}
 
 // Products is the catalogue over the bank's database.

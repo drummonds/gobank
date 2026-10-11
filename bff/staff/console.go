@@ -27,7 +27,7 @@ type Console interface {
 	StopPayments()
 
 	Settings() Settings
-	UpdateSettings(maxCustomers int) // out-of-range values are refused
+	UpdateSettings(maxCustomers, paymentsPerDay int) // out-of-range values are refused
 	SetDayLength(d time.Duration)
 
 	// Restarts is the restart record, newest first.
@@ -60,7 +60,16 @@ type SimStatus struct {
 	Wall                time.Time     // the wall clock now
 	Clock               time.Time     // the bank's clock now: simulated time
 	Warp                float64       // simulated seconds per wall second; zero when flat out
-	DayRefused          string        // why the bank would not start the last day asked of it; empty once a day starts
+	DayRefused          string        // why the bank would not follow the clock when last asked; empty once it does
+	Owed                core.Owed     // what the bank owed when last asked (ADR-0010); at rest when all zero
+	Next                Event         // the event the run loop is waiting for; zero when stopped
+}
+
+// Event is one thing that happens at an instant on the simulation's
+// timeline (ADR-0010).
+type Event struct {
+	Kind string // "start of day", "publication", "decision day", "payment", "setting"
+	At   time.Time
 }
 
 // Busy says whether anything is going: the run loop, the payments
@@ -69,8 +78,9 @@ func (s SimStatus) Busy() bool { return s.Running || s.PaymentsRunning || s.Addi
 
 // Settings are the console's settings.
 type Settings struct {
-	MaxCustomers int
-	DayLength    time.Duration // wall-clock length of a simulated day; zero is flat out
+	MaxCustomers   int
+	DayLength      time.Duration // wall-clock length of a simulated day; zero is flat out
+	PaymentsPerDay int           // the generator's payments a simulated day, while it runs
 }
 
 // Restart is one process's time over the database: the restart record

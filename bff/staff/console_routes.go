@@ -155,7 +155,8 @@ func (s *Site) consoleRoutes() {
 			}
 			r.ParseForm()
 			maxCust, _ := strconv.Atoi(r.FormValue("max_customers"))
-			console.UpdateSettings(maxCust)
+			paymentsPerDay, _ := strconv.Atoi(r.FormValue("payments_per_day"))
+			console.UpdateSettings(maxCust, paymentsPerDay)
 			if d, err := daylength.Parse(r.FormValue("day_length")); err == nil {
 				console.SetDayLength(d)
 			}

@@ -38,6 +38,23 @@ var Schema = schema.Component{Name: "parameters", Migrations: []schema.Migration
 	)`}},
 }}
 
+// CreateView (re)creates the contract view: the settings as other
+// components may read them in SQL (ADR-0001), for a query that joins
+// them to its own tables. Recreated at every start so a durable database
+// picks up a changed definition.
+func CreateView(db *sql.DB) error {
+	for _, stmt := range []string{
+		`DROP VIEW IF EXISTS contract_parameter_settings`,
+		`CREATE VIEW contract_parameter_settings AS
+			SELECT scope, owner, key, value, effective_from, decided_at, decided_by FROM parameter_settings`,
+	} {
+		if _, err := db.Exec(stmt); err != nil {
+			return fmt.Errorf("parameters: contract_parameter_settings: %w", err)
+		}
+	}
+	return nil
+}
+
 // OwnerBank is the bank's own settings' owner.
 const OwnerBank = "bank"
 
@@ -104,6 +121,33 @@ func (p *Parameters) Resolve(ctx context.Context, q Querier, scope gbp.Scope, ow
 		return "", false, fmt.Errorf("parameters: resolve %s %s/%s: %w", scope, owner, key, err)
 	}
 	return value, true, nil
+}
+
+// Upcoming is every setting effective after an instant, soonest first
+// (then by when decided): decided and not yet in force. Each is an event
+// the simulation's timeline carries (ADR-0010).
+func (p *Parameters) Upcoming(ctx context.Context, q Querier, after time.Time) ([]Setting, error) {
+	if q == nil {
+		q = p.db
+	}
+	rows, err := q.QueryContext(ctx, `SELECT scope, owner, key, value, effective_from, decided_at, decided_by FROM parameter_settings
+		WHERE effective_from > $1 ORDER BY effective_from, decided_at`, after.UTC())
+	if err != nil {
+		return nil, fmt.Errorf("parameters: upcoming: %w", err)
+	}
+	defer rows.Close()
+	var out []Setting
+	for rows.Next() {
+		var s Setting
+		var scope string
+		if err := rows.Scan(&scope, &s.Owner, &s.Key, &s.Value, &s.Effective, &s.Decided, &s.By); err != nil {
+			return nil, fmt.Errorf("parameters: upcoming: %w", err)
+		}
+		s.Scope = gbp.Scope(scope)
+		s.Effective, s.Decided = s.Effective.UTC(), s.Decided.UTC()
+		out = append(out, s)
+	}
+	return out, rows.Err()
 }
 
 // EndOfDay is the last instant of t's day (UTC) at the database's

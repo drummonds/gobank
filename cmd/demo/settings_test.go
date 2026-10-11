@@ -9,7 +9,7 @@ import (
 
 func TestResetKeepsConsoleSettings(t *testing.T) {
 	ds := NewDemoState()
-	ds.UpdateSettings(50)
+	ds.UpdateSettings(50, 10)
 	ds.SetDayLength(2 * time.Hour)
 	ds.Reset()
 	if got := ds.Settings(); got.MaxCustomers != 50 || got.DayLength != 2*time.Hour {

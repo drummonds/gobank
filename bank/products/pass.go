@@ -79,10 +79,13 @@ type Progress interface {
 // PassResult is what the pass did: the accounts it visited, the accounts
 // it left because this build does not carry their product's rules, and what the
 // rules changed in the bank's totals, per family, in numerator units
-// (Accrued) and whole pence applied (Applied).
+// (Accrued) and whole pence applied (Applied). The parameter-change
+// cascade (ApplyParameterChanges) reports the same, with the accounts a
+// change fired for.
 type PassResult struct {
 	Visited        int
 	Skipped        int
+	Fired          int
 	AccruedSavings int64
 	AccruedLending int64
 	AppliedSavings luca.Amount

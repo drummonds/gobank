@@ -25,7 +25,11 @@ var ErrNoMarket = errors.New("market: no market for the currency")
 
 // Source is a currency's market: who publishes its risk-free rate, what
 // the rate is called, where it is published for people (Page) and for
-// machines (Feed), and when on a decision day (Hour and Minute in Zone).
+// machines (Feed), when on a decision day (Hour and Minute in Zone), and
+// the decision days themselves (Calendar), as the market has issued them
+// ahead: UTC dates, in order. A decision day is an event at which the
+// market publishes a change or nothing (ADR-0010); what it will publish
+// is not known.
 type Source struct {
 	Currency string
 	Name     string
@@ -35,6 +39,7 @@ type Source struct {
 	Hour     int
 	Minute   int
 	Zone     string
+	Calendar []time.Time
 }
 
 // PublishedAt is the instant a decision on day is published.
@@ -46,8 +51,22 @@ func (s Source) PublishedAt(day time.Time) time.Time {
 	return time.Date(day.Year(), day.Month(), day.Day(), s.Hour, s.Minute, 0, 0, loc)
 }
 
+// NextDecision is the first decision day's publication instant after
+// an instant; false when the calendar runs out.
+func (s Source) NextDecision(after time.Time) (time.Time, bool) {
+	for _, day := range s.Calendar {
+		if at := s.PublishedAt(day); at.After(after) {
+			return at, true
+		}
+	}
+	return time.Time{}, false
+}
+
 // GBP is the pound's market. The feed is the Bank's database series for
-// Bank Rate, the one cmd/boefetch reads.
+// Bank Rate, the one cmd/boefetch reads. The calendar is the Monetary
+// Policy Committee's announcement dates from 2020, as the Bank published
+// them (bankofengland.co.uk/news, "Monetary Policy Committee dates"),
+// with the two special meetings of March 2020.
 var GBP = Source{
 	Currency: "GBP",
 	Name:     "Bank of England",
@@ -56,6 +75,28 @@ var GBP = Source{
 	Feed:     "https://www.bankofengland.co.uk/boeapps/database/_iadb-fromshowcolumns.asp?SeriesCodes=IUDBEDR&CSVF=TN&UsingCodes=Y&VPD=Y",
 	Hour:     12,
 	Zone:     "Europe/London",
+	Calendar: days(
+		"2020-01-30", "2020-03-11", "2020-03-19", "2020-03-26", "2020-05-07", "2020-06-18", "2020-08-06", "2020-09-17", "2020-11-05", "2020-12-17",
+		"2021-02-04", "2021-03-18", "2021-05-06", "2021-06-24", "2021-08-05", "2021-09-23", "2021-11-04", "2021-12-16",
+		"2022-02-03", "2022-03-17", "2022-05-05", "2022-06-16", "2022-08-04", "2022-09-22", "2022-11-03", "2022-12-15",
+		"2023-02-02", "2023-03-23", "2023-05-11", "2023-06-22", "2023-08-03", "2023-09-21", "2023-11-02", "2023-12-14",
+		"2024-02-01", "2024-03-21", "2024-05-09", "2024-06-20", "2024-08-01", "2024-09-19", "2024-11-07", "2024-12-19",
+		"2025-02-06", "2025-03-20", "2025-05-08", "2025-06-19", "2025-08-07", "2025-09-18", "2025-11-06", "2025-12-18",
+		"2026-02-05", "2026-03-19", "2026-04-30", "2026-06-18", "2026-07-30", "2026-09-17", "2026-11-05", "2026-12-17",
+	),
+}
+
+// days parses calendar dates, UTC.
+func days(dates ...string) []time.Time {
+	out := make([]time.Time, len(dates))
+	for i, d := range dates {
+		t, err := time.Parse(time.DateOnly, d)
+		if err != nil {
+			panic(err)
+		}
+		out[i] = t
+	}
+	return out
 }
 
 var sources = []Source{GBP}

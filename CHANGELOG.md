@@ -2,6 +2,44 @@
 
 ## [Unreleased]
 
+### Added
+- Stage 8 story 1.8.5: the simulation moves by events (ADR-0010). The
+  clock is stepped: it stands at an event's instant while the bank
+  processes the event and everything it causes, and moves to the next
+  event only when the bank reports itself at rest. The timeline is the
+  start of each day, the market's decision days (the Bank of England's
+  MPC calendar, in `bank/market`, the next one named on the products
+  page), the series' publications, the generator's payments (a set
+  number a day, drawn from the seed, raised when the clock reaches
+  each) and the settings staff make. The core gains `Owed` (days,
+  accounts unprojected, parameter changes unfired, payments in flight;
+  on the dashboard and in `/about.json` as `owed`, with `at_rest` for a
+  drill to wait on), `Markets`, `UpcomingSettings` and the
+  `SetParameter` command; the products page sets one of a product's
+  own parameters effective at an instant and lists what is upcoming.
+  The `ParameterChange` event is fired: `bank/products` keeps the
+  instant each account's parameters are applied up to
+  (`product_account_parameters`) and, when a setting at a scope the
+  account's rules read becomes effective after it, fires the rule with
+  the value then and now, so a market publication reaches every
+  account through its derivation with no list of dependants kept.
+- The settings page gains the generator's payments per day; the
+  parameters component publishes `contract_parameter_settings`.
+
+### Changed
+- The day length is spread between a day's events in proportion to the
+  simulated gap between them, and applies to the wait in progress; the
+  run row records the instant (`sim_run.current_at`), the day and a slot
+  start still written for one release for the drill's rollback.
+- A transfer is completed when accepted: the posting is the settlement,
+  stamped by the clock, so the bank is at rest when the command
+  returns; a payment a previous process left in flight is settled when
+  the bank reopens.
+- Auto Send puts payments on the timeline: they flow while the run is
+  going, not at wall pace; Send Payment is still an event run at once.
+- The opening day's rate arrives with the market's noon publication, an
+  event, rather than being published at open.
+
 ## [0.31.0] - 2026-10-11
 
  - Story 1.8.4: the risk-free rate is market data (ADR-0009) — bank/market, settings effective at an instant, Publish command, float rates retired

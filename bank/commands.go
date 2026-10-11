@@ -13,6 +13,7 @@ import (
 	gbp "git.bytestone.uk/hum3/gobank-products"
 	"git.bytestone.uk/hum3/gobank/bank/customers"
 	"git.bytestone.uk/hum3/gobank/bank/ledger"
+	"git.bytestone.uk/hum3/gobank/bank/parameters"
 	"git.bytestone.uk/hum3/gobank/bank/payments"
 	"git.bytestone.uk/hum3/gobank/bank/products"
 	"git.bytestone.uk/hum3/gobank/core"
@@ -117,8 +118,9 @@ func (b *Bank) persistCustomer(ctx context.Context, day time.Time, plan *custome
 	// version's open event runs now (its settings, its first position), so
 	// the day's pass has nothing left to do for it and a day is complete
 	// when every registered account has its position.
+	now := b.clock.Now()
 	for _, a := range rec.Accounts {
-		if err := b.products.Open(books, products.Account{ID: a.LedgerAccountID, Product: a.ProductID}, day); err != nil {
+		if err := b.products.Open(books, products.Account{ID: a.LedgerAccountID, Product: a.ProductID}, day, now); err != nil {
 			log.Printf("bank: open customer %s: %s: %v", rec.ID, a.LedgerAccountID, err)
 		}
 	}
@@ -157,10 +159,11 @@ func (b *Bank) persistCustomer(ctx context.Context, day time.Time, plan *custome
 // Transfer implements core.PaymentCommands: it moves amount between the
 // two customers' first savings accounts, posting the movement to the
 // ledger with the day's rules rerun on both and to the GL's controls
-// when the products differ, and records the payment, whose status then
-// settles asynchronously, all in one transaction. The two accounts' locks
-// are held from the balance check to the commit, so two transfers from
-// one account take turns.
+// when the products differ, and records the payment as completed, all in
+// one transaction: the posting is the settlement, so the bank is at rest
+// again when the command returns (ADR-0010). The two accounts' locks are
+// held from the balance check to the commit, so two transfers from one
+// account take turns.
 func (b *Bank) Transfer(ctx context.Context, t core.Transfer) (core.Payment, error) {
 	b.open.RLock()
 	defer b.open.RUnlock()
@@ -194,7 +197,7 @@ func (b *Bank) Transfer(ctx context.Context, t core.Transfer) (core.Payment, err
 	if -live.Balance < t.Amount { // a savings balance is a liability: negative (ADR-0008)
 		return core.Payment{}, core.ErrInsufficientFunds
 	}
-	pay := b.payments.New(payments.Transfer, t.From, t.To, t.Amount, payments.Pending, b.clock.Now())
+	pay := b.payments.New(payments.Transfer, t.From, t.To, t.Amount, payments.Completed, b.clock.Now())
 	day := b.businessDay()
 	tx, err := b.db.BeginTx(ctx, nil)
 	if err != nil {
@@ -221,24 +224,7 @@ func (b *Bank) Transfer(ctx context.Context, t core.Transfer) (core.Payment, err
 	}
 	b.book.invalidate()
 	b.interest.invalidate() // the two positions were rewritten, accruals with them
-	// The payment settles on its own.
-	go func() {
-		time.Sleep(500 * time.Millisecond)
-		b.settle(pay.ID, payments.Processing, time.Time{})
-		time.Sleep(time.Second)
-		b.settle(pay.ID, payments.Completed, b.clock.Now())
-	}()
 	return pay.Core(), nil
-}
-
-// settle records a payment's lifecycle step, unless the bank has been
-// reopened meanwhile.
-func (b *Bank) settle(id int, status payments.Status, at time.Time) {
-	b.open.RLock()
-	defer b.open.RUnlock()
-	if err := b.payments.SetStatus(context.Background(), id, status, at); err != nil {
-		log.Print(err)
-	}
 }
 
 // --- Treasury ---
@@ -448,7 +434,7 @@ func (b *Bank) Products(ctx context.Context) ([]core.Product, error) {
 				if d.Derived != nil {
 					value = describeDerivation(*d.Derived)
 				}
-				params = append(params, core.Parameter{Key: d.Key, Scope: string(d.Scope), Kind: string(d.Kind), Value: value})
+				params = append(params, core.Parameter{Key: d.Key, Scope: string(d.Scope), Kind: string(d.Kind), Value: value, Derived: d.Derived != nil})
 			}
 		}
 		out = append(out, core.Product{
@@ -460,6 +446,58 @@ func (b *Bank) Products(ctx context.Context) ([]core.Product, error) {
 		})
 	}
 	return out, nil
+}
+
+// UpcomingSettings implements core.ProductQueries: every setting effective
+// after the clock's instant, soonest first.
+func (b *Bank) UpcomingSettings(ctx context.Context) ([]core.Setting, error) {
+	b.open.RLock()
+	defer b.open.RUnlock()
+	upcoming, err := b.settings.Upcoming(ctx, nil, b.clock.Now())
+	if err != nil {
+		return nil, err
+	}
+	out := make([]core.Setting, len(upcoming))
+	for i, u := range upcoming {
+		out[i] = core.Setting{Scope: string(u.Scope), Owner: u.Owner, Key: u.Key, Value: u.Value, Effective: u.Effective, Decided: u.Decided, By: u.By}
+	}
+	return out, nil
+}
+
+// SetParameter implements core.ProductCommands: a staff member's setting
+// of one of a product's own parameters, decided at the clock's instant
+// and effective from the instant given, not before now.
+func (b *Bank) SetParameter(ctx context.Context, s core.ParameterSetting) error {
+	b.open.RLock()
+	defer b.open.RUnlock()
+	prod, ok := b.products.ByID(s.ProductID)
+	if !ok {
+		return core.ErrNotFound
+	}
+	if !prod.Carried() {
+		return fmt.Errorf("%w: %s: this build does not carry its rules", core.ErrInvalidSetting, s.ProductID)
+	}
+	d, ok := gbp.Declared(prod.Rules, s.Key)
+	switch {
+	case !ok:
+		return fmt.Errorf("%w: %s v%d declares no %s", core.ErrInvalidSetting, prod.RulesID, prod.RulesVersion, s.Key)
+	case d.Derived != nil:
+		return fmt.Errorf("%w: %s is derived, not set", core.ErrInvalidSetting, s.Key)
+	case d.Scope != gbp.ScopeVersion:
+		return fmt.Errorf("%w: %s is at the %s scope, not the product's", core.ErrInvalidSetting, s.Key, d.Scope)
+	}
+	param, err := d.Parse(s.Value)
+	if err != nil {
+		return fmt.Errorf("%w: %v", core.ErrInvalidSetting, err)
+	}
+	now := b.clock.Now()
+	if s.Effective.Before(now) {
+		return fmt.Errorf("%w: effective %s is before the bank's clock, %s", core.ErrInvalidSetting, s.Effective.UTC().Format(time.RFC3339), now.UTC().Format(time.RFC3339))
+	}
+	if s.By == "" {
+		return fmt.Errorf("%w: no one decided it", core.ErrInvalidSetting)
+	}
+	return b.settings.Set(ctx, nil, parameters.Setting{Scope: gbp.ScopeVersion, Owner: prod.ID, Key: d.Key, Value: param.Text, Effective: s.Effective, Decided: now, By: s.By})
 }
 
 // describeDerivation is a derived parameter in words: "boe.base_rate_bps − 15 bps, floor 0".

@@ -262,6 +262,57 @@ func runStaff(t *testing.T, f Fixture) {
 		}
 	})
 
+	t.Run("owed is counts, at rest when all are zero", func(t *testing.T) {
+		owed, err := s.Owed(ctx)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if owed.Days < 0 || owed.Unprojected < 0 || owed.ParameterChanges < 0 || owed.Payments < 0 {
+			t.Errorf("Owed = %+v; counts cannot be negative", owed)
+		}
+		if owed.AtRest() != (owed == core.Owed{}) {
+			t.Errorf("AtRest = %v for %+v", owed.AtRest(), owed)
+		}
+	})
+
+	t.Run("markets name the pound's", func(t *testing.T) {
+		markets, err := s.Markets(ctx)
+		if err != nil {
+			t.Fatal(err)
+		}
+		found := false
+		for _, m := range markets {
+			if m.Currency == "GBP" {
+				found = true
+				if m.Name == "" || m.Rate == "" || m.Page == "" {
+					t.Errorf("GBP market %+v needs a name, a rate and a page", m)
+				}
+				if pos, _ := s.Position(ctx); m.RateBps != pos.RiskFreeBps {
+					t.Errorf("GBP rate %d, position shows %d", m.RateBps, pos.RiskFreeBps)
+				}
+			}
+		}
+		if !found {
+			t.Errorf("Markets = %+v; want the pound's", markets)
+		}
+	})
+
+	t.Run("upcoming settings are ahead and in order", func(t *testing.T) {
+		pos, _ := s.Position(ctx)
+		upcoming, err := s.UpcomingSettings(ctx)
+		if err != nil {
+			t.Fatal(err)
+		}
+		for i, u := range upcoming {
+			if !u.Effective.After(pos.Day) || u.Key == "" || u.Scope == "" || u.Owner == "" {
+				t.Errorf("upcoming %+v is not ahead of the bank's day, or incomplete", u)
+			}
+			if i > 0 && u.Effective.Before(upcoming[i-1].Effective) {
+				t.Errorf("upcoming settings not soonest first at %d", i)
+			}
+		}
+	})
+
 	t.Run("gilt yields are quoted", func(t *testing.T) {
 		yields, err := s.GiltYields(ctx)
 		if err != nil || len(yields) == 0 {
@@ -505,6 +556,80 @@ func runCommands(t *testing.T, f Fixture) {
 		after, _ := s.Position(ctx)
 		if !after.Day.Equal(day) || after.DayCount != before.DayCount+1 || after.Customers != before.Customers {
 			t.Errorf("position after StartDay = %+v; want day %s, count %d, the same customers as %+v", after, day.Format("2006-01-02"), before.DayCount+1, before)
+		}
+		if owed, err := s.Owed(ctx); err != nil || !owed.AtRest() {
+			t.Errorf("Owed after StartDay = %+v, %v; want at rest", owed, err)
+		}
+	})
+
+	t.Run("a setting becoming effective is owed and then fired", func(t *testing.T) {
+		// ADR-0010: a product setting effective at an instant is upcoming
+		// until the clock reaches it; then every account on the product
+		// is owed a ParameterChange, which StartDay fires, and the bank
+		// is at rest again.
+		if f.Clock == nil {
+			t.Skip("no clock to move")
+		}
+		products, err := s.Products(ctx)
+		if err != nil || len(products) == 0 {
+			t.Fatalf("Products = %v, %v", products, err)
+		}
+		var prod core.Product
+		var param core.Parameter
+		for _, p := range products {
+			if !p.Carried || p.Accounts == 0 {
+				continue
+			}
+			for _, d := range p.Parameters {
+				if d.Scope == "version" && d.Kind == "bps" && d.Value != "" {
+					prod, param = p, d
+				}
+			}
+		}
+		if prod.ID == "" {
+			t.Skip("no carried product with accounts and a rate to set")
+		}
+		now := f.Clock.Now()
+		effective := now.Add(2 * time.Hour)
+		if err := c.SetParameter(ctx, core.ParameterSetting{ProductID: prod.ID, Key: param.Key, Value: "999", Effective: effective, By: "test"}); err != nil {
+			t.Fatal(err)
+		}
+		upcoming, _ := s.UpcomingSettings(ctx)
+		found := false
+		for _, u := range upcoming {
+			found = found || (u.Owner == prod.ID && u.Key == param.Key && u.Value == "999" && u.Effective.Equal(effective) && u.By == "test")
+		}
+		if !found {
+			t.Errorf("UpcomingSettings = %+v; want the setting just made", upcoming)
+		}
+		if owed, _ := s.Owed(ctx); owed.ParameterChanges != 0 {
+			t.Errorf("before the instant %d parameter changes are owed, want none", owed.ParameterChanges)
+		}
+		f.Clock.Set(effective)
+		if owed, _ := s.Owed(ctx); owed.ParameterChanges < prod.Accounts {
+			t.Errorf("at the instant %d parameter changes are owed, want at least the product's %d accounts", owed.ParameterChanges, prod.Accounts)
+		}
+		if _, err := c.StartDay(ctx); err != nil {
+			t.Fatal(err)
+		}
+		if owed, _ := s.Owed(ctx); !owed.AtRest() {
+			t.Errorf("after StartDay %+v is owed, want at rest", owed)
+		}
+		if upcoming, _ := s.UpcomingSettings(ctx); len(upcoming) != 0 {
+			t.Errorf("the setting is in force but still upcoming: %+v", upcoming)
+		}
+
+		for _, bad := range []core.ParameterSetting{
+			{ProductID: prod.ID, Key: "no-such-key", Value: "1", Effective: effective.Add(time.Hour), By: "test"},
+			{ProductID: prod.ID, Key: param.Key, Value: "not-a-number", Effective: effective.Add(time.Hour), By: "test"},
+			{ProductID: prod.ID, Key: param.Key, Value: "1", Effective: effective.Add(-time.Hour), By: "test"},
+		} {
+			if err := c.SetParameter(ctx, bad); !errors.Is(err, core.ErrInvalidSetting) {
+				t.Errorf("SetParameter(%+v) err = %v, want ErrInvalidSetting", bad, err)
+			}
+		}
+		if err := c.SetParameter(ctx, core.ParameterSetting{ProductID: "no-such-product", Key: param.Key, Value: "1", Effective: effective.Add(time.Hour), By: "test"}); !errors.Is(err, core.ErrNotFound) {
+			t.Errorf("SetParameter on an unknown product err = %v, want ErrNotFound", err)
 		}
 	})
 

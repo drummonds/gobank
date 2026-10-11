@@ -5,6 +5,7 @@ import (
 	"errors"
 	"testing"
 
+	"git.bytestone.uk/hum3/gobank/cmd/demo/sim"
 	"git.bytestone.uk/hum3/gobank/core"
 	"git.bytestone.uk/hum3/gobank/core/coretest"
 )
@@ -17,6 +18,11 @@ func TestBankHonoursTheCoreContracts(t *testing.T) {
 	clock := coretest.NewFakeClock(ds.clock.Now())
 	ds.clock = clock
 	twoFundedCustomers(ds)
+	// The suite moves the bank's clock itself, past the simulation's
+	// timeline: the market's opening publication is made by hand.
+	if err := ds.Publish(context.Background(), sim.BoERates[0]); err != nil {
+		t.Fatal(err)
+	}
 	coretest.Run(t, coretest.Fixture{
 		Queries: ds.Bank, Auth: newAppLogin(ds.Bank, "secret"), Staff: ds.Bank, Commands: ds.Bank, Clock: clock,
 		CustomerID: "cust-001", OtherCustomerID: "cust-002", Password: "secret",

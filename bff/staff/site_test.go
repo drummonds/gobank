@@ -291,17 +291,19 @@ type fakeConsole struct {
 	imported string
 }
 
-func (c *fakeConsole) SimStatus() SimStatus         { return c.status }
-func (c *fakeConsole) Start()                       { c.calls = append(c.calls, "start") }
-func (c *fakeConsole) Stop()                        { c.calls = append(c.calls, "stop") }
-func (c *fakeConsole) AdvanceDay()                  { c.calls = append(c.calls, "advance") }
-func (c *fakeConsole) Reset()                       { c.calls = append(c.calls, "reset") }
-func (c *fakeConsole) AddCustomersBatch(n int)      { c.calls = append(c.calls, "add "+strconv.Itoa(n)) }
-func (c *fakeConsole) SendPayment()                 { c.calls = append(c.calls, "send") }
-func (c *fakeConsole) StartPayments()               { c.calls = append(c.calls, "payments run") }
-func (c *fakeConsole) StopPayments()                { c.calls = append(c.calls, "payments stop") }
-func (c *fakeConsole) Settings() Settings           { return c.settings }
-func (c *fakeConsole) UpdateSettings(n int)         { c.settings.MaxCustomers = n }
+func (c *fakeConsole) SimStatus() SimStatus    { return c.status }
+func (c *fakeConsole) Start()                  { c.calls = append(c.calls, "start") }
+func (c *fakeConsole) Stop()                   { c.calls = append(c.calls, "stop") }
+func (c *fakeConsole) AdvanceDay()             { c.calls = append(c.calls, "advance") }
+func (c *fakeConsole) Reset()                  { c.calls = append(c.calls, "reset") }
+func (c *fakeConsole) AddCustomersBatch(n int) { c.calls = append(c.calls, "add "+strconv.Itoa(n)) }
+func (c *fakeConsole) SendPayment()            { c.calls = append(c.calls, "send") }
+func (c *fakeConsole) StartPayments()          { c.calls = append(c.calls, "payments run") }
+func (c *fakeConsole) StopPayments()           { c.calls = append(c.calls, "payments stop") }
+func (c *fakeConsole) Settings() Settings      { return c.settings }
+func (c *fakeConsole) UpdateSettings(n, p int) {
+	c.settings.MaxCustomers, c.settings.PaymentsPerDay = n, p
+}
 func (c *fakeConsole) SetDayLength(d time.Duration) { c.settings.DayLength = d }
 func (c *fakeConsole) Restarts(int) []Restart       { return nil }
 func (c *fakeConsole) Runtime() Runtime             { return Runtime{Env: "test"} }

@@ -538,8 +538,8 @@ func TestTransfer(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if pay.Status != core.PaymentPending || pay.Reference != "PAY-000003" || pay.From != a || pay.To != b {
-		t.Errorf("payment %+v", pay)
+	if pay.Status != core.PaymentCompleted || pay.SettledAt.IsZero() || pay.Reference != "PAY-000003" || pay.From != a || pay.To != b {
+		t.Errorf("payment %+v; want completed at once: the posting is the settlement (ADR-0010)", pay)
 	}
 	accounts, _ := f.bank.Accounts(f.ctx, a)
 	if accounts[0].Balance != -70_00 {
@@ -548,16 +548,11 @@ func TestTransfer(t *testing.T) {
 	if p := f.position(); p.Savings != 105_00 {
 		t.Errorf("savings %d after a transfer, want unchanged 10500", p.Savings)
 	}
-	deadline := time.Now().Add(3 * time.Second)
-	for {
-		got, _ := f.bank.Payment(f.ctx, pay.ID)
-		if got.Status == core.PaymentCompleted && !got.SettledAt.IsZero() {
-			break
-		}
-		if time.Now().After(deadline) {
-			t.Fatalf("payment did not settle: %+v", got)
-		}
-		time.Sleep(20 * time.Millisecond)
+	if got, _ := f.bank.Payment(f.ctx, pay.ID); got.Status != core.PaymentCompleted || !got.SettledAt.Equal(f.now) {
+		t.Errorf("payment on record %+v, want completed at the clock's instant", got)
+	}
+	if owed, _ := f.bank.Owed(f.ctx); !owed.AtRest() {
+		t.Errorf("after a transfer %+v is owed, want at rest", owed)
 	}
 	if tp, _ := f.bank.Transactions(f.ctx, b, 1); tp.Total != 2 || tp.Entries[0].Type != "Transfer In" || tp.Entries[0].Reference != pay.Reference {
 		t.Errorf("recipient's statement %+v", tp.Entries)
@@ -891,5 +886,114 @@ func TestTheDayCannotStartWhileTheMarketIsSilent(t *testing.T) {
 	}
 	if p := f.position(); p.DayCount != 1 || p.RiskFreeBps != 475 {
 		t.Errorf("after the day started: %+v", p)
+	}
+}
+
+// The bank reports what it owes for the instant its clock is at
+// (ADR-0010): days behind the clock, accounts unprojected, parameter
+// changes unfired, payments in flight. A market publication the clock
+// reaches makes every account owed a ParameterChange, which StartDay
+// fires, and the bank is at rest again; the clock moving on a day owes
+// the day until StartDay runs it.
+func TestOwedIsCountsAndStartDayClearsThem(t *testing.T) {
+	f := open(t)
+	for _, n := range []core.NewCustomer{ada, saver("S", 50_00)} {
+		if _, err := f.bank.OpenCustomer(f.ctx, n); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if owed, err := f.bank.Owed(f.ctx); err != nil || !owed.AtRest() {
+		t.Fatalf("a fresh bank with customers owes %+v, %v; want at rest", owed, err)
+	}
+	noon := opening.Add(12 * time.Hour)
+	if err := f.bank.Publish(f.ctx, core.Publication{Currency: "GBP", Bps: 525, At: noon}); err != nil {
+		t.Fatal(err)
+	}
+	if owed, _ := f.bank.Owed(f.ctx); owed.ParameterChanges != 0 {
+		t.Errorf("before noon %d changes are owed, want 0: the publication is ahead of the clock", owed.ParameterChanges)
+	}
+	f.now = noon
+	owed, _ := f.bank.Owed(f.ctx)
+	if owed.ParameterChanges != 3 || owed.Days != 0 || owed.Unprojected != 0 || owed.Payments != 0 {
+		t.Errorf("at noon %+v is owed, want the three accounts' parameter changes alone", owed)
+	}
+	if _, err := f.bank.StartDay(f.ctx); err != nil {
+		t.Fatal(err)
+	}
+	if owed, _ := f.bank.Owed(f.ctx); !owed.AtRest() {
+		t.Errorf("after StartDay at noon %+v is owed, want at rest", owed)
+	}
+	f.now = opening.AddDate(0, 0, 2)
+	if owed, _ := f.bank.Owed(f.ctx); owed.Days != 2 {
+		t.Errorf("with the clock two days on %+v is owed, want 2 days", owed)
+	}
+	if _, err := f.bank.StartDay(f.ctx); err != nil {
+		t.Fatal(err)
+	}
+	if owed, _ := f.bank.Owed(f.ctx); !owed.AtRest() {
+		t.Errorf("after the days %+v is owed, want at rest", owed)
+	}
+}
+
+// A staff member's product setting is upcoming until its instant, then
+// owed to the product's accounts and in force; the command refuses what
+// is not the product's to set.
+func TestSetParameterIsUpcomingThenInForce(t *testing.T) {
+	f := open(t)
+	if _, err := f.bank.OpenCustomer(f.ctx, ada); err != nil {
+		t.Fatal(err)
+	}
+	later := opening.Add(36 * time.Hour)
+	if err := f.bank.SetParameter(f.ctx, core.ParameterSetting{ProductID: "easy-access", Key: "rate_bps", Value: "175", Effective: later, By: "alice"}); err != nil {
+		t.Fatal(err)
+	}
+	up, err := f.bank.UpcomingSettings(f.ctx)
+	if err != nil || len(up) != 1 || up[0].Owner != "easy-access" || up[0].Key != "rate_bps" || up[0].Value != "175" || !up[0].Effective.Equal(later) || !up[0].Decided.Equal(f.now) || up[0].By != "alice" || up[0].Scope != "version" {
+		t.Errorf("UpcomingSettings = %+v, %v; want the one setting, decided at the clock's instant", up, err)
+	}
+	if owed, _ := f.bank.Owed(f.ctx); owed.ParameterChanges != 0 {
+		t.Errorf("before the instant %+v is owed", owed)
+	}
+	f.now = later
+	if owed, _ := f.bank.Owed(f.ctx); owed.ParameterChanges != 1 || owed.Days != 1 {
+		t.Errorf("at the instant %+v is owed, want the easy-access account's change and the day", owed)
+	}
+	if _, err := f.bank.StartDay(f.ctx); err != nil {
+		t.Fatal(err)
+	}
+	if owed, _ := f.bank.Owed(f.ctx); !owed.AtRest() {
+		t.Errorf("after StartDay %+v is owed", owed)
+	}
+	if up, _ := f.bank.UpcomingSettings(f.ctx); len(up) != 0 {
+		t.Errorf("in force but still upcoming: %+v", up)
+	}
+	for _, bad := range []core.ParameterSetting{
+		{ProductID: "easy-access", Key: "no-such", Value: "1", Effective: later.Add(time.Hour), By: "alice"},
+		{ProductID: "easy-access", Key: "rate_bps", Value: "x", Effective: later.Add(time.Hour), By: "alice"},
+		{ProductID: "easy-access", Key: "rate_bps", Value: "1", Effective: later.Add(-time.Hour), By: "alice"},
+		{ProductID: "easy-access", Key: "rate_bps", Value: "1", Effective: later.Add(time.Hour)},
+	} {
+		if err := f.bank.SetParameter(f.ctx, bad); !errors.Is(err, core.ErrInvalidSetting) {
+			t.Errorf("SetParameter(%+v) = %v, want ErrInvalidSetting", bad, err)
+		}
+	}
+	if err := f.bank.SetParameter(f.ctx, core.ParameterSetting{ProductID: "nope", Key: "rate_bps", Value: "1", Effective: later.Add(time.Hour), By: "alice"}); !errors.Is(err, core.ErrNotFound) {
+		t.Errorf("unknown product: %v, want ErrNotFound", err)
+	}
+}
+
+// The markets the bank knows: the pound's, with the rate in force at the
+// clock's instant and the next decision day on its calendar.
+func TestMarketsNameTheNextDecision(t *testing.T) {
+	f := open(t)
+	f.now = time.Date(2020, 3, 5, 9, 0, 0, 0, time.UTC)
+	markets, err := f.bank.Markets(f.ctx)
+	if err != nil || len(markets) != 1 {
+		t.Fatalf("Markets = %+v, %v", markets, err)
+	}
+	m := markets[0]
+	london, _ := time.LoadLocation("Europe/London")
+	if m.Currency != "GBP" || m.Name != "Bank of England" || m.RateBps != 500 || !m.NextDecision.Equal(time.Date(2020, 3, 11, 12, 0, 0, 0, london)) {
+		t.Errorf("GBP market = %+v; want 500 bps in force and the special meeting of 11 Mar 2020 next", m)
 	}
 }

@@ -19,6 +19,7 @@ var (
 	ErrInvalidAmount     = errors.New("core: invalid amount")
 	ErrInsufficientFunds = errors.New("core: insufficient funds")
 	ErrSameCustomer      = errors.New("core: transfer to the same customer")
+	ErrInvalidSetting    = errors.New("core: invalid setting")
 )
 
 // Transfer moves money from one customer's savings to another's. Each
@@ -76,13 +77,16 @@ type CustomerCommands interface {
 	OpenCustomer(ctx context.Context, c NewCustomer) (CustomerRecord, error)
 }
 
-// DayCommands is the start of a day, the one event the clock raises.
-// StartDay brings the bank onto its Clock's business day: a pass the day
-// in progress still owes is finished first, then each day the clock has
-// moved on to is started and its pass run over every account (ADR-0002
-// stage 3), one day at a time. With the clock still on the bank's day
-// nothing happens. A call cut short by ctx leaves the rest for the next.
-// Returns the business day the bank is on.
+// DayCommands is the bank following its Clock, the one event the clock
+// raises. StartDay brings the bank level with the clock's instant: a pass
+// the day in progress still owes is finished first, then each day the
+// clock has moved on to is started and its pass run over every account
+// (ADR-0002 stage 3), one day at a time; then every ParameterChange owed
+// by the instant is fired (ADR-0010: a setting that became effective
+// since an account's parameters were last applied). With the clock
+// still where the bank is, nothing happens. A call cut short by ctx
+// leaves the rest for the next; Owed says what is left. Returns the
+// business day the bank is on.
 type DayCommands interface {
 	StartDay(ctx context.Context) (time.Time, error)
 }
@@ -104,6 +108,27 @@ type MarketCommands interface {
 	Publish(ctx context.Context, p Publication) error
 }
 
+// ParameterSetting is a staff member setting one of a product's declared
+// parameters, effective from an instant (ADR-0006): decided now, in
+// force from then, and an event on the simulation's timeline until it is
+// (ADR-0010).
+type ParameterSetting struct {
+	ProductID string
+	Key       string
+	Value     string
+	Effective time.Time
+	By        string // who decided it
+}
+
+// ProductCommands is the products component's write side. SetParameter
+// refuses, with ErrInvalidSetting, a product the bank does not carry, a
+// key the product's rules do not declare at the product's scope or
+// derive, a value that is not the parameter's kind, and an effective
+// instant before the bank's clock; an unknown product is ErrNotFound.
+type ProductCommands interface {
+	SetParameter(ctx context.Context, s ParameterSetting) error
+}
+
 // Commands is every command the core accepts.
 type Commands interface {
 	CustomerCommands
@@ -111,4 +136,5 @@ type Commands interface {
 	TreasuryCommands
 	DayCommands
 	MarketCommands
+	ProductCommands
 }

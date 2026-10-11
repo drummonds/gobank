@@ -38,13 +38,20 @@ type DayResult struct {
 
 // Open runs the open event for a new account and then the day's rule, so
 // the account has its settings and its first position: the day's pass
-// has nothing left to do for it.
-func (p *Products) Open(books *ledger.Ledger, a Account, day time.Time) error {
+// has nothing left to do for it. The account's parameters count as
+// applied up to at, the instant it opens (ADR-0010): a setting effective
+// after that is a ParameterChange owed.
+func (p *Products) Open(books *ledger.Ledger, a Account, day, at time.Time) error {
 	if _, err := p.run(gbp.EventOpen, books, a, day, func(v gbp.Version, f gbp.Facts) (gbp.Intents, error) { return v.Open(f) }); err != nil {
 		return err
 	}
-	_, err := p.AccountDay(books, a, day)
-	return err
+	if _, err := p.AccountDay(books, a, day); err != nil {
+		return err
+	}
+	if _, err := books.Querier().ExecContext(context.Background(), `INSERT INTO product_account_parameters (account_id, applied_to) VALUES ($1, $2)`, a.ID, at.UTC()); err != nil {
+		return fmt.Errorf("products: %s: record parameters applied: %w", a.ID, err)
+	}
+	return nil
 }
 
 // AccountDay is the day event: one account's share of the start-of-day
@@ -231,35 +238,32 @@ func (f *facts) readsText() string {
 	return strings.Join(parts, " ")
 }
 
-// resolve is the parameter resolution of ADR-0006: a derived parameter
-// from its source and the formula; a declared one from the latest setting
-// in effect at the end of the day at its scope (ADR-0009: a setting is
-// effective from an instant, and a noon publication counts for its day),
-// as known at knownAt, or, at the product's scope (the contract's
-// "version" scope), the value the rules publish. A market-scope parameter
-// is the product's currency's.
+// resolve is a parameter for a day: resolveAt the end of the day
+// (ADR-0009: a setting is effective from an instant, and a noon
+// publication counts for its day).
 func (p *Products) resolve(ctx context.Context, q ledger.Querier, prod Product, accountID, key string, day, knownAt time.Time) (gbp.Param, error) {
+	return p.resolveAt(ctx, q, prod, accountID, key, parameters.EndOfDay(day), knownAt)
+}
+
+// resolveAt is the parameter resolution of ADR-0006 at an instant: a
+// derived parameter from its source and the formula; a declared one from
+// the latest setting in effect at the instant at its scope, as known at
+// knownAt, or, at the product's scope (the contract's "version" scope),
+// the value the rules publish. A market-scope parameter is the product's
+// currency's.
+func (p *Products) resolveAt(ctx context.Context, q ledger.Querier, prod Product, accountID, key string, at, knownAt time.Time) (gbp.Param, error) {
 	d, ok := gbp.Declared(prod.Rules, key)
 	if !ok {
 		return gbp.Param{}, fmt.Errorf("parameter %s: not declared by %s v%d", key, prod.RulesID, prod.RulesVersion)
 	}
 	if d.Derived != nil {
-		source, err := p.resolve(ctx, q, prod, accountID, d.Derived.Source, day, knownAt)
+		source, err := p.resolveAt(ctx, q, prod, accountID, d.Derived.Source, at, knownAt)
 		if err != nil {
 			return gbp.Param{}, err
 		}
 		return d.Parse(strconv.FormatInt(d.Derived.Apply(source.Bps()), 10))
 	}
-	owner := parameters.OwnerBank
-	switch d.Scope {
-	case gbp.ScopeMarket:
-		owner = prod.Currency
-	case gbp.ScopeVersion:
-		owner = prod.ID
-	case gbp.ScopeAccount:
-		owner = accountID
-	}
-	text, found, err := p.params.Resolve(ctx, q, d.Scope, owner, key, parameters.EndOfDay(day), knownAt)
+	text, found, err := p.params.Resolve(ctx, q, d.Scope, p.owner(d.Scope, prod, accountID), key, at, knownAt)
 	if err != nil {
 		return gbp.Param{}, err
 	}
@@ -267,9 +271,23 @@ func (p *Products) resolve(ctx context.Context, q ledger.Querier, prod Product, 
 		text, found = d.Published, true
 	}
 	if !found {
-		return gbp.Param{}, fmt.Errorf("parameter %s: no %s setting for %s on %s", key, d.Scope, owner, day.Format(time.DateOnly))
+		return gbp.Param{}, fmt.Errorf("parameter %s: no %s setting for %s at %s", key, d.Scope, p.owner(d.Scope, prod, accountID), at.Format(time.RFC3339))
 	}
 	return d.Parse(text)
+}
+
+// owner is whose setting a parameter at a scope is, for an account on a
+// product: the currency's, the bank's, the product's or the account's.
+func (p *Products) owner(scope gbp.Scope, prod Product, accountID string) string {
+	switch scope {
+	case gbp.ScopeMarket:
+		return prod.Currency
+	case gbp.ScopeVersion:
+		return prod.ID
+	case gbp.ScopeAccount:
+		return accountID
+	}
+	return parameters.OwnerBank
 }
 
 func accrualNumerator(f luca.Fraction) int64 {

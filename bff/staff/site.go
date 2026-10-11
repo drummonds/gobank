@@ -18,6 +18,7 @@ import (
 	"html/template"
 	"log"
 	"net/http"
+	"net/url"
 	"strconv"
 	"strings"
 	"time"
@@ -259,10 +260,42 @@ func (s *Site) routes() {
 
 	// Products
 	mux.HandleFunc("/products/savings", func(w http.ResponseWriter, r *http.Request) {
-		s.page(w, r, func() string { return BuildProductsHTML(bank, gbp.FamilySavings) })
+		s.page(w, r, func() string { return BuildProductsHTML(bank, gbp.FamilySavings, s.role(r).Can("settings")) })
 	})
 	mux.HandleFunc("/products/lending", func(w http.ResponseWriter, r *http.Request) {
-		s.page(w, r, func() string { return BuildProductsHTML(bank, gbp.FamilyLending) })
+		s.page(w, r, func() string { return BuildProductsHTML(bank, gbp.FamilyLending, s.role(r).Can("settings")) })
+	})
+	// A staff setting of a product's parameter, effective at an instant
+	// (ADR-0010): decided by the signed-in user.
+	mux.HandleFunc("/products/set", func(w http.ResponseWriter, r *http.Request) {
+		back := "products/savings"
+		if r.FormValue("family") == string(gbp.FamilyLending) {
+			back = "products/lending"
+		}
+		if r.Method != "POST" {
+			s.redirect(w, r, back)
+			return
+		}
+		if !s.require(w, r, "settings") {
+			return
+		}
+		sess, _ := signedIn(r)
+		setting := core.ParameterSetting{ProductID: r.FormValue("product"), Key: r.FormValue("key"), Value: r.FormValue("value"), By: sess.user.Login}
+		if setting.Effective, _ = time.Parse("2006-01-02T15:04", r.FormValue("effective")); setting.Effective.IsZero() {
+			if pos, err := bank.Position(r.Context()); err == nil {
+				setting.Effective = pos.Day // an empty instant is the bank's day: in force from now
+			}
+		}
+		if s.cfg.Commands == nil {
+			http.Error(w, "Forbidden", http.StatusForbidden)
+			return
+		}
+		if err := s.cfg.Commands.SetParameter(r.Context(), setting); err != nil {
+			log.Printf("set parameter %+v: %v", setting, err)
+			s.redirect(w, r, back+"?refused="+url.QueryEscape(err.Error()))
+			return
+		}
+		s.redirect(w, r, back)
 	})
 
 	// Customers
