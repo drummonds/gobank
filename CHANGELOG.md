@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+## [0.30.0] - 2026-10-11
+
+ - Stage 8 story 1.8.2: the catalogue as products on rules versions (ADR-0006 as amended), the runner over the product contract, the parameters component
+
 ### Added
 - Stage 8 story 1.8.2: the catalogue and the runner (ADR-0006 as
   amended). A product is an instance of a rules version with its own ID
