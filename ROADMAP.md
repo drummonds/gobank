@@ -664,7 +664,22 @@ root module, `cmd/bff` is the service binary, and `app/` is the Flutter shell.
   staff page sets a product's declared parameter effective at a future
   instant, one more event on the timeline, with upcoming settings shown
   on the products page
-- **1.8.6** (was 1.8.4) policy as code — the contract gains a parameter
+- **1.8.6** events and their cascades are recorded (ADR-0011) — every
+  command is a root event in `bank/events` (`events`: roots and, later,
+  continuations, with a status), written by the command and carried
+  down as the cause of what it writes: `cause_id` on postings, settings
+  and payments, `step` on postings with a unique key on (cause, account,
+  step), inserted before the movement; each account's pass work in a
+  transaction of its own; `Owed` read from the record plus the pass's
+  unprojected count; the console showing cascades by root and a
+  posting's cause; gobank-products gains `Posting.Step` (v1 names its
+  one posting `apply`). Restart replays the root, never the effects: a
+  kill-and-replay test fails the transaction after each effect in turn
+  and asserts the facts identical. One root per day for accruals, the
+  position each account's fact. Out of scope: continuations (sleep,
+  maturity, 1.8.9), human steps (the first workflow), any change to
+  `core.Commands`
+- **1.8.7** (was 1.8.6, before that 1.8.4) policy as code — the contract gains a parameter
   derived by code, the hook ADR-0006's lag and take become, and
   `modelbank` is extracted into a module of its own (ADR-0007) carrying
   the Model Bank's policy as code: its savings and lending base rates
@@ -677,10 +692,10 @@ root module, `cmd/bff` is the service binary, and `app/` is the Flutter shell.
   `easyaccess/v2` tracking the bank savings rate at − 15 bps, floor 0,
   adopted on preprod mid-run, new accounts opening on it, its accrual
   seen moving when the risk-free rate does
-- **1.8.7** (was 1.8.5) a product of the bank's own — one product version
+- **1.8.8** (was 1.8.7, before that 1.8.5) a product of the bank's own — one product version
   moves from gobank-products into the bank module, the contract and the
   engine staying in the library, proving a bank defines its own products
-- **1.8.8** (was 1.8.6) the remaining events — pre-posting (term lock,
+- **1.8.9** (was 1.8.8, before that 1.8.6) the remaining events — pre-posting (term lock,
   ISA allowance, overdraft limit as rules the payments path asks),
   start-up, manual commands from the console, change of version per
   account from the staff account page. Done-when of the stage: an

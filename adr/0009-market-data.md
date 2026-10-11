@@ -2,7 +2,7 @@
 
 Status: Accepted
 Date: 2026-10-11
-Stage: ADR-0002 stage 8 (roadmap 1.8), story 1.8.4; shapes 1.8.5 and 1.8.6
+Stage: ADR-0002 stage 8 (roadmap 1.8), story 1.8.4; shapes 1.8.5 and 1.8.6 (now 1.8.7)
 
 ## Context
 
@@ -60,7 +60,7 @@ parameters component, with no declaration because it is not a rule.
 
 | Scope | Owner | Written by | Read by |
 |---|---|---|---|
-| market | the currency | the feed, through `core.MarketCommands.Publish` | the treasury; the policy (1.8.6); any version that tracks the market directly |
+| market | the currency | the feed, through `core.MarketCommands.Publish` | the treasury; the policy (1.8.6, now 1.8.7); any version that tracks the market directly |
 | bank | "bank" | staff; the policy's published values | the policy, versions |
 | version | the product's ID | staff; the rules' published values | versions |
 | account | the ledger account | the rules at open | versions |

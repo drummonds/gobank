@@ -2,7 +2,7 @@
 
 Status: Proposed
 Date: 2026-10-11
-Stage: ADR-0002 stage 8 (roadmap 1.8), a story before 1.8.6; the first form of the roadmap's workflow engine
+Stage: ADR-0002 stage 8 (roadmap 1.8), story 1.8.6, before policy as code (1.8.7); the first form of the roadmap's workflow engine
 
 ## Context
 
@@ -20,7 +20,7 @@ finished.
 Four roots exist today (the start of a day, a publication, a payment, a
 staff setting) and each cascades: a payment through pre-posting,
 posting, post-posting and the GL control; a publication through the
-parameter changes it fires. Story 1.8.6 adds a longer chain, the market
+parameter changes it fires. Story 1.8.7 (policy as code) adds a longer chain, the market
 rate reaching the bank's policy, the policy the product rates, the rates
 every account. The roadmap's workflow engine (KYC onboarding, lending
 proposals, dormancy, promotion) is the same shape again: a root event, a
@@ -174,13 +174,13 @@ root, and a posting's page names its cause.
   plus the pass's count. ADR-0010's stored-facts comparison for
   parameter changes stays as the way to find which accounts a setting
   reaches; the firing records its cause.
-- The first slice, a story before 1.8.6 so the policy cascade is built
-  on it: the events table with roots only; `cause_id` on postings,
+- The first slice, story 1.8.6, before policy as code (1.8.7) so the
+  policy cascade is built on it: the events table with roots only; `cause_id` on postings,
   settings and payments, `step` on postings with the unique key; each
   account's pass work in a transaction; `Owed` from the record; the
   console's cascades by root; the kill-and-replay test. No
   continuations, no human steps, no signature changes. Continuations
-  come with the first rule that needs one (a term's maturity, 1.8.8);
+  come with the first rule that needs one (a term's maturity, 1.8.9);
   human steps with the first workflow (KYC onboarding).
 - gobank-products changes once: `Posting.Step`. The v1 rules name their
   one posting `apply`.

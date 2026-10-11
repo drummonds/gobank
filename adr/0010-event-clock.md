@@ -14,7 +14,7 @@ during the slot at the wall's pace. It has served: the bank follows the
 clock, a cut-short pass resumes, a restart lands on the same day.
 
 ADR-0009 puts an event inside the day. A publication at 12:00 changes a
-market parameter; the bank's policy (1.8.6) derives new bank rates from
+market parameter; the bank's policy (1.8.6, now 1.8.7) derives new bank rates from
 it; product rates derive from those; and every account holding such a
 product is owed a `ParameterChange` event (ADR-0006), whose rule may post.
 All of that is caused by one instant and must be done before anything
@@ -125,7 +125,7 @@ them.
 - The `Run` record changes shape (an instant for a day and a slot
   start): a migration in the simulation component, and the drill's
   rollback reads the older shape, so both are kept for one release.
-- `ParameterChange` leaves roadmap 1.8.8 and is built here, because
+- `ParameterChange` leaves roadmap 1.8.8 (now 1.8.9) and is built here, because
   without it there is no cascade to wait for.
 - The payments generator's throughput becomes a property of the
   timeline (payments per simulated day) rather than of the wall, which
