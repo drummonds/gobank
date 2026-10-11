@@ -2,6 +2,8 @@
 
 ## [Unreleased]
 
+## [0.33.0] - 2026-10-11
+
 ## [0.32.0] - 2026-10-11
 
  - Story 1.8.5: the simulation moves by events (ADR-0010) — stepped clock, timeline, Owed, ParameterChange cascade, staff settings at an instant
