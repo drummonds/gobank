@@ -14,17 +14,17 @@ import (
 	"git.bytestone.uk/hum3/gobank/bank/parameters"
 )
 
-// ErrUnknownVersion is an account on a version this build does not carry.
-// The runner leaves such an account alone: the build that carries the
-// version picks it up where it was left.
-var ErrUnknownVersion = errors.New("products: version not carried by this build")
+// ErrNotCarried is an account on a product this build cannot run: one
+// not on record, or whose rules the build does not carry. The runner
+// leaves such an account alone: the build that carries the rules picks it
+// up where it was left.
+var ErrNotCarried = errors.New("products: the product's rules are not carried by this build")
 
 // Account is an account an event is for: its ledger account and the
-// version it runs on.
+// product it holds.
 type Account struct {
 	ID      string
 	Product string
-	Version int
 }
 
 // DayResult is what one account's event changed in the bank's totals: the
@@ -95,16 +95,16 @@ func (p *Products) PostEvent(books *ledger.Ledger, day time.Time, creditID, debi
 // intents: settings written, postings made and recorded, positions
 // projected, in that order, through the books' transaction.
 func (p *Products) run(event gbp.Event, books *ledger.Ledger, a Account, day time.Time, rule func(gbp.Version, gbp.Facts) (gbp.Intents, error)) (DayResult, error) {
-	prod, ok := p.At(a.Product, a.Version)
-	if !ok {
-		return DayResult{}, fmt.Errorf("%w: %s v%d", ErrUnknownVersion, a.Product, a.Version)
+	prod, ok := p.ByID(a.Product)
+	if !ok || !prod.Carried() {
+		return DayResult{}, fmt.Errorf("%w: %s", ErrNotCarried, a.Product)
 	}
 	res := DayResult{Family: prod.Family()}
 	ctx := context.Background()
-	f := &facts{p: p, ctx: ctx, books: books, a: a, v: prod.Version, day: startOfDay(day), knownAt: p.now()}
-	in, err := rule(prod.Version, f)
+	f := &facts{p: p, ctx: ctx, books: books, a: a, prod: prod, day: startOfDay(day), knownAt: p.now()}
+	in, err := rule(prod.Rules, f)
 	if err != nil {
-		return res, fmt.Errorf("%s v%d %s: %w", a.Product, a.Version, event, err)
+		return res, fmt.Errorf("%s (%s v%d) %s: %w", a.Product, prod.RulesID, prod.RulesVersion, event, err)
 	}
 	if f.err != nil {
 		return res, f.err
@@ -138,9 +138,9 @@ func (p *Products) run(event gbp.Event, books *ledger.Ledger, a Account, day tim
 		if err != nil {
 			return res, fmt.Errorf("products: post %s: %w", posting.Description, err)
 		}
-		if _, err := q.ExecContext(ctx, `INSERT INTO product_postings (movement_id, account_id, product_id, version, event, parameters, input_balance, input_accrued_num, posted_at)
-			VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)`,
-			m.ID, a.ID, a.Product, a.Version, string(event), f.readsText(), int64(input.Balance), accrualNumerator(input.Accrued), f.knownAt.UTC()); err != nil {
+		if _, err := q.ExecContext(ctx, `INSERT INTO product_postings (movement_id, account_id, product_id, rules, rules_version, event, parameters, input_balance, input_accrued_num, posted_at)
+			VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)`,
+			m.ID, a.ID, a.Product, prod.RulesID, prod.RulesVersion, string(event), f.readsText(), int64(input.Balance), accrualNumerator(input.Accrued), f.knownAt.UTC()); err != nil {
 			return res, fmt.Errorf("products: record posting %s: %w", m.ID, err)
 		}
 		res.Applied += posting.Amount
@@ -169,7 +169,7 @@ type facts struct {
 	ctx     context.Context
 	books   *ledger.Ledger
 	a       Account
-	v       gbp.Version
+	prod    Product
 	day     time.Time
 	knownAt time.Time
 	reads   []gbp.Param
@@ -206,7 +206,7 @@ func (f *facts) fail(err error) {
 }
 
 func (f *facts) Parameter(key string, day time.Time) (gbp.Param, error) {
-	param, err := f.p.resolve(f.ctx, f.books.Querier(), f.v, f.a.ID, key, startOfDay(day), f.knownAt)
+	param, err := f.p.resolve(f.ctx, f.books.Querier(), f.prod, f.a.ID, key, startOfDay(day), f.knownAt)
 	if err == nil {
 		f.reads = append(f.reads, param)
 	}
@@ -234,14 +234,15 @@ func (f *facts) readsText() string {
 // resolve is the parameter resolution of ADR-0006: a derived parameter
 // from its source and the formula; a declared one from the latest setting
 // effective on or before the day at its scope, as known at knownAt, or,
-// at version scope, the published value.
-func (p *Products) resolve(ctx context.Context, q ledger.Querier, v gbp.Version, accountID, key string, day, knownAt time.Time) (gbp.Param, error) {
-	d, ok := gbp.Declared(v, key)
+// at the product's scope (the contract's "version" scope), the value the
+// rules publish.
+func (p *Products) resolve(ctx context.Context, q ledger.Querier, prod Product, accountID, key string, day, knownAt time.Time) (gbp.Param, error) {
+	d, ok := gbp.Declared(prod.Rules, key)
 	if !ok {
-		return gbp.Param{}, fmt.Errorf("parameter %s: not declared by %s v%d", key, v.Product(), v.Version())
+		return gbp.Param{}, fmt.Errorf("parameter %s: not declared by %s v%d", key, prod.RulesID, prod.RulesVersion)
 	}
 	if d.Derived != nil {
-		source, err := p.resolve(ctx, q, v, accountID, d.Derived.Source, day, knownAt)
+		source, err := p.resolve(ctx, q, prod, accountID, d.Derived.Source, day, knownAt)
 		if err != nil {
 			return gbp.Param{}, err
 		}
@@ -250,7 +251,7 @@ func (p *Products) resolve(ctx context.Context, q ledger.Querier, v gbp.Version,
 	owner := parameters.OwnerBank
 	switch d.Scope {
 	case gbp.ScopeVersion:
-		owner = parameters.Owner(v)
+		owner = prod.ID
 	case gbp.ScopeAccount:
 		owner = accountID
 	}

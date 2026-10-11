@@ -2,6 +2,31 @@
 
 ## [Unreleased]
 
+### Added
+- Stage 8 story 1.8.2: the catalogue and the runner (ADR-0006 as
+  amended). A product is an instance of a rules version with its own ID
+  and name: the `products` table records each with the rules version it
+  runs on, its adoption and withdrawal days and the gobank-products
+  release that carried its rules; the six initial products are adopted
+  from the Model Bank's definition (`bank/definition`, package
+  `modelbank`) when the bank opens. `bank/products` dispatches the open,
+  post-posting and day events to the rules an account's product runs on
+  and records every rule posting in `product_postings` with the product,
+  its rules, the event, the parameters read and the position they applied
+  to. Accounts on a product whose rules the build does not carry are left
+  unprojected and counted. `bank/parameters` holds the bank's settings,
+  each effective from a day and decided at a moment; a product's
+  parameters are its own, defaulting to what its rules publish.
+- The products page shows each product's rules version, published
+  parameters and the accounts holding it; rates are shown in basis points
+  everywhere and the `float64` rate is gone from the bank.
+
+### Changed
+- gobank-products pinned at v0.6.0 (the product contract).
+- The demo's bank-package import rule lets test files alone import the
+  Model Bank's definition and the product versions, since a component's
+  tests run it against the Model Bank (ADR-0007).
+
 ## [0.29.1] - 2026-10-11
 
  - Fix: the GL close failed at every month end once a product had more than one account (the journal now aggregates a product's applications)

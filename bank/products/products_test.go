@@ -21,11 +21,12 @@ import (
 	"git.bytestone.uk/hum3/gobank/bank/parameters"
 )
 
-// listings is a definition's catalogue: the six v1 versions.
+// listings is a definition's products: one on each of the six v1 rules
+// versions, named after its rules.
 func listings() []Listing {
 	var out []Listing
 	for _, v := range []gbp.Version{easyaccess.Version, fixedterm.Version, isa.Version, personalloan.Version, mortgage.Version, overdraft.Version} {
-		out = append(out, Listing{Version: v, Description: v.Name()})
+		out = append(out, Listing{ID: v.Product(), Name: v.Name(), Rules: v, Description: v.Name()})
 	}
 	return out
 }
@@ -55,8 +56,8 @@ func open(t *testing.T) (*Products, *ledger.Ledger) {
 		t.Fatal(err)
 	}
 	for _, stmt := range []string{
-		`CREATE TABLE registered (ledger_account_id VARCHAR(64) PRIMARY KEY, product_id VARCHAR(50) NOT NULL, product_version INTEGER NOT NULL)`,
-		`CREATE VIEW contract_customer_accounts AS SELECT ledger_account_id, product_id, product_version FROM registered`,
+		`CREATE TABLE registered (ledger_account_id VARCHAR(64) PRIMARY KEY, product_id VARCHAR(50) NOT NULL)`,
+		`CREATE VIEW contract_customer_accounts AS SELECT ledger_account_id, product_id FROM registered`,
 	} {
 		if _, err := db.Exec(stmt); err != nil {
 			t.Fatal(err)
@@ -75,8 +76,8 @@ func open(t *testing.T) (*Products, *ledger.Ledger) {
 
 // register opens a customer account on the ledger, funds it from equity on
 // day (a movement alone: the day's position is the pass's to write) and
-// registers it on a version for the pass.
-func register(t *testing.T, p *Products, books *ledger.Ledger, product string, version int, customer string, amount luca.Amount, day time.Time) Account {
+// registers it on a product for the pass.
+func register(t *testing.T, p *Products, books *ledger.Ledger, product string, customer string, amount luca.Amount, day time.Time) Account {
 	t.Helper()
 	family, _ := p.Family(product)
 	id, err := books.OpenCustomerAccount(customer, product, family)
@@ -88,40 +89,35 @@ func register(t *testing.T, p *Products, books *ledger.Ledger, product string, v
 			t.Fatal(err)
 		}
 	}
-	if _, err := p.db.Exec(`INSERT INTO registered (ledger_account_id, product_id, product_version) VALUES ($1, $2, $3)`, id, product, version); err != nil {
+	if _, err := p.db.Exec(`INSERT INTO registered (ledger_account_id, product_id) VALUES ($1, $2)`, id, product); err != nil {
 		t.Fatal(err)
 	}
-	return Account{ID: id, Product: product, Version: version}
+	return Account{ID: id, Product: product}
 }
 
-// The catalogue is the six v1 versions the build carries, adopted on the
-// day the bank first ran with them and recorded with their published
-// parameters; adopting again changes nothing.
-func TestCatalogueIsAdopted(t *testing.T) {
+// The catalogue is the definition's products, each an instance of a rules
+// version the build carries (ADR-0006 as amended), adopted on the day the
+// bank first ran with them; adopting again changes nothing.
+func TestCatalogueIsTheDefinitionsProductsAdopted(t *testing.T) {
 	p, _ := open(t)
 	if n := len(p.All()); n != 6 {
 		t.Fatalf("%d products, want 6", n)
 	}
 	for _, prod := range p.All() {
-		if prod.ID == "" || prod.Currency != "GBP" || prod.RateBps() <= 0 || prod.Version.Version() != 1 || !prod.Adopted.Equal(jan2) || prod.ModuleVersion == "" {
-			t.Errorf("product %+v needs an ID, GBP, a positive rate, version 1 adopted on jan2 by a module version", prod)
+		if prod.ID == "" || prod.Name == "" || prod.Currency != "GBP" || prod.RateBps() <= 0 || !prod.Carried() || prod.Rules.Version() != 1 || !prod.Adopted.Equal(jan2) || prod.ModuleVersion == "" {
+			t.Errorf("product %+v needs an ID, a name, GBP, a positive rate, v1 rules carried, adopted on jan2 by a module version", prod)
 		}
 		if got, ok := p.ByID(prod.ID); !ok || got.ID != prod.ID {
 			t.Errorf("ByID(%s) = %+v, %v", prod.ID, got, ok)
-		}
-		if _, ok := p.At(prod.ID, 1); !ok {
-			t.Errorf("At(%s, 1) not found", prod.ID)
-		}
-		if _, ok := p.At(prod.ID, 2); ok {
-			t.Errorf("At(%s, 2) found", prod.ID)
 		}
 	}
 	if _, ok := p.ByID("no-such-product"); ok {
 		t.Error("an unknown product was found")
 	}
-	var params string
-	if err := p.db.QueryRow(`SELECT parameters FROM products WHERE product_id = 'easy-access' AND version = 1`).Scan(&params); err != nil || params != "rate_bps=150 cycle=monthly" {
-		t.Errorf("easy-access v1 adoption parameters = %q, %v", params, err)
+	var rules string
+	var version int
+	if err := p.db.QueryRow(`SELECT rules, rules_version FROM products WHERE product_id = 'easy-access'`).Scan(&rules, &version); err != nil || rules != "easy-access" || version != 1 {
+		t.Errorf("easy-access runs on %s v%d, %v; want easy-access v1", rules, version, err)
 	}
 	if err := p.Adopt(context.Background(), jan2.AddDate(0, 0, 30)); err != nil {
 		t.Fatal(err)
@@ -135,12 +131,59 @@ func TestCatalogueIsAdopted(t *testing.T) {
 	}
 }
 
+// A product's parameters are its own: defaulted from what its rules
+// version publishes, and set per product by a setting at the product's
+// scope (the contract's "version" scope is the product's).
+func TestProductParametersDefaultFromTheRulesAndAreSetPerProduct(t *testing.T) {
+	p, _ := open(t)
+	ctx := context.Background()
+	easy, _ := p.ByID("easy-access")
+	rate, err := p.resolve(ctx, p.db, easy, "", "rate_bps", jan2, p.now())
+	if err != nil || rate.Bps() != 150 {
+		t.Fatalf("easy-access rate = %v, %v; want the published 150", rate.Bps(), err)
+	}
+	if err := p.params.Set(ctx, nil, parameters.Setting{Scope: gbp.ScopeVersion, Owner: easy.ID, Key: "rate_bps", Value: "200", Effective: jan2, Decided: p.now(), By: "test"}); err != nil {
+		t.Fatal(err)
+	}
+	if rate, _ := p.resolve(ctx, p.db, easy, "", "rate_bps", jan2, p.now()); rate.Bps() != 200 {
+		t.Errorf("easy-access rate after the setting = %d, want 200", rate.Bps())
+	}
+	if isa, _ := p.ByID("isa"); isa.RateBps() == 200 {
+		t.Error("the setting reached another product")
+	}
+}
+
+// A product on record whose rules this build does not carry stays in the
+// catalogue, not carried: its accounts are left alone until a build that
+// carries the rules runs.
+func TestProductOnRulesTheBuildLacksIsNotCarried(t *testing.T) {
+	p, books := open(t)
+	if _, err := p.db.Exec(`INSERT INTO products (product_id, name, rules, rules_version, adopted, module_version) VALUES ('fixed-5y', 'Fixed 5 Year', 'fixed-term', 3, $1, 'v9.9.9')`, jan2); err != nil {
+		t.Fatal(err)
+	}
+	q := New(p.db, p.params, listings())
+	if err := q.Adopt(context.Background(), jan2); err != nil {
+		t.Fatal(err)
+	}
+	fixed, ok := q.ByID("fixed-5y")
+	if !ok || fixed.Carried() || fixed.Name != "Fixed 5 Year" || fixed.RateBps() != 0 || !fixed.OnSale() {
+		t.Errorf("fixed-5y = %+v, %v; want on record, named, not carried, no rate", fixed, ok)
+	}
+	if n := len(q.All()); n != 7 {
+		t.Errorf("%d products, want the six and the one on record", n)
+	}
+	a := register(t, q, books, "fixed-5y", "cust-001", 100_00, jan2)
+	if err := q.Open(books, a, jan2); !errors.Is(err, ErrNotCarried) {
+		t.Errorf("opening on rules the build lacks: %v, want ErrNotCarried", err)
+	}
+}
+
 // A day's work on an account projects its position for the day: the
 // balance as it stands and the day's interest on it, over yesterday's.
 func TestAccountDayProjectsTheDay(t *testing.T) {
 	p, books := open(t)
 	easy, _ := p.ByID("easy-access")
-	a := register(t, p, books, "easy-access", 1, "cust-001", 1000_00, jan2)
+	a := register(t, p, books, "easy-access", "cust-001", 1000_00, jan2)
 	res, err := p.AccountDay(books, a, jan2)
 	if err != nil {
 		t.Fatal(err)
@@ -171,7 +214,7 @@ func TestAccountDayAppliesAtTheCycleEndAndRecordsWhy(t *testing.T) {
 	p, books := open(t)
 	easy, _ := p.ByID("easy-access")
 	jan31 := time.Date(2024, 1, 31, 0, 0, 0, 0, time.UTC)
-	a := register(t, p, books, "easy-access", 1, "cust-001", 1000_00, jan31)
+	a := register(t, p, books, "easy-access", "cust-001", 1000_00, jan31)
 	// A month's accrual on the 31 Jan position: 1000.00 at 1.5% for 30 days
 	// is 123.3p, so 123p apply and 0.3p remain.
 	accrued := luca.Fraction{Num: 1000_00 * easy.RateBps() * 30, Den: gbp.AccrualDenominator}
@@ -207,8 +250,8 @@ func TestAccountDayAppliesAtTheCycleEndAndRecordsWhy(t *testing.T) {
 		t.Fatalf("postings = %+v, %v; want one", recs, err)
 	}
 	r := recs[0]
-	if r.Product != "easy-access" || r.Version != 1 || r.Event != gbp.EventDay || r.InputBalance != 1000_00 || r.InputAccruedNum != accrued.Num {
-		t.Errorf("record %+v; want easy-access v1, day, applied to the 31 Jan position", r)
+	if r.Product != "easy-access" || r.Rules != "easy-access" || r.RulesVersion != 1 || r.Event != gbp.EventDay || r.InputBalance != 1000_00 || r.InputAccruedNum != accrued.Num {
+		t.Errorf("record %+v; want easy-access on easy-access v1, day, applied to the 31 Jan position", r)
 	}
 	if !strings.Contains(r.Parameters, "cycle=monthly") || !strings.Contains(r.Parameters, "rate_bps=150") {
 		t.Errorf("record parameters %q; want the cycle and the rate the rule read", r.Parameters)
@@ -225,8 +268,8 @@ func TestAccountDayAppliesAtTheCycleEndAndRecordsWhy(t *testing.T) {
 func TestPostEventRewritesTheDaysPositions(t *testing.T) {
 	p, books := open(t)
 	easy, _ := p.ByID("easy-access")
-	from := register(t, p, books, "easy-access", 1, "cust-001", 1000_00, jan2)
-	to := register(t, p, books, "easy-access", 1, "cust-002", 500_00, jan2)
+	from := register(t, p, books, "easy-access", "cust-001", 1000_00, jan2)
+	to := register(t, p, books, "easy-access", "cust-002", 500_00, jan2)
 	for _, a := range []Account{from, to} {
 		if _, err := p.AccountDay(books, a, jan2); err != nil {
 			t.Fatal(err)
@@ -258,12 +301,12 @@ func TestPostEventRewritesTheDaysPositions(t *testing.T) {
 // deposits from the funding on.
 func TestOpenWritesTheVersionsAccountSettings(t *testing.T) {
 	p, books := open(t)
-	fixed := register(t, p, books, "fixed-term", 1, "cust-001", 0, jan2)
+	fixed := register(t, p, books, "fixed-term", "cust-001", 0, jan2)
 	if err := p.Open(books, fixed, jan2); err != nil {
 		t.Fatal(err)
 	}
-	v, _ := p.At("fixed-term", 1)
-	maturity, err := p.resolve(context.Background(), p.db, v.Version, fixed.ID, "maturity_day", jan2, p.now())
+	v, _ := p.ByID("fixed-term")
+	maturity, err := p.resolve(context.Background(), p.db, v, fixed.ID, "maturity_day", jan2, p.now())
 	if err != nil || maturity.Day() != jan2.AddDate(0, 24, 0) {
 		t.Errorf("maturity = %v, %v; want 24 months on", maturity.Day(), err)
 	}
@@ -271,7 +314,7 @@ func TestOpenWritesTheVersionsAccountSettings(t *testing.T) {
 		t.Error("an opened account has no position for the day")
 	}
 
-	saver := register(t, p, books, "isa", 1, "cust-002", 0, jan2)
+	saver := register(t, p, books, "isa", "cust-002", 0, jan2)
 	if err := p.Open(books, saver, jan2); err != nil {
 		t.Fatal(err)
 	}
@@ -279,13 +322,13 @@ func TestOpenWritesTheVersionsAccountSettings(t *testing.T) {
 	if _, err := p.PostEvent(books, jan2, saver.ID, books.Chart.Cash, 5000_00, luca.CodeBookTransfer, "funding", saver); err != nil {
 		t.Fatal(err)
 	}
-	iv, _ := p.At("isa", 1)
-	deposited, err := p.resolve(context.Background(), p.db, iv.Version, saver.ID, "deposited", jan2, p.now())
+	iv, _ := p.ByID("isa")
+	deposited, err := p.resolve(context.Background(), p.db, iv, saver.ID, "deposited", jan2, p.now())
 	if err != nil || deposited.Money() != 5000_00 {
 		t.Errorf("deposited = %v, %v; want the funding counted", deposited.Money(), err)
 	}
-	if err := p.Open(books, Account{ID: "x", Product: "easy-access", Version: 9}, jan2); !errors.Is(err, ErrUnknownVersion) {
-		t.Errorf("opening on a version the build lacks: %v, want ErrUnknownVersion", err)
+	if err := p.Open(books, Account{ID: "x", Product: "no-such-product"}, jan2); !errors.Is(err, ErrNotCarried) {
+		t.Errorf("opening on a product the catalogue lacks: %v, want ErrNotCarried", err)
 	}
 }
 
@@ -309,9 +352,9 @@ func TestPassVisitsEveryUnprojectedAccountAndResumes(t *testing.T) {
 	loan, _ := p.ByID("personal-loan")
 	var accounts []Account
 	for i := range 3 {
-		accounts = append(accounts, register(t, p, books, "easy-access", 1, "cust-00"+string(rune('1'+i)), 1000_00, jan2))
+		accounts = append(accounts, register(t, p, books, "easy-access", "cust-00"+string(rune('1'+i)), 1000_00, jan2))
 	}
-	accounts = append(accounts, register(t, p, books, "personal-loan", 1, "cust-004", 2000_00, jan2))
+	accounts = append(accounts, register(t, p, books, "personal-loan", "cust-004", 2000_00, jan2))
 	if pending, err := p.AnyUnprojected(ctx, jan2); err != nil || !pending {
 		t.Fatalf("AnyUnprojected before the pass = %v, %v; want true", pending, err)
 	}
@@ -353,25 +396,32 @@ func TestPassVisitsEveryUnprojectedAccountAndResumes(t *testing.T) {
 		t.Errorf("a pass over a finished day visited %d", again.Visited)
 	}
 
-	// An account on a version the build does not carry is skipped, not run.
-	register(t, p, books, "easy-access", 7, "cust-005", 100_00, jan2)
+	// An account on a product whose rules the build does not carry is
+	// skipped, not run.
+	if _, err := p.db.Exec(`INSERT INTO products (product_id, name, rules, rules_version, adopted, module_version) VALUES ('easy-access-v7', 'Easy Access 7', 'easy-access', 7, $1, 'v9.9.9')`, jan2); err != nil {
+		t.Fatal(err)
+	}
+	if err := p.Adopt(ctx, jan2); err != nil {
+		t.Fatal(err)
+	}
+	register(t, p, books, "easy-access-v7", "cust-005", 100_00, jan2)
 	skipped := p.RunPass(ctx, books, jan2, &prog, nil)
 	if skipped.Visited != 0 || skipped.Skipped != 1 {
-		t.Errorf("pass with an unknown version: %+v; want nothing visited, one skipped", skipped)
+		t.Errorf("pass with a product not carried: %+v; want nothing visited, one skipped", skipped)
 	}
 	if pending, _ := p.AnyUnprojected(ctx, jan2); !pending {
 		t.Error("the skipped account counts as projected")
 	}
 }
 
-// A version the definition withdraws comes off sale on the day the bank
+// A product the definition withdraws comes off sale on the day the bank
 // first runs with it withdrawn, and stays in the catalogue for the
 // accounts on it.
-func TestWithdrawnVersionIsOffSale(t *testing.T) {
+func TestWithdrawnProductIsOffSale(t *testing.T) {
 	p, _ := open(t)
 	listings := listings()
 	for i := range listings {
-		if listings[i].Version.Product() == "isa" {
+		if listings[i].ID == "isa" {
 			listings[i].Withdrawn = true
 		}
 	}
@@ -383,9 +433,6 @@ func TestWithdrawnVersionIsOffSale(t *testing.T) {
 	got, ok := q.ByID("isa")
 	if !ok || got.OnSale() || !got.Withdrawn.Equal(later) || !got.Adopted.Equal(jan2) {
 		t.Errorf("isa = %+v, %v; want adopted jan2, withdrawn a month on, still in the catalogue", got, ok)
-	}
-	if _, ok := q.At("isa", 1); !ok {
-		t.Error("a withdrawn version is not found by At")
 	}
 	if err := q.Adopt(context.Background(), later.AddDate(0, 1, 0)); err != nil {
 		t.Fatal(err)

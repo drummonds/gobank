@@ -36,7 +36,7 @@ gbp: gobank-products (library) {
 bank: gobank (the bank) {
   runner: bank/products — the runner {
     shape: rectangle
-    label: "bank/products\ngathers facts, dispatches the event,\nposts the intents under the account's lock\nowns: products (adoptions), product_postings"
+    label: "bank/products\ngathers facts, dispatches the event,\nposts the intents under the account's lock\nowns: products (instances of rules versions), product_postings"
   }
   params: bank/parameters {
     shape: rectangle
@@ -48,7 +48,7 @@ bank: gobank (the bank) {
   }
   customers: bank/customers {
     shape: rectangle
-    label: "customer_accounts\n+ product_version"
+    label: "customer_accounts\nnames the product"
   }
   treasury: bank/treasury {
     shape: rectangle
@@ -69,7 +69,7 @@ callers.console -> bank.params: set a product rate\n(effective in the future)
 callers.sim -> bank.params: boe.base_rate settings
 
 bank.runner -> gbp.contract: Rules(facts)
-bank.runner -> bank.params: resolve parameters\nfor the account's version
+bank.runner -> bank.params: resolve parameters\nfor the account's product
 bank.runner -> bank.ledger: positions, postings
-bank.runner -> bank.customers: account's version
+bank.runner -> bank.customers: account's product
 bank.treasury -> bank.params: boe.base_rate

@@ -50,8 +50,8 @@ every rule posting the version and the values that produced it.
 | Derivation | A parameter defined as a function of another: `bank.savings_rate − 15 bps, floor 0`. Code, not a setting; a derived parameter has no settings of its own. A derivation may lag: the lower (or higher) of the source now and the source a number of days ago. |
 | Bank rate | The bank's own base rate for a family, `bank.savings_rate_bps` and `bank.lending_rate_bps`: derived from the Bank of England rate with a spread and a lag, by the bank's policy. What a product rate derives from, unless the version has logic of its own. |
 | Policy | The bank's rules as versioned code: a package in gobank-products that declares the bank-scoped parameters (the base rate as the market writes it, the bank rates, the spreads and lags). Adopted, immutable and retired as a product version is; a change to how the bank sets its rates is a new policy version. |
-| Catalogue | The versions the bank has adopted: the `products` table, with the day each went on sale, the gobank-products module version that carried it, and its parameters as published. |
-| Account version | The version an account runs under: stamped at open, changed only by the change-of-version event. |
+| Catalogue | The products the bank has instantiated (see the amendment below): the `products` table, each product with the rules version it runs on, the day it went on sale, the day it came off, and the gobank-products module version that carried its rules at adoption. |
+| Account version | The rules an account runs under: those of its product. Changed only by the change-of-version event, which moves the account to a product on the new rules. |
 | Rule posting | A ledger movement a rule called for, recorded with the version, the event and the resolved parameters that produced it. |
 
 ![Structure](0006-structure.svg)
@@ -187,8 +187,8 @@ runner posts a negative application in the reverse direction.
 
 | Table | Owner | Rows |
 |---|---|---|
-| `products` | bank/products | one per adopted version: product, version, adopted day, withdrawn day, module version, published parameters. The latest adopted and unwithdrawn version of a product is the one new accounts open on. |
-| `product_postings` | bank/products | one per rule posting: the movement, the account, product, version, event, the resolved parameters as text, the inputs applied (the closing numerator and the balance) |
+| `products` | bank/products | one per product (as amended below): its ID and name, the rules version it runs on, adopted day, withdrawn day, module version. A product is on sale until withdrawn; a product whose rules the build does not carry stays on record, its accounts left unprojected. |
+| `product_postings` | bank/products | one per rule posting: the movement, the account, the product and the rules version it ran on, event, the resolved parameters as text, the inputs applied (the closing numerator and the balance) |
 | `parameter_settings` | bank/parameters | one per setting: scope, key, value, effective-from, decided-at, decided-by |
 | `customer_accounts.product_version` | bank/customers | the account's version; the migration puts every open account on 1 |
 
@@ -279,8 +279,12 @@ configuration and not a release:
 The rules version still publishes defaults, still declares what a
 product of its kind reads, and is still immutable and tested on its own.
 The definition (ADR-0007) lists the bank's initial products and the
-rules versions it may instantiate. Story 1.8.2 builds the catalogue in
-this shape.
+rules versions it may instantiate. Story 1.8.2 built the catalogue in
+this shape: `products` keyed by product ID with the rules version as
+columns, `customer_accounts` naming the product alone, a product's
+parameters resolved at the contract's "version" scope with the product
+as owner, defaulting to what its rules publish. The contract's scope
+name stays "version" until gobank-products renames it additively.
 
 ## Consequences
 

@@ -20,7 +20,7 @@ var day = time.Date(2024, 3, 15, 0, 0, 0, 0, time.UTC)
 func catalogue() []products.Product {
 	var out []products.Product
 	for _, l := range modelbank.Definition().Products {
-		out = append(out, products.Product{Version: l.Version, ID: l.Version.Product(), Currency: products.Currency, Description: l.Description})
+		out = append(out, products.Product{ID: l.ID, Name: l.Name, Rules: l.Rules, Currency: products.Currency, Description: l.Description})
 	}
 	return out
 }

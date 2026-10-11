@@ -37,7 +37,6 @@ type Account struct {
 	ProductName string
 	Family      string // "Savings" or "Lending"
 	Currency    string // ISO 4217 code of the product's money, e.g. "GBP"
-	Version     int    // the product version the account runs on
 	RateBps     int64  // the annual rate the account earns today, in basis points
 	Balance     luca.Amount
 	Interest    luca.Amount // applied to the balance to date

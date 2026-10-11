@@ -106,9 +106,6 @@ func TestResolveIsScoped(t *testing.T) {
 	if _, ok, _ := p.Resolve(ctx, nil, gbp.ScopeVersion, "acct-1", "deposited", d(2026, 1, 1), d(2026, 1, 1)); ok {
 		t.Error("a setting resolved at the wrong scope")
 	}
-	if Owner(stub{}) != "easy-access/1" {
-		t.Errorf("Owner = %q", Owner(stub{}))
-	}
 }
 
 type stub struct{ gbp.Rules }

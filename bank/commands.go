@@ -118,7 +118,7 @@ func (b *Bank) persistCustomer(ctx context.Context, day time.Time, plan *custome
 	// the day's pass has nothing left to do for it and a day is complete
 	// when every registered account has its position.
 	for _, a := range rec.Accounts {
-		if err := b.products.Open(books, products.Account{ID: a.LedgerAccountID, Product: a.ProductID, Version: a.Version}, day); err != nil {
+		if err := b.products.Open(books, products.Account{ID: a.LedgerAccountID, Product: a.ProductID}, day); err != nil {
 			log.Printf("bank: open customer %s: %s: %v", rec.ID, a.LedgerAccountID, err)
 		}
 	}
@@ -136,7 +136,7 @@ func (b *Bank) persistCustomer(ctx context.Context, day time.Time, plan *custome
 		}
 		// The version's post-posting rule then projects the day on the
 		// funded balance.
-		funded := products.Account{ID: a.LedgerAccountID, Product: a.ProductID, Version: a.Version}
+		funded := products.Account{ID: a.LedgerAccountID, Product: a.ProductID}
 		if _, err := b.products.PostEvent(books, day, credit, debit, f.payment.Amount, luca.CodeBookTransfer, f.payment.Reference, funded); err != nil {
 			log.Printf("bank: open customer %s: %v", rec.ID, err)
 		}
@@ -203,8 +203,8 @@ func (b *Bank) Transfer(ctx context.Context, t core.Transfer) (core.Payment, err
 	books := b.ledger.WithTx(tx)
 	// A pays B: B's account is credited (the bank owes B more), A's debited.
 	if _, err := b.products.PostEvent(books, day, toAcc.LedgerAccountID, fromAcc.LedgerAccountID, t.Amount, luca.CodeBookTransfer, pay.Reference,
-		products.Account{ID: fromAcc.LedgerAccountID, Product: fromAcc.ProductID, Version: fromAcc.Version},
-		products.Account{ID: toAcc.LedgerAccountID, Product: toAcc.ProductID, Version: toAcc.Version}); err != nil {
+		products.Account{ID: fromAcc.LedgerAccountID, Product: fromAcc.ProductID},
+		products.Account{ID: toAcc.LedgerAccountID, Product: toAcc.ProductID}); err != nil {
 		_ = tx.Rollback()
 		return core.Payment{}, err
 	}
@@ -427,35 +427,36 @@ func (b *Bank) ClearPayments(ctx context.Context) error {
 // --- Products ---
 
 // Products implements core.ProductQueries: the catalogue, a row per
-// adopted version, with the product's share of the book — its balance,
-// from the same reading as the position — and the accounts on each
-// version.
+// product on record, with the rules it runs on, the product's share of
+// the book — its balance, from the same reading as the position — and
+// the accounts holding it.
 func (b *Bank) Products(ctx context.Context) ([]core.Product, error) {
 	b.open.RLock()
 	defer b.open.RUnlock()
 	k := b.book.get(ctx)
-	byVersion, err := b.products.AccountsByVersion(ctx)
+	byProduct, err := b.products.AccountsByProduct(ctx)
 	if err != nil {
 		return nil, err
 	}
 	catalogue := b.products.All()
 	out := make([]core.Product, 0, len(catalogue))
 	for _, prod := range catalogue {
-		onSale, _ := b.products.ByID(prod.ID)
-		v := prod.Version
 		var params []core.Parameter
-		for _, d := range v.Parameters() {
-			value := d.Published
-			if d.Derived != nil {
-				value = describeDerivation(*d.Derived)
+		if prod.Carried() {
+			for _, d := range prod.Rules.Parameters() {
+				value := d.Published
+				if d.Derived != nil {
+					value = describeDerivation(*d.Derived)
+				}
+				params = append(params, core.Parameter{Key: d.Key, Scope: string(d.Scope), Kind: string(d.Kind), Value: value})
 			}
-			params = append(params, core.Parameter{Key: d.Key, Scope: string(d.Scope), Kind: string(d.Kind), Value: value})
 		}
 		out = append(out, core.Product{
-			ID: prod.ID, Version: v.Version(), Name: v.Name(), Family: string(v.Family()), Currency: prod.Currency,
+			ID: prod.ID, Name: prod.Name, Rules: prod.RulesID, RulesVersion: prod.RulesVersion, Carried: prod.Carried(),
+			Family: string(prod.Family()), Currency: prod.Currency,
 			RateBps: prod.RateBps(), Parameters: params, Description: prod.Description,
-			Adopted: prod.Adopted, ModuleVersion: prod.ModuleVersion, OnSale: onSale.Version.Version() == v.Version() && prod.OnSale(),
-			Accounts: byVersion[products.VersionKey{Product: prod.ID, Version: v.Version()}], Balance: k.products[prod.ID].balance,
+			Adopted: prod.Adopted, ModuleVersion: prod.ModuleVersion, OnSale: prod.OnSale(),
+			Accounts: byProduct[prod.ID], Balance: k.products[prod.ID].balance,
 		})
 	}
 	return out, nil

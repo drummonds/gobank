@@ -9,5 +9,5 @@ import "git.bytestone.uk/hum3/gobank/bank/products"
 // Bank is one bank's definition.
 type Bank struct {
 	Name     string             // the bank's name, as its pages show it
-	Products []products.Listing // the product versions it carries, in catalogue order
+	Products []products.Listing // its products, each on a rules version the build then carries, in catalogue order
 }

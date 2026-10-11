@@ -596,8 +596,8 @@ root module, `cmd/bff` is the service binary, and `app/` is the Flutter shell.
   `SimContext`, `Simulation` and `ParameterStore` retired. A library
   release; gobank stays on v0.3.0 until 1.8.2
 - **1.8.2a** the ledger is the bank's view (ADR-0008; taken before
-  1.8.2 completes; BUILT 2026-10-11 on branch stage-8-2a-ledger-bank-view,
-  awaiting release and the reset deploy) — posting directions per the ADR's table, `Asset:Cash`
+  1.8.2 completes; SHIPPED v0.29.0 2026-10-10, preprod and prod reset on
+  it) — posting directions per the ADR's table, `Asset:Cash`
   on both charts, the ledger wrapper's parameters named credit and debit,
   every read's sign correction gone, the staff web's view switch (bank's
   view by default) and the app's customer view with its position with the
@@ -609,17 +609,24 @@ root module, `cmd/bff` is the service binary, and `app/` is the Flutter shell.
   first, raised there); no conversion
   of running banks: preprod and prod are reset on this release, the
   drill a fresh deploy named as ADR-0003's exception
-- **1.8.2** the catalogue and the runner — `products` (adoption and
-  withdrawal days) and `product_postings`, `product_version` on accounts
-  (the migration stamps every account 1; the bank adopts the six at
-  open), `bank/parameters` with its settings table (the rules' account
-  settings need it from the start), `bank/products` dispatching open,
-  post-posting and day to the account's version and leaving accounts on
-  versions the build lacks unprojected and counted, the bank opened with
-  its definition (`bank/definition`, package `modelbank`); the `float64`
-  rate and the defaults map gone from the bank; the products page showing
-  versions, parameters and the accounts on each. Built to WIP on branch
-  stage-8-2-catalogue-runner (2026-10-10), waiting on 1.8.2a
+- **1.8.2** the catalogue and the runner (BUILT 2026-10-11 on branch
+  stage-8-2-catalogue-runner, awaiting release and the preprod drill) —
+  `products` as instances of rules versions (ADR-0006 as amended: each
+  with its own ID and name, the rules version it runs on, adoption and
+  withdrawal days; the six initial products adopted from the definition
+  at open) and `product_postings` recording the product, its rules, the
+  event, the parameters read and the position applied to; accounts name
+  the product alone; `bank/parameters` with its settings table (the
+  rules' account settings need it from the start; a product's parameters
+  are its own, defaulting to what its rules publish); `bank/products`
+  dispatching open, post-posting and day to the account's product's
+  rules and leaving accounts on products whose rules the build lacks
+  unprojected and counted; the bank opened with its definition
+  (`bank/definition`, package `modelbank`); the `float64` rate gone from
+  the bank, rates in basis points through the customer view; the
+  products page showing each product's rules, parameters and accounts.
+  Found and fixed on the way: the GL journal collision at month end
+  (v0.29.1)
 - **1.8.3** parameters — bitemporal resolution in use beyond account
   settings: the base rate as a bank-scoped parameter the simulation
   writes (decided before effective, as the Bank of England announces)

@@ -32,11 +32,15 @@ func BuildProductsHTML(q core.StaffQueries, family gbp.ProductFamily) string {
 			sale = `<span class="tag is-light">withdrawn</span>`
 		}
 		s.WriteString(`<div class="box">`)
-		s.WriteString(fmt.Sprintf(`<h3 class="title is-5">%s <span class="tag is-info is-light">v%d</span> %s</h3>`, p.Name, p.Version, sale))
+		rules := fmt.Sprintf(`<span class="tag is-info is-light">%s v%d</span>`, p.Rules, p.RulesVersion)
+		if !p.Carried {
+			rules += ` <span class="tag is-warning is-light">rules not in this build</span>`
+		}
+		s.WriteString(fmt.Sprintf(`<h3 class="title is-5">%s %s %s</h3>`, p.Name, rules, sale))
 		s.WriteString(fmt.Sprintf(`<p class="subtitle is-6 has-text-grey">%s</p>`, p.Description))
 		s.WriteString(`<div class="columns">`)
 		s.WriteString(fmt.Sprintf(`<div class="column"><strong>Rate:</strong> %s</div>`, FormatRateBps(p.RateBps)))
-		s.WriteString(fmt.Sprintf(`<div class="column"><strong>Accounts on v%d:</strong> %d</div>`, p.Version, p.Accounts))
+		s.WriteString(fmt.Sprintf(`<div class="column"><strong>Accounts:</strong> %d</div>`, p.Accounts))
 		s.WriteString(fmt.Sprintf(`<div class="column"><strong>Product total:</strong> %s</div>`, FormatMoney(p.Balance)))
 		s.WriteString(fmt.Sprintf(`<div class="column"><strong>Adopted:</strong> %s <span class="has-text-grey is-size-7">gobank-products %s</span></div>`, p.Adopted.Format("2006-01-02"), p.ModuleVersion))
 		s.WriteString(`</div>`)

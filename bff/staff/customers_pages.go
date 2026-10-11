@@ -251,7 +251,6 @@ func BuildCustomerAccountHTML(q core.StaffQueries, custID string, accountIdx int
 	s.WriteString(fmt.Sprintf(`<div class="column"><strong>Sort Code:</strong> <code>%s</code></div>`, a.SortCode))
 	s.WriteString(fmt.Sprintf(`<div class="column"><strong>Account No.:</strong> <code>%s</code></div>`, a.AccountNum))
 	s.WriteString(fmt.Sprintf(`<div class="column"><strong>Rate:</strong> %s</div>`, FormatRateBps(a.RateBps)))
-	s.WriteString(fmt.Sprintf(`<div class="column"><strong>Version:</strong> v%d</div>`, a.Version))
 	s.WriteString(`</div><div class="columns">`)
 	fmt.Fprintf(&s, `<div class="column"><strong>Balance:</strong> %s <span class="has-text-grey is-size-7">%s</span></div>`, FormatMoney(v.Balance(a)), strings.ToLower(v.Label()))
 	fmt.Fprintf(&s, `<div class="column"><strong>Interest:</strong> %s</div>`, FormatMoney(v.Interest(a)))

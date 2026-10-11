@@ -1,10 +1,10 @@
 // Package parameters is the bank's settings (ADR-0006): the stored values
-// of the parameters product versions and the bank's policy declare, each
+// of the parameters products' rules and the bank's policy declare, each
 // with the day it is effective from and the moment it was decided, so a
 // change is decided today for a future day and the bank can say what it
 // knew when. Append-only: a correction is a later decision with an
 // earlier effective day. The component resolves a parameter for a day as
-// known at a moment; what the parameters mean is the version's business.
+// known at a moment; what the parameters mean is the rules' business.
 package parameters
 
 import (
@@ -18,8 +18,9 @@ import (
 )
 
 // Schema: the settings. A setting belongs to a scope and an owner: the
-// bank itself ("bank"), a product version ("easy-access/1") or one
-// account (its ledger account ID).
+// bank itself ("bank"), a product (its ID, at the contract's "version"
+// scope: a product's parameters are its own) or one account (its ledger
+// account ID).
 var Schema = schema.Component{Name: "parameters", Migrations: []schema.Migration{
 	{Version: 1, Statements: []string{`CREATE TABLE IF NOT EXISTS parameter_settings (
 		scope VARCHAR(20) NOT NULL,
@@ -32,9 +33,6 @@ var Schema = schema.Component{Name: "parameters", Migrations: []schema.Migration
 		PRIMARY KEY (scope, owner, key, effective_from, decided_at)
 	)`}},
 }}
-
-// Owner names a version's settings: "easy-access/1".
-func Owner(v gbp.Version) string { return fmt.Sprintf("%s/%d", v.Product(), v.Version()) }
 
 // OwnerBank is the bank's own settings' owner.
 const OwnerBank = "bank"

@@ -280,22 +280,24 @@ type PaymentQueries interface {
 	PaymentsOf(ctx context.Context, customerID string) ([]Payment, error)
 }
 
-// Product is one adopted product version in the catalogue with its book
-// (ADR-0006).
+// Product is one product in the catalogue with its book (ADR-0006): an
+// instance of a rules version, with its own identity.
 type Product struct {
 	ID            string
-	Version       int
 	Name          string
+	Rules         string // the rules version it runs on: "easy-access" v1
+	RulesVersion  int
+	Carried       bool   // whether this build carries the rules: only then do its accounts run
 	Family        string // "Savings" or "Lending"
 	Currency      string // ISO 4217 code of the product's money, e.g. "GBP"
-	RateBps       int64  // the published rate in basis points; zero when the version derives it
+	RateBps       int64  // the rate the rules publish, in basis points; zero when derived or not carried
 	Parameters    []Parameter
 	Description   string
-	Adopted       time.Time   // the business day the version went on sale
-	ModuleVersion string      // the gobank-products release that carried it
-	OnSale        bool        // the version new accounts open on
-	Accounts      int         // accounts open on this version
-	Balance       luca.Amount // the product's combined balance, every version
+	Adopted       time.Time   // the business day it went on sale
+	ModuleVersion string      // the gobank-products release that carried its rules at adoption
+	OnSale        bool        // whether new accounts open on it
+	Accounts      int         // accounts holding it
+	Balance       luca.Amount // the product's combined balance
 }
 
 // Parameter is one of a version's declared parameters as published.

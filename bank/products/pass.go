@@ -30,7 +30,7 @@ const passChunk = 256
 // unprojected lists up to limit registered accounts, after cursor in
 // ledger-account-ID order, that have no position for day.
 func (p *Products) unprojected(ctx context.Context, day time.Time, cursor string, limit int) ([]Account, error) {
-	rows, err := p.db.QueryContext(ctx, fmt.Sprintf(`SELECT ca.ledger_account_id, ca.product_id, ca.product_version FROM contract_customer_accounts ca
+	rows, err := p.db.QueryContext(ctx, fmt.Sprintf(`SELECT ca.ledger_account_id, ca.product_id FROM contract_customer_accounts ca
 		WHERE ca.ledger_account_id > $1
 		  AND NOT EXISTS (SELECT 1 FROM contract_ledger_eod_positions p
 		                  WHERE p.account_id = ca.ledger_account_id AND p.day = $2)
@@ -42,7 +42,7 @@ func (p *Products) unprojected(ctx context.Context, day time.Time, cursor string
 	var out []Account
 	for rows.Next() {
 		var a Account
-		if err := rows.Scan(&a.ID, &a.Product, &a.Version); err != nil {
+		if err := rows.Scan(&a.ID, &a.Product); err != nil {
 			return nil, fmt.Errorf("unprojected accounts: scan: %w", err)
 		}
 		out = append(out, a)
@@ -77,7 +77,7 @@ type Progress interface {
 }
 
 // PassResult is what the pass did: the accounts it visited, the accounts
-// it left because this build does not carry their version, and what the
+// it left because this build does not carry their product's rules, and what the
 // rules changed in the bank's totals, per family, in numerator units
 // (Accrued) and whole pence applied (Applied).
 type PassResult struct {
@@ -112,7 +112,7 @@ func (p *Products) RunPass(ctx context.Context, books *ledger.Ledger, day time.T
 	}
 	progress.Phase("projecting positions", total)
 	cursor := ""
-	unknown := map[VersionKey]bool{}
+	unknown := map[string]bool{}
 	for ctx.Err() == nil {
 		accounts, err := p.unprojected(ctx, day, cursor, passChunk)
 		if err != nil {
@@ -128,12 +128,12 @@ func (p *Products) RunPass(ctx context.Context, books *ledger.Ledger, day time.T
 				break
 			}
 			cursor = a.ID
-			if _, ok := p.At(a.Product, a.Version); !ok {
-				// Left for the build that carries the version; reported once
-				// per pass per version.
-				if !unknown[VersionKey{a.Product, a.Version}] {
-					unknown[VersionKey{a.Product, a.Version}] = true
-					log.Printf("pass: accounts on %s v%d are left unprojected: this build does not carry it", a.Product, a.Version)
+			if prod, ok := p.ByID(a.Product); !ok || !prod.Carried() {
+				// Left for the build that carries the rules; reported once
+				// per pass per product.
+				if !unknown[a.Product] {
+					unknown[a.Product] = true
+					log.Printf("pass: accounts on %s are left unprojected: this build does not carry its rules (%s v%d)", a.Product, prod.RulesID, prod.RulesVersion)
 				}
 				res.Skipped++
 				continue
