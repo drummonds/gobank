@@ -1,0 +1,22 @@
+shape: sequence_diagram
+
+sim: simulation (scheduler)
+events: bank/events
+cmd: bank command
+rule: product rule
+facts: stored facts
+
+sim -> events: raise root (publication, 12:00)
+events -> events: event row: pending, at 12:00
+sim -> cmd: Publish, cause = root
+cmd -> facts: setting (cause = root)
+cmd -> rule: ParameterChange, cause = root
+rule -> facts: posting (cause = root) + applied_to, one transaction
+rule -> events: continuation: "settle", at 14:00, parent = root
+cmd -> events: root done
+sim -> events: "anything due?"
+events -> sim: nothing due by 12:00: at rest
+sim -> sim: tick to 14:00 (the earliest wake-up)
+sim -> events: raise continuation
+events -> cmd: run step, cause = root
+cmd -> facts: effect already there? skip; else write
