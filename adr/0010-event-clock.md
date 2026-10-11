@@ -1,6 +1,6 @@
 # ADR-0010: The simulation moves by events
 
-Status: Proposed
+Status: Accepted
 Date: 2026-10-11
 Stage: ADR-0002 stage 8 (roadmap 1.8), story 1.8.5; amends stage 4's clock
 

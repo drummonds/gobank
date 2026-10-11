@@ -1,6 +1,6 @@
 # ADR-0009: Market data and the risk-free rate
 
-Status: Proposed
+Status: Accepted
 Date: 2026-10-11
 Stage: ADR-0002 stage 8 (roadmap 1.8), story 1.8.4; shapes 1.8.5 and 1.8.6
 
