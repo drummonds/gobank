@@ -2,6 +2,13 @@
 
 ## [Unreleased]
 
+### Added
+- ADR-0011 (proposed): events and their cascades are recorded. Every
+  command is a root event, its effects carry the cause, a restart
+  replays the root, and idempotency is structural from the first slice.
+  Roadmap story 1.8.6 builds its first slice ahead of policy as code;
+  the stories after it are renumbered 1.8.7 to 1.8.9.
+
 ## [0.33.0] - 2026-10-11
 
 ## [0.32.0] - 2026-10-11

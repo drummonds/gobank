@@ -649,7 +649,7 @@ root module, `cmd/bff` is the service binary, and `app/` is the Flutter shell.
   for is refused, the console showing why. Nothing cascades yet: the v1
   rules ignore a parameter change and the day rule reads the rate for its
   day. Drill: preprod accrues the same reserve interest as before
-- **1.8.5** the event clock (ADR-0010) — the simulation moves by events,
+- **1.8.5** [x] (v0.32.0) the event clock (ADR-0010) — the simulation moves by events,
   not slots: a timeline of the start of day, the market's decision days
   (its published calendar: an event at which the feed publishes a change
   or nothing, the next one named on the products page), the payments the
