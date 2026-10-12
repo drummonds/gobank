@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+## [0.36.0] - 2026-10-13
+
+ - Story 1.8.8: the Bank tab and parameter pages in HTMX master-detail; ADRs served whole with their diagrams
+
 ### Added
 - Story 1.8.8: the bank's parameters and their editing. A third tab
   under Products, Bank, carries what is the bank's and not a product's:
