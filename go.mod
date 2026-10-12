@@ -10,7 +10,7 @@ require (
 	git.bytestone.uk/hum3/gobanks-customers v0.2.1
 	git.bytestone.uk/hum3/gogal v0.2.0
 	git.bytestone.uk/hum3/lofigui v0.17.40
-	git.bytestone.uk/hum3/pta2svg v0.2.0
+	git.bytestone.uk/hum3/pta2svg v0.4.0
 	github.com/yuin/goldmark v1.8.6
 	golang.org/x/crypto v0.57.0
 )

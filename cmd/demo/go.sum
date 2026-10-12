@@ -16,8 +16,8 @@ git.bytestone.uk/hum3/gotreesitter v0.7.0 h1:KVytGephPEdUy0HZnS1+aO6rlmB9Y3z0wzk
 git.bytestone.uk/hum3/gotreesitter v0.7.0/go.mod h1:Wypi8nYsGD8zsHzKvZoU6Cy/aSW3Z3v8E9BCvKzR1wM=
 git.bytestone.uk/hum3/lofigui v0.17.40 h1:RqHNJvf3fE/7iJ9QGKZU54c6NumxTE3gUEW9sPNgCQQ=
 git.bytestone.uk/hum3/lofigui v0.17.40/go.mod h1:R8bGnSaKoR9fca7SC8MDFm5BhAtXOADaoIBxpi+Lt54=
-git.bytestone.uk/hum3/pta2svg v0.2.0 h1:JKSHkIVu0t8L+uWz48UfiY0lM4nlxGERBQ4U+cHcJPA=
-git.bytestone.uk/hum3/pta2svg v0.2.0/go.mod h1:USDEX7sBk6OCCHuj+gmrcrgEIIGdWYtFnFyCHkpb43U=
+git.bytestone.uk/hum3/pta2svg v0.4.0 h1:F/N+BgUfjqWxH7wjpHh51+jm+WNujCcaSmawcDG8d6I=
+git.bytestone.uk/hum3/pta2svg v0.4.0/go.mod h1:USDEX7sBk6OCCHuj+gmrcrgEIIGdWYtFnFyCHkpb43U=
 github.com/davecgh/go-spew v1.1.0/go.mod h1:J7Y8YcW2NihsgmVo/mv3lAwl/skON4iLHjSsI+c5H38=
 github.com/davecgh/go-spew v1.1.1 h1:vj9j/u1bqnvCEfJOwUhtlOARqs3+rkHYY13jYWTU97c=
 github.com/davecgh/go-spew v1.1.1/go.mod h1:J7Y8YcW2NihsgmVo/mv3lAwl/skON4iLHjSsI+c5H38=

@@ -1,4 +1,4 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 440 170" width="440" height="170">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 471 170" width="471" height="170">
 <title>ADR-0008 movement</title>
 <defs>
   <marker id="arrowhead" markerWidth="10" markerHeight="7" refX="10" refY="3.5" orient="auto">
@@ -20,16 +20,16 @@
   <text x="70" y="25">Interest</text>
   <text class="balance" x="140" y="50" dx="-4" dy="-4">1.27 GBP</text>
 </g>
-<g class="node" transform="translate(260,40)">
+<g class="node" transform="translate(291,40)">
   <rect width="140" height="50" fill="#DDD"/>
   <text x="70" y="25">easy-access</text>
   <text class="balance" x="140" y="50" dx="-4" dy="-4">-1001.27 GBP</text>
 </g>
 
 <g class="edge">
-  <path d="M180.0,65.0 L260.0,65.0"/>
-  <text x="260" y="57">LDAS:FTDP:ACRU</text>
-  <text x="260" y="79">-1.27 GBP</text>
+  <path d="M180.0,65.0 L291.0,65.0"/>
+  <text x="235.5" y="57">LDAS:FTDP:ACRU</text>
+  <text x="235.5" y="79">-1.27 GBP</text>
 </g>
 <g class="legend" transform="translate(20,170)" dy="-30">
   <rect x="0" y="-30" width="14" height="14" fill="#FCC"/>

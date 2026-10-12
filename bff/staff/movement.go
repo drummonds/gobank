@@ -17,6 +17,7 @@ import (
 	"git.bytestone.uk/hum3/gobank/core"
 	"git.bytestone.uk/hum3/gobank/internal/view"
 	"git.bytestone.uk/hum3/pta2svg"
+	"git.bytestone.uk/hum3/pta2svg/parse"
 )
 
 // The movement page (ADR-0008): beneath a statement line, the movement it
@@ -112,7 +113,7 @@ func golucaAmount(v luca.Amount) string {
 // by account type.
 func MovementSVG(m core.Movement) (string, error) {
 	var buf bytes.Buffer
-	err := pta2svg.Render(&buf, []byte(MovementGoluca(m)), pta2svg.Options{Format: pta2svg.Goluca, Layout: pta2svg.Sugiyama, Title: "Movement " + m.ID})
+	err := parse.Render(&buf, []byte(MovementGoluca(m)), parse.Goluca, pta2svg.Options{Layout: pta2svg.Sugiyama, Title: "Movement " + m.ID})
 	return buf.String(), err
 }
 

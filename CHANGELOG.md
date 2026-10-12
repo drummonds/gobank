@@ -23,7 +23,9 @@
   line's type from the account's signed change. The ADR's decided and
   movement diagrams are redrawn. The page and the diagrams use pta2svg's
   layered layout, so the account a movement is from sits left of the
-  account it is to and the arrow reads with the movement. Running banks: preprod and prod are
+  account it is to and the arrow reads with the movement; pta2svg
+  v0.4.0 spaces the boxes to fit the arrow's label (the BFF renders
+  the goluca text through its `parse` package). Running banks: preprod and prod are
   reset on this release, the drill a fresh deploy as in 1.8.2
 
 ## [0.34.0] - 2026-10-12
