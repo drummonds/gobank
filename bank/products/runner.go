@@ -74,25 +74,25 @@ func (p *Products) AccountDay(books *ledger.Ledger, a Account, day time.Time, ca
 }
 
 // PostEvent posts a customer event — a transfer, a funding — to the
-// ledger (ledger.Post: amount credited to the first account, debited to
+// ledger (ledger.Post: a signed amount from the first account to
 // the second, both positions for the day moving at once), then runs the
 // post-posting rule of each product account it touched: the projection
 // the pass wrote was on the balance as it stood, and the day's interest
 // accrues on the closing balance. The movement each rule sees is in the
-// bank's view (ADR-0008): the credited account's balance falls by the
-// amount, the debited account's rises. The caller holds the accounts'
+// bank's view (ADR-0008): the to account's balance rises by the amount,
+// the from account's falls by it. The caller holds the accounts'
 // locks for as long as its transaction holds their rows, so the event and
 // the daily pass take turns on an account. What the rules changed in the
 // bank's totals is returned; the day's accrual is counted by the pass
 // alone, so an event's results carry none.
-func (p *Products) PostEvent(books *ledger.Ledger, day time.Time, cause Cause, creditID, debitID string, amount luca.Amount, code, description string, touched ...Account) ([]DayResult, error) {
-	if err := books.Post(creditID, debitID, amount, code, day, description); err != nil {
+func (p *Products) PostEvent(books *ledger.Ledger, day time.Time, cause Cause, fromID, toID string, amount luca.Amount, code, description string, touched ...Account) ([]DayResult, error) {
+	if err := books.Post(fromID, toID, amount, code, day, description); err != nil {
 		return nil, err
 	}
 	var results []DayResult
 	for _, a := range touched {
 		delta := amount
-		if a.ID == creditID {
+		if a.ID == fromID {
 			delta = -amount
 		}
 		m := gbp.Movement{Delta: delta, Code: code, Description: description, ValueTime: day}
@@ -146,20 +146,16 @@ func (p *Products) run(event gbp.Event, books *ledger.Ledger, a Account, day tim
 			return res, fmt.Errorf("products: %s (%s v%d) %s posts %q with no step", a.Product, prod.RulesID, prod.RulesVersion, event, posting.Description)
 		}
 		// The posting names its counterparty by path: a P&L account on
-		// the ledger's chart. Its amount is signed as the balance is, so
-		// savings interest is negative: credited to the saver, debited to
-		// the expense (ADR-0008), which is posted the other way about
-		// with the amount positive.
+		// the ledger's chart. It is recorded as written (ADR-0008): from
+		// the counterparty to the account, the amount signed as the
+		// balance is, so savings interest is a negative amount from the
+		// expense.
 		counter, err := books.Account(posting.Counterparty)
 		if err != nil {
 			return res, err
 		}
 		input, _ := f.Position(posting.ValueTime)
-		credit, debit, amount := counter, a.ID, posting.Amount
-		if amount < 0 {
-			credit, debit, amount = a.ID, counter, -amount
-		}
-		m, err := books.RecordMovement(credit, debit, amount, posting.Code, posting.ValueTime, posting.Description)
+		m, err := books.RecordMovement(counter, a.ID, posting.Amount, posting.Code, posting.ValueTime, posting.Description)
 		if err != nil {
 			return res, fmt.Errorf("products: post %s: %w", posting.Description, err)
 		}

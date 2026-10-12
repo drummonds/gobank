@@ -290,6 +290,8 @@ func TestPostEventRewritesTheDaysPositions(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
+	// The fixture's balances are positive, so 200 from one to the other
+	// is written positive: from falls, to rises (ADR-0008).
 	results, err := p.PostEvent(books, jan2, root("pay-1"), from.ID, to.ID, 200_00, luca.CodeBookTransfer, "PAY-000001", from, to)
 	if err != nil {
 		t.Fatal(err)
@@ -334,7 +336,7 @@ func TestOpenWritesTheVersionsAccountSettings(t *testing.T) {
 		t.Fatal(err)
 	}
 	// A deposit credits the saver and debits cash (ADR-0008).
-	if _, err := p.PostEvent(books, jan2, root("open-2"), saver.ID, books.Chart.Cash, 5000_00, luca.CodeBookTransfer, "funding", saver); err != nil {
+	if _, err := p.PostEvent(books, jan2, root("open-2"), books.Chart.Cash, saver.ID, -5000_00, luca.CodeBookTransfer, "funding", saver); err != nil {
 		t.Fatal(err)
 	}
 	iv, _ := p.ByID("isa")

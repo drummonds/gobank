@@ -1,5 +1,5 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 440 170" width="440" height="170">
-<title>ADR-0008: movement</title>
+<title>ADR-0008 movement</title>
 <defs>
   <marker id="arrowhead" markerWidth="10" markerHeight="7" refX="10" refY="3.5" orient="auto">
     <polygon points="0 0, 10 3.5, 0 7" fill="#666"/>
@@ -17,8 +17,8 @@
 
 <g class="node" transform="translate(40,40)">
   <rect width="140" height="50" fill="#DDD"/>
-  <text x="70" y="25">easyaccess</text>
-  <text class="balance" x="140" y="50" dx="-4" dy="-4">-1.27 GBP</text>
+  <text x="70" y="25">easy-access</text>
+  <text class="balance" x="140" y="50" dx="-4" dy="-4">-1001.27 GBP</text>
 </g>
 <g class="node" transform="translate(260,40)">
   <rect width="140" height="50" fill="#FCC"/>
@@ -27,9 +27,9 @@
 </g>
 
 <g class="edge">
-  <path d="M180.0,65.0 C220.0,65.0 220.0,65.0 260.0,65.0"/>
-  <text x="220" y="57">interest applied</text>
-  <text x="220" y="79">1.27 GBP</text>
+  <path d="M400.0,65.0 C610.0,-145.0 -170.0,-145.0 40.0,65.0"/>
+  <text x="220" y="57">LDAS:FTDP:ACRU</text>
+  <text x="220" y="79">-1.27 GBP</text>
 </g>
 <g class="legend" transform="translate(20,170)" dy="-30">
   <rect x="0" y="-30" width="14" height="14" fill="#DDD"/>

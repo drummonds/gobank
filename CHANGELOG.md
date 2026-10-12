@@ -2,6 +2,24 @@
 
 ## [Unreleased]
 
+### Changed
+- Story 1.8.7, ADR-0008 amended: a movement is a signed amount m from
+  account a to account b, kept as written. The runner records a
+  contract posting as the contract wrote it, so savings interest is a
+  negative amount from `Expense:Interest` to the account and loan
+  interest a positive one from `Income:Interest`; the ledger wrapper's
+  `Post` no longer turns a negative amount about and its parameters are
+  `from`, `to` and `amount`. The bank's own events follow the same rule:
+  a deposit is negative from `Asset:Cash` to the savings account, a
+  drawdown positive to the loan, a transfer negative from the payer's
+  account to the payee's; the GL's funding, transfer, opening balances
+  and journal likewise. `core.Movement` has `From` and `To` legs in
+  place of `Credit` and `Debit`; the movement page shows them so, and
+  its goluca text and drawing carry the sign. The statement reads a
+  line's type from the account's signed change. The ADR's decided and
+  movement diagrams are redrawn. Running banks: preprod and prod are
+  reset on this release, the drill a fresh deploy as in 1.8.2
+
 ## [0.34.0] - 2026-10-12
 
  - Story 1.8.6: events and their cascades are recorded (ADR-0011 accepted); Owed read from the record; Events page

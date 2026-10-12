@@ -179,12 +179,13 @@ type BookQueries interface {
 	Owed(ctx context.Context) (Owed, error)
 }
 
-// Movement is one ledger movement as the journal entry it is (ADR-0008):
-// amount credited to one account and debited to another, with the balance
-// each is left with, in the bank's view.
+// Movement is one ledger movement as written (ADR-0008): a signed amount
+// from one account to another, the to account's balance rising by it and
+// the from account's falling, with the balance each is left with, in the
+// bank's view.
 type Movement struct {
 	ID            string
-	Credit, Debit Leg
+	From, To      Leg
 	Amount        luca.Amount
 	Currency      string
 	Code          string

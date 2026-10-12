@@ -173,28 +173,26 @@ func (g *Ledger) Control(productID string) (id string, ok bool) {
 }
 
 // Funding posts a deposit or a loan drawdown as the sub-ledger does
-// (ADR-0008): a deposit credits the product's control and debits cash, a
-// drawdown credits cash and debits the control; valued on day, carrying
-// the payment reference. An insert only: the control's position moves at
-// the close.
+// (ADR-0008): from cash to the product's control, a deposit negative
+// and a drawdown positive; valued on day, carrying the payment
+// reference. An insert only: the control's position moves at the close.
 func (g *Ledger) Funding(day time.Time, productID string, amount luca.Amount, reference string) error {
 	control, ok := g.controls[productID]
 	if !ok {
 		return fmt.Errorf("gl: funding %s: no control account for product %s", reference, productID)
 	}
-	credit, debit := control, g.Chart.Cash
-	if g.lending[productID] {
-		credit, debit = g.Chart.Cash, control
+	if !g.lending[productID] {
+		amount = -amount
 	}
-	if _, err := g.RecordMovement(credit, debit, amount, luca.CodeBookTransfer, day, reference); err != nil {
+	if _, err := g.RecordMovement(g.Chart.Cash, control, amount, luca.CodeBookTransfer, day, reference); err != nil {
 		return fmt.Errorf("gl: funding %s: %w", reference, err)
 	}
 	return nil
 }
 
 // Transfer posts a transfer between customer accounts, the payer's
-// product to the payee's: the payee's control is credited and the
-// payer's debited when the products differ, nothing within one product.
+// product to the payee's: a negative amount from the payer's control to
+// the payee's when the products differ, nothing within one product.
 func (g *Ledger) Transfer(day time.Time, fromProduct, toProduct string, amount luca.Amount, reference string) error {
 	if fromProduct == toProduct {
 		return nil
@@ -207,7 +205,7 @@ func (g *Ledger) Transfer(day time.Time, fromProduct, toProduct string, amount l
 	if !ok {
 		return fmt.Errorf("gl: transfer %s: no control account for product %s", reference, toProduct)
 	}
-	if _, err := g.RecordMovement(payee, payer, amount, luca.CodeBookTransfer, day, reference); err != nil {
+	if _, err := g.RecordMovement(payer, payee, -amount, luca.CodeBookTransfer, day, reference); err != nil {
 		return fmt.Errorf("gl: transfer %s: %w", reference, err)
 	}
 	return nil

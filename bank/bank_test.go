@@ -428,8 +428,8 @@ func TestPositionsAndBoEInterestAreTheLedgers(t *testing.T) {
 	assertPositionsAreTheTruth(t, f)
 	assertBoE(false)
 	var applications int
-	// Savings interest credits the saver: the account is the movement's from.
-	_ = f.db.QueryRow(`SELECT COUNT(*) FROM contract_ledger_movements WHERE code = $1 AND from_path LIKE $2`, luca.CodeInterestAccrual, ledger.SavingsRoot+"%").Scan(&applications)
+	// Savings interest is applied to the saver: the account is the movement's to.
+	_ = f.db.QueryRow(`SELECT COUNT(*) FROM contract_ledger_movements WHERE code = $1 AND to_path LIKE $2`, luca.CodeInterestAccrual, ledger.SavingsRoot+"%").Scan(&applications)
 	if applications != 0 {
 		t.Errorf("%d customer applications before month end", applications)
 	}
@@ -438,7 +438,7 @@ func TestPositionsAndBoEInterestAreTheLedgers(t *testing.T) {
 	}
 	assertPositionsAreTheTruth(t, f)
 	assertBoE(true)
-	_ = f.db.QueryRow(`SELECT COUNT(*) FROM contract_ledger_movements WHERE code = $1 AND from_path LIKE $2`, luca.CodeInterestAccrual, ledger.SavingsRoot+"%").Scan(&applications)
+	_ = f.db.QueryRow(`SELECT COUNT(*) FROM contract_ledger_movements WHERE code = $1 AND to_path LIKE $2`, luca.CodeInterestAccrual, ledger.SavingsRoot+"%").Scan(&applications)
 	if applications == 0 {
 		t.Error("no savings interest applied across the month end")
 	}
@@ -761,11 +761,11 @@ func TestProductsAreTheBookPerProduct(t *testing.T) {
 
 // The ledger is the bank's view (ADR-0008): debit-normal accounts (assets,
 // expenses) positive, credit-normal (liabilities, equity, income) negative,
-// a movement from the account credited to the account debited. A deposit
-// credits the saver and debits cash; a drawdown credits cash and debits the
-// loan; savings interest credits the saver and debits the expense; loan
-// interest credits income and debits the loan; equity is no counterparty
-// of customer flows.
+// a movement a signed amount from the counterparty to the account, the
+// account's change. A deposit is negative from cash to the saver; a
+// drawdown positive from cash to the loan; savings interest negative from
+// the expense to the saver; loan interest positive from income to the
+// loan; equity is no counterparty of customer flows.
 func TestLedgerIsTheBanksView(t *testing.T) {
 	f := open(t)
 	if _, err := f.bank.OpenCustomer(f.ctx, ada); err != nil {
@@ -828,10 +828,10 @@ func TestLedgerIsTheBanksView(t *testing.T) {
 	}
 }
 
-// A movement is read as the journal entry it is: the account credited and
-// the account debited, each with the balance it was left with, in the
-// bank's view (ADR-0008). The statement line that shows it from one side
-// carries its ID.
+// A movement is read as written: a signed amount from one account to
+// another, each with the balance it was left with, in the bank's view
+// (ADR-0008). The statement line that shows it from one side carries its
+// ID.
 func TestMovementIsTheJournalEntry(t *testing.T) {
 	f := open(t)
 	if _, err := f.bank.OpenCustomer(f.ctx, saver("A", 10_00)); err != nil {
@@ -845,14 +845,14 @@ func TestMovementIsTheJournalEntry(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if m.ID != page.Entries[0].ID || m.Amount != 10_00 || m.Currency != "GBP" || m.Code != luca.CodeBookTransfer || m.Description != page.Entries[0].Reference {
-		t.Errorf("movement %+v", m)
+	if m.ID != page.Entries[0].ID || m.Amount != -10_00 || m.Currency != "GBP" || m.Code != luca.CodeBookTransfer || m.Description != page.Entries[0].Reference {
+		t.Errorf("movement %+v; want the deposit as -1000 from cash to the saver", m)
 	}
-	if m.Credit.Type != "Liability" || !strings.HasPrefix(m.Credit.Path, ledger.SavingsRoot+":"+core.CustomerID(1)) || m.Credit.Balance != -10_00 {
-		t.Errorf("credit leg %+v; want the saver's account at -1000", m.Credit)
+	if m.From.Type != "Asset" || m.From.Path != ledger.Cash || m.From.Balance != 10_00 {
+		t.Errorf("from leg %+v; want cash at 1000", m.From)
 	}
-	if m.Debit.Type != "Asset" || m.Debit.Path != ledger.Cash || m.Debit.Balance != 10_00 {
-		t.Errorf("debit leg %+v; want cash at 1000", m.Debit)
+	if m.To.Type != "Liability" || !strings.HasPrefix(m.To.Path, ledger.SavingsRoot+":"+core.CustomerID(1)) || m.To.Balance != -10_00 {
+		t.Errorf("to leg %+v; want the saver's account at -1000", m.To)
 	}
 	if !m.ValueTime.Equal(opening) || m.KnowledgeTime.IsZero() {
 		t.Errorf("movement times %v, %v; want valued on the opening day and known", m.ValueTime, m.KnowledgeTime)
@@ -1096,7 +1096,7 @@ func TestCommandsWriteRootsAndTheirEffectsCarryTheCause(t *testing.T) {
 		t.Fatal(err)
 	}
 	var movementID string
-	if err := f.db.QueryRow(`SELECT id FROM contract_ledger_movements WHERE code = $1 AND to_path = $2 ORDER BY value_time LIMIT 1`, luca.CodeInterestAccrual, ledger.ExpenseInterest).Scan(&movementID); err != nil {
+	if err := f.db.QueryRow(`SELECT id FROM contract_ledger_movements WHERE code = $1 AND from_path = $2 ORDER BY value_time LIMIT 1`, luca.CodeInterestAccrual, ledger.ExpenseInterest).Scan(&movementID); err != nil {
 		t.Fatalf("no savings application after a month: %v", err)
 	}
 	m, err := f.bank.Movement(f.ctx, movementID)

@@ -1,5 +1,5 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 880 250" width="880" height="250">
-<title>ADR-0008: decided</title>
+<title>ADR-0008 decided</title>
 <defs>
   <marker id="arrowhead" markerWidth="10" markerHeight="7" refX="10" refY="3.5" orient="auto">
     <polygon points="0 0, 10 3.5, 0 7" fill="#666"/>
@@ -42,9 +42,9 @@
 </g>
 
 <g class="edge">
-  <path d="M400.0,65.0 C440.0,65.0 440.0,65.0 480.0,65.0"/>
+  <path d="M620.0,65.0 C830.0,-145.0 50.0,-145.0 260.0,65.0"/>
   <text x="440" y="57">deposit</text>
-  <text x="440" y="79">1000.00 GBP</text>
+  <text x="440" y="79">-1000.00 GBP</text>
 </g>
 <g class="edge">
   <path d="M620.0,65.0 C720.0,-35.0 380.0,45.0 480.0,145.0"/>
@@ -52,9 +52,9 @@
   <text x="550" y="119">800.00 GBP</text>
 </g>
 <g class="edge">
-  <path d="M400.0,65.0 C550.0,65.0 550.0,65.0 700.0,65.0"/>
+  <path d="M840.0,65.0 C1160.0,-255.0 -60.0,-255.0 260.0,65.0"/>
   <text x="550" y="57">interest</text>
-  <text x="550" y="79">1.27 GBP</text>
+  <text x="550" y="79">-1.27 GBP</text>
 </g>
 <g class="edge">
   <path d="M180.0,65.0 C330.0,65.0 330.0,145.0 480.0,145.0"/>

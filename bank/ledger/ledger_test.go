@@ -237,3 +237,34 @@ func TestWithTxKeepsTheChart(t *testing.T) {
 		t.Errorf("account survived the rollback: %+v, %v", a, err)
 	}
 }
+
+// A movement keeps the sign it is written with (ADR-0008): a negative
+// amount from cash to a savings account is the deposit, the account's
+// balance falling by it and cash rising, and the ledger records it so.
+func TestPostKeepsTheSign(t *testing.T) {
+	l := open(t)
+	acct, err := l.OpenCustomerAccount("cust-001", "easy-access", gbp.FamilySavings)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := l.Post(l.Chart.Cash, acct, -1000_00, luca.CodeBookTransfer, today, "PAY-000001"); err != nil {
+		t.Fatal(err)
+	}
+	if bal, _ := l.Balance(acct); bal != -1000_00 {
+		t.Errorf("savings balance %d, want -100000", bal)
+	}
+	if cash, _ := l.Balance(l.Chart.Cash); cash != 1000_00 {
+		t.Errorf("cash %d, want 100000", cash)
+	}
+	var id string
+	if err := l.db.QueryRow(`SELECT id FROM contract_ledger_movements`).Scan(&id); err != nil {
+		t.Fatal(err)
+	}
+	m, err := l.MovementByID(context.Background(), id)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if m.From.AccountID != l.Chart.Cash || m.To.AccountID != acct || m.Amount != -1000_00 {
+		t.Errorf("movement %+v; want -100000 from cash to the account, as written", m)
+	}
+}

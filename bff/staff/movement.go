@@ -20,8 +20,8 @@ import (
 )
 
 // The movement page (ADR-0008): beneath a statement line, the movement it
-// is one side of, as the journal entry it is. The page carries the two
-// legs, the amount and times, and the movement drawn by pta2svg from
+// is one side of, as written: a signed amount from one account to
+// another. The page carries the two legs, the amount and times, and the movement drawn by pta2svg from
 // goluca text, the ledger's own format: rendered by the BFF, and again in
 // the browser by pta2svg's WASM build when the asset is served, the first
 // rendering a general client takes on. The same movement is served as
@@ -86,13 +86,13 @@ func MovementGoluca(m core.Movement) string {
 	var b strings.Builder
 	fmt.Fprintf(&b, "# Movement %s: %s\n", m.ID, m.Description)
 	fmt.Fprintf(&b, "# code %s, value %s, known %s\n\n", m.Code, m.ValueTime.UTC().Format(time.RFC3339), m.KnowledgeTime.UTC().Format(time.RFC3339))
-	// Before the movement: the credited account held its balance after
-	// plus the amount (the credit took it down), the debited one its
+	// Before the movement: the from account held its balance after plus
+	// the amount (the movement took it down by that), the to account its
 	// balance after less the amount.
-	fmt.Fprintf(&b, "%s balance %q %s %s\n", day, m.Credit.Path, golucaAmount(m.Credit.Balance+m.Amount), m.Currency)
-	fmt.Fprintf(&b, "%s balance %q %s %s\n\n", day, m.Debit.Path, golucaAmount(m.Debit.Balance-m.Amount), m.Currency)
+	fmt.Fprintf(&b, "%s balance %q %s %s\n", day, m.From.Path, golucaAmount(m.From.Balance+m.Amount), m.Currency)
+	fmt.Fprintf(&b, "%s balance %q %s %s\n\n", day, m.To.Path, golucaAmount(m.To.Balance-m.Amount), m.Currency)
 	fmt.Fprintf(&b, "%s * %s\n", day, strings.ReplaceAll(m.Description, "\n", " "))
-	fmt.Fprintf(&b, "  %q -> %q %q %s %s\n", m.Credit.Path, m.Debit.Path, m.Code, golucaAmount(m.Amount), m.Currency)
+	fmt.Fprintf(&b, "  %q -> %q %q %s %s\n", m.From.Path, m.To.Path, m.Code, golucaAmount(m.Amount), m.Currency)
 	return b.String()
 }
 
@@ -113,10 +113,10 @@ func MovementSVG(m core.Movement) (string, error) {
 	return buf.String(), err
 }
 
-// BuildMovementHTML renders the movement page: the journal entry's two
-// legs with the balances they were left with, in the bank's view and,
-// when the session has chosen it, the customer's beside it; the drawing;
-// the goluca text with links to it and to the JSON.
+// BuildMovementHTML renders the movement page: the account the movement
+// is from and the account it is to, with the balances they were left
+// with in the bank's view; the signed amount; the drawing; the goluca
+// text with links to it and to the JSON.
 func BuildMovementHTML(m core.Movement, v view.View, wasm bool) string {
 	var s strings.Builder
 	fmt.Fprintf(&s, `<h2 class="title is-4">Movement</h2><p class="subtitle is-6 has-text-grey"><code>%s</code></p>`, html.EscapeString(m.ID))
@@ -132,13 +132,13 @@ func BuildMovementHTML(m core.Movement, v view.View, wasm bool) string {
 	for _, leg := range []struct {
 		side string
 		l    core.Leg
-	}{{"Credited", m.Credit}, {"Debited", m.Debit}} {
+	}{{"From", m.From}, {"To", m.To}} {
 		fmt.Fprintf(&s, `<tr><td><strong>%s</strong></td><td><code>%s</code></td><td>%s</td><td>%s</td></tr>`,
 			leg.side, html.EscapeString(leg.l.Path), accountTypeTag(leg.l.Type), FormatMoney(leg.l.Balance))
 	}
 	s.WriteString(`</tbody></table>`)
 	if v == view.Customer {
-		s.WriteString(`<p class="has-text-grey is-size-7">The session is in the customer view; a movement is always shown in the bank's view, the journal entry it is (ADR-0008).</p>`)
+		s.WriteString(`<p class="has-text-grey is-size-7">The session is in the customer view; a movement is always shown in the bank's view, as it was written (ADR-0008).</p>`)
 	}
 	s.WriteString(`</div>`)
 

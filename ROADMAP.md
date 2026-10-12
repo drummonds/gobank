@@ -29,7 +29,7 @@ The browser-based model proves the banking core works end-to-end.
   affected); `about/adr` lists the records (number, title, status,
   date) and is linked from the nav, the docs page keeping its summary;
   the static site renders `adr/*.md` to `docs/adr/` with the same
-  index, so docs.bytestone.uk carries them. Ships with 1.8.7. Out of
+  index, so docs.bytestone.uk carries them. Ships with 1.8.8. Out of
   scope: ADR templates, a status workflow
 - **Workflow engine** — a `workflow` component (own tables, ADR-0001):
   long-running processes made of steps, timers and human decisions,
@@ -609,11 +609,12 @@ root module, `cmd/bff` is the service binary, and `app/` is the Flutter shell.
   bank's definition as a module of its own — name, the product versions
   carried with their withdrawals, the policy, later its own products —
   with gobank the capabilities, a white label another definition; and
-  ADR-0008 (proposed 2026-10-10), the ledger is the bank's view —
-  credit-normal accounts negative, a movement from the account credited
-  to the account debited, `Asset:Cash` the counterparty of customer
-  flows, the customer's positive view a presentation setting — found
-  when the contract's rules met the bank's positive savings balances.
+  ADR-0008 (proposed 2026-10-10, amended 2026-10-12), the ledger is the
+  bank's view — credit-normal accounts negative, a movement a signed
+  amount from the counterparty to the account, `Asset:Cash` the
+  counterparty of customer flows, the customer's positive view a
+  presentation setting — found when the contract's rules met the bank's
+  positive savings balances.
   Stories renumbered 2026-10-11 and 2026-10-12 into shipping order (`tp roadmap
   renumber`); an item that moved names the number it had. Stories:
 - **1.8.1** [x] (gobank-products v0.6.0) gobank-products: the contract
@@ -703,9 +704,20 @@ root module, `cmd/bff` is the service binary, and `app/` is the Flutter shell.
   kill-and-replay test fails the transaction after each effect in turn
   and asserts the facts identical. One root per day for accruals, the
   position each account's fact. Out of scope: continuations (sleep,
-  maturity, 1.8.10), human steps (the first workflow), any change to
+  maturity, 1.8.11), human steps (the first workflow), any change to
   `core.Commands`
-- **1.8.7** the bank's parameters and their editing — a third tab under
+- **1.8.7** a movement keeps its sign (ADR-0008 amended) — the ledger
+  records a contract posting as written, a signed amount from the
+  counterparty to the account, and the bank writes its own events the
+  same way (a deposit negative from cash, a transfer negative from payer
+  to payee); the runner's and the wrapper's turning-about of a negative
+  amount goes, the wrapper's parameters are `from`, `to` and `amount`,
+  the GL's funding, transfer, opening and journal follow, the statement
+  reads a line's type from the account's signed change, and the
+  movement page shows savings interest as −£1.27 from `Expense:Interest`
+  to the account. Credit and debit leave the vocabulary. Preprod and
+  prod reset on the release, the drill a fresh deploy as in 1.8.2
+- **1.8.8** (was 1.8.7) the bank's parameters and their editing — a third tab under
   Products, `products/bank`, for what is the bank's and not a product's:
   the pound's market (rate in force, next decision day, history — moved
   off the savings page), the reserve ratio (moved off the console), and
@@ -724,8 +736,8 @@ root module, `cmd/bff` is the service binary, and `app/` is the Flutter shell.
   ignores the session's view (`FormatMoney(p.Balance)` where every
   other page goes through `view.Money`). Out of scope: setting a market
   value (it is a feed), setting a derived parameter, bulk set, history
-  (1.8.11)
-- **1.8.8** (was 1.8.7, before that 1.8.6 and 1.8.4) policy as code — the contract gains a parameter
+  (1.8.12)
+- **1.8.9** (was 1.8.8, before that 1.8.7, 1.8.6 and 1.8.4) policy as code — the contract gains a parameter
   derived by code, the hook ADR-0006's lag and take become, and
   `modelbank` is extracted into a module of its own (ADR-0007) carrying
   the Model Bank's policy as code: its savings and lending base rates
@@ -738,16 +750,16 @@ root module, `cmd/bff` is the service binary, and `app/` is the Flutter shell.
   `easyaccess/v2` tracking the bank savings rate at − 15 bps, floor 0,
   adopted on preprod mid-run, new accounts opening on it, its accrual
   seen moving when the risk-free rate does
-- **1.8.9** (was 1.8.8, before that 1.8.7 and 1.8.5) a product of the bank's own — one product version
+- **1.8.10** (was 1.8.9, before that 1.8.8, 1.8.7 and 1.8.5) a product of the bank's own — one product version
   moves from gobank-products into the bank module, the contract and the
   engine staying in the library, proving a bank defines its own products
-- **1.8.10** (was 1.8.9, before that 1.8.8 and 1.8.6) the remaining events — pre-posting (term lock,
+- **1.8.11** (was 1.8.10, before that 1.8.9, 1.8.8 and 1.8.6) the remaining events — pre-posting (term lock,
   ISA allowance, overdraft limit as rules the payments path asks),
   start-up, manual commands from the console, change of version per
   account from the staff account page. Done-when of the stage: an
   account moved from easy-access v1 to v2 on preprod, its v1 cycle
   closed by postings that record v1
-- **1.8.11** history of parameters and products — the parameter page
+- **1.8.12** (was 1.8.11) history of parameters and products — the parameter page
   gains every setting decided for it in order (value, effective,
   decided, by, and the root event that caused it, from 1.8.6); a
   product page gains its lineage, not only its present: the versions it

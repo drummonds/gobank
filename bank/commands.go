@@ -139,17 +139,18 @@ func (b *Bank) persistCustomer(ctx context.Context, day time.Time, plan *custome
 			log.Printf("bank: open customer %s: %v", rec.ID, err)
 		}
 		// The movement carries the payment reference: it is the statement
-		// line the customer sees. A deposit credits the saver and debits
-		// cash; a drawdown credits cash and debits the loan (ADR-0008).
+		// line the customer sees. Funding runs from cash to the account,
+		// signed as the account's balance is: a deposit is negative, the
+		// saver's liability growing; a drawdown positive (ADR-0008).
 		a := rec.Accounts[f.index]
-		credit, debit := a.LedgerAccountID, books.Chart.Cash
+		amount := -f.payment.Amount
 		if a.Family == gbp.FamilyLending {
-			credit, debit = books.Chart.Cash, a.LedgerAccountID
+			amount = f.payment.Amount
 		}
 		// The version's post-posting rule then projects the day on the
 		// funded balance.
 		funded := products.Account{ID: a.LedgerAccountID, Product: a.ProductID}
-		if _, err := b.products.PostEvent(books, day, cause, credit, debit, f.payment.Amount, luca.CodeBookTransfer, f.payment.Reference, funded); err != nil {
+		if _, err := b.products.PostEvent(books, day, cause, books.Chart.Cash, a.LedgerAccountID, amount, luca.CodeBookTransfer, f.payment.Reference, funded); err != nil {
 			_ = tx.Rollback()
 			return fmt.Errorf("bank: open customer %s: %w", rec.ID, err)
 		}
@@ -228,8 +229,9 @@ func (b *Bank) Transfer(ctx context.Context, t core.Transfer) (core.Payment, err
 	}
 	pay.Cause = root.ID
 	books := b.ledger.WithTx(tx)
-	// A pays B: B's account is credited (the bank owes B more), A's debited.
-	if _, err := b.products.PostEvent(books, day, products.Cause{ID: root.ID, At: root.At}, toAcc.LedgerAccountID, fromAcc.LedgerAccountID, t.Amount, luca.CodeBookTransfer, pay.Reference,
+	// A pays B: a negative amount from A's account to B's, B's balance
+	// falling (the bank owes B more), A's rising (ADR-0008).
+	if _, err := b.products.PostEvent(books, day, products.Cause{ID: root.ID, At: root.At}, fromAcc.LedgerAccountID, toAcc.LedgerAccountID, -t.Amount, luca.CodeBookTransfer, pay.Reference,
 		products.Account{ID: fromAcc.LedgerAccountID, Product: fromAcc.ProductID},
 		products.Account{ID: toAcc.LedgerAccountID, Product: toAcc.ProductID}); err != nil {
 		_ = tx.Rollback()
@@ -590,7 +592,7 @@ func (b *Bank) Movement(ctx context.Context, id string) (core.Movement, error) {
 		return core.Leg{AccountID: l.AccountID, Path: l.Path, Type: kind, Balance: l.Balance}
 	}
 	out := core.Movement{
-		ID: m.ID, Credit: leg(m.Credit), Debit: leg(m.Debit), Amount: m.Amount, Currency: ledger.Currency,
+		ID: m.ID, From: leg(m.From), To: leg(m.To), Amount: m.Amount, Currency: ledger.Currency,
 		Code: m.Code, ValueTime: m.ValueTime, KnowledgeTime: m.KnowledgeTime, Description: m.Description,
 	}
 	// A rule's posting names its cause and step (ADR-0011).

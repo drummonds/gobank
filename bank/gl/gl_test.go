@@ -92,9 +92,9 @@ func TestOpenResolvesTheChartAndAControlPerProduct(t *testing.T) {
 }
 
 // What posts to the general ledger per sub-ledger event (ADR-0005,
-// signed per ADR-0008): a deposit credits the product's control and
-// debits cash, a drawdown credits cash and debits the control, a transfer
-// across products credits the payee's control and debits the payer's, a
+// signed per ADR-0008): a deposit is a negative amount from cash to the
+// product's control, a drawdown a positive one, a transfer across
+// products a negative amount from the payer's control to the payee's, a
 // transfer within one product is nothing. Each is a movement insert
 // only: no position moves until the close.
 func TestWhatEachEventPosts(t *testing.T) {

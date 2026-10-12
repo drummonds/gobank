@@ -26,10 +26,11 @@ import (
 // roots customer accounts hang under, by the product's family. The ledger
 // holds the bank's view (ADR-0008): debit-normal accounts (assets,
 // expenses) carry positive balances, credit-normal accounts (liabilities,
-// equity, income) negative, and a movement runs from the account credited
-// to the account debited.
+// equity, income) negative, and a movement is a signed amount from the
+// counterparty to the account the event is about: the amount is that
+// account's change.
 const (
-	Cash            = "Asset:Cash"                // the bank's cash from customer flows: a deposit debits it, a drawdown credits it
+	Cash            = "Asset:Cash"                // the bank's cash from customer flows: a deposit raises it, a drawdown lowers it
 	EquityCapital   = "Equity:Capital"            // the bank's capital; no counterparty of customer flows
 	ExpenseInterest = "Expense:Interest"          // interest applied to savings
 	IncomeInterest  = "Income:Interest"           // interest applied to loans
@@ -176,19 +177,16 @@ func (l *Ledger) OpenCustomerAccount(customerID, productID string, family gbp.Pr
 }
 
 // Post writes an event — a transfer, a funding — with projections, so
-// both accounts' positions for the day move at once: amount is credited
-// to the first account and debited to the second (go-luca's from and to:
-// the credited account's balance falls by it, the debited account's
-// rises). The caller holds the accounts' locks for as long as its
-// transaction holds their rows.
-func (l *Ledger) Post(creditID, debitID string, amount luca.Amount, code string, day time.Time, description string) error {
-	if creditID == "" || debitID == "" {
+// both accounts' positions for the day move at once: a signed amount m
+// from one account to the other, go-luca's semantics (ADR-0008): the to
+// account's balance rises by m, the from account's falls by m, and the
+// ledger keeps m as it was written. The caller holds the accounts' locks
+// for as long as its transaction holds their rows.
+func (l *Ledger) Post(fromID, toID string, amount luca.Amount, code string, day time.Time, description string) error {
+	if fromID == "" || toID == "" {
 		return fmt.Errorf("ledger: post %s: both accounts are needed", description)
 	}
-	if amount < 0 {
-		creditID, debitID, amount = debitID, creditID, -amount
-	}
-	if _, err := l.RecordMovementWithProjections(creditID, debitID, amount, code, day, description); err != nil {
+	if _, err := l.RecordMovementWithProjections(fromID, toID, amount, code, day, description); err != nil {
 		return fmt.Errorf("ledger: post %s: %w", description, err)
 	}
 	return nil
@@ -304,12 +302,12 @@ func (l *Ledger) Lock(ids ...string) (unlock func()) {
 	}
 }
 
-// Movement is one movement as the journal entry it is (ADR-0008): the
-// account credited and the account debited, each with the balance it was
-// left with at the movement's value time.
+// Movement is one movement as written (ADR-0008): a signed amount from
+// one account to another, each with the balance it was left with at the
+// movement's value time.
 type Movement struct {
 	ID            string
-	Credit, Debit MovementLeg
+	From, To      MovementLeg
 	Amount        luca.Amount
 	Code          string
 	ValueTime     time.Time
@@ -330,11 +328,11 @@ func (l *Ledger) MovementByID(ctx context.Context, id string) (Movement, error) 
 	var m Movement
 	err := l.db.QueryRowContext(ctx, `SELECT id, from_account_id, to_account_id, from_path, to_path, amount, code, value_time, knowledge_time, description
 		FROM contract_ledger_movements WHERE id = $1`, id).
-		Scan(&m.ID, &m.Credit.AccountID, &m.Debit.AccountID, &m.Credit.Path, &m.Debit.Path, &m.Amount, &m.Code, &m.ValueTime, &m.KnowledgeTime, &m.Description)
+		Scan(&m.ID, &m.From.AccountID, &m.To.AccountID, &m.From.Path, &m.To.Path, &m.Amount, &m.Code, &m.ValueTime, &m.KnowledgeTime, &m.Description)
 	if err != nil {
 		return Movement{}, err
 	}
-	for _, leg := range []*MovementLeg{&m.Credit, &m.Debit} {
+	for _, leg := range []*MovementLeg{&m.From, &m.To} {
 		bal, err := l.BalanceAt(leg.AccountID, m.ValueTime)
 		if err != nil {
 			return Movement{}, fmt.Errorf("ledger: movement %s: balance of %s: %w", id, leg.Path, err)

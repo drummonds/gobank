@@ -158,14 +158,10 @@ func (g *Ledger) openingBalances(day time.Time, sub map[string]subPosition) erro
 	at := lastSecond(day)
 	for productID, control := range g.controls {
 		bal := sub[productID].balance
-		from, to := g.Chart.EquityCapital, control
-		if bal < 0 {
-			from, to, bal = control, g.Chart.EquityCapital, -bal
-		}
 		if bal == 0 {
 			continue
 		}
-		if _, err := g.RecordMovement(from, to, bal, luca.CodeOpeningBalance, at, "Opening balance from the sub-ledger"); err != nil {
+		if _, err := g.RecordMovement(g.Chart.EquityCapital, control, bal, luca.CodeOpeningBalance, at, "Opening balance from the sub-ledger"); err != nil {
 			return fmt.Errorf("gl: opening balance %s: %w", productID, err)
 		}
 	}
@@ -173,36 +169,31 @@ func (g *Ledger) openingBalances(day time.Time, sub map[string]subPosition) erro
 }
 
 // journal posts the day's interest applications from the sub-ledger in
-// aggregate: one movement per product and code, between the P&L account
-// and the product's control in the direction the applications ran
-// (savings interest credits the saver and debits the expense; loan
-// interest credits income and debits the loan), valued at the day's last
-// second as the applications are, and recorded in the journal.
+// aggregate: one movement per product and code, from the P&L account to
+// the product's control as the applications ran (savings interest a
+// negative sum from the expense, loan interest a positive sum from
+// income), valued at the day's last second as the applications are, and
+// recorded in the journal.
 func (g *Ledger) journal(ctx context.Context, day time.Time) error {
-	// Grouped by the P&L account and the side it is on, not by the
+	// Grouped by the P&L account the applications came from, not by the
 	// customer account's own path: a product's accounts all journal to
 	// one line.
-	rows, err := g.q.QueryContext(ctx, `SELECT ca.product_id, m.code,
-			CASE WHEN m.from_path IN ($3, $4) THEN m.from_path ELSE '' END,
-			CASE WHEN m.to_path IN ($5, $6) THEN m.to_path ELSE '' END,
-			COALESCE(SUM(m.amount), 0)
+	rows, err := g.q.QueryContext(ctx, `SELECT ca.product_id, m.code, m.from_path, COALESCE(SUM(m.amount), 0)
 		FROM contract_ledger_movements m
-		JOIN contract_customer_accounts ca ON ca.ledger_account_id = m.to_account_id OR ca.ledger_account_id = m.from_account_id
-		WHERE m.value_time >= $1 AND m.value_time < $2 AND (m.from_path IN ($7, $8) OR m.to_path IN ($9, $10))
-		GROUP BY 1, 2, 3, 4`, day, day.AddDate(0, 0, 1),
-		ledger.ExpenseInterest, ledger.IncomeInterest, ledger.ExpenseInterest, ledger.IncomeInterest,
-		ledger.ExpenseInterest, ledger.IncomeInterest, ledger.ExpenseInterest, ledger.IncomeInterest)
+		JOIN contract_customer_accounts ca ON ca.ledger_account_id = m.to_account_id
+		WHERE m.value_time >= $1 AND m.value_time < $2 AND m.from_path IN ($3, $4)
+		GROUP BY 1, 2, 3`, day, day.AddDate(0, 0, 1), ledger.ExpenseInterest, ledger.IncomeInterest)
 	if err != nil {
 		return fmt.Errorf("gl: journal %s: %w", day.Format(time.DateOnly), err)
 	}
 	type line struct {
-		productID, code, from, to string // from and to: the P&L path on that side, else ""
-		amount                    luca.Amount
+		productID, code, from string // from: the P&L path the applications came from
+		amount                luca.Amount
 	}
 	var lines []line
 	for rows.Next() {
 		var l line
-		if err := rows.Scan(&l.productID, &l.code, &l.from, &l.to, &l.amount); err != nil {
+		if err := rows.Scan(&l.productID, &l.code, &l.from, &l.amount); err != nil {
 			rows.Close()
 			return fmt.Errorf("gl: journal %s: %w", day.Format(time.DateOnly), err)
 		}
@@ -224,12 +215,8 @@ func (g *Ledger) journal(ctx context.Context, day time.Time) error {
 			}
 			return g.Chart.ExpenseInterest
 		}
-		credit, debit := pl(l.from), control // the P&L account credited, the control debited: loan interest
-		if l.to == ledger.ExpenseInterest || l.to == ledger.IncomeInterest {
-			credit, debit = control, pl(l.to) // the control credited, the P&L account debited: savings interest
-		}
 		desc := fmt.Sprintf("Interest applied on %s for %s", l.productID, day.Format(time.DateOnly))
-		m, err := g.RecordMovement(credit, debit, l.amount, l.code, at, desc)
+		m, err := g.RecordMovement(pl(l.from), control, l.amount, l.code, at, desc)
 		if err != nil {
 			return fmt.Errorf("gl: journal %s %s: %w", day.Format(time.DateOnly), l.productID, err)
 		}
