@@ -122,6 +122,23 @@ The browser-based model proves the banking core works end-to-end.
   reports; BBSI moves from a live build to the stored year-end report.
   Needs go-luca `knowledge_time` (1.3.2). Open: a posting after close —
   restate, or carry into the next period with a note
+- **AEOI return prototype** — the bank produces the Automatic Exchange
+  of Information return (CRS, and FATCA for US persons) that a UK
+  reporting financial institution files with HMRC each year: for every
+  reportable account holder, the account's year-end balance and the
+  interest paid in the year, keyed to the holder's tax residence and
+  TIN. The return is a stored period report like the BBSI (period
+  accounting reports, above), produced from the ledger as at the year
+  end and kept as reported. The customer model grows to carry what the
+  return needs and KYC collects today in words only: tax residences,
+  TINs, date and place of birth, a self-certification on record, and
+  for entities the controlling persons; the generator gives a share of
+  customers a foreign residence so the return has rows. Out of scope:
+  the XML schema and HMRC's gateway (the prototype produces the rows
+  and a CSV), due-diligence thresholds, undocumented-account handling.
+  Open: whether residence and TIN live with the PII behind the customer
+  wall or as a reportable-person record of their own; whether a
+  reportable account is marked at open or found at year end
 - **Customer model** — confidence score, maximum aggregate balance, realistic switching behaviour
 - **Named customers behind customer wall** — PII-like data gated behind access control
 - **mock-fps integration** — compiled-in Faster Payments simulator for payment processing
