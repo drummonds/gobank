@@ -122,7 +122,7 @@ func TestPassResumesFromProjectionsAfterRestart(t *testing.T) {
 				t.Fatal(err)
 			}
 			want := 0
-			if a.Balance > 0 && a.RateBps > 0 {
+			if a.Balance != 0 && a.RateBps > 0 { // a savings balance is negative in the bank's view (ADR-0008)
 				want = 1
 			}
 			if applications != want {
