@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+## [0.34.0] - 2026-10-12
+
+ - Story 1.8.6: events and their cascades are recorded (ADR-0011 accepted); Owed read from the record; Events page
+
 ### Added
 - Story 1.8.6, ADR-0011 accepted: events and their cascades are
   recorded. A new `events` component holds the roots: every command
