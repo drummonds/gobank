@@ -117,7 +117,7 @@ func (s *Site) loginPage(w http.ResponseWriter, r *http.Request, status int, not
 	}
 	b.WriteString(`</div></div></div>`)
 	w.WriteHeader(status)
-	s.render(w, r, b.String(), "Stopped")
+	s.render(w, r, b.String(), false)
 }
 
 func clientIP(r *http.Request) string {

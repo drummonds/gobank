@@ -181,17 +181,19 @@ func (s *Site) fragment(w http.ResponseWriter, r *http.Request, content string) 
 // fullPage renders content in the layout; while the console runs the
 // layout re-fetches the whole page every second.
 func (s *Site) fullPage(w http.ResponseWriter, r *http.Request, content string) {
-	s.render(w, r, content, s.status())
+	s.render(w, r, content, s.polling())
 }
 
 // staticPage renders content in the layout with the whole-page poll off,
 // so forms on it keep what is typed; the page polls its own fragments if
-// anything.
+// anything. The status tag still says whether the console runs.
 func (s *Site) staticPage(w http.ResponseWriter, r *http.Request, content string) {
-	s.render(w, r, content, "Stopped")
+	s.render(w, r, content, false)
 }
 
-func (s *Site) render(w http.ResponseWriter, r *http.Request, content, polling string) {
+// render lays content out; polling says whether the layout re-fetches
+// the page every second while the console runs.
+func (s *Site) render(w http.ResponseWriter, r *http.Request, content string, polling bool) {
 	sess, signedIn := signedIn(r)
 	v := s.view(r)
 	s.ctrl.RenderTemplate(w, lofigui.TemplateContext{
@@ -203,6 +205,7 @@ func (s *Site) render(w http.ResponseWriter, r *http.Request, content, polling s
 		"version":          "Model Bank " + s.cfg.Version,
 		"controller_name":  s.ctrl.Name,
 		"results":          template.HTML(content),
+		"status":           s.status(),
 		"polling":          polling,
 		"signed_in":        signedIn,
 		"login":            sess.user.Login,
@@ -225,6 +228,22 @@ func (s *Site) page(w http.ResponseWriter, r *http.Request, build func() string)
 		return
 	}
 	s.fullPage(w, r, content)
+}
+
+// masterPage is a GET master-detail page: content is served alone to
+// HTMX, or rendered in the layout with the whole-page poll off, since
+// that poll would wipe the detail a row has loaded; the master polls
+// itself while the console runs.
+func (s *Site) masterPage(w http.ResponseWriter, r *http.Request, build func() string) {
+	if r.Method != "GET" {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	content := build()
+	if s.fragment(w, r, content) {
+		return
+	}
+	s.staticPage(w, r, content)
 }
 
 // --- routes ---
@@ -267,13 +286,13 @@ func (s *Site) routes() {
 	// the detail, a parameter's own page, which is also where a staff
 	// setting is made (ADR-0010): decided by the signed-in user.
 	mux.HandleFunc("/products/savings", func(w http.ResponseWriter, r *http.Request) {
-		s.page(w, r, func() string { return BuildProductsHTML(bank, gbp.FamilySavings, s.view(r), s.polling()) })
+		s.masterPage(w, r, func() string { return BuildProductsHTML(bank, gbp.FamilySavings, s.view(r), s.polling()) })
 	})
 	mux.HandleFunc("/products/lending", func(w http.ResponseWriter, r *http.Request) {
-		s.page(w, r, func() string { return BuildProductsHTML(bank, gbp.FamilyLending, s.view(r), s.polling()) })
+		s.masterPage(w, r, func() string { return BuildProductsHTML(bank, gbp.FamilyLending, s.view(r), s.polling()) })
 	})
 	mux.HandleFunc("/products/bank", func(w http.ResponseWriter, r *http.Request) {
-		s.page(w, r, func() string { return BuildBankHTML(bank, s.polling()) })
+		s.masterPage(w, r, func() string { return BuildBankHTML(bank, s.polling()) })
 	})
 	mux.HandleFunc("/products/{owner}/parameters/{key}", func(w http.ResponseWriter, r *http.Request) {
 		owner, key := r.PathValue("owner"), r.PathValue("key")

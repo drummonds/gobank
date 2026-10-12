@@ -33,6 +33,14 @@ func TestBuildParameterHTML(t *testing.T) {
 	if i, j := strings.Index(polling, "hx-trigger"), strings.Index(polling, "<form"); i > j {
 		t.Error("the form is inside what polls")
 	}
+	// A pre-filled tomorrow goes stale while the clock runs and the form
+	// does not re-render, so a running bank leaves the instant empty: now.
+	if !strings.Contains(page, `name="effective" value="2020-03-06T00:00"`) {
+		t.Errorf("a stopped bank does not offer tomorrow:\n%s", page)
+	}
+	if !strings.Contains(polling, `name="effective" value=""`) {
+		t.Errorf("a running bank pre-fills an instant that will be stale:\n%s", polling)
+	}
 	if ro := BuildParameterHTML(rate, day, false, false, ""); strings.Contains(ro, "<form") {
 		t.Error("a role that may not set sees the form")
 	}
@@ -48,5 +56,18 @@ func TestBuildParameterHTML(t *testing.T) {
 	derived := core.ParameterDetail{Owner: "easy-access-v2", Scope: "version", Key: "rate_bps", Kind: "bps", Derived: true, Derivation: "savings_rate_bps − 15 bps, floor 0"}
 	if page := BuildParameterHTML(derived, day, true, false, ""); strings.Contains(page, "<form") || !strings.Contains(page, "savings_rate_bps − 15 bps, floor 0") {
 		t.Errorf("a derived parameter: no form, the derivation in words:\n%s", page)
+	}
+}
+
+// A row link loads the parameter's detail whether or not the master it
+// sits in is polling: the master's own poll selects the master from the
+// page, and a link inside it must not inherit that selection, or its
+// reply (the detail) is filtered to nothing.
+func TestRowLinkSelectsTheDetailInsideAPollingMaster(t *testing.T) {
+	page := masterDetail(parameterTable([]string{parameterRow("easy-access", "rate_bps", "bps", "150")}, "In force"), "products/savings", true)
+	row := page[strings.Index(page, "<a "):]
+	row = row[:strings.Index(row, ">")+1]
+	if !strings.Contains(row, `hx-select="#parameter-detail"`) {
+		t.Errorf("a row link in a polling master does not select the detail from its reply:\n%s", row)
 	}
 }

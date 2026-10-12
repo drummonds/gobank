@@ -1,6 +1,8 @@
 package main
 
 import (
+	"net/http"
+	"net/http/httptest"
 	"strings"
 	"testing"
 
@@ -45,5 +47,34 @@ func TestProductTotalFollowsTheView(t *testing.T) {
 	}
 	if strings.Contains(customer, "<strong>Product total:</strong> -£") || !strings.Contains(customer, "<strong>Product total:</strong> £") {
 		t.Errorf("the customer's view shows the savings book negative:\n%s", customer)
+	}
+}
+
+// While the simulation runs the layout re-fetches most pages whole every
+// second; a master-detail page must not be, or the detail a row loaded is
+// wiped by the next poll. The master polls itself instead.
+func TestMasterDetailPagesAreNotRefetchedWhole(t *testing.T) {
+	t.Setenv("GOBANK_ADMIN_PASSWORD", testAdminPassword)
+	ds := NewDemoState()
+	addFundedCustomer(ds)
+	site := newSite(ds)
+	cookie := staffLogin(t, site)
+	ds.Start()
+	defer ds.Stop()
+	for _, path := range []string{"/products/bank", "/products/savings", "/products/lending"} {
+		rr := httptest.NewRecorder()
+		req := httptest.NewRequest("GET", path, nil)
+		req.AddCookie(cookie)
+		site.ServeHTTP(rr, req)
+		body := rr.Body.String()
+		if rr.Code != http.StatusOK || !strings.Contains(body, `>Running<`) {
+			t.Fatalf("%s: %d, or the console is not running:\n%.300s", path, rr.Code, body)
+		}
+		if strings.Contains(body, `hx-trigger="every 1s"`) {
+			t.Errorf("%s is re-fetched whole by the layout while running", path)
+		}
+		if !strings.Contains(body, `hx-trigger="every 2s"`) || !strings.Contains(body, `hx-select="#products-master"`) {
+			t.Errorf("%s: the master does not poll itself while running", path)
+		}
 	}
 }

@@ -115,10 +115,11 @@ func masterDetail(master, page string, polling bool) string {
 
 // parameterRow is a parameter's row in a master: its key a link that
 // loads the parameter's page into the detail, and the whole page for a
-// browser without HTMX.
+// browser without HTMX. The link selects the detail from its reply
+// itself, so it does not inherit the polling master's selection.
 func parameterRow(owner, key, kind, value string) string {
 	page := parameterPath(owner, key)
-	return fmt.Sprintf(`<tr><td><a href="%s" hx-get="%s" hx-target="#parameter-detail" hx-swap="outerHTML" hx-push-url="true"><code>%s</code></a></td><td>%s</td><td>%s</td></tr>`,
+	return fmt.Sprintf(`<tr><td><a href="%s" hx-get="%s" hx-target="#parameter-detail" hx-swap="outerHTML" hx-select="#parameter-detail" hx-push-url="true"><code>%s</code></a></td><td>%s</td><td>%s</td></tr>`,
 		page, page, html.EscapeString(key), html.EscapeString(kind), html.EscapeString(value))
 }
 
@@ -202,14 +203,21 @@ func BuildParameterHTML(d core.ParameterDetail, day time.Time, canSet, polling b
 		s.WriteString(fmt.Sprintf(`<div class="notification is-danger is-light mt-3">Refused: %s</div>`, html.EscapeString(refused)))
 	}
 	if canSet && d.Settable {
+		// Tomorrow is offered while the bank stands still; while the clock
+		// runs a pre-filled instant goes stale (the form never re-renders),
+		// so the instant is left empty, which the handler reads as now.
+		tomorrow := day.AddDate(0, 0, 1).Format("2006-01-02T15:04")
+		if polling {
+			tomorrow = ""
+		}
 		s.WriteString(fmt.Sprintf(`<form hx-post="%s" hx-target="#parameter-detail" hx-swap="outerHTML" action="%s" method="post" class="mt-3">
   <div class="field is-grouped is-grouped-multiline">
     <div class="control"><input class="input is-small" type="text" name="value" placeholder="value (%s)" required></div>
     <div class="control"><input class="input is-small" type="datetime-local" name="effective" value="%s" min="%s"></div>
     <div class="control"><button class="button is-small is-primary" type="submit">Set parameter</button></div>
   </div>
-  <p class="help">Decided now, effective at the instant (UTC); the product's accounts are told when the clock reaches it</p>
-</form>`, page, page, html.EscapeString(d.Kind), day.AddDate(0, 0, 1).Format("2006-01-02T15:04"), day.Format("2006-01-02T15:04")))
+  <p class="help">Decided now, effective at the instant (UTC), or now when left empty; the product's accounts are told when the clock reaches it</p>
+</form>`, page, page, html.EscapeString(d.Kind), tomorrow, day.Format("2006-01-02T15:04")))
 	}
 	s.WriteString(`</div></div>`)
 	return s.String()

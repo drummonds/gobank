@@ -95,7 +95,7 @@ const layout = `<!DOCTYPE html>
         </div>
         <a class="navbar-item" href="v1/screen/login" target="_blank">Bank App</a>
         <div class="navbar-item">
-          <span class="tag {{if eq .polling "Running"}}is-warning{{else}}is-success{{end}}">{{ .polling }}</span>
+          <span class="tag {{if eq .status "Running"}}is-warning{{else}}is-success{{end}}">{{ .status }}</span>
         </div>
       </div>
       {{end}}
@@ -104,7 +104,7 @@ const layout = `<!DOCTYPE html>
   <section class="section">
     <div class="container">
       <div id="results"
-        {{if eq .polling "Running"}}
+        {{if .polling}}
         hx-get="{{ .path }}" hx-trigger="every 1s" hx-swap="innerHTML"
         {{end}}
       >{{ .results }}</div>

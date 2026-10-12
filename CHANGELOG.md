@@ -30,6 +30,15 @@
 ### Changed
 - Events moves from the top of the staff navigation into the Internal
   menu.
+- The roadmap is seventeen numbered epics in place of four phases: the
+  ADR-0002 transition is epic 1 with its story numbers unchanged, and the
+  Phase 1 backlog, telemetry and Phases 2 to 4 are regrouped into epics
+  2 to 17 (mobile apps, payment rails, workflows, customers, finance,
+  performance, resilience, delivery pipeline, blue-green, Kubernetes,
+  data governance, bank migration, a second bank, Isle of Alba, local
+  process on the device, distributed scale), each opening with its
+  done-when. `roadmap.d2` is drawn from the file. The duplicate item 5
+  (the demo phone frame, story 1.6.2) is dropped.
 - The movement page writes money in the drawing as the bank writes it
   (`-£1,001.27`) and fills the boxes in the bank's colours, through
   pta2svg's new `Commodities` and `Palette` options, in the browser as
@@ -42,6 +51,19 @@
 ### Fixed
 - The product total on the products page follows the session's view, as
   every other balance does; it was always the bank's view.
+- Found by a headless-browser check before release: while the
+  simulation ran, the layout's one-second whole-page poll re-fetched the
+  product masters and wiped the detail a row had loaded, and a row link
+  inside the polling master inherited its `hx-select` so the detail it
+  fetched was filtered to nothing. The masters now render with the
+  whole-page poll off (`masterPage`) and poll themselves, and a row link
+  selects the detail from its reply. The layout's status tag now follows
+  the console on every page, static ones included; it said Stopped on a
+  parameter page while the clock ran.
+- The set form pre-filled tomorrow as the effective instant, which went
+  stale while the clock ran (the form never re-renders) and the core
+  refused it; while the simulation runs the instant is left empty,
+  which means now.
 - The pass test's expectation of a January application on a savings
   account read the balance's sign in the customer's view; since
   ADR-0008 (v0.35.0) a savings balance is negative in the bank's view,

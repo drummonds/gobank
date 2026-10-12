@@ -6,11 +6,17 @@ with thin Flutter mobile apps talking to a Go backend-for-frontend.
 
 ![Roadmap](roadmap.svg)
 
-## Phase 1 — WASM Model Bank
+The work is a set of epics, each a legal number (`1`, `2`), with stories
+beneath (`1.6`, `1.6a.2`). `tp roadmap check` keeps the numbering legal,
+and a shipped story keeps its number for good (task-plus
+`docs/roadmap.md`). Epic order is file order, not a sequence: epics
+interleave. Each epic's first list line repeats its number and states
+its done-when; the line goes once task-plus #36 reads the number from
+the heading.
 
-The browser-based model proves the banking core works end-to-end.
+## Before the epics — the WASM Model Bank
 
-### Done
+The browser-based model proved the banking core works end-to-end. Done:
 
 - WASM build and deploy (docs.bytestone.uk)
 - lofigui web UI
@@ -20,221 +26,16 @@ The browser-based model proves the banking core works end-to-end.
   lives on the ledger position and the start-of-day pass runs at the start of
   the day with the whole day as headroom (ADR-0002 stage 3 story (e))
 
-### To Do
-
-- **ADRs published whole, with a root of their own** — the running
-  system serves an ADR's diagrams beside its text (`adr` embeds the
-  SVGs and goluca sources with the markdown, served at
-  `about/docs/adr/`; found on ADR-0008, every ADR with a d2 is
-  affected); `about/adr` lists the records (number, title, status,
-  date) and is linked from the nav, the docs page keeping its summary;
-  the static site renders `adr/*.md` to `docs/adr/` with the same
-  index, so docs.bytestone.uk carries them. Ships with 1.8.8. Out of
-  scope: ADR templates, a status workflow
-- **Workflow engine** — a `workflow` component (own tables, ADR-0001):
-  long-running processes made of steps, timers and human decisions,
-  durable so an instance resumes after a restart, with timers on the
-  bank clock (`core.Clock`) so a six-month wait runs inside a simulated
-  afternoon. First consumers: KYC journeys and sign-up (Phase 2 #4),
-  lending proposals, dormancy, licence promotion (below). Stage 1.12's
-  single workflow runner becomes this engine's runner. WASM runs it in
-  memory. Out of scope: a visual designer, BPMN, retries with backoff
-  beyond "try again next day". Open: definitions as Go code (steps are
-  named functions, the instance row records the step it is at) versus a
-  declarative definition table; whether the start-of-day pass itself
-  becomes an instance
-- **Bank licence trajectory** — the bank is an institution that grows
-  through tiers: a deposit-taker (savings products only, no lending, no
-  regulatory capital), a small bank once it has raised investment or
-  retained 5M, a regulated bank at 25M with capital rules. A tier is a set
-  of permissions the rest of the bank reads as rules: lending headroom
-  is nil at tier one, the reserve-ratio rule at tier two, capital-based
-  at tier three. A `licence` component (own table) holds the current
-  tier and the history of transitions — date, trigger (investment event,
-  earnings threshold crossed), the figures at the time, who approved —
-  and a staff page shows the trajectory: where the bank is, what the
-  next step needs, how far along. Promotion is a workflow with a staff
-  step; the simulation can inject an investment event. Thresholds are
-  data, not code. Out of scope: real PRA/FCA regimes (mobilisation,
-  Part 4A), ICAAP/ILAAP numbers (the risk register keeps those out too).
-  Open: the thresholds (5M and 25M are the model's own; UK mobilisation
-  is a £50k deposit cap) and whether a tier can be lost
-- **Lending gateway** — a loan is a proposal, not a disbursement: opening
-  a customer with a loan, or a later request, creates a lending proposal
-  that a workflow decides — refused at the deposit-taker tier, approved
-  within headroom at later tiers, with a staff approval step above a
-  size. Replaces the open-time trim in `planCustomerLocked`; the proposal
-  and its decision are records, so the staff view shows a queue and the
-  refusals. The generator keeps asking for loans at tier one so the
-  refusals are visible. Out of scope: credit scoring, affordability,
-  repayment schedules (products)
-- **Dormancy and the account-number lifecycle** — a savings account with
-  no customer movements for six months (interest credits do not count)
-  becomes dormant; dormant with a nil balance it is closed automatically,
-  with a balance it stays dormant and is reported. Closing returns the
-  account number to quarantine for a period before it can be reissued,
-  so numbers have a lifecycle: issued → open → closed → quarantined →
-  free. The sweep is a workflow timed from the last customer movement.
-  Out of scope: the Dormant Assets Scheme (15 years), a reactivation
-  journey. Open: the quarantine length; whether the number register is
-  its own component or part of customers. Real UK banks do not reuse
-  numbers; the model does so the register stays finite
-- **Treasury: cash at BoE and net interest margin** — the treasury view
-  gains the BoE balance over time (the reserve account's daily position
-  from the ledger) and, for a reporting period, the net interest margin:
-  interest earned (BoE reserves, gilts, loans) less interest paid
-  (savings), as money and as a rate over average earning assets. Builds
-  on period accounting reports
-- **Feature flag component** — a `flags` component (own table, ADR-0001)
-  holding named on/off switches, read through a core query and flipped from
-  a staff page; WASM keeps them in memory. Needed for the ADR-0002
-  transition, where an old and a new path run side by side (stage 2
-  computed versus projected transactions, a new payment rail) and the demo
-  must switch between them per deployment without a rebuild. A flag is
-  short-lived: it is deleted once both paths converge. Out of scope:
-  percentage rollouts, per-customer targeting, external flag services.
-  Open: startup-only (read once from config; simple, no table, every process
-  agrees) versus live (stored, flippable mid-run; lets the demo show a
-  cutover or a kill switch without a restart)
-- **Key and emerging risk register** — a register component (own tables,
-  ADR-0001) listing the bank's key risks (credit, liquidity, interest-rate
-  risk in the banking book, operational, conduct) with owner, inherent and
-  residual rating and controls; each key risk carries KRIs computed from the
-  simulation through contract views, with amber/red thresholds, so a
-  simulated run moves the register. Emerging risks (horizon scanning: cyber,
-  climate, payment-scheme change) are recorded without KRIs until one is
-  measurable. Out of scope: capital modelling (ICAAP/ILAAP numbers).
-  Open: which KRIs the simulation can already support versus which need new
-  metrics (e.g. liquidity coverage needs a treasury cash view)
-- **DB explorer on the pluggable go-dbexplorer** — fix FK filter links
-  (route through `Explorer.Render`); then a `Catalog` adapter over
-  `components.go`. The `Authoriser` is story 1.7.3
-- **Working savings accounts** — full lifecycle: open, deposit, withdraw, accrue interest, close
-- **Import/export via luca files** — load and save simulation state as plain-text accounting files
-- **Export single savings account** — extract one account's history as a luca file
-- **Period accounting reports, produced and stored** — a reporting
-  period (month, year, tax year for BBSI) is a thing with a close: at
-  close the P&L, balance sheet and the period's returns (BBSI at tax
-  year end) are produced from the ledger as at that knowledge time and
-  stored as records, so what was reported stays what was reported if a
-  late posting changes the books; real time is a live view of the open
-  period, never stored. The reports page lists periods and their stored
-  reports; BBSI moves from a live build to the stored year-end report.
-  Needs go-luca `knowledge_time` (1.3.2). Open: a posting after close —
-  restate, or carry into the next period with a note
-- **AEOI return prototype** — the bank produces the Automatic Exchange
-  of Information return (CRS, and FATCA for US persons) that a UK
-  reporting financial institution files with HMRC each year: for every
-  reportable account holder, the account's year-end balance and the
-  interest paid in the year, keyed to the holder's tax residence and
-  TIN. The return is a stored period report like the BBSI (period
-  accounting reports, above), produced from the ledger as at the year
-  end and kept as reported. The customer model grows to carry what the
-  return needs and KYC collects today in words only: tax residences,
-  TINs, date and place of birth, a self-certification on record, and
-  for entities the controlling persons; the generator gives a share of
-  customers a foreign residence so the return has rows. Out of scope:
-  the XML schema and HMRC's gateway (the prototype produces the rows
-  and a CSV), due-diligence thresholds, undocumented-account handling.
-  Open: whether residence and TIN live with the PII behind the customer
-  wall or as a reportable-person record of their own; whether a
-  reportable account is marked at open or found at year end
-- **Customer model** — confidence score, maximum aggregate balance, realistic switching behaviour
-- **Named customers behind customer wall** — PII-like data gated behind access control
-- **mock-fps integration** — compiled-in Faster Payments simulator for payment processing
-- **FPS stand-in mode** — simulate FPS outages, payment queuing, and recovery
-
-## Telemetry — between Phase 1 and Phase 2
-
-The demo tells us what it is doing through the runtime page and the day
-length; from stage 3 of ADR-0002 onwards the cost of the design (events
-and the daily pass taking turns per account, projections written through
-the day) has to be measured, not inferred. Telemetry is its own item so
-that every later story ships with its numbers.
-
-- [x] (v0.12.0) **Performance run on Hetzner, small and large** — a gobank-deploy
-  `perf` workflow (beside the drill) creates an environment at a scale
-  (`small` cx23, `large` cx53), waits for the demo, sets the day length to
-  zero, batch-adds customers for a fixed wall-clock span, lets days run
-  for another, reads the two rates off `/about.json` — customers added per
-  second and account days per 12h (the pass's rate over the whole day) —
-  with the customers and days reached, then downs the box and keeps the
-  observations with the version and server type. gobank's share: the two
-  rates join `/about.json`, and `benchmark.md` becomes the performance
-  doc — published by `docs:build`, each run a dated row per scale,
-  the laptop pglike tables kept as the baseline. Out of scope: profiling
-  on the box, OpenTelemetry (below), cost per customer. Open: the spans
-  (10 minutes each?); whether a run should also report the day's
-  wall-clock at a fixed customer count, for comparison with the
-  2026-10-01 ten-minute days
-- **Observability with OpenTelemetry** — the demo emits metrics and traces
-  through the OpenTelemetry SDK, OTLP to a collector per environment that
-  gobank-deploy runs alongside the demo, starting with what the runtime
-  page shows today: day phase and duration, movements per second,
-  database connections, memory. Out of scope: a logs pipeline, alerting.
-  Open: OTLP push versus a Prometheus pull endpoint; where the collector
-  and viewer live on a one-server environment
-- **Account locks in use** — once the above is in place: how many of the
-  per-account lock stripes are held, how often a holder waits and for how
-  long, with the equity account's stripe named, so the cost of an event
-  and the daily pass taking turns on an account (ADR-0002 stage 3) is
-  measured rather than inferred from the day length
-
-Done when a Hetzner day can be read as a timeline of its phases and lock
-waits in the viewer, and the drill records its downtime from the same
-source.
-
-## Phase 2 — Mobile apps: Go BFF + Flutter thin client
-
-Thin iOS and Android apps with as little on the device as possible. All banking
-logic stays on the server; the client renders, navigates, and holds the keys.
-The BFF is hardened from the start: apart from login, health and the public
-login screen it answers nothing without a session, so authentication is built
-first and every other feature sits behind it.
-
-### Architecture
-
-- **Backend-for-frontend (BFF)** — a Go service that speaks only to the clients
-  and returns screen-ready JSON. Its own binary (`cmd/bff`), separate from the
-  admin simulator, with a narrow internal API (`bff.Bank`) to the banking core.
-  Customer identity comes from the session, never from the URL.
-- **Screen layer** — a versioned screen tree (`screen` package) built
-  server-side with every presentation decision made in Go: money formatting,
-  sign and colour, icons, date grouping, paging, navigation. Rendered to JSON
-  for the apps and to HTML for the browser and the demo phone frame.
-- **Flutter thin shell** — one Dart codebase for iOS and Android (`app/`). A
-  JSON-to-widget interpreter plus login and navigation; no business rules in
-  Dart, so it stays cheap to replace. Unknown component types render a fallback.
-- **In-house native security plugin** — Swift and Kotlin, written by us rather
-  than assembled from pub.dev packages. This is the code a later native rewrite
-  would need, so it carries over unchanged.
-- **WASM stays the simulator** — the browser model bank runs the whole bank
-  in-page with no server, so it cannot authenticate against a BFF. It remains
-  the admin and simulation tool; the customer web client is served by the BFF.
-
-Everything lives in this repository: `screen/` and `bff/` are packages of the
-root module, `cmd/bff` is the service binary, and `app/` is the Flutter shell.
-
-### Started
-
-- **Screen layer** — `screen/`: schema v1, JSON and HTML renderers
-- **Hardened BFF** — `bff/` and `cmd/bff`: sessions, credential login, login
-  rate limiting, audit log, authenticated screen endpoints only; runs against
-  `bff/stubbank` standalone, and inside the demo over the `core` adapter
-  (ADR-0002 stage 1) at `/v1/` on the demo's port
-- **Flutter shell** — `app/`: login, screen renderer, navigation; session token
-  held in memory until the native plugin exists
-
-### To Do (in order)
+## 1 Transition to the target architecture
 
 - **1 Transition to the target architecture** — [ADR-0002](adr/0002-target-architecture.md):
   one BFF for app and web, a core library of components over a database
   that holds every fact, accruals pipelined one day ahead by a start-of-day
   workflow, and a simulation that differs from production only in event
   sources and the clock. Nine stages, each leaving the demo running in
-  WASM, on a server and on Hetzner. The list below is the ADR's nine
-  stages with the stages added since (1.6a, 1.7 to 1.10) in the order
-  they are worked; a shipped story keeps its number, so an insertion
+  WASM, on a server and on Hetzner. The list below is the ADR's
+  stages with those added since (1.6a, 1.7 to 1.10) in the order they
+  are worked, stages 7 and 8 moved to epic 10 (blue-green deployment); a shipped story keeps its number, so an insertion
   before one takes a letter (1.6a) and only unshipped stages are
   renumbered. Every story ends with a release deployed to the Hetzner
   demo and sense-checked there before the next starts:
@@ -401,7 +202,7 @@ root module, `cmd/bff` is the service binary, and `app/` is the Flutter shell.
   item 8, passkeys excluded). The BFF keeps no state of its own: the console
   it serves is an interface the demo implements. Out of scope: a staff
   login (the role switch stays; 1.7 adds it), staff sessions in the
-  database (1.12 needs them), the audience split, and the screens app.md draws (its stories
+  database (10.3 needs them), the audience split, and the screens app.md draws (its stories
   1 to 4). Done-when of the stage: `cmd/demo` holds no HTML and no handler,
   only wiring, the simulation and the console. Stories:
 - **1.6.1** [x] (v0.19.0) one handler, in the tab — the demo's routes become one
@@ -556,8 +357,7 @@ root module, `cmd/bff` is the service binary, and `app/` is the Flutter shell.
   in as today, and `GOBANK_APP_PASSWORD` is no longer read at login
 - **1.7.3** permissions with the users — `Role`, `Can` and the action
   list move out of `bff/staff` into the component, read through `core`;
-  staff pages, PII gating and the DB explorer's `Authoriser` (the Phase 1
-  explorer item) ask it, closing the gap where every role browses every
+  staff pages, PII gating and the DB explorer's `Authoriser` (12.3) ask it, closing the gap where every role browses every
   table. Done-when of the stage
 - **1.8** Products as versioned code, with bitemporal parameters
   (ADR-0006, proposed 2026-10-09; taken before 1.7.2 and 1.7.3) — today
@@ -800,7 +600,7 @@ root module, `cmd/bff` is the service binary, and `app/` is the Flutter shell.
   environment a second server running Postgres on the private network
   and the demo's `GOBANK_PG_DSN` points at it; kept if 1.9.1's numbers
   say the shared box was the bottleneck, and in any case the first step
-  of 1.12's topology. Done-when of the stage: at the Hetzner scale every
+  of 10.3's topology. Done-when of the stage: at the Hetzner scale every
   staff page under 1 s at p95 at concurrency 4, the P&L and balance
   sheet return, and the rows are in `benchmark.md`
 - **1.10** Performance and API documentation in the pipeline — the
@@ -819,23 +619,103 @@ root module, `cmd/bff` is the service binary, and `app/` is the Flutter shell.
   hand-written spec checked against the router by a test (recommended:
   no new machinery) versus a spec generated from the Go types (swag or
   ogen)
-- The last three ADR-0002 stages are deferred: they are not next after
-  1.10
-- **1.11** Read/write split — separate read and write handles (ADR-0002
-  stage 7)
-- **1.12** Many processes — several BFFs, a generator and one workflow
-  runner; deploys go blue-green (deployment level 3), ending the downtime
-  accepted since stage 2 (ADR-0002 stage 8)
-- **1.13** Simulation becomes tests (ADR-0002 stage 9)
-- **2 Multiple payment rails** — every payment records the rail it travelled
+- **1.11** Simulation becomes tests (ADR-0002 stage 9)
+
+## 2 Mobile apps: BFF + Flutter thin client
+
+Thin iOS and Android apps with as little on the device as possible. All banking
+logic stays on the server; the client renders, navigates, and holds the keys.
+The BFF is hardened from the start: apart from login, health and the public
+login screen it answers nothing without a session, so authentication is built
+first and every other feature sits behind it.
+
+### Architecture
+
+- **Backend-for-frontend (BFF)** — a Go service that speaks only to the clients
+  and returns screen-ready JSON. Its own binary (`cmd/bff`), separate from the
+  admin simulator, with a narrow internal API (`bff.Bank`) to the banking core.
+  Customer identity comes from the session, never from the URL.
+- **Screen layer** — a versioned screen tree (`screen` package) built
+  server-side with every presentation decision made in Go: money formatting,
+  sign and colour, icons, date grouping, paging, navigation. Rendered to JSON
+  for the apps and to HTML for the browser and the demo phone frame.
+- **Flutter thin shell** — one Dart codebase for iOS and Android (`app/`). A
+  JSON-to-widget interpreter plus login and navigation; no business rules in
+  Dart, so it stays cheap to replace. Unknown component types render a fallback.
+- **In-house native security plugin** — Swift and Kotlin, written by us rather
+  than assembled from pub.dev packages. This is the code a later native rewrite
+  would need, so it carries over unchanged.
+- **WASM stays the simulator** — the browser model bank runs the whole bank
+  in-page with no server, so it cannot authenticate against a BFF. It remains
+  the admin and simulation tool; the customer web client is served by the BFF.
+
+Everything lives in this repository: `screen/` and `bff/` are packages of the
+root module, `cmd/bff` is the service binary, and `app/` is the Flutter shell.
+
+### Started
+
+- **Screen layer** — `screen/`: schema v1, JSON and HTML renderers
+- **Hardened BFF** — `bff/` and `cmd/bff`: sessions, credential login, login
+  rate limiting, audit log, authenticated screen endpoints only; runs against
+  `bff/stubbank` standalone, and inside the demo over the `core` adapter
+  (ADR-0002 stage 1) at `/v1/` on the demo's port
+- **Flutter shell** — `app/`: login, screen renderer, navigation; session token
+  held in memory until the native plugin exists
+
+- **2 Mobile apps: BFF + Flutter thin client** — done when you can open
+  the app on a phone, log in with a biometric-bound passkey, see live
+  balances served by the BFF, and make a deposit or withdrawal signed
+  with the device key; the browser app runs against the same BFF, and
+  nothing in either client decides anything
+- **2.1 Native security plugin** — biometric-bound keys (Secure Enclave, StrongBox),
+  passkey registration and login, App Attest and Play Integrity token fetching,
+  certificate pinning, screenshot blocking and app-switcher blanking, jailbreak,
+  root and overlay detection; the BFF checks attestation before issuing tokens
+- **2.2 Device-bound signing** — request signing for transactions, step-up
+  authentication (PSD2 SCA)
+- **2.3 Web client on the BFF** — the HTML rendering of the same endpoints is
+  the customer web client (story 1.6.2); passkeys via WebAuthn in the browser
+- **2.4 App-shielding SDK evaluation** — Promon, Guardsquare, Appdome, Zimperium;
+  chosen and integrated before any external pilot
+- **2.5 Native checkpoint** — after the first external pilot, a written list of what
+  Flutter cannot do; move to SwiftUI and Jetpack Compose only if the list is
+  non-empty
+- **2.6 Document rendering on the device (scaling option)** — where a
+  document is rendered is a cost question, not a feature. Terms and
+  conditions are a function of the product version alone: the text is a
+  product parameter (1.8, a text view on the parameters pages), so the
+  rendered document is cached per version and costs O(p) in product
+  versions, nothing per customer. Only per-customer documents scale with
+  the book: statements (json2pdf) and movement diagrams (pta2svg). For
+  those the BFF serves the data and the client renders. The web client
+  (2.3) loads the TinyGo WASM builds both renderers already ship; the
+  Flutter app cannot run them (no JavaScript host on Android or iOS), so
+  on the device the same pure-Go renderers are bound natively with
+  gomobile (an .aar and an .xcframework behind a platform channel), the
+  mobile counterpart of WASM in the browser. Until then the BFF renders
+  everything (the thin-client rule), which is enough for the demo; taken
+  when a perf run (1.9) shows document rendering on the server's bill.
+  Out of scope: a WASM runtime inside the app (both renderers would need
+  WASI rebuilds and an FFI layer), a WebView onto a BFF page. Open: the
+  statement rendered on the device from JSON versus a PDF from the BFF
+  opened in the device's viewer; whether pta2svg draws arrowheads without
+  SVG markers (flutter_svg has none) or the diagram travels as PNG
+
+## 3 Payment rails
+
+- **3 Payment rails** — done when every payment records the rail it
+  travelled, each rail is a scheme adapter with its own timing and
+  outages, and one real outbound payment has left the demo bank over a
+  live sandbox API
+- **3.1 Multiple payment rails** — every payment records the rail it travelled
   (internal book transfer, FPS, Bacs, CHAPS) and each rail is a scheme
   adapter behind one interface with its own settlement timing, cut-offs,
   limits and outage behaviour; a routing rule picks the rail from amount and
   urgency. The payments component stays the one bank-level view (one
   lifecycle, one list, filterable by rail) and gains a per-rail view:
-  volumes, queue depth, settlement position and scheme status. The existing
-  mock-fps and FPS stand-in items in Phase 1 become the FPS rail's stories,
-  and the adapter boundary is what Phase 3 unbundles. Out of scope: real scheme
+  volumes, queue depth, settlement position and scheme status. The mock-fps and
+  FPS stand-in stories (3.3, 3.4) are the FPS rail's, and the adapter
+  boundary is what 3.5 unbundles. Out of scope: real scheme
   messaging (ISO 20022), cards. Open: rail as a column on the one
   `payments` table (the coherent view comes free) versus a table per rail
   with a bank-level union view (each rail's data differs — Bacs has a
@@ -846,69 +726,386 @@ root module, `cmd/bff` is the service binary, and `app/` is the Flutter shell.
   (developer sandbox, personal access token, plain REST) versus Barclays
   (Open Banking PIS, needs TPP registration and eIDAS certificates, likely
   out of reach for a hobby project) — Starling sandbox first
-- **3 Payee management** — a customer's saved payees (name, sort code and
+- **3.2 Payee management** — a customer's saved payees (name, sort code and
   account number, reference), created, edited and deleted in the app and
   the customer web and offered by send money; a component with its own
-  table (ADR-0001) behind session-only BFF endpoints. Builds on #7.
+  table (ADR-0001) behind session-only BFF endpoints. Builds on 2.2.
   Out of scope: international payees, a real Confirmation of Payee call
   (stubbed behind an interface). Open: new-payee limits and cooling-off
-- **4 KYC process** — onboarding as a lifecycle (pending → verified →
+- **3.3 mock-fps integration** — compiled-in Faster Payments simulator for payment processing
+- **3.4 FPS stand-in mode** — simulate FPS outages, payment queuing, and recovery
+- **3.5 Unbundle mock-fps as a separate service (HTTP API)**
+
+## 4 Workflows and lifecycles
+
+- **4 Workflows and lifecycles** — done when long-running processes
+  (onboarding, a lending proposal, dormancy) run as durable workflow
+  instances on the bank clock, with a staff queue for the human steps
+- **4.1 Workflow engine** — a `workflow` component (own tables, ADR-0001):
+  long-running processes made of steps, timers and human decisions,
+  durable so an instance resumes after a restart, with timers on the
+  bank clock (`core.Clock`) so a six-month wait runs inside a simulated
+  afternoon. First consumers: KYC journeys and sign-up (4.2),
+  lending proposals, dormancy, licence promotion (15.1). Story 10.3's
+  single workflow runner becomes this engine's runner. WASM runs it in
+  memory. Out of scope: a visual designer, BPMN, retries with backoff
+  beyond "try again next day". Open: definitions as Go code (steps are
+  named functions, the instance row records the step it is at) versus a
+  declarative definition table; whether the start-of-day pass itself
+  becomes an instance
+- **4.2 KYC process** — onboarding as a lifecycle (pending → verified →
   rejected → in review): identity capture, document and liveness checks
   as pluggable verifiers with a stub provider in the demo, running as
-  a journey on the workflow engine (Phase 1), a risk rating, and the
+  a journey on the workflow engine (4.1), a risk rating, and the
   record of how and when a customer was verified and of later
   name and address changes (#25); an unverified customer transacts only
   up to a cap. Out of scope: a real IDV provider (same interface as the
   stub), AML transaction monitoring (belongs with the risk register).
   Open: does the customer generator produce KYC outcomes, so the staff
   view has a queue to work
-- **5** [x] (v0.21.0) **Demo phone frame onto the screen layer** (ADR-0002 stage 6,
-  story 1.6.2) — the demo's phone frame is the BFF's HTML (`screen.HTML`),
-  so browser and app show identical screens from one source, and the open
-  `/api/customer/` endpoints are retired
-- **6 Native security plugin** — biometric-bound keys (Secure Enclave, StrongBox),
-  passkey registration and login, App Attest and Play Integrity token fetching,
-  certificate pinning, screenshot blocking and app-switcher blanking, jailbreak,
-  root and overlay detection; the BFF checks attestation before issuing tokens
-- **7 Device-bound signing** — request signing for transactions, step-up
-  authentication (PSD2 SCA)
-- **8 Web client on the BFF** — the HTML rendering of the same endpoints is
-  the customer web client (story 1.6.2); passkeys via WebAuthn in the browser
-- **9 App-shielding SDK evaluation** — Promon, Guardsquare, Appdome, Zimperium;
-  chosen and integrated before any external pilot
-- **10 Standalone RBAC module** — extract the users component's roles and
-  permissions (1.7.3) into its own repo (not gobank-db) once a second
-  bank is the second consumer; until then it lives in the bank's database
-- **11 Native checkpoint** — after the first external pilot, a written list of what
-  Flutter cannot do; move to SwiftUI and Jetpack Compose only if the list is
-  non-empty
+- **4.3 Lending gateway** — a loan is a proposal, not a disbursement: opening
+  a customer with a loan, or a later request, creates a lending proposal
+  that a workflow decides — refused at the deposit-taker tier, approved
+  within headroom at later tiers, with a staff approval step above a
+  size. Replaces the open-time trim in `planCustomerLocked`; the proposal
+  and its decision are records, so the staff view shows a queue and the
+  refusals. The generator keeps asking for loans at tier one so the
+  refusals are visible. Out of scope: credit scoring, affordability,
+  repayment schedules (products)
+- **4.4 Working savings accounts** — full lifecycle: open, deposit, withdraw, accrue interest, close
+- **4.5 Dormancy and the account-number lifecycle** — a savings account with
+  no customer movements for six months (interest credits do not count)
+  becomes dormant; dormant with a nil balance it is closed automatically,
+  with a balance it stays dormant and is reported. Closing returns the
+  account number to quarantine for a period before it can be reissued,
+  so numbers have a lifecycle: issued → open → closed → quarantined →
+  free. The sweep is a workflow timed from the last customer movement.
+  Out of scope: the Dormant Assets Scheme (15 years), a reactivation
+  journey. Open: the quarantine length; whether the number register is
+  its own component or part of customers. Real UK banks do not reuse
+  numbers; the model does so the register stays finite
 
-## Phase 3 — Kubernetes + AlloyDB
+## 5 Customers
 
-The ADR-0002 stage 8 topology (several BFFs, a generator, one workflow
+- **5 Customers** — done when a customer is a realistic model
+  (confidence, balances, switching) and names and addresses sit behind
+  an access-controlled wall
+- **5.1 Customer model** — confidence score, maximum aggregate balance, realistic switching behaviour
+- **5.2 Named customers behind customer wall** — PII-like data gated behind access control
+
+## 6 Finance and regulatory reporting
+
+- **6 Finance and regulatory reporting** — done when a period closes to
+  stored reports that stay as reported, the returns (BBSI, AEOI, SCV)
+  come from them, and the treasury and risk views read the same ledger
+- **6.1 Period accounting reports, produced and stored** — a reporting
+  period (month, year, tax year for BBSI) is a thing with a close: at
+  close the P&L, balance sheet and the period's returns (BBSI at tax
+  year end) are produced from the ledger as at that knowledge time and
+  stored as records, so what was reported stays what was reported if a
+  late posting changes the books; real time is a live view of the open
+  period, never stored. The reports page lists periods and their stored
+  reports; BBSI moves from a live build to the stored year-end report.
+  Needs go-luca `knowledge_time` (1.3.2). Open: a posting after close —
+  restate, or carry into the next period with a note
+- **6.2 AEOI return prototype** — the bank produces the Automatic Exchange
+  of Information return (CRS, and FATCA for US persons) that a UK
+  reporting financial institution files with HMRC each year: for every
+  reportable account holder, the account's year-end balance and the
+  interest paid in the year, keyed to the holder's tax residence and
+  TIN. The return is a stored period report like the BBSI (period
+  accounting reports, above), produced from the ledger as at the year
+  end and kept as reported. The customer model grows to carry what the
+  return needs and KYC collects today in words only: tax residences,
+  TINs, date and place of birth, a self-certification on record, and
+  for entities the controlling persons; the generator gives a share of
+  customers a foreign residence so the return has rows. Out of scope:
+  the XML schema and HMRC's gateway (the prototype produces the rows
+  and a CSV), due-diligence thresholds, undocumented-account handling.
+  Open: whether residence and TIN live with the PII behind the customer
+  wall or as a reportable-person record of their own; whether a
+  reportable account is marked at open or found at year end
+- **6.3 Treasury: cash at BoE and net interest margin** — the treasury view
+  gains the BoE balance over time (the reserve account's daily position
+  from the ledger) and, for a reporting period, the net interest margin:
+  interest earned (BoE reserves, gilts, loans) less interest paid
+  (savings), as money and as a rate over average earning assets. Builds
+  on period accounting reports (6.1)
+- **6.4 Key and emerging risk register** — a register component (own tables,
+  ADR-0001) listing the bank's key risks (credit, liquidity, interest-rate
+  risk in the banking book, operational, conduct) with owner, inherent and
+  residual rating and controls; each key risk carries KRIs computed from the
+  simulation through contract views, with amber/red thresholds, so a
+  simulated run moves the register. Emerging risks (horizon scanning: cyber,
+  climate, payment-scheme change) are recorded without KRIs until one is
+  measurable. Out of scope: capital modelling (ICAAP/ILAAP numbers).
+  Open: which KRIs the simulation can already support versus which need new
+  metrics (e.g. liquidity coverage needs a treasury cash view)
+- **6.5 SCV regulatory report at scale (100K+ customers)**
+
+## 7 Performance and observability
+
+The demo tells us what it is doing through the runtime page and the day
+length; from stage 3 of ADR-0002 onwards the cost of the design (events
+and the daily pass taking turns per account, projections written through
+the day) has to be measured, not inferred. Telemetry is its own epic so
+that every later story ships with its numbers.
+
+- **7 Performance and observability** — done when a Hetzner day can be
+  read as a timeline of its phases and lock waits in the viewer, the
+  drill records its downtime from the same source, and a slower release
+  fails before it ships
+- **7.1** [x] (v0.12.0) **Performance run on Hetzner, small and large** — a gobank-deploy
+  `perf` workflow (beside the drill) creates an environment at a scale
+  (`small` cx23, `large` cx53), waits for the demo, sets the day length to
+  zero, batch-adds customers for a fixed wall-clock span, lets days run
+  for another, reads the two rates off `/about.json` — customers added per
+  second and account days per 12h (the pass's rate over the whole day) —
+  with the customers and days reached, then downs the box and keeps the
+  observations with the version and server type. gobank's share: the two
+  rates join `/about.json`, and `benchmark.md` becomes the performance
+  doc — published by `docs:build`, each run a dated row per scale,
+  the laptop pglike tables kept as the baseline. Out of scope: profiling
+  on the box, OpenTelemetry (7.2), cost per customer. Open: the spans
+  (10 minutes each?); whether a run should also report the day's
+  wall-clock at a fixed customer count, for comparison with the
+  2026-10-01 ten-minute days
+- **7.2 Observability with OpenTelemetry** — the demo emits metrics and traces
+  through the OpenTelemetry SDK, OTLP to a collector per environment that
+  gobank-deploy runs alongside the demo, starting with what the runtime
+  page shows today: day phase and duration, movements per second,
+  database connections, memory. Out of scope: a logs pipeline, alerting.
+  Open: OTLP push versus a Prometheus pull endpoint; where the collector
+  and viewer live on a one-server environment
+- **7.3 Account locks in use** — once the above is in place: how many of the
+  per-account lock stripes are held, how often a holder waits and for how
+  long, with the equity account's stripe named, so the cost of an event
+  and the daily pass taking turns on an account (ADR-0002 stage 3) is
+  measured rather than inferred from the day length
+- **7.4 Load tests in CI** — the `bench:reads` thresholds of 1.10
+  extended to a load profile (concurrent customers on the BFF, the
+  generator at the small scale) run per release on the Hetzner perf
+  box, its row in `benchmark.md`. Out of scope: a load test per commit
+
+## 8 Resilience
+
+The bank is killed, restarted and lied to on purpose, and the books
+must come out the same. The resume (1.2.2) and the drill (1.2.3) proved
+one restart each; this epic makes the restart a test that runs.
+
+- **8 Resilience** — done when a fuzzer can stop the bank at any point
+  of any day and replay it to the same books, every command posts once
+  however often it is retried, and a day's invariants are checked on
+  every run
+- **8.1 Restart the day at any point** — the start-of-day pass and the
+  event cascade killed and resumed at random points, the books compared
+  with an uninterrupted run of the same seed; the comparison is the
+  test, run in `task check` at the small scale and by the drill on
+  preprod
+- **8.2 Idempotent commands** — every command carries a key so a retry
+  after a lost reply posts once; the BFF, the generator and the rails
+  retry on it, fuzzed by replaying and reordering requests. Open: the
+  key as a column on the event versus a separate dedupe table
+- **8.3 Fuzzing the inputs and the day** — Go's native fuzzing on the
+  parsers and the command boundary (amounts, dates, references), and a
+  chaos mode in the simulation (a dropped rail, a slow database, clock
+  jumps) with the day's invariants asserted at close: the trial balance,
+  GL equal to sub-ledger, positions equal to movements
+
+## 9 Delivery pipeline
+
+Every story ends with a release deployed and drilled on preprod before
+prod is promoted. Today the release is prepared on the branch and
+tagged on main by hand, and the deploy and the drill are run by hand
+after it; the pipeline is the time between a merge and a sense-checked
+deployment.
+
+- **9 Delivery pipeline** — done when a merge to main tags, deploys to
+  preprod, drills and promotes prod without a hand on the keyboard, and
+  the docs site follows
+- **9.1 Release from the story branch** — `tp release` on the branch
+  runs the checks, writes the changelog and opens the pull request; on
+  main it tags the merged heading (task-plus story 006). gobank's share:
+  the branch-per-story habit and `task-plus.yml`
+- **9.2 Post-merge automation** — tag, deploy to preprod, the upgrade
+  drill and the prod promotion run from the merge, in gobank-deploy or
+  Woodpecker CI, so testing overlaps writing the next story. Open:
+  gobank-deploy's own runner versus Woodpecker on the CI server
+- **9.3 ADRs published whole, with a root of their own** — the running
+  system serves an ADR's diagrams beside its text (`adr` embeds the
+  SVGs and goluca sources with the markdown, served at
+  `about/docs/adr/`; found on ADR-0008, every ADR with a d2 is
+  affected); `about/adr` lists the records (number, title, status,
+  date) and is linked from the nav, the docs page keeping its summary;
+  the static site renders `adr/*.md` to `docs/adr/` with the same
+  index, so docs.bytestone.uk carries them. Ships with 1.8.8. Out of
+  scope: ADR templates, a status workflow
+
+## 10 Blue-green deployment
+
+ADR-0003 accepted downtime per upgrade until the many-process topology;
+this epic ends it. ADR-0002 stages 7 and 8 live here.
+
+- **10 Blue-green deployment** — done when a release reaches prod with no
+  downtime: two versions run side by side, traffic moves between them
+  and the schema migrates under both
+- **10.1 Feature flag component** — a `flags` component (own table, ADR-0001)
+  holding named on/off switches, read through a core query and flipped from
+  a staff page; WASM keeps them in memory. Needed for the ADR-0002
+  transition, where an old and a new path run side by side (stage 2
+  computed versus projected transactions, a new payment rail) and the demo
+  must switch between them per deployment without a rebuild. A flag is
+  short-lived: it is deleted once both paths converge. Out of scope:
+  percentage rollouts, per-customer targeting, external flag services.
+  Open: startup-only (read once from config; simple, no table, every process
+  agrees) versus live (stored, flippable mid-run; lets the demo show a
+  cutover or a kill switch without a restart)
+- **10.2** Read/write split — separate read and write handles (ADR-0002
+  stage 7)
+- **10.3** Many processes — several BFFs, a generator and one workflow
+  runner; deploys go blue-green (deployment level 3), ending the downtime
+  accepted since stage 2 (ADR-0002 stage 8)
+- **10.4 Blue-green schema migrations (zero-downtime data swaps)**
+
+## 11 Kubernetes + AlloyDB
+
+The many-process topology (10.3) (several BFFs, a generator, one workflow
 runner, primary and replica) deployed to a Kubernetes cluster with a real
 database.
 
-- Deploy to Kubernetes cluster
-- AlloyDB (Postgres-compatible) backend
-- Unbundle mock-fps as a separate service (HTTP API)
-- Full HTTP API for all GUI actions (automation/scenario testing)
-- SCV regulatory report at scale (100K+ customers)
+- **11 Kubernetes + AlloyDB** — done when the same code runs in
+  Kubernetes with AlloyDB, mock-fps is a separate service, and every
+  GUI action has an API for scenario tests
+- **11.1 Deploy to Kubernetes cluster**
+- **11.2 AlloyDB (Postgres-compatible) backend**
+- **11.3 Full HTTP API for all GUI actions (automation/scenario testing)**
 
-## Phase 4 — CockroachDB + Scale
+## 12 Data governance
 
-The same stage 8 topology across regions on distributed SQL.
+What the bank keeps, for how long, and who may see it is policy, held
+per bank in its definition module (ADR-0007), not an accident of what
+the tables contain.
 
-- CockroachDB backend
-- Multi-region deployment
-- Blue-green schema migrations (zero-downtime data swaps)
+- **12 Data governance** — done when every table has a stated lifetime,
+  the stores are kept within it by routine maintenance, and an erasure
+  request is answered from policy
+- **12.1 Data lifetimes as policy** — retention per record kind (the
+  six-year regulatory minimum for accounts and movements, shorter for
+  sessions, audit and telemetry), what survives an account's closure,
+  and an erasure request that removes what policy allows and records
+  what it must keep. The lifetimes are definition data (ADR-0007).
+  Open: whether the ledger's history is immutable and only the PII
+  beside it is erasable
+- **12.2 Archive and maintenance** — closed accounts and old movements
+  moved out of the hot tables on their lifetime (the movements indexes
+  at 44M rows a year are the cost), partitioning by day, routine vacuum
+  and index maintenance in or beside the start-of-day pass, with the
+  drill proving an archive restores. Open: an archive store (object
+  storage, luca files per 13.2) versus cold partitions in the same
+  database
+- **12.3 DB explorer on the pluggable go-dbexplorer** — fix FK filter links
+  (route through `Explorer.Render`); then a `Catalog` adapter over
+  `components.go`. The `Authoriser` is story 1.7.3
 
-## What Success Looks Like
+## 13 Bank migration: import, export and switchover
 
-**Phase 1 complete** means: you can open the WASM demo, run a simulation, see accurate financials (P&L, balance sheet), export any account as a luca file, trigger an FPS outage, and watch the bank handle it. All actions available via API for automated testing.
+Another bank moves onto this architecture by importing its book,
+running the two in parallel, and switching accounts across one at a
+time over a payment rail both sides speak, so no customer sees a
+cutover day.
 
-**Phase 2 complete** means: you can open the app on a phone, log in with a biometric-bound passkey, see live balances served by the BFF, and make a deposit or withdrawal signed with the device key. The browser app runs against the same BFF. Nothing in either client decides anything.
+- **13 Bank migration: import, export and switchover** — done when a
+  book imported from luca files runs beside its source and accounts
+  switch over one by one with the customer's balance and history intact
+- **13.1 Import/export via luca files** — load and save simulation state as plain-text accounting files
+- **13.2 Export single savings account** — extract one account's history as a luca file
+- **13.3 Import another bank's book and run in parallel** — a second
+  bank's accounts and history loaded from luca files (13.1) into a
+  definition module of its own (ADR-0007, epic 14), both banks running
+  on one deployment with their own ledgers and GL; the simulation
+  drives both. Out of scope: a live feed from the source bank
+- **13.4 Switch accounts over one at a time** — an account moves from
+  the source bank to the target on a day of its own: balance and
+  history transferred, the source closed with a redirect, payments in
+  flight re-routed over the common rail (epic 3), the customer's app
+  pointed at the new BFF; the staff view shows the migration's progress
+  and the stragglers. Open: the account number kept (the switch-service
+  model) versus a new number with forwarding
 
-**Phase 3 complete** means: the same code runs in Kubernetes with AlloyDB, mock-fps is a separate service, and SCV reports generate correctly at scale.
+## 14 A second bank
 
-**Phase 4 complete** means: the bank runs across regions on CockroachDB with zero-downtime migrations.
+ADR-0007 decided that a bank is a definition module over gobank's
+capabilities; this epic proves it by running a second one.
+
+- **14 A second bank** — done when two definition modules run on one
+  deployment, each with its own name, catalogue, policy and look, and
+  nothing in gobank names either
+- **14.1 Second definition module** — a second bank as its own Go
+  module (ADR-0007): name, catalogue, blurb, policy, base-rate series;
+  the demo opened with either, and gobank-deploy deploying each as an
+  environment. Out of scope: two banks in one process
+- **14.2 Per-bank presentation** — what the BFF and the apps show that
+  is the bank's: name, colours and icons, the catalogue order, the
+  terms text; the screen layer takes them from the definition, and the
+  Flutter shell and the web client render whatever comes
+- **14.3 Standalone RBAC module** — extract the users component's roles and
+  permissions (1.7.3) into its own repo (not gobank-db) once a second
+  bank is the second consumer; until then it lives in the bank's database
+
+## 15 Isle of Alba
+
+The model bank operates somewhere. The Isle of Alba is that somewhere:
+a fictional jurisdiction with its own regulator, licence tiers, returns
+and calendar, held as data the way ADR-0007 holds the bank, so the
+rules a bank runs under are a thing the model can vary.
+
+- **15 Isle of Alba** — done when the regime a bank operates under is
+  data: its licence tiers, its returns and their calendar, its currency
+  and bank holidays, and the licence trajectory runs against them
+- **15.1 Bank licence trajectory** — the bank is an institution that grows
+  through tiers: a deposit-taker (savings products only, no lending, no
+  regulatory capital), a small bank once it has raised investment or
+  retained 5M, a regulated bank at 25M with capital rules. A tier is a set
+  of permissions the rest of the bank reads as rules: lending headroom
+  is nil at tier one, the reserve-ratio rule at tier two, capital-based
+  at tier three. A `licence` component (own table) holds the current
+  tier and the history of transitions — date, trigger (investment event,
+  earnings threshold crossed), the figures at the time, who approved —
+  and a staff page shows the trajectory: where the bank is, what the
+  next step needs, how far along. Promotion is a workflow with a staff
+  step; the simulation can inject an investment event. Thresholds are
+  data, not code. Out of scope: real PRA/FCA regimes (mobilisation,
+  Part 4A), ICAAP/ILAAP numbers (the risk register keeps those out too).
+  Open: the thresholds (5M and 25M are the model's own; UK mobilisation
+  is a £50k deposit cap) and whether a tier can be lost
+- **15.2 The regime as data** — a jurisdiction definition beside the
+  bank's (ADR-0007): regulator, licence tiers and thresholds (15.1
+  reads them), the returns calendar (BBSI, AEOI, SCV from epic 6),
+  currency, bank holidays for the business-day calendar (go-luca).
+  Open: whether a jurisdiction is a module like a bank or a table the
+  bank's definition fills
+
+## 16 Local process on the device
+
+- **16 Local process on the device** — done when a customer's screens
+  render on the phone from a local copy of their own data, ten times
+  faster than a round trip, with the same BFF and screen layer and
+  writes still going to the server
+- **16.1 The read side on the device** — the core's read side bound
+  with gomobile (2.6 is the first binding): the customer's contracts,
+  ledger projection and statements held on the device, synced from the
+  server by events, the screen layer running locally so a screen is
+  built without a request; the session, every command and the first
+  sync go to the server. Same architecture, the BFF's read half moved
+  to the phone. Out of scope: offline writes, other customers' data.
+  Open: sync by polling the BFF versus a push channel; what the device
+  keeps after logout (12.1)
+
+## 17 Distributed scale
+
+The many-process topology (10.3) across regions on distributed SQL.
+
+- **17 Distributed scale** — done when the bank runs across regions on
+  CockroachDB with zero-downtime migrations
+- **17.1 CockroachDB backend**
+- **17.2 Multi-region deployment**
