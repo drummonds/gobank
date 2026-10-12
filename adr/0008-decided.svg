@@ -1,4 +1,4 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 880 250" width="880" height="250">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 440 330" width="440" height="330">
 <title>ADR-0008 decided</title>
 <defs>
   <marker id="arrowhead" markerWidth="10" markerHeight="7" refX="10" refY="3.5" orient="auto">
@@ -15,60 +15,60 @@
   .legend rect { stroke: #999; stroke-width: 1; rx: 3; ry: 3; }
 </style>
 
-<g class="node" transform="translate(40,40)">
-  <rect width="140" height="50" fill="#BCE"/>
-  <text x="70" y="25">Interest</text>
-  <text class="balance" x="140" y="50" dx="-4" dy="-4">-4.69 GBP</text>
-</g>
-<g class="node" transform="translate(260,40)">
-  <rect width="140" height="50" fill="#DDD"/>
-  <text x="70" y="25">alice</text>
-  <text class="balance" x="140" y="50" dx="-4" dy="-4">-1001.27 GBP</text>
-</g>
-<g class="node" transform="translate(480,40)">
+<g class="node" transform="translate(40,120)">
   <rect width="140" height="50" fill="#CDA"/>
   <text x="70" y="25">Cash</text>
   <text class="balance" x="140" y="50" dx="-4" dy="-4">200.00 GBP</text>
 </g>
-<g class="node" transform="translate(480,120)">
+<g class="node" transform="translate(260,80)">
+  <rect width="140" height="50" fill="#DDD"/>
+  <text x="70" y="25">alice</text>
+  <text class="balance" x="140" y="50" dx="-4" dy="-4">-1001.27 GBP</text>
+</g>
+<g class="node" transform="translate(260,200)">
   <rect width="140" height="50" fill="#CDA"/>
   <text x="70" y="25">bob</text>
   <text class="balance" x="140" y="50" dx="-4" dy="-4">804.69 GBP</text>
 </g>
-<g class="node" transform="translate(700,40)">
+<g class="node" transform="translate(40,40)">
   <rect width="140" height="50" fill="#FCC"/>
   <text x="70" y="25">Interest</text>
   <text class="balance" x="140" y="50" dx="-4" dy="-4">1.27 GBP</text>
 </g>
+<g class="node" transform="translate(40,200)">
+  <rect width="140" height="50" fill="#BCE"/>
+  <text x="70" y="25">Interest</text>
+  <text class="balance" x="140" y="50" dx="-4" dy="-4">-4.69 GBP</text>
+</g>
 
 <g class="edge">
-  <path d="M620.0,65.0 C830.0,-145.0 50.0,-145.0 260.0,65.0"/>
-  <text x="440" y="57">deposit</text>
-  <text x="440" y="79">-1000.00 GBP</text>
+  <path d="M180.0,145.0 L260.0,105.0"/>
+  <text x="260" y="97">deposit</text>
+  <text x="260" y="119">-1000.00 GBP</text>
 </g>
 <g class="edge">
-  <path d="M620.0,65.0 C720.0,-35.0 380.0,45.0 480.0,145.0"/>
-  <text x="550" y="97">drawdown</text>
-  <text x="550" y="119">800.00 GBP</text>
+  <path d="M180.0,145.0 L260.0,225.0"/>
+  <text x="260" y="217">drawdown</text>
+  <text x="260" y="239">800.00 GBP</text>
 </g>
 <g class="edge">
-  <path d="M840.0,65.0 C1160.0,-255.0 -60.0,-255.0 260.0,65.0"/>
-  <text x="550" y="57">interest</text>
-  <text x="550" y="79">-1.27 GBP</text>
+  <path d="M180.0,65.0 L260.0,105.0"/>
+  <text x="260" y="97">interest</text>
+  <text x="260" y="119">-1.27 GBP</text>
 </g>
 <g class="edge">
-  <path d="M180.0,65.0 C330.0,65.0 330.0,145.0 480.0,145.0"/>
-  <text x="330" y="97">interest</text>
-  <text x="330" y="119">4.69 GBP</text>
+  <path d="M180.0,225.0 L260.0,225.0"/>
+  <text x="260" y="217">interest</text>
+  <text x="260" y="239">4.69 GBP</text>
 </g>
-<g class="legend" transform="translate(20,250)" dy="-30">
-  <rect x="0" y="-30" width="14" height="14" fill="#BCE"/>
-  <text x="18" y="-23">Income</text>
+<g class="legend" transform="translate(20,330)" dy="-30">
+  <rect x="0" y="-30" width="14" height="14" fill="#CDA"/>
+  <text x="18" y="-23">Asset</text>
   <rect x="100" y="-30" width="14" height="14" fill="#DDD"/>
   <text x="118" y="-23">Liability</text>
-  <rect x="200" y="-30" width="14" height="14" fill="#CDA"/>
-  <text x="218" y="-23">Asset</text>
-  <rect x="300" y="-30" width="14" height="14" fill="#FCC"/>
-  <text x="318" y="-23">Expense</text>
+  <rect x="200" y="-30" width="14" height="14" fill="#FCC"/>
+  <text x="218" y="-23">Expense</text>
+  <rect x="300" y="-30" width="14" height="14" fill="#BCE"/>
+  <text x="318" y="-23">Income</text>
 </g>
 </svg>

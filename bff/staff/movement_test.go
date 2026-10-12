@@ -1,6 +1,7 @@
 package staff
 
 import (
+	"fmt"
 	"strings"
 	"testing"
 	"time"
@@ -43,7 +44,8 @@ func TestMovementGoluca(t *testing.T) {
 }
 
 // pta2svg draws the movement with both accounts at the balances they are
-// left with.
+// left with, the account it is from on the left of the account it is to,
+// so the arrow reads with the movement.
 func TestMovementSVG(t *testing.T) {
 	svg, err := MovementSVG(interestMovement())
 	if err != nil {
@@ -54,6 +56,23 @@ func TestMovementSVG(t *testing.T) {
 			t.Errorf("svg missing %q", want)
 		}
 	}
+	if from, to := strings.Index(svg, ">Interest<"), strings.Index(svg, ">easy-access<"); from < 0 || to < 0 || nodeX(svg, from) >= nodeX(svg, to) {
+		t.Errorf("the expense is not drawn left of the savings account: from at %d, to at %d", nodeX(svg, from), nodeX(svg, to))
+	}
+}
+
+// nodeX is the x translation of the node whose label starts at i.
+func nodeX(svg string, i int) int {
+	const mark = `class="node" transform="translate(`
+	start := strings.LastIndex(svg[:i], mark)
+	if start < 0 {
+		return -1
+	}
+	var x, y float64
+	if _, err := fmt.Sscanf(svg[start+len(mark):], "%f,%f)", &x, &y); err != nil {
+		return -1
+	}
+	return int(x)
 }
 
 // The page carries the movement's two accounts and signed amount, the

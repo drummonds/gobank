@@ -106,10 +106,13 @@ func golucaAmount(v luca.Amount) string {
 }
 
 // MovementSVG is the movement drawn by pta2svg, or an empty string and the
-// error when it cannot be drawn.
+// error when it cannot be drawn. The layered layout puts the account the
+// movement is from on the left and the account it is to on the right, so
+// the arrow reads with the movement; the column layout would place them
+// by account type.
 func MovementSVG(m core.Movement) (string, error) {
 	var buf bytes.Buffer
-	err := pta2svg.Render(&buf, []byte(MovementGoluca(m)), pta2svg.Options{Format: pta2svg.Goluca, Title: "Movement " + m.ID})
+	err := pta2svg.Render(&buf, []byte(MovementGoluca(m)), pta2svg.Options{Format: pta2svg.Goluca, Layout: pta2svg.Sugiyama, Title: "Movement " + m.ID})
 	return buf.String(), err
 }
 
@@ -196,7 +199,7 @@ const movementWASMScript = `<script src="wasm/wasm_exec.js"></script>
     const result = await WebAssembly.instantiateStreaming(fetch('wasm/pta2svg.wasm'), go.importObject);
     go.run(result.instance);
     const text = document.getElementById('movement-goluca').textContent;
-    const svg = pta2svg.render(text, {format: 'goluca', title: 'Movement'});
+    const svg = pta2svg.render(text, {format: 'goluca', layout: 'sugiyama', title: 'Movement'});
     document.getElementById('movement-svg').innerHTML = svg;
     if (note) note.textContent = '(rendered here by pta2svg.wasm)';
   } catch (e) {

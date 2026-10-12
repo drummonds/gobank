@@ -16,25 +16,25 @@
 </style>
 
 <g class="node" transform="translate(40,40)">
-  <rect width="140" height="50" fill="#DDD"/>
-  <text x="70" y="25">easy-access</text>
-  <text class="balance" x="140" y="50" dx="-4" dy="-4">-1001.27 GBP</text>
-</g>
-<g class="node" transform="translate(260,40)">
   <rect width="140" height="50" fill="#FCC"/>
   <text x="70" y="25">Interest</text>
   <text class="balance" x="140" y="50" dx="-4" dy="-4">1.27 GBP</text>
 </g>
+<g class="node" transform="translate(260,40)">
+  <rect width="140" height="50" fill="#DDD"/>
+  <text x="70" y="25">easy-access</text>
+  <text class="balance" x="140" y="50" dx="-4" dy="-4">-1001.27 GBP</text>
+</g>
 
 <g class="edge">
-  <path d="M400.0,65.0 C610.0,-145.0 -170.0,-145.0 40.0,65.0"/>
-  <text x="220" y="57">LDAS:FTDP:ACRU</text>
-  <text x="220" y="79">-1.27 GBP</text>
+  <path d="M180.0,65.0 L260.0,65.0"/>
+  <text x="260" y="57">LDAS:FTDP:ACRU</text>
+  <text x="260" y="79">-1.27 GBP</text>
 </g>
 <g class="legend" transform="translate(20,170)" dy="-30">
-  <rect x="0" y="-30" width="14" height="14" fill="#DDD"/>
-  <text x="18" y="-23">Liability</text>
-  <rect x="100" y="-30" width="14" height="14" fill="#FCC"/>
-  <text x="118" y="-23">Expense</text>
+  <rect x="0" y="-30" width="14" height="14" fill="#FCC"/>
+  <text x="18" y="-23">Expense</text>
+  <rect x="100" y="-30" width="14" height="14" fill="#DDD"/>
+  <text x="118" y="-23">Liability</text>
 </g>
 </svg>
