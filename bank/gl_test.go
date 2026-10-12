@@ -141,7 +141,7 @@ func TestTheGeneralLedgerAdoptsARunningBank(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	f = reopen(t, f.db, f.now)
+	f = reopenSilent(t, f.db, f.now) // the rate is on record; no settling StartDay before the assertion
 	if gl := f.position().GL; !gl.PostedThrough.IsZero() {
 		t.Errorf("GL %+v at open; want nothing closed yet", gl)
 	}

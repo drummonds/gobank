@@ -74,6 +74,7 @@ type Payment struct {
 	Reference string
 	CreatedAt time.Time
 	SettledAt time.Time // zero until completed
+	Cause     string    // the root event it was written under (ADR-0011); empty for one from before the record
 }
 
 // Core is the payment as the core publishes it.
@@ -101,6 +102,9 @@ var Schema = schema.Component{Name: "payments", Migrations: []schema.Migration{
 		`CREATE INDEX IF NOT EXISTS payments_from_id ON payments (from_id)`,
 		`CREATE INDEX IF NOT EXISTS payments_to_id ON payments (to_id)`,
 	}},
+	// The root event a payment was written under (ADR-0011); null for one
+	// from before the record.
+	{Version: 2, Statements: []string{`ALTER TABLE payments ADD COLUMN cause_id UUID NULL`}},
 }}
 
 // CreateView (re)creates the contract view: what other components may
@@ -110,7 +114,7 @@ func CreateView(db *sql.DB) error {
 	for _, stmt := range []string{
 		`DROP VIEW IF EXISTS contract_payments`,
 		`CREATE VIEW contract_payments AS
-			SELECT id, reference, type, from_id, to_id, amount, status, created_at, settled_at FROM payments`,
+			SELECT id, reference, type, from_id, to_id, amount, status, created_at, settled_at, cause_id FROM payments`,
 	} {
 		if _, err := db.Exec(stmt); err != nil {
 			return fmt.Errorf("payments: contract_payments: %w", err)
@@ -158,9 +162,10 @@ type Execer interface {
 // Insert writes a payment row; q is the database or the transaction the
 // payment shares with what it funds.
 func (p *Payments) Insert(q Execer, pay Payment) error {
-	_, err := q.Exec(`INSERT INTO payments (id, type, from_id, to_id, amount, status, reference, created_at, settled_at)
-		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)`,
-		pay.ID, int(pay.Type), pay.FromID, pay.ToID, pay.Amount, int(pay.Status), pay.Reference, pay.CreatedAt.UTC(), nullTime(pay.SettledAt))
+	_, err := q.Exec(`INSERT INTO payments (id, type, from_id, to_id, amount, status, reference, created_at, settled_at, cause_id)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)`,
+		pay.ID, int(pay.Type), pay.FromID, pay.ToID, pay.Amount, int(pay.Status), pay.Reference, pay.CreatedAt.UTC(), nullTime(pay.SettledAt),
+		sql.NullString{String: pay.Cause, Valid: pay.Cause != ""})
 	if err != nil {
 		return fmt.Errorf("payments: insert %s: %w", pay.Reference, err)
 	}
@@ -182,7 +187,7 @@ func (p *Payments) SetStatus(ctx context.Context, id int, status Status, settled
 	return nil
 }
 
-const columns = `id, type, from_id, to_id, amount, status, reference, created_at, settled_at`
+const columns = `id, type, from_id, to_id, amount, status, reference, created_at, settled_at, cause_id`
 
 func scan(rows *sql.Rows) ([]Payment, error) {
 	defer rows.Close()
@@ -190,12 +195,14 @@ func scan(rows *sql.Rows) ([]Payment, error) {
 	for rows.Next() {
 		var pay Payment
 		var settled sql.NullTime
-		if err := rows.Scan(&pay.ID, &pay.Type, &pay.FromID, &pay.ToID, &pay.Amount, &pay.Status, &pay.Reference, &pay.CreatedAt, &settled); err != nil {
+		var cause sql.NullString
+		if err := rows.Scan(&pay.ID, &pay.Type, &pay.FromID, &pay.ToID, &pay.Amount, &pay.Status, &pay.Reference, &pay.CreatedAt, &settled, &cause); err != nil {
 			return nil, err
 		}
 		if settled.Valid {
 			pay.SettledAt = settled.Time
 		}
+		pay.Cause = cause.String
 		out = append(out, pay)
 	}
 	return out, rows.Err()
@@ -250,6 +257,15 @@ func (p *Payments) Count(ctx context.Context) (int, error) {
 	var n int
 	if err := p.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM payments`).Scan(&n); err != nil {
 		return 0, fmt.Errorf("payments: count: %w", err)
+	}
+	return n, nil
+}
+
+// CountByCause is how many payments a root event wrote.
+func (p *Payments) CountByCause(ctx context.Context, cause string) (int, error) {
+	var n int
+	if err := p.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM payments WHERE cause_id = $1`, cause).Scan(&n); err != nil {
+		return 0, fmt.Errorf("payments: count by cause: %w", err)
 	}
 	return n, nil
 }

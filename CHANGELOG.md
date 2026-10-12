@@ -3,6 +3,22 @@
 ## [Unreleased]
 
 ### Added
+- Story 1.8.6, ADR-0011 accepted: events and their cascades are
+  recorded. A new `events` component holds the roots: every command
+  (the start of a day, a publication, a payment, a staff setting, an
+  opening) raises one, pending at the instant its work is due and done
+  when its cascade has finished. Postings, settings and payments carry
+  their root as `cause_id`; a rule's posting names its `step` and the
+  record holds (cause, account, step) unique, so a double effect is
+  refused by the database. Each account's work in the daily pass is a
+  transaction of its own: the movement, the posting record and the
+  position commit together or not at all. `StartDay` settles every root
+  due: a restart replays the roots, each effect proven by its own fact.
+  An Events page on the staff web lists the latest roots with their
+  status and what each wrote; the movement page names a rule posting's
+  cause and step. A kill-and-replay test fails the transaction after
+  each effect in turn and proves the facts identical to an uninterrupted
+  run; a second proves a failed command leaves nothing.
 - ADR-0011 (proposed): events and their cascades are recorded. Every
   command is a root event, its effects carry the cause, a restart
   replays the root, and idempotency is structural from the first slice.
@@ -12,6 +28,18 @@
   editing (with the products page's view fix), 1.8.11 history of
   parameters and products, and ADRs published whole with a root page;
   policy as code and the stories after it renumbered 1.8.8 to 1.8.10.
+
+### Changed
+- `core.Owed` is days, unprojected accounts and events (root events due
+  and not done); the parameter-change and payments-in-flight counts are
+  gone, the first being the pending roots and the second done in the
+  payment's own transaction. `/about.json` reports `owed.events` in
+  place of `parameter_changes` and `payments`; `at_rest` is unchanged.
+- gobank-products v0.8.0: `Posting.Step`; the runner refuses a posting
+  with no step.
+- Schema: `events` v1; `products` v5 (`cause_id`, `step`, unique index
+  on the effect); `parameters` v2 and `payments` v2 (`cause_id`, and
+  `contract_payments` carries it). Additive; an older build ignores them.
 
 ## [0.33.0] - 2026-10-11
 

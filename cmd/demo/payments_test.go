@@ -83,8 +83,8 @@ func TestPaymentSettlementRecorded(t *testing.T) {
 	if p.Status != payments.Completed || !p.SettledAt.Equal(ds.clock.Now()) {
 		t.Errorf("accepted transfer: %+v; want completed at the clock's instant", p)
 	}
-	if owed, _ := ds.Owed(context.Background()); owed.Payments != 0 {
-		t.Errorf("%d payments in flight after a transfer", owed.Payments)
+	if owed, _ := ds.Owed(context.Background()); !owed.AtRest() {
+		t.Errorf("%+v owed after a transfer: its cascade is done when it commits", owed)
 	}
 
 	at := time.Date(2026, 9, 26, 12, 0, 0, 0, time.UTC)
@@ -104,7 +104,7 @@ func TestContractPaymentsView(t *testing.T) {
 	ds := NewDemoState()
 	twoFundedCustomers(ds)
 	ds.SendPayment()
-	rows, err := ds.db.Query(`SELECT id, reference, type, from_id, to_id, amount, status FROM contract_payments ORDER BY id`)
+	rows, err := ds.db.Query(`SELECT id, reference, type, from_id, to_id, amount, status, cause_id FROM contract_payments ORDER BY id`)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -112,7 +112,7 @@ func TestContractPaymentsView(t *testing.T) {
 	n := 0
 	for rows.Next() {
 		var got payments.Payment
-		if err := rows.Scan(&got.ID, &got.Reference, &got.Type, &got.FromID, &got.ToID, &got.Amount, &got.Status); err != nil {
+		if err := rows.Scan(&got.ID, &got.Reference, &got.Type, &got.FromID, &got.ToID, &got.Amount, &got.Status, &got.Cause); err != nil {
 			t.Fatal(err)
 		}
 		want, ok := ds.paymentByID(got.ID)

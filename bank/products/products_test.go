@@ -33,6 +33,9 @@ func listings() []Listing {
 
 var jan2 = time.Date(2024, 1, 2, 0, 0, 0, 0, time.UTC)
 
+// root is a cause at jan2 for a test's work.
+func root(id string) Cause { return Cause{ID: id, At: jan2} }
+
 // open is the catalogue, adopted on jan2, over a database with the ledger
 // and the settings open and a register of accounts: the contract view the
 // pass reads, over the test's own table. What is registered is the
@@ -176,7 +179,7 @@ func TestProductOnRulesTheBuildLacksIsNotCarried(t *testing.T) {
 		t.Errorf("%d products, want the six and the one on record", n)
 	}
 	a := register(t, q, books, "fixed-5y", "cust-001", 100_00, jan2)
-	if err := q.Open(books, a, jan2, jan2); !errors.Is(err, ErrNotCarried) {
+	if err := q.Open(books, a, jan2, root("open-1")); !errors.Is(err, ErrNotCarried) {
 		t.Errorf("opening on rules the build lacks: %v, want ErrNotCarried", err)
 	}
 }
@@ -187,7 +190,7 @@ func TestAccountDayProjectsTheDay(t *testing.T) {
 	p, books := open(t)
 	easy, _ := p.ByID("easy-access")
 	a := register(t, p, books, "easy-access", "cust-001", 1000_00, jan2)
-	res, err := p.AccountDay(books, a, jan2)
+	res, err := p.AccountDay(books, a, jan2, root("day-1"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -200,7 +203,7 @@ func TestAccountDayProjectsTheDay(t *testing.T) {
 		t.Errorf("position %+v, %v; want 100000 accruing %d/%d", pos, err, want, gbp.AccrualDenominator)
 	}
 	// Again is the same answer: the day's work is idempotent.
-	if _, err := p.AccountDay(books, a, jan2); err != nil {
+	if _, err := p.AccountDay(books, a, jan2, root("day-1")); err != nil {
 		t.Fatal(err)
 	}
 	if again, _ := books.PositionAt(a.ID, jan2); again.Accrued.Num != want {
@@ -225,7 +228,7 @@ func TestAccountDayAppliesAtTheCycleEndAndRecordsWhy(t *testing.T) {
 		t.Fatal(err)
 	}
 	feb1 := jan31.AddDate(0, 0, 1)
-	res, err := p.AccountDay(books, a, feb1)
+	res, err := p.AccountDay(books, a, feb1, root("day-1"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -259,6 +262,15 @@ func TestAccountDayAppliesAtTheCycleEndAndRecordsWhy(t *testing.T) {
 	if !strings.Contains(r.Parameters, "cycle=monthly") || !strings.Contains(r.Parameters, "rate_bps=150") {
 		t.Errorf("record parameters %q; want the cycle and the rate the rule read", r.Parameters)
 	}
+	if r.Cause != "day-1" || r.Step != "apply" {
+		t.Errorf("record cause %q step %q; want the day's root and the apply step (ADR-0011)", r.Cause, r.Step)
+	}
+	if byMovement, ok, err := p.PostingByMovement(context.Background(), r.MovementID); err != nil || !ok || byMovement != r {
+		t.Errorf("PostingByMovement = %+v, %v, %v; want the record", byMovement, ok, err)
+	}
+	if n, _ := p.CountPostingsByCause(context.Background(), "day-1"); n != 1 {
+		t.Errorf("CountPostingsByCause = %d, want 1", n)
+	}
 	var movementID string
 	if err := p.db.QueryRow(`SELECT id FROM contract_ledger_movements WHERE to_account_id = $1 AND code = $2`, a.ID, luca.CodeInterestAccrual).Scan(&movementID); err != nil || movementID != r.MovementID {
 		t.Errorf("record names movement %s, the ledger has %s (%v)", r.MovementID, movementID, err)
@@ -274,11 +286,11 @@ func TestPostEventRewritesTheDaysPositions(t *testing.T) {
 	from := register(t, p, books, "easy-access", "cust-001", 1000_00, jan2)
 	to := register(t, p, books, "easy-access", "cust-002", 500_00, jan2)
 	for _, a := range []Account{from, to} {
-		if _, err := p.AccountDay(books, a, jan2); err != nil {
+		if _, err := p.AccountDay(books, a, jan2, root("day-1")); err != nil {
 			t.Fatal(err)
 		}
 	}
-	results, err := p.PostEvent(books, jan2, from.ID, to.ID, 200_00, luca.CodeBookTransfer, "PAY-000001", from, to)
+	results, err := p.PostEvent(books, jan2, root("pay-1"), from.ID, to.ID, 200_00, luca.CodeBookTransfer, "PAY-000001", from, to)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -294,7 +306,7 @@ func TestPostEventRewritesTheDaysPositions(t *testing.T) {
 			t.Errorf("%s: position %+v, %v; want %d accruing a day on it", c.a.ID, pos, err, c.want)
 		}
 	}
-	if _, err := p.PostEvent(books, jan2, from.ID, "", 1, luca.CodeBookTransfer, "nowhere"); err == nil {
+	if _, err := p.PostEvent(books, jan2, root("pay-2"), from.ID, "", 1, luca.CodeBookTransfer, "nowhere"); err == nil {
 		t.Error("an event to no account was posted")
 	}
 }
@@ -305,7 +317,7 @@ func TestPostEventRewritesTheDaysPositions(t *testing.T) {
 func TestOpenWritesTheVersionsAccountSettings(t *testing.T) {
 	p, books := open(t)
 	fixed := register(t, p, books, "fixed-term", "cust-001", 0, jan2)
-	if err := p.Open(books, fixed, jan2, jan2); err != nil {
+	if err := p.Open(books, fixed, jan2, root("open-1")); err != nil {
 		t.Fatal(err)
 	}
 	v, _ := p.ByID("fixed-term")
@@ -318,11 +330,11 @@ func TestOpenWritesTheVersionsAccountSettings(t *testing.T) {
 	}
 
 	saver := register(t, p, books, "isa", "cust-002", 0, jan2)
-	if err := p.Open(books, saver, jan2, jan2); err != nil {
+	if err := p.Open(books, saver, jan2, root("open-2")); err != nil {
 		t.Fatal(err)
 	}
 	// A deposit credits the saver and debits cash (ADR-0008).
-	if _, err := p.PostEvent(books, jan2, saver.ID, books.Chart.Cash, 5000_00, luca.CodeBookTransfer, "funding", saver); err != nil {
+	if _, err := p.PostEvent(books, jan2, root("open-2"), saver.ID, books.Chart.Cash, 5000_00, luca.CodeBookTransfer, "funding", saver); err != nil {
 		t.Fatal(err)
 	}
 	iv, _ := p.ByID("isa")
@@ -330,7 +342,7 @@ func TestOpenWritesTheVersionsAccountSettings(t *testing.T) {
 	if err != nil || deposited.Money() != 5000_00 {
 		t.Errorf("deposited = %v, %v; want the funding counted", deposited.Money(), err)
 	}
-	if err := p.Open(books, Account{ID: "x", Product: "no-such-product"}, jan2, jan2); !errors.Is(err, ErrNotCarried) {
+	if err := p.Open(books, Account{ID: "x", Product: "no-such-product"}, jan2, root("open-3")); !errors.Is(err, ErrNotCarried) {
 		t.Errorf("opening on a product the catalogue lacks: %v, want ErrNotCarried", err)
 	}
 }
@@ -366,7 +378,7 @@ func TestPassVisitsEveryUnprojectedAccountAndResumes(t *testing.T) {
 	ctx1, cancel := context.WithCancel(ctx)
 	visited := 0
 	var prog progress
-	res := p.RunPass(ctx1, books, jan2, &prog, func() {
+	res := p.RunPass(ctx1, books, jan2, root("day-1"), &prog, func() {
 		if visited++; visited == 2 {
 			cancel()
 		}
@@ -379,7 +391,7 @@ func TestPassVisitsEveryUnprojectedAccountAndResumes(t *testing.T) {
 	}
 
 	// The next pass over the same day finishes it.
-	rest := p.RunPass(ctx, books, jan2, &prog, nil)
+	rest := p.RunPass(ctx, books, jan2, root("day-1"), &prog, nil)
 	if rest.Visited != 2 {
 		t.Errorf("resumed pass visited %d, want the 2 left", rest.Visited)
 	}
@@ -395,7 +407,7 @@ func TestPassVisitsEveryUnprojectedAccountAndResumes(t *testing.T) {
 		t.Errorf("lending accrued over both passes %d, want %d", got, wantLending)
 	}
 	// Nothing left: a further pass visits nobody.
-	if again := p.RunPass(ctx, books, jan2, &prog, nil); again.Visited != 0 {
+	if again := p.RunPass(ctx, books, jan2, root("day-1"), &prog, nil); again.Visited != 0 {
 		t.Errorf("a pass over a finished day visited %d", again.Visited)
 	}
 
@@ -408,7 +420,7 @@ func TestPassVisitsEveryUnprojectedAccountAndResumes(t *testing.T) {
 		t.Fatal(err)
 	}
 	register(t, p, books, "easy-access-v7", "cust-005", 100_00, jan2)
-	skipped := p.RunPass(ctx, books, jan2, &prog, nil)
+	skipped := p.RunPass(ctx, books, jan2, root("day-1"), &prog, nil)
 	if skipped.Visited != 0 || skipped.Skipped != 1 {
 		t.Errorf("pass with a product not carried: %+v; want nothing visited, one skipped", skipped)
 	}
@@ -558,7 +570,7 @@ func TestParameterChangeFiresWhenASettingBecomesEffective(t *testing.T) {
 	rec := register(t, p, books, "recorder", "cust-001", 1000_00, jan2)
 	easy := register(t, p, books, "easy-access", "cust-002", 1000_00, jan2)
 	for _, a := range []Account{rec, easy} {
-		if err := p.Open(books, a, jan2, nine); err != nil {
+		if err := p.Open(books, a, jan2, Cause{ID: "open-" + a.ID, At: nine}); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -584,7 +596,7 @@ func TestParameterChangeFiresWhenASettingBecomesEffective(t *testing.T) {
 		t.Errorf("owed at the publication's instant = %d, want both accounts (every product reads the market, or may)", n)
 	}
 	var prog progress
-	res := p.ApplyParameterChanges(ctx, books, noon, &prog)
+	res := p.ApplyParameterChanges(ctx, books, Cause{ID: "pub-1", At: noon}, noon, &prog)
 	if res.Visited != 2 || res.Fired != 1 || prog.phase != "applying parameter changes" || prog.total != 2 {
 		t.Errorf("cascade: %+v, progress %+v; want 2 visited, 1 fired (easy-access reads no market parameter)", res, prog)
 	}
@@ -594,7 +606,7 @@ func TestParameterChangeFiresWhenASettingBecomesEffective(t *testing.T) {
 	if n, _ := p.CountParameterChangesOwed(ctx, noon); n != 0 {
 		t.Errorf("still owed after the cascade: %d", n)
 	}
-	if again := p.ApplyParameterChanges(ctx, books, noon.Add(time.Hour), &prog); again.Visited != 0 {
+	if again := p.ApplyParameterChanges(ctx, books, Cause{ID: "pub-2", At: noon.Add(time.Hour)}, noon.Add(time.Hour), &prog); again.Visited != 0 {
 		t.Errorf("a second cascade visited %d", again.Visited)
 	}
 
@@ -610,7 +622,7 @@ func TestParameterChangeFiresWhenASettingBecomesEffective(t *testing.T) {
 	if n, _ := p.CountParameterChangesOwed(ctx, later); n != 1 {
 		t.Errorf("owed at the setting's instant = %d, want the one easy-access account", n)
 	}
-	res = p.ApplyParameterChanges(ctx, books, later, &prog)
+	res = p.ApplyParameterChanges(ctx, books, Cause{ID: "set-1", At: later}, later, &prog)
 	if res.Visited != 1 || res.Fired != 1 {
 		t.Errorf("cascade for the product setting: %+v; want the one account visited and fired", res)
 	}
@@ -627,7 +639,7 @@ func TestAccountsWithoutARecordAreAdoptedAndNotCarriedSkipped(t *testing.T) {
 	p, books := openRecorder(t)
 	ctx := context.Background()
 	rec := register(t, p, books, "recorder", "cust-001", 1000_00, jan2)
-	if err := p.Open(books, rec, jan2, jan2); err != nil {
+	if err := p.Open(books, rec, jan2, root("open-1")); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := p.db.Exec(`DELETE FROM product_account_parameters`); err != nil {
@@ -641,7 +653,7 @@ func TestAccountsWithoutARecordAreAdoptedAndNotCarriedSkipped(t *testing.T) {
 		t.Fatalf("an account without a record is owed: %d, want 1", n)
 	}
 	var prog progress
-	if res := p.ApplyParameterChanges(ctx, books, noon, &prog); res.Visited != 1 || res.Fired != 0 {
+	if res := p.ApplyParameterChanges(ctx, books, Cause{ID: "pub-1", At: noon}, noon, &prog); res.Visited != 1 || res.Fired != 0 {
 		t.Errorf("cascade over an unrecorded account: %+v; want it adopted, nothing fired", res)
 	}
 	if got := lastChange(t, p, rec, noon); got != "" {
@@ -661,10 +673,142 @@ func TestAccountsWithoutARecordAreAdoptedAndNotCarriedSkipped(t *testing.T) {
 	if n, _ := p.CountParameterChangesOwed(ctx, noon); n != 1 {
 		t.Fatalf("the uncarried account is owed: %d, want 1", n)
 	}
-	if res := p.ApplyParameterChanges(ctx, books, noon, &prog); res.Visited != 0 || res.Skipped != 1 {
+	if res := p.ApplyParameterChanges(ctx, books, Cause{ID: "pub-1", At: noon}, noon, &prog); res.Visited != 0 || res.Skipped != 1 {
 		t.Errorf("cascade with a product not carried: %+v; want nothing visited, one skipped", res)
 	}
 	if n, _ := p.CountParameterChangesOwed(ctx, noon); n != 1 {
 		t.Errorf("the skipped account counts as applied")
+	}
+}
+
+// twice is a rules version that posts two steps of one name in one
+// event, and one with no name: a fault in the rules the runner refuses.
+type twice struct {
+	gbp.Interest
+	steps []string
+}
+
+func (twice) Product() string               { return "twice" }
+func (twice) Version() int                  { return 1 }
+func (twice) Name() string                  { return "Twice" }
+func (twice) Family() gbp.ProductFamily     { return gbp.FamilySavings }
+func (twice) Parameters() []gbp.Declaration { return nil }
+func (r twice) Day(f gbp.Facts) (gbp.Intents, error) {
+	var in gbp.Intents
+	for _, step := range r.steps {
+		in.Postings = append(in.Postings, gbp.Posting{Step: step, Counterparty: "Expense:Interest", Amount: -1, Code: luca.CodeInterestAccrual, ValueTime: f.Day(), Description: "twice"})
+	}
+	return in, nil
+}
+
+// A posting is recorded against its cause, the account and its step, held
+// unique by the record's key: an event that reaches a step already made
+// is refused, and the transaction with it, so a double effect is
+// impossible rather than unlikely (ADR-0011). A posting with no step is a
+// fault in the rules, refused before anything is written.
+func TestTheKeyRefusesADoubleEffectAndAStepIsRequired(t *testing.T) {
+	p, books := open(t)
+	ctx := context.Background()
+	p.listings = append(p.listings,
+		Listing{ID: "twice", Name: "Twice", Rules: twice{steps: []string{"apply", "apply"}}},
+		Listing{ID: "nameless", Name: "Nameless", Rules: twice{steps: []string{""}}})
+	// Two listings on one rules version: the second's rules are the
+	// build's by key, so give the nameless its own.
+	p.listings[len(p.listings)-1].Rules = nameless{}
+	if err := p.Adopt(ctx, jan2); err != nil {
+		t.Fatal(err)
+	}
+	a := register(t, p, books, "twice", "cust-001", 100_00, jan2)
+	var prog progress
+	res := p.RunPass(ctx, books, jan2, root("day-1"), &prog, nil)
+	if res.Visited != 0 {
+		t.Errorf("a rule posting one step twice was run: %+v", res)
+	}
+	var movements, records int
+	_ = p.db.QueryRow(`SELECT COUNT(*) FROM contract_ledger_movements WHERE to_account_id = $1 OR from_account_id = $1`, a.ID).Scan(&movements)
+	_ = p.db.QueryRow(`SELECT COUNT(*) FROM product_postings WHERE account_id = $1`, a.ID).Scan(&records)
+	if movements != 1 || records != 0 { // the funding movement alone
+		t.Errorf("after the refusal: %d movements, %d records; want the funding alone and no record", movements, records)
+	}
+	if _, err := p.AccountDay(books, a, jan2, root("day-1")); err == nil || !strings.Contains(err.Error(), "step apply") {
+		t.Errorf("a second step of one name: %v; want the key's refusal naming the step", err)
+	}
+	b := register(t, p, books, "nameless", "cust-002", 100_00, jan2)
+	if _, err := p.AccountDay(books, b, jan2, root("day-1")); err == nil || !strings.Contains(err.Error(), "no step") {
+		t.Errorf("a posting with no step: %v; want a refusal", err)
+	}
+}
+
+type nameless struct{ twice }
+
+func (nameless) Product() string { return "nameless" }
+func (nameless) Day(f gbp.Facts) (gbp.Intents, error) {
+	return twice{steps: []string{""}}.Day(f)
+}
+
+// Each account's day is a transaction of its own: a failure after any
+// effect leaves the account exactly as it was, the pass goes on to the
+// next, and the next pass over the day finishes it (ADR-0011).
+func TestThePassWritesEachAccountInATransaction(t *testing.T) {
+	p, books := open(t)
+	ctx := context.Background()
+	easy, _ := p.ByID("easy-access")
+	jan31 := time.Date(2024, 1, 31, 0, 0, 0, 0, time.UTC)
+	feb1 := jan31.AddDate(0, 0, 1)
+	var accounts []Account
+	for i := range 3 {
+		a := register(t, p, books, "easy-access", "cust-00"+string(rune('1'+i)), 1000_00, jan31)
+		accrued := luca.Fraction{Num: 1000_00 * easy.RateBps() * 30, Den: gbp.AccrualDenominator}
+		if _, err := books.Project(a.ID, jan31, accrued); err != nil {
+			t.Fatal(err)
+		}
+		accounts = append(accounts, a)
+	}
+	victim := accounts[1]
+	p.SetEffectHook(func(account, effect string) error {
+		if account == victim.ID && effect == "position" {
+			return errors.New("killed")
+		}
+		return nil
+	})
+	var prog progress
+	res := p.RunPass(ctx, books, feb1, root("day-1"), &prog, nil)
+	if res.Visited != 2 || res.AppliedSavings != 2*123 {
+		t.Errorf("pass with one account killed: %+v; want 2 visited, their 123p each applied", res)
+	}
+	count := func(query string, args ...any) int {
+		t.Helper()
+		var n int
+		if err := p.db.QueryRow(query, args...).Scan(&n); err != nil {
+			t.Fatal(err)
+		}
+		return n
+	}
+	if n := count(`SELECT COUNT(*) FROM contract_ledger_movements WHERE to_account_id = $1 AND code = $2`, victim.ID, luca.CodeInterestAccrual); n != 0 {
+		t.Errorf("the killed account has %d application movements", n)
+	}
+	if n := count(`SELECT COUNT(*) FROM product_postings WHERE account_id = $1`, victim.ID); n != 0 {
+		t.Errorf("the killed account has %d posting records", n)
+	}
+	if pos, _ := books.PositionAt(victim.ID, feb1); pos != nil && pos.Day.Equal(feb1) {
+		t.Errorf("the killed account has a position for the day: %+v", pos)
+	}
+	if n, _ := p.CountUnprojected(ctx, feb1); n != 1 {
+		t.Errorf("%d unprojected, want the killed account alone", n)
+	}
+	p.SetEffectHook(nil)
+	if again := p.RunPass(ctx, books, feb1, root("day-1"), &prog, nil); again.Visited != 1 || again.AppliedSavings != 123 {
+		t.Errorf("the replay: %+v; want the one account, 123p applied", again)
+	}
+	for _, a := range accounts {
+		if n := count(`SELECT COUNT(*) FROM product_postings WHERE account_id = $1 AND cause_id = 'day-1' AND step = 'apply'`, a.ID); n != 1 {
+			t.Errorf("%s has %d apply records under the day, want 1", a.ID, n)
+		}
+		if pos, _ := books.PositionAt(a.ID, feb1); pos == nil || pos.Balance != 1000_00+123 {
+			t.Errorf("%s position for the day %+v, want 1001.23", a.ID, pos)
+		}
+	}
+	if n, _ := p.CountPostingsByCause(ctx, "day-1"); n != 3 {
+		t.Errorf("CountPostingsByCause = %d, want 3", n)
 	}
 }

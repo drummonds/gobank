@@ -6,9 +6,9 @@ cmd: bank command
 rule: product rule
 facts: stored facts
 
-sim -> events: raise root (publication, 12:00)
-events -> events: event row: pending, at 12:00
-sim -> cmd: Publish, cause = root
+sim -> cmd: Publish (12:00)
+cmd -> events: raise root (publication, at 12:00)
+events -> events: event row: pending
 cmd -> facts: setting (cause = root)
 cmd -> rule: ParameterChange, cause = root
 rule -> facts: posting (cause = root) + applied_to, one transaction

@@ -152,3 +152,29 @@ func TestInFlightPaymentsAreCountedAndSettled(t *testing.T) {
 		}
 	}
 }
+
+// A payment carries the root event it was written under (ADR-0011): its
+// cause, read back with it and counted by cause.
+func TestAPaymentCarriesItsCause(t *testing.T) {
+	p, _ := open(t)
+	ctx := context.Background()
+	pay := p.New(Transfer, "cust-001", "cust-002", 50_00, Completed, now)
+	pay.Cause = "root-1"
+	if err := p.Insert(p.db, pay); err != nil {
+		t.Fatal(err)
+	}
+	orphan := p.New(Deposit, "EXTERNAL", "cust-001", 10_00, Completed, now)
+	if err := p.Insert(p.db, orphan); err != nil {
+		t.Fatal(err)
+	}
+	got, err := p.ByID(ctx, pay.ID)
+	if err != nil || got.Cause != "root-1" {
+		t.Errorf("ByID = %+v, %v; want cause root-1", got, err)
+	}
+	if got, _ := p.ByID(ctx, orphan.ID); got.Cause != "" {
+		t.Errorf("a payment written without a cause reads back %q", got.Cause)
+	}
+	if n, err := p.CountByCause(ctx, "root-1"); err != nil || n != 1 {
+		t.Errorf("CountByCause = %d, %v; want 1", n, err)
+	}
+}

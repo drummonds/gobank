@@ -338,6 +338,11 @@ func (s *Site) routes() {
 		s.page(w, r, func() string { return BuildPaymentDetailHTML(bank, id, s.piiAuthorised(r)) })
 	})
 
+	// Events: the record of what happened and what it caused (ADR-0011)
+	mux.HandleFunc("/events", func(w http.ResponseWriter, r *http.Request) {
+		s.page(w, r, func() string { return BuildEventsHTML(bank) })
+	})
+
 	// Reports
 	mux.HandleFunc("/reports/charts", func(w http.ResponseWriter, r *http.Request) {
 		s.page(w, r, func() string { return BuildChartsHTML(bank) })

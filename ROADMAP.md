@@ -678,8 +678,8 @@ root module, `cmd/bff` is the service binary, and `app/` is the Flutter shell.
   continuations, with a status), written by the command and carried
   down as the cause of what it writes: `cause_id` on postings, settings
   and payments, `step` on postings with a unique key on (cause, account,
-  step), inserted before the movement; each account's pass work in a
-  transaction of its own; `Owed` read from the record plus the pass's
+  step), recorded with the movement in its transaction; each account's
+  pass work in a transaction of its own; `Owed` read from the record plus the pass's
   unprojected count; the console showing cascades by root and a
   posting's cause; gobank-products gains `Posting.Step` (v1 names its
   one posting `apply`). Restart replays the root, never the effects: a

@@ -174,10 +174,10 @@ func TestSetParameterRoute(t *testing.T) {
 // dashboard and in about.json, so a drill can wait for at_rest.
 func TestConsoleShowsOwedAndTheNextEvent(t *testing.T) {
 	html := staff.BuildDashboardHTML(staff.DashData{Sim: staff.SimStatus{
-		Running: true, Owed: core.Owed{Days: 1, ParameterChanges: 12},
+		Running: true, Owed: core.Owed{Days: 1, Events: 12},
 		Next: staff.Event{Kind: "payment", At: time.Date(2020, 3, 4, 10, 32, 0, 0, time.UTC)},
 	}})
-	for _, want := range []string{"owed: 1 day, 12 parameter changes", "next: payment 4 Mar 10:32"} {
+	for _, want := range []string{"owed: 1 day, 12 events in progress", "next: payment 4 Mar 10:32"} {
 		if !strings.Contains(html, want) {
 			t.Errorf("dashboard lacks %q:\n%s", want, html)
 		}
@@ -193,7 +193,7 @@ func TestConsoleShowsOwedAndTheNextEvent(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(string(b), `"owed":{"at_rest":true,"days":0,"unprojected":0,"parameter_changes":0,"payments":0}`) {
+	if !strings.Contains(string(b), `"owed":{"at_rest":true,"days":0,"unprojected":0,"events":0}`) {
 		t.Errorf("about.json lacks the owed counts:\n%s", b)
 	}
 }

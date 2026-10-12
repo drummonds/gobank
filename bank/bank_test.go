@@ -5,6 +5,7 @@ import (
 	"context"
 	"database/sql"
 	"errors"
+	"fmt"
 	"strings"
 	"testing"
 	"time"
@@ -63,11 +64,15 @@ func open(t *testing.T) *fixture {
 
 // reopen is the next process over db: a bank opened on it at wall time
 // at, with the market's rate for the pound published at 5% (a replay of
-// the same publication changes nothing).
+// the same publication changes nothing) and the publication's cascade
+// settled, so the bank is at rest.
 func reopen(t *testing.T, db *sql.DB, at time.Time) *fixture {
 	t.Helper()
 	f := reopenSilent(t, db, at)
 	if err := f.bank.Publish(f.ctx, core.Publication{Currency: "GBP", Bps: 500, At: opening}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := f.bank.StartDay(f.ctx); err != nil {
 		t.Fatal(err)
 	}
 	return f
@@ -909,13 +914,13 @@ func TestOwedIsCountsAndStartDayClearsThem(t *testing.T) {
 	if err := f.bank.Publish(f.ctx, core.Publication{Currency: "GBP", Bps: 525, At: noon}); err != nil {
 		t.Fatal(err)
 	}
-	if owed, _ := f.bank.Owed(f.ctx); owed.ParameterChanges != 0 {
-		t.Errorf("before noon %d changes are owed, want 0: the publication is ahead of the clock", owed.ParameterChanges)
+	if owed, _ := f.bank.Owed(f.ctx); owed.Events != 0 {
+		t.Errorf("before noon %d events are owed, want 0: the publication is ahead of the clock", owed.Events)
 	}
 	f.now = noon
 	owed, _ := f.bank.Owed(f.ctx)
-	if owed.ParameterChanges != 3 || owed.Days != 0 || owed.Unprojected != 0 || owed.Payments != 0 {
-		t.Errorf("at noon %+v is owed, want the three accounts' parameter changes alone", owed)
+	if owed.Events != 1 || owed.Days != 0 || owed.Unprojected != 0 {
+		t.Errorf("at noon %+v is owed, want the publication alone", owed)
 	}
 	if _, err := f.bank.StartDay(f.ctx); err != nil {
 		t.Fatal(err)
@@ -951,12 +956,12 @@ func TestSetParameterIsUpcomingThenInForce(t *testing.T) {
 	if err != nil || len(up) != 1 || up[0].Owner != "easy-access" || up[0].Key != "rate_bps" || up[0].Value != "175" || !up[0].Effective.Equal(later) || !up[0].Decided.Equal(f.now) || up[0].By != "alice" || up[0].Scope != "version" {
 		t.Errorf("UpcomingSettings = %+v, %v; want the one setting, decided at the clock's instant", up, err)
 	}
-	if owed, _ := f.bank.Owed(f.ctx); owed.ParameterChanges != 0 {
+	if owed, _ := f.bank.Owed(f.ctx); owed.Events != 0 {
 		t.Errorf("before the instant %+v is owed", owed)
 	}
 	f.now = later
-	if owed, _ := f.bank.Owed(f.ctx); owed.ParameterChanges != 1 || owed.Days != 1 {
-		t.Errorf("at the instant %+v is owed, want the easy-access account's change and the day", owed)
+	if owed, _ := f.bank.Owed(f.ctx); owed.Events != 1 || owed.Days != 1 {
+		t.Errorf("at the instant %+v is owed, want the setting's event and the day", owed)
 	}
 	if _, err := f.bank.StartDay(f.ctx); err != nil {
 		t.Fatal(err)
@@ -996,4 +1001,295 @@ func TestMarketsNameTheNextDecision(t *testing.T) {
 	if m.Currency != "GBP" || m.Name != "Bank of England" || m.RateBps != 500 || !m.NextDecision.Equal(time.Date(2020, 3, 11, 12, 0, 0, 0, london)) {
 		t.Errorf("GBP market = %+v; want 500 bps in force and the special meeting of 11 Mar 2020 next", m)
 	}
+}
+
+// Every command is a root event on record and what it writes names it
+// as the cause (ADR-0011): an opening and a payment are done when they
+// commit, with their payments and settings under them; a publication and
+// a staff setting are pending until the clock reaches them and StartDay
+// settles their cascade; the day's root is done when its pass is, and a
+// rule's posting names it. The console reads the cascades by root.
+func TestCommandsWriteRootsAndTheirEffectsCarryTheCause(t *testing.T) {
+	f := open(t)
+	fixed := core.NewCustomer{PII: core.PII{Name: "F"}, Accounts: []core.NewAccount{{ProductID: "fixed-term", Opening: 500_00}, {ProductID: "easy-access", Opening: 100_00}}}
+	for _, n := range []core.NewCustomer{saver("S", 1000_00), fixed} {
+		if _, err := f.bank.OpenCustomer(f.ctx, n); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if _, err := f.bank.Transfer(f.ctx, core.Transfer{From: "cust-001", To: "cust-002", Amount: 10_00}); err != nil {
+		t.Fatal(err)
+	}
+	noon := opening.Add(12 * time.Hour)
+	if err := f.bank.Publish(f.ctx, core.Publication{Currency: "GBP", Bps: 525, At: noon}); err != nil {
+		t.Fatal(err)
+	}
+	if err := f.bank.Publish(f.ctx, core.Publication{Currency: "GBP", Bps: 525, At: noon.Add(time.Hour)}); err != nil {
+		t.Fatal(err)
+	}
+	later := opening.Add(36 * time.Hour)
+	if err := f.bank.SetParameter(f.ctx, core.ParameterSetting{ProductID: "easy-access", Key: "rate_bps", Value: "175", Effective: later, By: "alice"}); err != nil {
+		t.Fatal(err)
+	}
+	byKind := func() map[string][]core.Cascade {
+		t.Helper()
+		cs, err := f.bank.Cascades(f.ctx)
+		if err != nil {
+			t.Fatal(err)
+		}
+		out := map[string][]core.Cascade{}
+		for _, c := range cs {
+			out[c.Event.Kind] = append(out[c.Event.Kind], c)
+		}
+		return out
+	}
+	cs := byKind()
+	if n := len(cs["opening"]); n != 2 {
+		t.Fatalf("%d opening roots, want 2: %+v", n, cs)
+	}
+	for _, c := range cs["opening"] {
+		if c.Event.Status != "done" || c.Payments == 0 || c.Event.DoneAt.IsZero() {
+			t.Errorf("opening %+v; want done with its funding payments under it", c)
+		}
+	}
+	if got := cs["opening"][0].Settings + cs["opening"][1].Settings; got == 0 {
+		t.Error("the fixed term's open wrote no setting under its opening")
+	}
+	if n := len(cs["payment"]); n != 1 || cs["payment"][0].Event.Status != "done" || cs["payment"][0].Payments != 1 || cs["payment"][0].Event.By != "cust-001" {
+		t.Errorf("payment roots %+v; want one, done, by cust-001, with its payment", cs["payment"])
+	}
+	// The fixture's opening publication is done; noon's is pending; the
+	// one that changed nothing raised nothing.
+	if n := len(cs["publication"]); n != 2 || cs["publication"][0].Event.Status != "pending" || cs["publication"][0].Settings != 1 || !cs["publication"][0].Event.At.Equal(noon) || cs["publication"][1].Event.Status != "done" {
+		t.Errorf("publication roots %+v; want noon's pending with its setting, the opening's done, and no third", cs["publication"])
+	}
+	if n := len(cs["setting"]); n != 1 || cs["setting"][0].Event.Status != "pending" || cs["setting"][0].Settings != 1 || !cs["setting"][0].Event.At.Equal(later) || cs["setting"][0].Event.By != "alice" {
+		t.Errorf("setting roots %+v; want one at the effective instant, pending, by alice, with its setting", cs["setting"])
+	}
+	pays, _ := f.bank.PaymentsOf(f.ctx, "cust-001")
+	if len(pays) == 0 {
+		t.Fatal("no payments for cust-001")
+	}
+
+	// The clock reaches noon: the publication is settled; the setting
+	// at 36h the day after.
+	f.now = noon
+	if _, err := f.bank.StartDay(f.ctx); err != nil {
+		t.Fatal(err)
+	}
+	cs = byKind()
+	if cs["publication"][0].Event.Status != "done" || cs["setting"][0].Event.Status != "pending" {
+		t.Errorf("after noon: publication %s, setting %s; want done and pending", cs["publication"][0].Event.Status, cs["setting"][0].Event.Status)
+	}
+	f.now = later
+	if _, err := f.bank.StartDay(f.ctx); err != nil {
+		t.Fatal(err)
+	}
+	cs = byKind()
+	if cs["setting"][0].Event.Status != "done" || len(cs["start of day"]) != 1 || cs["start of day"][0].Event.Status != "done" {
+		t.Errorf("after the setting's instant: %+v; want the setting and the day done", cs)
+	}
+
+	// A month on, the cycle end's application names the day's root.
+	f.now = opening.AddDate(0, 1, 1)
+	if _, err := f.bank.StartDay(f.ctx); err != nil {
+		t.Fatal(err)
+	}
+	var movementID string
+	if err := f.db.QueryRow(`SELECT id FROM contract_ledger_movements WHERE code = $1 AND to_path = $2 ORDER BY value_time LIMIT 1`, luca.CodeInterestAccrual, ledger.ExpenseInterest).Scan(&movementID); err != nil {
+		t.Fatalf("no savings application after a month: %v", err)
+	}
+	m, err := f.bank.Movement(f.ctx, movementID)
+	if err != nil || m.Cause == nil || m.Cause.Kind != "start of day" || m.Cause.Status != "done" || m.Step != "apply" {
+		t.Errorf("the application's movement %+v, %v; want its cause the day's root, done, step apply", m, err)
+	}
+	if !m.Cause.At.Equal(opening.AddDate(0, 1, 0)) {
+		t.Errorf("the application's cause is the day %s, want 1 Feb", m.Cause.At)
+	}
+	funding, _ := f.bank.Movement(f.ctx, fundingMovement(t, f))
+	if funding.Cause != nil || funding.Step != "" {
+		t.Errorf("a funding movement, not a rule's posting, names a cause: %+v", funding)
+	}
+	if owed, _ := f.bank.Owed(f.ctx); !owed.AtRest() {
+		t.Errorf("at the end %+v is owed", owed)
+	}
+}
+
+func fundingMovement(t *testing.T, f *fixture) string {
+	t.Helper()
+	var id string
+	if err := f.db.QueryRow(`SELECT id FROM contract_ledger_movements WHERE code = $1 ORDER BY value_time LIMIT 1`, luca.CodeBookTransfer).Scan(&id); err != nil {
+		t.Fatal(err)
+	}
+	return id
+}
+
+// A command whose transaction fails leaves nothing: no root, no payment,
+// no movement; the caller sees the error and may try again, and the
+// retry is a root of its own (ADR-0011: a payment's cascade is one
+// transaction, so its root is written with its effects).
+func TestACommandThatFailsLeavesNothing(t *testing.T) {
+	f := open(t)
+	for _, n := range []core.NewCustomer{saver("A", 100_00), saver("B", 100_00)} {
+		if _, err := f.bank.OpenCustomer(f.ctx, n); err != nil {
+			t.Fatal(err)
+		}
+	}
+	before := facts(t, f.db)
+	f.bank.Catalogue().SetEffectHook(func(account, effect string) error {
+		if effect == "position" {
+			return errors.New("killed")
+		}
+		return nil
+	})
+	if _, err := f.bank.Transfer(f.ctx, core.Transfer{From: "cust-001", To: "cust-002", Amount: 10_00}); err == nil || !strings.Contains(err.Error(), "killed") {
+		t.Fatalf("a killed transfer: %v; want the kill", err)
+	}
+	if _, err := f.bank.OpenCustomer(f.ctx, saver("C", 100_00)); err == nil || !strings.Contains(err.Error(), "killed") {
+		t.Fatalf("a killed opening: %v; want the kill", err)
+	}
+	if after := facts(t, f.db); after != before {
+		t.Errorf("a failed command left facts:\n%s", diff(before, after))
+	}
+	f.bank.Catalogue().SetEffectHook(nil)
+	pay, err := f.bank.Transfer(f.ctx, core.Transfer{From: "cust-001", To: "cust-002", Amount: 10_00})
+	if err != nil {
+		t.Fatal(err)
+	}
+	cs, _ := f.bank.Cascades(f.ctx)
+	if len(cs) != 4 || cs[0].Event.Kind != "payment" || cs[0].Event.Status != "done" || cs[0].Payments != 1 {
+		t.Errorf("after the retry the cascades are %+v; want the payment's root newest, done, with %s under it, and no root for what failed", cs, pay.Reference)
+	}
+}
+
+// Every effect is proven by a fact written in its transaction, so a
+// process killed after any effect, and the root replayed, leaves the
+// same facts as a run never interrupted (ADR-0011). The scenario — a
+// week of passes over a month end, a staff setting and a publication —
+// runs once uninterrupted to count its effects and record its facts,
+// then once per effect with the hook failing that effect's transaction;
+// StartDay replays what the kill left pending, and the facts must match.
+func TestKillAfterAnyEffectAndReplayLeavesTheSameFacts(t *testing.T) {
+	jan25 := time.Date(2020, 1, 25, 0, 0, 0, 0, time.UTC)
+	feb1 := time.Date(2020, 2, 1, 0, 0, 0, 0, time.UTC)
+	scenario := func(t *testing.T, failAt int) (string, int) {
+		t.Helper()
+		db := openDB(t)
+		f := reopenSilent(t, db, jan25)
+		if err := f.bank.Publish(f.ctx, core.Publication{Currency: "GBP", Bps: 500, At: jan25}); err != nil {
+			t.Fatal(err)
+		}
+		for _, n := range []core.NewCustomer{saver("A", 1000_00), saver("B", 2500_00), ada} {
+			if _, err := f.bank.OpenCustomer(f.ctx, n); err != nil {
+				t.Fatal(err)
+			}
+		}
+		calls := 0
+		f.bank.Catalogue().SetEffectHook(func(account, effect string) error {
+			calls++
+			if calls == failAt {
+				return errors.New("killed")
+			}
+			return nil
+		})
+		if err := f.bank.SetParameter(f.ctx, core.ParameterSetting{ProductID: "easy-access", Key: "rate_bps", Value: "175", Effective: feb1.Add(9 * time.Hour), By: "alice"}); err != nil {
+			t.Fatal(err)
+		}
+		for day := jan25.AddDate(0, 0, 1); !day.After(feb1.AddDate(0, 0, 1)); day = day.AddDate(0, 0, 1) {
+			f.now = day
+			f.bank.StartDay(f.ctx) //nolint:errcheck — a killed account is logged and left for the replay
+			if day.Equal(feb1) {
+				noon := feb1.Add(12 * time.Hour)
+				if err := f.bank.Publish(f.ctx, core.Publication{Currency: "GBP", Bps: 525, At: noon}); err != nil {
+					t.Fatal(err)
+				}
+				f.now = noon
+				f.bank.StartDay(f.ctx) //nolint:errcheck
+			}
+		}
+		// The replay: a new process would do the same from the record.
+		f.bank.Catalogue().SetEffectHook(nil)
+		if _, err := f.bank.StartDay(f.ctx); err != nil {
+			t.Fatal(err)
+		}
+		if owed, _ := f.bank.Owed(f.ctx); !owed.AtRest() {
+			t.Errorf("after the replay %+v is owed", owed)
+		}
+		return facts(t, db), calls
+	}
+	want, effects := scenario(t, 0)
+	if effects < 20 {
+		t.Fatalf("the scenario has %d effects; too few to prove anything", effects)
+	}
+	for n := 1; n <= effects; n++ {
+		if got, _ := scenario(t, n); got != want {
+			t.Errorf("killed after effect %d, the facts differ:\n%s", n, diff(want, got))
+		}
+	}
+}
+
+// facts is everything the bank holds that a replay must leave the same,
+// as text: positions, movements, rule postings, settings, payments,
+// events and the instants accounts' parameters are applied to, without
+// the IDs and wall times that differ between runs.
+func facts(t *testing.T, db *sql.DB) string {
+	t.Helper()
+	var b strings.Builder
+	for _, q := range []string{
+		`SELECT full_path, day, balance, accrued FROM contract_ledger_eod_positions ORDER BY full_path, day`,
+		`SELECT from_path, to_path, amount, code, value_time, description FROM contract_ledger_movements ORDER BY value_time, from_path, to_path, amount, description`,
+		`SELECT a.full_path, p.event, p.step, p.parameters, p.input_balance, p.input_accrued_num FROM product_postings p JOIN accounts a ON a.id = p.account_id ORDER BY a.full_path, p.event, p.step, p.input_balance`,
+		`SELECT s.scope, COALESCE(a.full_path, s.owner), s.key, s.value, s.effective_from, s.decided_by FROM parameter_settings s LEFT JOIN accounts a ON a.id = s.owner ORDER BY s.scope, 2, s.key, s.effective_from, s.value`,
+		`SELECT type, from_id, to_id, amount, status FROM payments ORDER BY id`,
+		`SELECT kind, at, status, raised_by FROM events ORDER BY at, kind, raised_by`,
+		`SELECT a.full_path, ap.applied_to FROM product_account_parameters ap JOIN accounts a ON a.id = ap.account_id ORDER BY a.full_path`,
+	} {
+		rows, err := db.Query(q)
+		if err != nil {
+			t.Fatalf("%s: %v", q, err)
+		}
+		cols, _ := rows.Columns()
+		for rows.Next() {
+			vals := make([]any, len(cols))
+			ptrs := make([]any, len(cols))
+			for i := range vals {
+				ptrs[i] = &vals[i]
+			}
+			if err := rows.Scan(ptrs...); err != nil {
+				t.Fatal(err)
+			}
+			for i, v := range vals {
+				if bs, ok := v.([]byte); ok {
+					vals[i] = string(bs)
+				}
+			}
+			fmt.Fprintf(&b, "%v\n", vals)
+		}
+		rows.Close()
+		b.WriteString("--\n")
+	}
+	return b.String()
+}
+
+// diff is the lines in one text and not the other.
+func diff(want, got string) string {
+	w, g := map[string]bool{}, map[string]bool{}
+	for l := range strings.SplitSeq(want, "\n") {
+		w[l] = true
+	}
+	for l := range strings.SplitSeq(got, "\n") {
+		g[l] = true
+	}
+	var out []string
+	for l := range strings.SplitSeq(want, "\n") {
+		if !g[l] {
+			out = append(out, "- "+l)
+		}
+	}
+	for l := range strings.SplitSeq(got, "\n") {
+		if !w[l] {
+			out = append(out, "+ "+l)
+		}
+	}
+	return strings.Join(out, "\n")
 }

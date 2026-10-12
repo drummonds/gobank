@@ -53,6 +53,7 @@ var staffPages = []string{
 	"/customers/cust-001",
 	"/customers/cust-001/account/0",
 	"/payments",
+	"/events",
 	"/settings",
 	"/settings/status",
 	"/dashboard/update",

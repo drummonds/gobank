@@ -120,20 +120,52 @@ type History struct {
 }
 
 // Owed is what the bank has still to do for the instant its clock is at
-// (ADR-0010): the counts of what one event and everything it causes have
-// left undone. The bank is at rest when every count is zero, and only
-// then may the simulation's clock move to the next event; the console
-// shows the counts, and a drill reads them to know a deploy has settled.
+// (ADR-0010), read from the record of events (ADR-0011): the roots due
+// by the instant whose cascades have not finished, with the days the
+// clock has moved on to that the bank has not started and the accounts
+// the day's pass has still to visit, whose facts are their positions.
+// The bank is at rest when every count is zero, and only then may the
+// simulation's clock move to the next event; the console shows the
+// counts, and a drill reads them to know a deploy has settled.
 type Owed struct {
-	Days             int // business days the bank is behind its clock: days still to start
-	Unprojected      int // accounts without a position for the bank's day: the pass has them still to visit
-	ParameterChanges int // accounts a setting became effective for since their parameters were last applied: ParameterChange events still to fire
-	Payments         int // payments accepted and not yet settled
+	Days        int // business days the bank is behind its clock: days still to start
+	Unprojected int // accounts without a position for the bank's day: the pass has them still to visit
+	Events      int // root events due by the clock's instant and not done: cascades in progress
 }
 
 // AtRest reports that nothing is owed.
 func (o Owed) AtRest() bool {
-	return o.Days == 0 && o.Unprojected == 0 && o.ParameterChanges == 0 && o.Payments == 0
+	return o.Days == 0 && o.Unprojected == 0 && o.Events == 0
+}
+
+// EventRecord is one event on the bank's record (ADR-0011): something
+// that happened at an instant, raised by someone, whose cascade is
+// pending or done.
+type EventRecord struct {
+	ID     string
+	Kind   string // "start of day", "publication", "payment", "setting", "opening"
+	At     time.Time
+	Status string // "pending", "done"
+	By     string // who raised it: a user, a customer, a market's name, "clock"
+	DoneAt time.Time
+}
+
+// Cascade is a root event with what its cascade has written so far:
+// the postings, settings and payments carrying it as their cause. The
+// pass's positions are not counted: they are the day's facts, not
+// records of their own.
+type Cascade struct {
+	Event    EventRecord
+	Postings int
+	Settings int
+	Payments int
+}
+
+// EventQueries is the record of events as staff read it.
+type EventQueries interface {
+	// Cascades is the latest root events, newest first, each with what
+	// its cascade has written.
+	Cascades(ctx context.Context) ([]Cascade, error)
 }
 
 // BookQueries is the ledger as staff read it: the bank as a whole.
@@ -159,6 +191,11 @@ type Movement struct {
 	ValueTime     time.Time
 	KnowledgeTime time.Time
 	Description   string
+	// Cause is the root event a rule's posting was made under (ADR-0011)
+	// and Step the posting's name within it; nil and empty for a movement
+	// that is not a rule's, or from before the record.
+	Cause *EventRecord
+	Step  string
 }
 
 // Leg is one side of a movement: the account and the balance it was left
@@ -402,4 +439,5 @@ type StaffQueries interface {
 	MarketQueries
 	TreasuryQueries
 	LedgerQueries
+	EventQueries
 }

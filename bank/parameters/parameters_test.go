@@ -36,8 +36,8 @@ func TestResolveIsEffectiveDated(t *testing.T) {
 	ctx := context.Background()
 	decided := d(2026, 1, 10)
 	for _, s := range []Setting{
-		{gbp.ScopeVersion, "easy-access/1", "rate_bps", "150", d(2026, 1, 1), decided, "migration"},
-		{gbp.ScopeVersion, "easy-access/1", "rate_bps", "135", d(2026, 2, 1), decided, "treasury"},
+		{gbp.ScopeVersion, "easy-access/1", "rate_bps", "150", d(2026, 1, 1), decided, "migration", ""},
+		{gbp.ScopeVersion, "easy-access/1", "rate_bps", "135", d(2026, 2, 1), decided, "treasury", ""},
 	} {
 		if err := p.Set(ctx, nil, s); err != nil {
 			t.Fatal(err)
@@ -69,9 +69,9 @@ func TestResolveIsBitemporal(t *testing.T) {
 	p := open(t)
 	ctx := context.Background()
 	for _, s := range []Setting{
-		{gbp.ScopeBank, OwnerBank, "boe.base_rate_bps", "525", d(2026, 1, 1), d(2026, 1, 1), "market"},
-		{gbp.ScopeBank, OwnerBank, "boe.base_rate_bps", "500", d(2026, 2, 5), d(2026, 2, 4), "market"}, // announced the day before
-		{gbp.ScopeBank, OwnerBank, "boe.base_rate_bps", "475", d(2026, 2, 5), d(2026, 2, 6), "correction"},
+		{gbp.ScopeBank, OwnerBank, "boe.base_rate_bps", "525", d(2026, 1, 1), d(2026, 1, 1), "market", ""},
+		{gbp.ScopeBank, OwnerBank, "boe.base_rate_bps", "500", d(2026, 2, 5), d(2026, 2, 4), "market", ""}, // announced the day before
+		{gbp.ScopeBank, OwnerBank, "boe.base_rate_bps", "475", d(2026, 2, 5), d(2026, 2, 6), "correction", ""},
 	} {
 		if err := p.Set(ctx, nil, s); err != nil {
 			t.Fatal(err)
@@ -97,7 +97,7 @@ func TestResolveIsBitemporal(t *testing.T) {
 func TestResolveIsScoped(t *testing.T) {
 	p := open(t)
 	ctx := context.Background()
-	if err := p.Set(ctx, nil, Setting{gbp.ScopeAccount, "acct-1", "deposited", "100", d(2026, 1, 1), d(2026, 1, 1), "rule"}); err != nil {
+	if err := p.Set(ctx, nil, Setting{gbp.ScopeAccount, "acct-1", "deposited", "100", d(2026, 1, 1), d(2026, 1, 1), "rule", ""}); err != nil {
 		t.Fatal(err)
 	}
 	if _, ok, _ := p.Resolve(ctx, nil, gbp.ScopeAccount, "acct-2", "deposited", d(2026, 1, 1), d(2026, 1, 1)); ok {
@@ -125,8 +125,8 @@ func TestResolveAtAnInstant(t *testing.T) {
 	ctx := context.Background()
 	noon := time.Date(2026, 3, 19, 12, 0, 0, 0, time.UTC)
 	for _, s := range []Setting{
-		{gbp.ScopeMarket, "GBP", "risk_free_rate_bps", "450", d(2026, 1, 1), d(2026, 1, 1), "Bank of England"},
-		{gbp.ScopeMarket, "GBP", "risk_free_rate_bps", "425", noon, noon, "Bank of England"},
+		{gbp.ScopeMarket, "GBP", "risk_free_rate_bps", "450", d(2026, 1, 1), d(2026, 1, 1), "Bank of England", ""},
+		{gbp.ScopeMarket, "GBP", "risk_free_rate_bps", "425", noon, noon, "Bank of England", ""},
 	} {
 		if err := p.Set(ctx, nil, s); err != nil {
 			t.Fatal(err)
@@ -160,10 +160,10 @@ func TestUpcomingIsWhatIsEffectiveAhead(t *testing.T) {
 	p := open(t)
 	ctx := context.Background()
 	for _, s := range []Setting{
-		{gbp.ScopeVersion, "easy-access", "rate_bps", "150", d(2026, 1, 1), d(2026, 1, 1), "migration"},
-		{gbp.ScopeVersion, "easy-access", "rate_bps", "175", d(2026, 3, 1), d(2026, 2, 1), "alice"},
-		{gbp.ScopeBank, "bank", "spread_bps", "50", d(2026, 2, 15), d(2026, 2, 1), "bob"},
-		{gbp.ScopeAccount, "acct-1", "maturity_day", "2026-02-10", d(2026, 2, 10), d(2026, 1, 5), "rule"},
+		{gbp.ScopeVersion, "easy-access", "rate_bps", "150", d(2026, 1, 1), d(2026, 1, 1), "migration", ""},
+		{gbp.ScopeVersion, "easy-access", "rate_bps", "175", d(2026, 3, 1), d(2026, 2, 1), "alice", ""},
+		{gbp.ScopeBank, "bank", "spread_bps", "50", d(2026, 2, 15), d(2026, 2, 1), "bob", ""},
+		{gbp.ScopeAccount, "acct-1", "maturity_day", "2026-02-10", d(2026, 2, 10), d(2026, 1, 5), "rule", ""},
 	} {
 		if err := p.Set(ctx, nil, s); err != nil {
 			t.Fatal(err)
@@ -181,5 +181,38 @@ func TestUpcomingIsWhatIsEffectiveAhead(t *testing.T) {
 	}
 	if got, _ := p.Upcoming(ctx, nil, d(2026, 3, 1)); len(got) != 0 {
 		t.Errorf("Upcoming after 1 Mar = %+v; want nothing", got)
+	}
+}
+
+// A setting carries the root event it was written under (ADR-0011): its
+// cause, on the upcoming list and counted by cause. One from before the
+// record has none until it is stamped.
+func TestASettingCarriesItsCause(t *testing.T) {
+	p := open(t)
+	ctx := context.Background()
+	decided := d(2026, 1, 10)
+	caused := Setting{gbp.ScopeVersion, "easy-access", "rate_bps", "175", d(2026, 3, 1), decided, "alice", "root-1"}
+	orphan := Setting{gbp.ScopeBank, OwnerBank, "spread_bps", "50", d(2026, 2, 15), decided, "bob", ""}
+	for _, s := range []Setting{caused, orphan} {
+		if err := p.Set(ctx, nil, s); err != nil {
+			t.Fatal(err)
+		}
+	}
+	up, err := p.Upcoming(ctx, nil, decided)
+	if err != nil || len(up) != 2 || up[0].Cause != "" || up[1].Cause != "root-1" {
+		t.Errorf("Upcoming = %+v, %v; want the orphan first with no cause, then alice's under root-1", up, err)
+	}
+	if n, err := p.CountByCause(ctx, "root-1"); err != nil || n != 1 {
+		t.Errorf("CountByCause(root-1) = %d, %v; want 1", n, err)
+	}
+	if err := p.SetCause(ctx, nil, orphan, "root-2"); err != nil {
+		t.Fatal(err)
+	}
+	up, _ = p.Upcoming(ctx, nil, decided)
+	if len(up) != 2 || up[0].Cause != "root-2" {
+		t.Errorf("after stamping: %+v; want the orphan under root-2", up)
+	}
+	if n, _ := p.CountByCause(ctx, "root-2"); n != 1 {
+		t.Errorf("CountByCause(root-2) = %d, want 1", n)
 	}
 }

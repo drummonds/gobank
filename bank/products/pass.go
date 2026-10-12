@@ -103,10 +103,13 @@ func (r *PassResult) add(d DayResult) {
 }
 
 // RunPass visits every account without a position for day and writes
-// one, flat out, and returns early when ctx ends — a stop or a shutdown —
-// leaving the rest for the next pass over the same day. visited, if set,
-// is called after each account (tests cut a pass short through it).
-func (p *Products) RunPass(ctx context.Context, books *ledger.Ledger, day time.Time, progress Progress, visited func()) PassResult {
+// one, flat out, each account's work in a transaction of its own under
+// the day's cause (ADR-0011: the movement, the posting record and the
+// position commit together or not at all), and returns early when ctx
+// ends — a stop or a shutdown — leaving the rest for the next pass over
+// the same day. visited, if set, is called after each account (tests cut
+// a pass short through it).
+func (p *Products) RunPass(ctx context.Context, books *ledger.Ledger, day time.Time, cause Cause, progress Progress, visited func()) PassResult {
 	var res PassResult
 	total, err := p.CountUnprojected(ctx, day)
 	if err != nil {
@@ -142,7 +145,7 @@ func (p *Products) RunPass(ctx context.Context, books *ledger.Ledger, day time.T
 				continue
 			}
 			unlock := books.Lock(a.ID)
-			r, err := p.AccountDay(books, a, day)
+			r, err := p.accountDayTx(ctx, books, a, day, cause)
 			unlock()
 			if err != nil {
 				log.Printf("pass: %s: %v", a.ID, err)
@@ -159,4 +162,22 @@ func (p *Products) RunPass(ctx context.Context, books *ledger.Ledger, day time.T
 		yield.ToBrowser()
 	}
 	return res
+}
+
+// accountDayTx is one account's day in a transaction of its own.
+func (p *Products) accountDayTx(ctx context.Context, books *ledger.Ledger, a Account, day time.Time, cause Cause) (DayResult, error) {
+	tx, err := p.db.BeginTx(ctx, nil)
+	if err != nil {
+		return DayResult{}, err
+	}
+	r, err := p.AccountDay(books.WithTx(tx), a, day, cause)
+	if err != nil {
+		_ = tx.Rollback()
+		return r, err
+	}
+	if err := tx.Commit(); err != nil {
+		_ = tx.Rollback()
+		return r, err
+	}
+	return r, nil
 }

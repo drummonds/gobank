@@ -44,6 +44,7 @@ const layout = `<!DOCTYPE html>
         </div>
         <a class="navbar-item" href="customers">Customers</a>
         <a class="navbar-item" href="payments">Payments</a>
+        <a class="navbar-item" href="events">Events</a>
         <div class="navbar-item has-dropdown is-hoverable">
           <a class="navbar-link">Treasury</a>
           <div class="navbar-dropdown">

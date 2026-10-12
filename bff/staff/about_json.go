@@ -49,11 +49,10 @@ type AboutSim struct {
 
 // AboutOwed is core.Owed as another program reads it.
 type AboutOwed struct {
-	AtRest           bool `json:"at_rest"`
-	Days             int  `json:"days"`
-	Unprojected      int  `json:"unprojected"`
-	ParameterChanges int  `json:"parameter_changes"`
-	Payments         int  `json:"payments"`
+	AtRest      bool `json:"at_rest"`
+	Days        int  `json:"days"`
+	Unprojected int  `json:"unprojected"`
+	Events      int  `json:"events"` // root events due and not done: cascades in progress (ADR-0011)
 }
 
 // AboutPosition is the bank's position: what the dashboard leads with.
@@ -112,7 +111,7 @@ func aboutSim(sim SimStatus, last DayProgress) AboutSim {
 		Wall: sim.Wall.UTC().Format(time.RFC3339), Clock: sim.Clock.UTC().Format(time.RFC3339), Warp: sim.Warp,
 		AddingCustomers: sim.AddingCust, CustomersPerSec: sim.LastCustomersPerSec, AccountDaysPer12h: sim.AccountDaysPer12h,
 		LastDayAccounts: last.LastAccounts, DayRefused: sim.DayRefused,
-		Owed: AboutOwed{AtRest: sim.Owed.AtRest(), Days: sim.Owed.Days, Unprojected: sim.Owed.Unprojected, ParameterChanges: sim.Owed.ParameterChanges, Payments: sim.Owed.Payments},
+		Owed: AboutOwed{AtRest: sim.Owed.AtRest(), Days: sim.Owed.Days, Unprojected: sim.Owed.Unprojected, Events: sim.Owed.Events},
 	}
 	if sim.Running && sim.Next.Kind != "" {
 		a.NextEvent = sim.Next.Kind + " at " + sim.Next.At.UTC().Format(time.RFC3339)

@@ -22,6 +22,7 @@ import (
 	gbp "git.bytestone.uk/hum3/gobank-products"
 	"git.bytestone.uk/hum3/gobank/bank/customers"
 	"git.bytestone.uk/hum3/gobank/bank/definition"
+	"git.bytestone.uk/hum3/gobank/bank/events"
 	"git.bytestone.uk/hum3/gobank/bank/gl"
 	"git.bytestone.uk/hum3/gobank/bank/history"
 	"git.bytestone.uk/hum3/gobank/bank/ledger"
@@ -39,7 +40,7 @@ import (
 // Schemas is every component's schema, for the wiring to apply at start
 // (the ledger's tables are go-luca's own and not listed).
 func Schemas() []schema.Component {
-	return []schema.Component{products.Schema, parameters.Schema, customers.Schema, payments.Schema, treasury.Schema, history.Schema, gl.Schema, users.Schema}
+	return []schema.Component{products.Schema, parameters.Schema, customers.Schema, payments.Schema, treasury.Schema, history.Schema, gl.Schema, users.Schema, events.Schema}
 }
 
 // DefaultReserveRatio is the fraction of deposits the bank holds as BoE
@@ -80,6 +81,7 @@ type Bank struct {
 	clock         core.Clock
 	market        *market.Market         // where the risk-free rate comes from (ADR-0009): the market's publications in the settings
 	settings      *parameters.Parameters // the bank's settings (ADR-0006)
+	events        *events.Events         // the record of what happened and what it caused (ADR-0011)
 	key           store.KeyProvider
 	seed          int64
 	adminPassword string
@@ -174,6 +176,7 @@ func (b *Bank) openOn(db *sql.DB) error {
 		return err
 	}
 	settings := parameters.Open(db)
+	record := events.Open(db)
 	b.market = market.New(settings)
 	catalogue := products.New(db, settings, b.definition.Products)
 	if err := catalogue.Adopt(ctx, day); err != nil {
@@ -205,7 +208,7 @@ func (b *Bank) openOn(db *sql.DB) error {
 	}
 	b.mu.Lock()
 	b.db = db
-	b.settings = settings
+	b.settings, b.events = settings, record
 	b.ledger, b.gl, b.products, b.customers, b.payments, b.history, b.users = books, general, catalogue, custs, pays, hist, people
 	b.glStatus = glReport(glStatus)
 	b.treasury = treasury.New(db, b.businessDay)
@@ -250,6 +253,45 @@ func (b *Bank) openOn(db *sql.DB) error {
 		}
 		pos, _ := b.Position(ctx)
 		log.Printf("resume: day %d (%s), %d customers, savings %d, lending %d", pos.DayCount, pos.Day.Format(time.DateOnly), pos.Customers, pos.Savings, pos.Lending)
+	}
+	return b.adoptSettings(ctx)
+}
+
+// adoptSettings gives a root to what was decided before the record of
+// events (ADR-0011's adoption, the upgrade's one-off): a setting
+// upcoming with no cause is raised as a setting event at its instant, and
+// accounts owed a change already due are raised a setting event at the
+// clock's instant, so the next StartDay fires them.
+func (b *Bank) adoptSettings(ctx context.Context) error {
+	now := b.clock.Now()
+	upcoming, err := b.settings.Upcoming(ctx, nil, now)
+	if err != nil {
+		return err
+	}
+	for _, s := range upcoming {
+		if s.Cause != "" {
+			continue
+		}
+		root, err := b.events.Raise(ctx, nil, events.Setting, s.Effective, s.By)
+		if err != nil {
+			return err
+		}
+		if err := b.settings.SetCause(ctx, nil, s, root.ID); err != nil {
+			return err
+		}
+	}
+	owed, err := b.products.CountParameterChangesOwed(ctx, now)
+	if err != nil {
+		return err
+	}
+	due, err := b.events.CountDue(ctx, now)
+	if err != nil {
+		return err
+	}
+	if owed > 0 && due == 0 {
+		if _, err := b.events.Raise(ctx, nil, events.Setting, now, "adoption"); err != nil {
+			return err
+		}
 	}
 	return nil
 }
@@ -360,10 +402,11 @@ func (b *Bank) syncFromLedgerLocked() {
 // StartDay is the bank following its clock (core.DayCommands): a pass
 // the day in progress still owes is finished first, then every day the
 // clock has moved on to is started and its pass run, one day at a time,
-// until the bank is on the clock's day; then the parameter changes owed
-// by the clock's instant are fired (ADR-0010). Stops early when ctx ends,
-// leaving the rest for the next call. Nothing happens while the clock is
-// still where the bank is.
+// until the bank is on the clock's day; then every root event due by the
+// clock's instant and not done is settled: its cascade run, or run again
+// after a restart, and the root marked done (ADR-0011). Stops early when
+// ctx ends, leaving the rest for the next call. Nothing happens while the
+// clock is still where the bank is.
 func (b *Bank) StartDay(ctx context.Context) (time.Time, error) {
 	b.open.RLock()
 	defer b.open.RUnlock()
@@ -373,10 +416,16 @@ func (b *Bank) StartDay(ctx context.Context) (time.Time, error) {
 		if err != nil {
 			return day, err
 		}
+		var root events.Event
 		if pending {
-			b.progress.begin(day) // resuming the day's pass
+			// Resuming the day's pass under the day's root: the one on
+			// record, or raised now for a day begun before the record.
+			if root, err = b.events.RaiseOnce(ctx, nil, events.StartOfDay, day, "clock"); err != nil {
+				return day, err
+			}
+			b.progress.begin(day)
 		} else if day.Before(core.BusinessDay(b.clock.Now())) {
-			if day, err = b.startDay(ctx); err != nil {
+			if day, root, err = b.startDay(ctx); err != nil {
 				return day, err
 			}
 		} else {
@@ -387,8 +436,7 @@ func (b *Bank) StartDay(ctx context.Context) (time.Time, error) {
 				return day, err
 			}
 			b.closeGL(ctx, day)
-			b.applyParameterChanges(ctx)
-			return day, nil
+			return day, b.settle(ctx)
 		}
 		if err := b.advanceLedgerDay(day); err != nil {
 			return day, err
@@ -396,11 +444,14 @@ func (b *Bank) StartDay(ctx context.Context) (time.Time, error) {
 		b.mu.Lock()
 		hook := b.passHook
 		b.mu.Unlock()
-		res := b.products.RunPass(ctx, b.ledger, day, &b.progress, hook)
+		res := b.products.RunPass(ctx, b.ledger, day, products.Cause{ID: root.ID, At: root.At}, &b.progress, hook)
 		left, err := b.products.AnyUnprojected(ctx, day)
 		if err == nil && !left {
 			b.progress.phase("closing the general ledger", 0)
 			b.closeGL(ctx, day)
+			if err := b.events.Done(ctx, nil, root.ID); err != nil {
+				log.Print(err)
+			}
 		}
 		if res.Visited == 0 && res.Skipped > 0 && left {
 			// Only accounts on versions this build does not carry are left:
@@ -425,23 +476,48 @@ func (b *Bank) StartDay(ctx context.Context) (time.Time, error) {
 	return b.businessDay(), ctx.Err()
 }
 
-// applyParameterChanges is the cascade of every setting that became
-// effective by the clock's instant (ADR-0010): each account owed a
-// ParameterChange has it fired. What the rules posted moves the book.
-func (b *Bank) applyParameterChanges(ctx context.Context) {
+// settle runs the cascade of every root due by the clock's instant and
+// not done, in instant order, and marks each done when its cascade has
+// finished (ADR-0011): a publication's or a setting's is the parameter
+// changes it fires (ADR-0010), each account's in a transaction of its
+// own, so a root replayed after a restart finds the accounts already
+// applied and fires the rest; a day's root left pending by a crash after
+// its last effect has nothing left and is done. What the rules posted
+// moves the book. Stops early when ctx ends, leaving the rest owed.
+func (b *Bank) settle(ctx context.Context) error {
 	now := b.clock.Now()
-	res := b.products.ApplyParameterChanges(ctx, b.ledger, now, &b.progress)
-	if res.Visited == 0 {
-		return
+	due, err := b.events.Due(ctx, nil, now)
+	if err != nil {
+		return err
 	}
-	if res.Fired > 0 {
-		b.book.invalidate()
-		b.interest.invalidate()
+	for _, root := range due {
+		if ctx.Err() != nil {
+			return nil
+		}
+		switch root.Kind {
+		case events.Publication, events.Setting:
+			res := b.products.ApplyParameterChanges(ctx, b.ledger, products.Cause{ID: root.ID, At: root.At}, now, &b.progress)
+			if res.Fired > 0 {
+				b.book.invalidate()
+				b.interest.invalidate()
+			}
+			left, err := b.products.CountParameterChangesOwed(ctx, root.At)
+			if err != nil {
+				return err
+			}
+			if left > 0 {
+				continue // cut short, or accounts on rules this build lacks
+			}
+		}
+		if err := b.events.Done(ctx, nil, root.ID); err != nil {
+			return err
+		}
 	}
+	return nil
 }
 
 // Owed implements core.BookQueries: what the bank has still to do for the
-// instant its clock is at (ADR-0010).
+// instant its clock is at, read from the record (ADR-0011).
 func (b *Bank) Owed(ctx context.Context) (core.Owed, error) {
 	b.open.RLock()
 	defer b.open.RUnlock()
@@ -455,13 +531,44 @@ func (b *Bank) Owed(ctx context.Context) (core.Owed, error) {
 	if o.Unprojected, err = b.products.CountUnprojected(ctx, day); err != nil {
 		return o, err
 	}
-	if o.ParameterChanges, err = b.products.CountParameterChangesOwed(ctx, now); err != nil {
-		return o, err
-	}
-	if o.Payments, err = b.payments.CountInFlight(ctx); err != nil {
+	if o.Events, err = b.events.CountDue(ctx, now); err != nil {
 		return o, err
 	}
 	return o, nil
+}
+
+// Cascades implements core.EventQueries: the latest roots, newest first,
+// each with what its cascade has written.
+func (b *Bank) Cascades(ctx context.Context) ([]core.Cascade, error) {
+	b.open.RLock()
+	defer b.open.RUnlock()
+	recent, err := b.events.Recent(ctx, CascadesShown)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]core.Cascade, 0, len(recent))
+	for _, ev := range recent {
+		c := core.Cascade{Event: eventRecord(ev)}
+		if c.Postings, err = b.products.CountPostingsByCause(ctx, ev.ID); err != nil {
+			return nil, err
+		}
+		if c.Settings, err = b.settings.CountByCause(ctx, ev.ID); err != nil {
+			return nil, err
+		}
+		if c.Payments, err = b.payments.CountByCause(ctx, ev.ID); err != nil {
+			return nil, err
+		}
+		out = append(out, c)
+	}
+	return out, nil
+}
+
+// CascadesShown is how many of the latest roots Cascades lists.
+const CascadesShown = 50
+
+// eventRecord is an event as the core publishes it.
+func eventRecord(ev events.Event) core.EventRecord {
+	return core.EventRecord{ID: ev.ID, Kind: string(ev.Kind), At: ev.At, Status: string(ev.Status), By: ev.RaisedBy, DoneAt: ev.DoneAt}
 }
 
 // Markets implements core.MarketQueries: each market the bank knows, with
@@ -488,22 +595,32 @@ func (b *Bank) Markets(ctx context.Context) ([]core.Market, error) {
 }
 
 // startDay closes yesterday's bank-level books and begins the next day:
-// BoE interest accrues on the excess reserves yesterday closed with, at
-// the risk-free rate the market had published by the end of that day
-// (ADR-0009), and is projected on the reserve account; the date moves on;
-// the day's snapshot is written, so a restart from here resumes this
-// day. Returns the new day. Refused, with nothing changed, while the
-// market has published no rate for the day being closed: the bank cannot
-// accrue at a rate it does not have. Who joins the bank on the new day is
-// the simulation's business, not the bank's.
-func (b *Bank) startDay(ctx context.Context) (time.Time, error) {
+// the day's root event is raised (ADR-0011: the one on record if a
+// restart comes back to it); BoE interest accrues on the excess reserves
+// yesterday closed with, at the risk-free rate the market had published
+// by the end of that day (ADR-0009), and is projected on the reserve
+// account; the date moves on; the day's snapshot is written, so a
+// restart from here resumes this day. Returns the new day and its root.
+// Refused, with nothing changed, while the market has published no rate
+// for the day being closed: the bank cannot accrue at a rate it does not
+// have. Who joins the bank on the new day is the simulation's business,
+// not the bank's.
+func (b *Bank) startDay(ctx context.Context) (time.Time, events.Event, error) {
 	closing := b.businessDay()
 	bps, ok, err := b.market.Rate(ctx, nil, products.Currency, parameters.EndOfDay(closing))
 	if err != nil {
-		return closing, err
+		return closing, events.Event{}, err
 	}
 	if !ok {
-		return closing, fmt.Errorf("bank: %s has published no %s rate for %s: the day cannot start", market.GBP.Name, products.Currency, closing.Format(time.DateOnly))
+		return closing, events.Event{}, fmt.Errorf("bank: %s has published no %s rate for %s: the day cannot start", market.GBP.Name, products.Currency, closing.Format(time.DateOnly))
+	}
+	// The day begins, for the runtime page, before its first write: the
+	// root, then the books.
+	b.progress.begin(closing.AddDate(0, 0, 1))
+	root, err := b.events.RaiseOnce(ctx, nil, events.StartOfDay, closing.AddDate(0, 0, 1), "clock")
+	if err != nil {
+		b.progress.finish()
+		return closing, events.Event{}, err
 	}
 	savings, lending, count := b.freshBook(ctx)
 	b.mu.Lock()
@@ -528,7 +645,6 @@ func (b *Bank) startDay(ctx context.Context) (time.Time, error) {
 	b.dayAccrualSavings, b.dayAccrualLending = 0, 0
 	b.mu.Unlock()
 
-	b.progress.begin(day)
 	b.progress.phase("closing yesterday", 0)
 	for _, m := range movements {
 		if _, err := b.ledger.RecordMovement(m.from, m.to, m.amount, m.code, m.at, m.description); err != nil {
@@ -545,19 +661,41 @@ func (b *Bank) startDay(ctx context.Context) (time.Time, error) {
 	// The day's snapshot is the bank's record of having begun it: a
 	// restart from here resumes it.
 	b.saveSnapshot(snapshot)
-	return day, nil
+	return day, root, nil
 }
 
 // Publish is the feed's command (core.MarketCommands, ADR-0009): a
-// market's publication, recorded as a setting at the market scope. The
-// bank's own figure for the rate follows at once when the publication is
-// in force by the end of the day the bank is on; the next day's start
-// accrues at it.
+// market's publication, recorded as a setting at the market scope under
+// a root event of its own, raised at the instant published (ADR-0011);
+// its cascade, the parameter changes it fires, runs when the clock is
+// there (StartDay). A publication that changes nothing raises nothing.
+// The bank's own figure for the rate follows at once when the
+// publication is in force by the end of the day the bank is on; the next
+// day's start accrues at it.
 func (b *Bank) Publish(ctx context.Context, p core.Publication) error {
 	b.open.RLock()
 	defer b.open.RUnlock()
-	if err := b.market.Publish(ctx, nil, p); err != nil {
+	src, ok := market.ByCurrency(p.Currency)
+	if !ok {
+		return fmt.Errorf("%w: %s", market.ErrNoMarket, p.Currency)
+	}
+	tx, err := b.db.BeginTx(ctx, nil)
+	if err != nil {
+		return fmt.Errorf("bank: publish: %w", err)
+	}
+	root, err := b.events.Raise(ctx, tx, events.Publication, p.At, src.Name)
+	if err != nil {
+		_ = tx.Rollback()
 		return err
+	}
+	recorded, err := b.market.Publish(ctx, tx, p, root.ID)
+	if err != nil || !recorded {
+		_ = tx.Rollback()
+		return err
+	}
+	if err := tx.Commit(); err != nil {
+		_ = tx.Rollback()
+		return fmt.Errorf("bank: publish: commit: %w", err)
 	}
 	day := b.businessDay()
 	if p.Currency != products.Currency || p.At.After(parameters.EndOfDay(day)) {

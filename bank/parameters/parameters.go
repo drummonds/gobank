@@ -36,6 +36,9 @@ var Schema = schema.Component{Name: "parameters", Migrations: []schema.Migration
 		decided_by VARCHAR(100) NOT NULL,
 		PRIMARY KEY (scope, owner, key, effective_from, decided_at)
 	)`}},
+	// The root event a setting was written under (ADR-0011); null for a
+	// setting from before the record.
+	{Version: 2, Statements: []string{`ALTER TABLE parameter_settings ADD COLUMN cause_id UUID NULL`}},
 }}
 
 // CreateView (re)creates the contract view: the settings as other
@@ -67,6 +70,7 @@ type Setting struct {
 	Effective time.Time // the instant it applies from
 	Decided   time.Time // when it was decided: what the bank knew when
 	By        string    // who decided it: a user, "rule", "migration", a market's name
+	Cause     string    // the root event it was written under (ADR-0011); empty for one from before the record
 }
 
 // Querier is *sql.DB or *sql.Tx.
@@ -94,13 +98,40 @@ func (p *Parameters) Set(ctx context.Context, q Querier, s Setting) error {
 	if q == nil {
 		q = p.db
 	}
-	_, err := q.ExecContext(ctx, `INSERT INTO parameter_settings (scope, owner, key, value, effective_from, decided_at, decided_by)
-		VALUES ($1, $2, $3, $4, $5, $6, $7)`, string(s.Scope), s.Owner, s.Key, s.Value, s.Effective.UTC(), s.Decided.UTC(), s.By)
+	_, err := q.ExecContext(ctx, `INSERT INTO parameter_settings (scope, owner, key, value, effective_from, decided_at, decided_by, cause_id)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`, string(s.Scope), s.Owner, s.Key, s.Value, s.Effective.UTC(), s.Decided.UTC(), s.By, nullString(s.Cause))
 	if err != nil {
 		return fmt.Errorf("parameters: set %s %s/%s: %w", s.Scope, s.Owner, s.Key, err)
 	}
 	return nil
 }
+
+// SetCause stamps a setting on record with its cause: the adoption of a
+// setting from before the record (ADR-0011), which the bank raises a
+// root for when it opens.
+func (p *Parameters) SetCause(ctx context.Context, q Querier, s Setting, cause string) error {
+	if q == nil {
+		q = p.db
+	}
+	_, err := q.ExecContext(ctx, `UPDATE parameter_settings SET cause_id = $1
+		WHERE scope = $2 AND owner = $3 AND key = $4 AND effective_from = $5 AND decided_at = $6`,
+		cause, string(s.Scope), s.Owner, s.Key, s.Effective.UTC(), s.Decided.UTC())
+	if err != nil {
+		return fmt.Errorf("parameters: cause of %s %s/%s: %w", s.Scope, s.Owner, s.Key, err)
+	}
+	return nil
+}
+
+// CountByCause is how many settings a root event wrote.
+func (p *Parameters) CountByCause(ctx context.Context, cause string) (int, error) {
+	var n int
+	if err := p.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM parameter_settings WHERE cause_id = $1`, cause).Scan(&n); err != nil {
+		return 0, fmt.Errorf("parameters: count by cause: %w", err)
+	}
+	return n, nil
+}
+
+func nullString(s string) sql.NullString { return sql.NullString{String: s, Valid: s != ""} }
 
 // Resolve is the value of a parameter at an instant as known at knownAt:
 // of the settings decided by then and effective at or before the instant,
@@ -130,7 +161,7 @@ func (p *Parameters) Upcoming(ctx context.Context, q Querier, after time.Time) (
 	if q == nil {
 		q = p.db
 	}
-	rows, err := q.QueryContext(ctx, `SELECT scope, owner, key, value, effective_from, decided_at, decided_by FROM parameter_settings
+	rows, err := q.QueryContext(ctx, `SELECT scope, owner, key, value, effective_from, decided_at, decided_by, cause_id FROM parameter_settings
 		WHERE effective_from > $1 ORDER BY effective_from, decided_at`, after.UTC())
 	if err != nil {
 		return nil, fmt.Errorf("parameters: upcoming: %w", err)
@@ -140,10 +171,11 @@ func (p *Parameters) Upcoming(ctx context.Context, q Querier, after time.Time) (
 	for rows.Next() {
 		var s Setting
 		var scope string
-		if err := rows.Scan(&scope, &s.Owner, &s.Key, &s.Value, &s.Effective, &s.Decided, &s.By); err != nil {
+		var cause sql.NullString
+		if err := rows.Scan(&scope, &s.Owner, &s.Key, &s.Value, &s.Effective, &s.Decided, &s.By, &cause); err != nil {
 			return nil, fmt.Errorf("parameters: upcoming: %w", err)
 		}
-		s.Scope = gbp.Scope(scope)
+		s.Scope, s.Cause = gbp.Scope(scope), cause.String
 		s.Effective, s.Decided = s.Effective.UTC(), s.Decided.UTC()
 		out = append(out, s)
 	}

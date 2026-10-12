@@ -130,6 +130,15 @@ var Schema = schema.Component{Name: "products", Migrations: []schema.Migration{
 		account_id VARCHAR(64) PRIMARY KEY,
 		applied_to TIMESTAMP NOT NULL
 	)`}},
+	// The root event a posting was made under and the posting's step
+	// within it (ADR-0011), unique together with the account: a replay of
+	// the event that reaches a step already made is refused by the key.
+	// Null on postings from before the record.
+	{Version: 5, Statements: []string{
+		`ALTER TABLE product_postings ADD COLUMN cause_id UUID NULL`,
+		`ALTER TABLE product_postings ADD COLUMN step VARCHAR(30) NULL`,
+		`CREATE UNIQUE INDEX IF NOT EXISTS product_postings_effect ON product_postings (cause_id, account_id, step)`,
+	}},
 }}
 
 // Products is the catalogue over the bank's database.
@@ -139,6 +148,23 @@ type Products struct {
 	listings  []Listing // what the bank's definition lists, catalogue order
 	catalogue []Product // every product on record, the listed ones first
 	now       func() time.Time
+	// effectHook, when set, is called after each effect the runner writes
+	// (a setting, a posting, a position), with the account and the
+	// effect's kind, inside the transaction; an error it returns fails
+	// the work. The kill-and-replay test (ADR-0011) fails each effect
+	// in turn through it.
+	effectHook func(account, effect string) error
+}
+
+// SetEffectHook sets the function called after each effect the runner
+// writes; nil clears it. For tests.
+func (p *Products) SetEffectHook(fn func(account, effect string) error) { p.effectHook = fn }
+
+func (p *Products) effect(account, kind string) error {
+	if p.effectHook == nil {
+		return nil
+	}
+	return p.effectHook(account, kind)
 }
 
 // New is the catalogue on db for the products the bank's definition
@@ -310,24 +336,60 @@ type Posting struct {
 	InputBalance    int64  // the position the rule applied them to
 	InputAccruedNum int64
 	PostedAt        time.Time
+	Cause           string // the root event it was made under (ADR-0011); empty for one from before the record
+	Step            string // the posting's name within the event: "apply"
 }
 
-// Postings is an account's rule postings, oldest first.
-func (p *Products) Postings(ctx context.Context, accountID string) ([]Posting, error) {
-	rows, err := p.db.QueryContext(ctx, `SELECT movement_id, account_id, product_id, rules, rules_version, event, parameters, input_balance, input_accrued_num, posted_at
-		FROM product_postings WHERE account_id = $1 ORDER BY posted_at`, accountID)
-	if err != nil {
-		return nil, fmt.Errorf("products: postings of %s: %w", accountID, err)
-	}
+const postingColumns = `movement_id, account_id, product_id, rules, rules_version, event, parameters, input_balance, input_accrued_num, posted_at, cause_id, step`
+
+func scanPostings(rows *sql.Rows) ([]Posting, error) {
 	defer rows.Close()
 	var out []Posting
 	for rows.Next() {
 		var r Posting
-		if err := rows.Scan(&r.MovementID, &r.AccountID, &r.Product, &r.Rules, &r.RulesVersion, &r.Event, &r.Parameters, &r.InputBalance, &r.InputAccruedNum, &r.PostedAt); err != nil {
-			return nil, fmt.Errorf("products: postings of %s: %w", accountID, err)
+		var cause, step sql.NullString
+		if err := rows.Scan(&r.MovementID, &r.AccountID, &r.Product, &r.Rules, &r.RulesVersion, &r.Event, &r.Parameters, &r.InputBalance, &r.InputAccruedNum, &r.PostedAt, &cause, &step); err != nil {
+			return nil, fmt.Errorf("products: postings: %w", err)
 		}
+		r.Cause, r.Step = cause.String, step.String
 		out = append(out, r)
 	}
-	sort.SliceStable(out, func(i, j int) bool { return out[i].PostedAt.Before(out[j].PostedAt) })
 	return out, rows.Err()
+}
+
+// Postings is an account's rule postings, oldest first.
+func (p *Products) Postings(ctx context.Context, accountID string) ([]Posting, error) {
+	rows, err := p.db.QueryContext(ctx, `SELECT `+postingColumns+` FROM product_postings WHERE account_id = $1 ORDER BY posted_at`, accountID)
+	if err != nil {
+		return nil, fmt.Errorf("products: postings of %s: %w", accountID, err)
+	}
+	out, err := scanPostings(rows)
+	if err != nil {
+		return nil, err
+	}
+	sort.SliceStable(out, func(i, j int) bool { return out[i].PostedAt.Before(out[j].PostedAt) })
+	return out, nil
+}
+
+// PostingByMovement is the rule posting a movement was made as; false
+// when the movement is not a rule's.
+func (p *Products) PostingByMovement(ctx context.Context, movementID string) (Posting, bool, error) {
+	rows, err := p.db.QueryContext(ctx, `SELECT `+postingColumns+` FROM product_postings WHERE movement_id = $1`, movementID)
+	if err != nil {
+		return Posting{}, false, fmt.Errorf("products: posting of movement %s: %w", movementID, err)
+	}
+	out, err := scanPostings(rows)
+	if err != nil || len(out) == 0 {
+		return Posting{}, false, err
+	}
+	return out[0], true, nil
+}
+
+// CountPostingsByCause is how many postings a root event made.
+func (p *Products) CountPostingsByCause(ctx context.Context, cause string) (int, error) {
+	var n int
+	if err := p.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM product_postings WHERE cause_id = $1`, cause).Scan(&n); err != nil {
+		return 0, fmt.Errorf("products: count postings by cause: %w", err)
+	}
+	return n, nil
 }

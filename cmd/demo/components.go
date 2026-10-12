@@ -66,6 +66,12 @@ var components = []Component{
 		Tables:  []string{"products", "product_postings", "product_account_parameters"},
 	},
 	{
+		Name:    "events",
+		Purpose: "The record of what happened to the bank and what it caused (ADR-0011): every command a root event, raised pending at the instant its work is due and done when its cascade has finished; postings, settings and payments carry their root as their cause, and a restart replays the roots due and not done, each effect proven by its own fact.",
+		Package: "bank/events",
+		Tables:  []string{"events"},
+	},
+	{
 		Name:    "parameters",
 		Purpose: "The bank's settings (ADR-0006): the stored values of the parameters product versions, the bank's policy and the markets declare, each with the instant it is effective from and the moment it was decided, append-only, resolved at an instant as known at a moment; a day's value is its end-of-day value (ADR-0009).",
 		Package: "bank/parameters",

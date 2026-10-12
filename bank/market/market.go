@@ -124,23 +124,25 @@ func New(params *parameters.Parameters) *Market { return &Market{params: params}
 
 // Publish records a publication through q, the caller's transaction or
 // the database: a setting at the market scope, effective and decided at
-// the instant published, by the market.
-func (m *Market) Publish(ctx context.Context, q parameters.Querier, p core.Publication) error {
+// the instant published, by the market, under the root event the bank
+// raised for it (ADR-0011). Reports whether anything was recorded.
+func (m *Market) Publish(ctx context.Context, q parameters.Querier, p core.Publication, cause string) (bool, error) {
 	src, ok := ByCurrency(p.Currency)
 	if !ok {
-		return fmt.Errorf("%w: %s", ErrNoMarket, p.Currency)
+		return false, fmt.Errorf("%w: %s", ErrNoMarket, p.Currency)
 	}
 	// A publication that leaves the rate as it was is not a change: the
 	// feed replaying what the bank already has writes nothing.
 	if bps, ok, err := m.Rate(ctx, q, p.Currency, p.At); err != nil {
-		return err
+		return false, err
 	} else if ok && bps == p.Bps {
-		return nil
+		return false, nil
 	}
-	return m.params.Set(ctx, q, parameters.Setting{
+	err := m.params.Set(ctx, q, parameters.Setting{
 		Scope: gbp.ScopeMarket, Owner: p.Currency, Key: gbp.RiskFreeRateKey,
-		Value: strconv.FormatInt(p.Bps, 10), Effective: p.At, Decided: p.At, By: src.Name,
+		Value: strconv.FormatInt(p.Bps, 10), Effective: p.At, Decided: p.At, By: src.Name, Cause: cause,
 	})
+	return err == nil, err
 }
 
 // Rate is a currency's risk-free rate in effect at an instant, as known

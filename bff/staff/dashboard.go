@@ -32,11 +32,8 @@ func describeOwed(o core.Owed) string {
 	if o.Unprojected > 0 {
 		parts = append(parts, plural(o.Unprojected, "account")+" unprojected")
 	}
-	if o.ParameterChanges > 0 {
-		parts = append(parts, plural(o.ParameterChanges, "parameter change"))
-	}
-	if o.Payments > 0 {
-		parts = append(parts, plural(o.Payments, "payment")+" in flight")
+	if o.Events > 0 {
+		parts = append(parts, plural(o.Events, "event")+" in progress")
 	}
 	return strings.Join(parts, ", ")
 }

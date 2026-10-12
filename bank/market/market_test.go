@@ -63,7 +63,7 @@ func TestAPublicationIsAMarketSetting(t *testing.T) {
 		{Currency: "GBP", Bps: 450, At: at(2026, 1, 1, 0)},
 		{Currency: "GBP", Bps: 425, At: noon},
 	} {
-		if err := m.Publish(ctx, nil, p); err != nil {
+		if _, err := m.Publish(ctx, nil, p, ""); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -95,7 +95,7 @@ func TestAPublicationIsAMarketSetting(t *testing.T) {
 // a risk-free rate.
 func TestPublishRefusesACurrencyWithNoMarket(t *testing.T) {
 	m, _ := open(t)
-	err := m.Publish(context.Background(), nil, core.Publication{Currency: "XXX", Bps: 100, At: at(2026, 1, 1, 0)})
+	_, err := m.Publish(context.Background(), nil, core.Publication{Currency: "XXX", Bps: 100, At: at(2026, 1, 1, 0)}, "")
 	if !errors.Is(err, ErrNoMarket) {
 		t.Errorf("publishing XXX: %v, want ErrNoMarket", err)
 	}
@@ -108,7 +108,7 @@ func TestAReplayedPublicationWritesNothing(t *testing.T) {
 	ctx := context.Background()
 	p := core.Publication{Currency: "GBP", Bps: 450, At: at(2026, 1, 1, 12)}
 	for range 3 {
-		if err := m.Publish(ctx, nil, p); err != nil {
+		if _, err := m.Publish(ctx, nil, p, ""); err != nil {
 			t.Fatal(err)
 		}
 	}

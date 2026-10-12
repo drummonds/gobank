@@ -127,6 +127,7 @@ func BuildMovementHTML(m core.Movement, v view.View, wasm bool) string {
 	fmt.Fprintf(&s, `<div class="column"><strong>Known:</strong> %s</div>`, FormatUTC(m.KnowledgeTime))
 	s.WriteString(`</div>`)
 	fmt.Fprintf(&s, `<p><strong>Description:</strong> %s</p>`, html.EscapeString(m.Description))
+	s.WriteString(describeCause(m))
 	s.WriteString(`<table class="table is-narrow is-fullwidth mt-3"><thead><tr><th></th><th>Account</th><th>Type</th><th>Balance after (bank view)</th></tr></thead><tbody>`)
 	for _, leg := range []struct {
 		side string

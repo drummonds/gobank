@@ -267,7 +267,7 @@ func runStaff(t *testing.T, f Fixture) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		if owed.Days < 0 || owed.Unprojected < 0 || owed.ParameterChanges < 0 || owed.Payments < 0 {
+		if owed.Days < 0 || owed.Unprojected < 0 || owed.Events < 0 {
 			t.Errorf("Owed = %+v; counts cannot be negative", owed)
 		}
 		if owed.AtRest() != (owed == core.Owed{}) {
@@ -602,12 +602,12 @@ func runCommands(t *testing.T, f Fixture) {
 		if !found {
 			t.Errorf("UpcomingSettings = %+v; want the setting just made", upcoming)
 		}
-		if owed, _ := s.Owed(ctx); owed.ParameterChanges != 0 {
-			t.Errorf("before the instant %d parameter changes are owed, want none", owed.ParameterChanges)
+		if owed, _ := s.Owed(ctx); owed.Events != 0 {
+			t.Errorf("before the instant %d events are owed, want none", owed.Events)
 		}
 		f.Clock.Set(effective)
-		if owed, _ := s.Owed(ctx); owed.ParameterChanges < prod.Accounts {
-			t.Errorf("at the instant %d parameter changes are owed, want at least the product's %d accounts", owed.ParameterChanges, prod.Accounts)
+		if owed, _ := s.Owed(ctx); owed.Events < 1 {
+			t.Errorf("at the instant %d events are owed, want the setting's", owed.Events)
 		}
 		if _, err := c.StartDay(ctx); err != nil {
 			t.Fatal(err)

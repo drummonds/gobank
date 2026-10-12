@@ -1,7 +1,7 @@
 # ADR-0011: Events and their cascades are recorded
 
-Status: Proposed
-Date: 2026-10-11
+Status: Accepted
+Date: 2026-10-11, accepted 2026-10-12 as built in story 1.8.6 (see "As built")
 Stage: ADR-0002 stage 8 (roadmap 1.8), story 1.8.6, before policy as code (1.8.7); the first form of the roadmap's workflow engine
 
 ## Context
@@ -106,9 +106,10 @@ rule has to get right:
   position would apply a cycle's interest twice on replay.
 - A rule's posting names its step (the contract's `Posting` gains one;
   a rule that posts twice under one cause names two steps), and the
-  runner inserts the posting record, keyed by cause, account and step,
-  before the movement, inside the transaction. A replay that reaches a
-  step already done hits the key and skips; the database enforces it.
+  runner records the posting with the movement, in the same transaction,
+  under a key unique on cause, account and step. A replay that reaches a
+  step already done hits the key and the transaction fails with nothing
+  written; the database enforces it.
 - A kill-and-replay test: a cascade run with a hook that fails the
   transaction after each effect in turn, the root replayed, and the
   facts asserted identical to an uninterrupted run. One table-driven
@@ -194,3 +195,57 @@ root, and a posting's page names its cause.
   the replay test is the proof. The cost is a step name on every
   posting a rule makes, and a transaction per account in the pass,
   which the parameter cascade already pays.
+
+## As built (story 1.8.6, 2026-10-12)
+
+The first slice is in: `bank/events` with roots only, `cause_id` on
+postings, settings and payments, `step` on postings with the unique key,
+each account's pass work in a transaction of its own, `Owed` from the
+record, the console's Events page and the movement page's cause, and the
+kill-and-replay test. gobank-products v0.8.0 carries `Posting.Step`; the
+v1 rules name their one posting `apply`, and the runner refuses a posting
+with no step. Where building it settled a detail the text above left
+open, or moved it:
+
+- **A root stands at the instant its work is due.** A day's root at the
+  day, a publication's at the instant published, a payment's and an
+  opening's at the clock's instant, and a staff setting's at its
+  effective instant, raised when the decision is made: the decision is on
+  the setting (`decided_at`, `decided_by`), the event is the bank's work
+  when the clock gets there. The timeline still reads upcoming settings
+  from the settings table; the event is what `Owed` counts once due.
+- **A payment's and an opening's cascade is one transaction**, so their
+  root is raised and marked done in the transaction that writes their
+  effects: a transfer or an opening that fails leaves nothing, not even
+  its root, and the caller retries. They are refused, never replayed. The
+  roots the bank replays are the day's, a publication's and a setting's,
+  and the kill-and-replay test covers those; a second test proves a
+  failed command leaves the facts untouched.
+- **The posting record follows the movement** in the same transaction
+  rather than preceding it: the record is keyed by the movement's ID,
+  which the ledger allocates. The key on (cause, account, step) refuses
+  the double just the same, and the transaction takes the movement with
+  it.
+- **A root's cascade is the changes effective by its instant.** The
+  parameter-change cascade for a root fires the settings effective
+  between each account's applied-to instant and the root's, on the
+  clock's day, and advances the account to the root's instant; so after a
+  restart with several roots pending, each is credited with its own
+  changes, in instant order. A root whose accounts are on rules the build
+  lacks stays pending, as the pass stays incomplete.
+- **`Owed` is days, unprojected accounts and events.** The count of
+  payments in flight went: a payment's root is done when its transaction
+  commits. `SettleInFlight` on reopen stays, for rows an older build may
+  leave. `/about.json` reports `owed.events` in place of
+  `parameter_changes` and `payments`; the drill reads `at_rest` alone.
+- **Adoption at open.** A setting upcoming with no cause (decided under
+  an older build) is given a root at its effective instant; accounts owed
+  a change already due with no root pending are given one root, a setting
+  event at the clock's instant raised by "adoption".
+- **Treasury's `BuyGilt` writes no root.** It writes nothing that carries
+  a cause; it joins the record when the treasury's effects do.
+- **Schema:** `events` v1 (`events`, with `raised_at` for ordering what
+  happened at one instant); `products` v5 (`cause_id`, `step`, the unique
+  index `product_postings_effect`); `parameters` v2 and `payments` v2
+  (`cause_id`; `contract_payments` carries it). All additive; an older
+  build ignores them.

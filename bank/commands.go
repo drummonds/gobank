@@ -12,6 +12,7 @@ import (
 	luca "git.bytestone.uk/hum3/go-luca"
 	gbp "git.bytestone.uk/hum3/gobank-products"
 	"git.bytestone.uk/hum3/gobank/bank/customers"
+	"git.bytestone.uk/hum3/gobank/bank/events"
 	"git.bytestone.uk/hum3/gobank/bank/ledger"
 	"git.bytestone.uk/hum3/gobank/bank/parameters"
 	"git.bytestone.uk/hum3/gobank/bank/payments"
@@ -88,14 +89,16 @@ func (b *Bank) reserveRatioNow() float64 {
 	return b.reserveRatio
 }
 
-// persistCustomer writes a planned customer — record, ledger accounts,
-// register, funding payments and movements, the GL's control movements —
-// in one transaction, so each customer is one commit. A customer the database refuses is the error
-// returned and nothing of theirs is written; later failures are logged
-// and the customer kept. Funding rewrites the equity account's position
-// and the new accounts' inside the transaction, so their locks are held
-// until it commits: creators take turns on the equity account, and the
-// daily pass waits for a new account's funding before projecting it.
+// persistCustomer writes a planned customer — the opening's root event,
+// record, ledger accounts, register, funding payments and movements, the
+// GL's control movements — in one transaction, so each customer is one
+// commit and the opening's cascade is done when it commits (ADR-0011).
+// A customer the database refuses is the error returned and nothing of
+// theirs is written; later failures are logged and the customer kept.
+// Funding rewrites the equity account's position and the new accounts'
+// inside the transaction, so their locks are held until it commits:
+// creators take turns on the equity account, and the daily pass waits
+// for a new account's funding before projecting it.
 func (b *Bank) persistCustomer(ctx context.Context, day time.Time, plan *customers.Plan, fundings []funding) error {
 	tx, err := b.db.BeginTx(ctx, nil)
 	if err != nil {
@@ -107,6 +110,12 @@ func (b *Bank) persistCustomer(ctx context.Context, day time.Time, plan *custome
 		return err
 	}
 	rec := &plan.Record
+	root, err := b.events.Raise(ctx, tx, events.Opening, b.clock.Now(), rec.ID)
+	if err != nil {
+		_ = tx.Rollback()
+		return err
+	}
+	cause := products.Cause{ID: root.ID, At: root.At}
 	locked := []string{books.Chart.EquityCapital}
 	for _, a := range rec.Accounts {
 		locked = append(locked, a.LedgerAccountID)
@@ -118,13 +127,14 @@ func (b *Bank) persistCustomer(ctx context.Context, day time.Time, plan *custome
 	// version's open event runs now (its settings, its first position), so
 	// the day's pass has nothing left to do for it and a day is complete
 	// when every registered account has its position.
-	now := b.clock.Now()
 	for _, a := range rec.Accounts {
-		if err := b.products.Open(books, products.Account{ID: a.LedgerAccountID, Product: a.ProductID}, day, now); err != nil {
-			log.Printf("bank: open customer %s: %s: %v", rec.ID, a.LedgerAccountID, err)
+		if err := b.products.Open(books, products.Account{ID: a.LedgerAccountID, Product: a.ProductID}, day, cause); err != nil {
+			_ = tx.Rollback()
+			return fmt.Errorf("bank: open customer %s: %s: %w", rec.ID, a.LedgerAccountID, err)
 		}
 	}
 	for _, f := range fundings {
+		f.payment.Cause = root.ID
 		if err := b.payments.Insert(tx, f.payment); err != nil {
 			log.Printf("bank: open customer %s: %v", rec.ID, err)
 		}
@@ -139,13 +149,18 @@ func (b *Bank) persistCustomer(ctx context.Context, day time.Time, plan *custome
 		// The version's post-posting rule then projects the day on the
 		// funded balance.
 		funded := products.Account{ID: a.LedgerAccountID, Product: a.ProductID}
-		if _, err := b.products.PostEvent(books, day, credit, debit, f.payment.Amount, luca.CodeBookTransfer, f.payment.Reference, funded); err != nil {
-			log.Printf("bank: open customer %s: %v", rec.ID, err)
+		if _, err := b.products.PostEvent(books, day, cause, credit, debit, f.payment.Amount, luca.CodeBookTransfer, f.payment.Reference, funded); err != nil {
+			_ = tx.Rollback()
+			return fmt.Errorf("bank: open customer %s: %w", rec.ID, err)
 		}
 		// The GL sees the funding the same way, on the product's control.
 		if err := general.Funding(day, a.ProductID, f.payment.Amount, f.payment.Reference); err != nil {
 			log.Printf("bank: open customer %s: %v", rec.ID, err)
 		}
+	}
+	if err := b.events.Done(ctx, tx, root.ID); err != nil {
+		_ = tx.Rollback()
+		return err
 	}
 	if err := tx.Commit(); err != nil {
 		_ = tx.Rollback()
@@ -160,10 +175,12 @@ func (b *Bank) persistCustomer(ctx context.Context, day time.Time, plan *custome
 // two customers' first savings accounts, posting the movement to the
 // ledger with the day's rules rerun on both and to the GL's controls
 // when the products differ, and records the payment as completed, all in
-// one transaction: the posting is the settlement, so the bank is at rest
-// again when the command returns (ADR-0010). The two accounts' locks are
-// held from the balance check to the commit, so two transfers from one
-// account take turns.
+// one transaction under the payment's root event, raised and done in the
+// same transaction (ADR-0011): the posting is the settlement, so the
+// bank is at rest again when the command returns (ADR-0010), and a
+// transfer that fails leaves nothing, not even its root. The two
+// accounts' locks are held from the balance check to the commit, so two
+// transfers from one account take turns.
 func (b *Bank) Transfer(ctx context.Context, t core.Transfer) (core.Payment, error) {
 	b.open.RLock()
 	defer b.open.RUnlock()
@@ -197,15 +214,22 @@ func (b *Bank) Transfer(ctx context.Context, t core.Transfer) (core.Payment, err
 	if -live.Balance < t.Amount { // a savings balance is a liability: negative (ADR-0008)
 		return core.Payment{}, core.ErrInsufficientFunds
 	}
-	pay := b.payments.New(payments.Transfer, t.From, t.To, t.Amount, payments.Completed, b.clock.Now())
+	now := b.clock.Now()
+	pay := b.payments.New(payments.Transfer, t.From, t.To, t.Amount, payments.Completed, now)
 	day := b.businessDay()
 	tx, err := b.db.BeginTx(ctx, nil)
 	if err != nil {
 		return core.Payment{}, fmt.Errorf("bank: transfer: %w", err)
 	}
+	root, err := b.events.Raise(ctx, tx, events.Payment, now, t.From)
+	if err != nil {
+		_ = tx.Rollback()
+		return core.Payment{}, err
+	}
+	pay.Cause = root.ID
 	books := b.ledger.WithTx(tx)
 	// A pays B: B's account is credited (the bank owes B more), A's debited.
-	if _, err := b.products.PostEvent(books, day, toAcc.LedgerAccountID, fromAcc.LedgerAccountID, t.Amount, luca.CodeBookTransfer, pay.Reference,
+	if _, err := b.products.PostEvent(books, day, products.Cause{ID: root.ID, At: root.At}, toAcc.LedgerAccountID, fromAcc.LedgerAccountID, t.Amount, luca.CodeBookTransfer, pay.Reference,
 		products.Account{ID: fromAcc.LedgerAccountID, Product: fromAcc.ProductID},
 		products.Account{ID: toAcc.LedgerAccountID, Product: toAcc.ProductID}); err != nil {
 		_ = tx.Rollback()
@@ -216,7 +240,12 @@ func (b *Bank) Transfer(ctx context.Context, t core.Transfer) (core.Payment, err
 		return core.Payment{}, err
 	}
 	if err := b.payments.Insert(tx, pay); err != nil {
-		log.Print(err)
+		_ = tx.Rollback()
+		return core.Payment{}, err
+	}
+	if err := b.events.Done(ctx, tx, root.ID); err != nil {
+		_ = tx.Rollback()
+		return core.Payment{}, err
 	}
 	if err := tx.Commit(); err != nil {
 		_ = tx.Rollback()
@@ -466,7 +495,9 @@ func (b *Bank) UpcomingSettings(ctx context.Context) ([]core.Setting, error) {
 
 // SetParameter implements core.ProductCommands: a staff member's setting
 // of one of a product's own parameters, decided at the clock's instant
-// and effective from the instant given, not before now.
+// and effective from the instant given, not before now, written under a
+// root event raised at that instant (ADR-0011): the decision is on the
+// setting, the event is the bank's work when the clock gets there.
 func (b *Bank) SetParameter(ctx context.Context, s core.ParameterSetting) error {
 	b.open.RLock()
 	defer b.open.RUnlock()
@@ -497,7 +528,24 @@ func (b *Bank) SetParameter(ctx context.Context, s core.ParameterSetting) error 
 	if s.By == "" {
 		return fmt.Errorf("%w: no one decided it", core.ErrInvalidSetting)
 	}
-	return b.settings.Set(ctx, nil, parameters.Setting{Scope: gbp.ScopeVersion, Owner: prod.ID, Key: d.Key, Value: param.Text, Effective: s.Effective, Decided: now, By: s.By})
+	tx, err := b.db.BeginTx(ctx, nil)
+	if err != nil {
+		return fmt.Errorf("bank: set parameter: %w", err)
+	}
+	root, err := b.events.Raise(ctx, tx, events.Setting, s.Effective, s.By)
+	if err != nil {
+		_ = tx.Rollback()
+		return err
+	}
+	if err := b.settings.Set(ctx, tx, parameters.Setting{Scope: gbp.ScopeVersion, Owner: prod.ID, Key: d.Key, Value: param.Text, Effective: s.Effective, Decided: now, By: s.By, Cause: root.ID}); err != nil {
+		_ = tx.Rollback()
+		return err
+	}
+	if err := tx.Commit(); err != nil {
+		_ = tx.Rollback()
+		return fmt.Errorf("bank: set parameter: commit: %w", err)
+	}
+	return nil
 }
 
 // describeDerivation is a derived parameter in words: "boe.base_rate_bps − 15 bps, floor 0".
@@ -541,8 +589,25 @@ func (b *Bank) Movement(ctx context.Context, id string) (core.Movement, error) {
 		kind, _, _ := strings.Cut(l.Path, ":")
 		return core.Leg{AccountID: l.AccountID, Path: l.Path, Type: kind, Balance: l.Balance}
 	}
-	return core.Movement{
+	out := core.Movement{
 		ID: m.ID, Credit: leg(m.Credit), Debit: leg(m.Debit), Amount: m.Amount, Currency: ledger.Currency,
 		Code: m.Code, ValueTime: m.ValueTime, KnowledgeTime: m.KnowledgeTime, Description: m.Description,
-	}, nil
+	}
+	// A rule's posting names its cause and step (ADR-0011).
+	rec, ok, err := b.products.PostingByMovement(ctx, id)
+	if err != nil {
+		return core.Movement{}, err
+	}
+	if ok {
+		out.Step = rec.Step
+		if rec.Cause != "" {
+			if ev, found, err := b.events.ByID(ctx, rec.Cause); err != nil {
+				return core.Movement{}, err
+			} else if found {
+				cause := eventRecord(ev)
+				out.Cause = &cause
+			}
+		}
+	}
+	return out, nil
 }

@@ -81,15 +81,17 @@ func (p *Products) owed(ctx context.Context, now time.Time, cursor string, limit
 	return out, rows.Err()
 }
 
-// ApplyParameterChanges is the cascade at now: every account owed a
-// change is visited, under its lock and in a transaction of its own, its
-// changes since its applied-to instant fired and the instant advanced to
-// now; an account with no record is adopted silently. Returns early when
-// ctx ends, leaving the rest owed. An account whose rules this build
-// lacks is skipped and counted, as the pass does.
-func (p *Products) ApplyParameterChanges(ctx context.Context, books *ledger.Ledger, now time.Time, progress Progress) PassResult {
+// ApplyParameterChanges is the cascade of a root event (ADR-0011): every
+// account owed a change by the cause's instant is visited, under its lock
+// and in a transaction of its own, its changes between its applied-to
+// instant and the cause's fired under the cause, on the clock's day
+// (now), and the instant advanced to the cause's; an account with no
+// record is adopted silently. Returns early when ctx ends, leaving the
+// rest owed. An account whose rules this build lacks is skipped and
+// counted, as the pass does.
+func (p *Products) ApplyParameterChanges(ctx context.Context, books *ledger.Ledger, cause Cause, now time.Time, progress Progress) PassResult {
 	var res PassResult
-	total, err := p.CountParameterChangesOwed(ctx, now)
+	total, err := p.CountParameterChangesOwed(ctx, cause.At)
 	if err != nil {
 		log.Printf("parameter changes: %v", err)
 		return res
@@ -101,7 +103,7 @@ func (p *Products) ApplyParameterChanges(ctx context.Context, books *ledger.Ledg
 	cursor := ""
 	unknown := map[string]bool{}
 	for ctx.Err() == nil {
-		accounts, err := p.owed(ctx, now, cursor, passChunk)
+		accounts, err := p.owed(ctx, cause.At, cursor, passChunk)
 		if err != nil {
 			log.Printf("parameter changes: %v", err)
 			return res
@@ -124,7 +126,7 @@ func (p *Products) ApplyParameterChanges(ctx context.Context, books *ledger.Ledg
 				continue
 			}
 			unlock := books.Lock(a.ID)
-			fired, r, err := p.applyChanges(ctx, books, a, now)
+			fired, r, err := p.applyChanges(ctx, books, a, cause, now)
 			unlock()
 			if err != nil {
 				log.Printf("parameter changes: %s: %v", a.ID, err)
@@ -146,10 +148,10 @@ func (p *Products) ApplyParameterChanges(ctx context.Context, books *ledger.Ledg
 }
 
 // applyChanges is one account's cascade, in one transaction: the
-// parameters that differ between the applied-to instant and now are
-// fired, and the instant advanced. An account with no record is adopted:
-// stamped, nothing fired.
-func (p *Products) applyChanges(ctx context.Context, books *ledger.Ledger, a owedAccount, now time.Time) (fired bool, results []DayResult, err error) {
+// parameters that differ between the applied-to instant and the cause's
+// are fired, and the instant advanced to the cause's. An account with no
+// record is adopted: stamped, nothing fired.
+func (p *Products) applyChanges(ctx context.Context, books *ledger.Ledger, a owedAccount, cause Cause, now time.Time) (fired bool, results []DayResult, err error) {
 	prod, _ := p.ByID(a.Product)
 	tx, err := p.db.BeginTx(ctx, nil)
 	if err != nil {
@@ -169,13 +171,13 @@ func (p *Products) applyChanges(ctx context.Context, books *ledger.Ledger, a owe
 		var changes []gbp.Change
 		for _, d := range prod.Rules.Parameters() {
 			from, _ := p.resolveAt(ctx, tx, prod, a.ID, d.Key, a.appliedTo, knownAt) // unresolved then is a Param of nothing
-			to, _ := p.resolveAt(ctx, tx, prod, a.ID, d.Key, now, knownAt)
+			to, _ := p.resolveAt(ctx, tx, prod, a.ID, d.Key, cause.At, knownAt)
 			if from != to {
-				changes = append(changes, gbp.Change{Key: d.Key, From: from, To: to, Effective: now})
+				changes = append(changes, gbp.Change{Key: d.Key, From: from, To: to, Effective: cause.At})
 			}
 		}
 		for _, change := range changes {
-			r, err := p.run(gbp.EventParameterChange, books, a.Account, now, func(v gbp.Version, f gbp.Facts) (gbp.Intents, error) { return v.ParameterChange(f, change) })
+			r, err := p.run(gbp.EventParameterChange, books, a.Account, now, cause, func(v gbp.Version, f gbp.Facts) (gbp.Intents, error) { return v.ParameterChange(f, change) })
 			if err != nil {
 				return false, nil, err
 			}
@@ -185,7 +187,7 @@ func (p *Products) applyChanges(ctx context.Context, books *ledger.Ledger, a owe
 		}
 	}
 	if _, err = tx.ExecContext(ctx, `INSERT INTO product_account_parameters (account_id, applied_to) VALUES ($1, $2)
-		ON CONFLICT (account_id) DO UPDATE SET applied_to = EXCLUDED.applied_to`, a.ID, now.UTC()); err != nil {
+		ON CONFLICT (account_id) DO UPDATE SET applied_to = EXCLUDED.applied_to`, a.ID, cause.At.UTC()); err != nil {
 		return false, nil, fmt.Errorf("record parameters applied: %w", err)
 	}
 	if err = tx.Commit(); err != nil {

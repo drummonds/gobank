@@ -27,6 +27,14 @@ type Account struct {
 	Product string
 }
 
+// Cause is the root event a unit of work runs because of (ADR-0011): its
+// ID, carried onto every effect the work writes, and its instant, the
+// bank's time the work is due at.
+type Cause struct {
+	ID string
+	At time.Time
+}
+
 // DayResult is what one account's event changed in the bank's totals: the
 // interest applied to its balance and the day's accrual, in numerator
 // units over gbp.AccrualDenominator.
@@ -39,16 +47,16 @@ type DayResult struct {
 // Open runs the open event for a new account and then the day's rule, so
 // the account has its settings and its first position: the day's pass
 // has nothing left to do for it. The account's parameters count as
-// applied up to at, the instant it opens (ADR-0010): a setting effective
-// after that is a ParameterChange owed.
-func (p *Products) Open(books *ledger.Ledger, a Account, day, at time.Time) error {
-	if _, err := p.run(gbp.EventOpen, books, a, day, func(v gbp.Version, f gbp.Facts) (gbp.Intents, error) { return v.Open(f) }); err != nil {
+// applied up to the cause's instant, the one it opens at (ADR-0010): a
+// setting effective after that is a ParameterChange owed.
+func (p *Products) Open(books *ledger.Ledger, a Account, day time.Time, cause Cause) error {
+	if _, err := p.run(gbp.EventOpen, books, a, day, cause, func(v gbp.Version, f gbp.Facts) (gbp.Intents, error) { return v.Open(f) }); err != nil {
 		return err
 	}
-	if _, err := p.AccountDay(books, a, day); err != nil {
+	if _, err := p.AccountDay(books, a, day, cause); err != nil {
 		return err
 	}
-	if _, err := books.Querier().ExecContext(context.Background(), `INSERT INTO product_account_parameters (account_id, applied_to) VALUES ($1, $2)`, a.ID, at.UTC()); err != nil {
+	if _, err := books.Querier().ExecContext(context.Background(), `INSERT INTO product_account_parameters (account_id, applied_to) VALUES ($1, $2)`, a.ID, cause.At.UTC()); err != nil {
 		return fmt.Errorf("products: %s: record parameters applied: %w", a.ID, err)
 	}
 	return nil
@@ -61,8 +69,8 @@ func (p *Products) Open(books *ledger.Ledger, a Account, day, at time.Time) erro
 // account may be visited again after a restart, or by an event after the
 // pass, and the last writer's answer is the right one. The books may be
 // bound to the caller's transaction.
-func (p *Products) AccountDay(books *ledger.Ledger, a Account, day time.Time) (DayResult, error) {
-	return p.run(gbp.EventDay, books, a, day, func(v gbp.Version, f gbp.Facts) (gbp.Intents, error) { return v.Day(f) })
+func (p *Products) AccountDay(books *ledger.Ledger, a Account, day time.Time, cause Cause) (DayResult, error) {
+	return p.run(gbp.EventDay, books, a, day, cause, func(v gbp.Version, f gbp.Facts) (gbp.Intents, error) { return v.Day(f) })
 }
 
 // PostEvent posts a customer event — a transfer, a funding — to the
@@ -77,7 +85,7 @@ func (p *Products) AccountDay(books *ledger.Ledger, a Account, day time.Time) (D
 // the daily pass take turns on an account. What the rules changed in the
 // bank's totals is returned; the day's accrual is counted by the pass
 // alone, so an event's results carry none.
-func (p *Products) PostEvent(books *ledger.Ledger, day time.Time, creditID, debitID string, amount luca.Amount, code, description string, touched ...Account) ([]DayResult, error) {
+func (p *Products) PostEvent(books *ledger.Ledger, day time.Time, cause Cause, creditID, debitID string, amount luca.Amount, code, description string, touched ...Account) ([]DayResult, error) {
 	if err := books.Post(creditID, debitID, amount, code, day, description); err != nil {
 		return nil, err
 	}
@@ -88,7 +96,7 @@ func (p *Products) PostEvent(books *ledger.Ledger, day time.Time, creditID, debi
 			delta = -amount
 		}
 		m := gbp.Movement{Delta: delta, Code: code, Description: description, ValueTime: day}
-		r, err := p.run(gbp.EventPostPosting, books, a, day, func(v gbp.Version, f gbp.Facts) (gbp.Intents, error) { return v.PostPosting(f, m) })
+		r, err := p.run(gbp.EventPostPosting, books, a, day, cause, func(v gbp.Version, f gbp.Facts) (gbp.Intents, error) { return v.PostPosting(f, m) })
 		if err != nil {
 			return results, fmt.Errorf("products: %s after %s: %w", a.ID, description, err)
 		}
@@ -100,8 +108,12 @@ func (p *Products) PostEvent(books *ledger.Ledger, day time.Time, creditID, debi
 
 // run dispatches one event to the account's version and carries out the
 // intents: settings written, postings made and recorded, positions
-// projected, in that order, through the books' transaction.
-func (p *Products) run(event gbp.Event, books *ledger.Ledger, a Account, day time.Time, rule func(gbp.Version, gbp.Facts) (gbp.Intents, error)) (DayResult, error) {
+// projected, in that order, through the books' transaction, each effect
+// carrying the cause (ADR-0011). A posting is recorded against the
+// cause, the account and its step, which the record's key holds unique:
+// a replay that reaches a step already made is refused here and the
+// transaction with it.
+func (p *Products) run(event gbp.Event, books *ledger.Ledger, a Account, day time.Time, cause Cause, rule func(gbp.Version, gbp.Facts) (gbp.Intents, error)) (DayResult, error) {
 	prod, ok := p.ByID(a.Product)
 	if !ok || !prod.Carried() {
 		return DayResult{}, fmt.Errorf("%w: %s", ErrNotCarried, a.Product)
@@ -122,11 +134,17 @@ func (p *Products) run(event gbp.Event, books *ledger.Ledger, a Account, day tim
 	base, _ := f.Position(f.day.AddDate(0, 0, -1))
 	q := books.Querier()
 	for _, s := range in.Settings {
-		if err := p.params.Set(ctx, q, parameters.Setting{Scope: gbp.ScopeAccount, Owner: a.ID, Key: s.Key, Value: s.Text, Effective: s.Effective, Decided: p.now(), By: "rule"}); err != nil {
+		if err := p.params.Set(ctx, q, parameters.Setting{Scope: gbp.ScopeAccount, Owner: a.ID, Key: s.Key, Value: s.Text, Effective: s.Effective, Decided: p.now(), By: "rule", Cause: cause.ID}); err != nil {
+			return res, err
+		}
+		if err := p.effect(a.ID, "setting"); err != nil {
 			return res, err
 		}
 	}
 	for _, posting := range in.Postings {
+		if posting.Step == "" {
+			return res, fmt.Errorf("products: %s (%s v%d) %s posts %q with no step", a.Product, prod.RulesID, prod.RulesVersion, event, posting.Description)
+		}
 		// The posting names its counterparty by path: a P&L account on
 		// the ledger's chart. Its amount is signed as the balance is, so
 		// savings interest is negative: credited to the saver, debited to
@@ -145,16 +163,22 @@ func (p *Products) run(event gbp.Event, books *ledger.Ledger, a Account, day tim
 		if err != nil {
 			return res, fmt.Errorf("products: post %s: %w", posting.Description, err)
 		}
-		if _, err := q.ExecContext(ctx, `INSERT INTO product_postings (movement_id, account_id, product_id, rules, rules_version, event, parameters, input_balance, input_accrued_num, posted_at)
-			VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)`,
-			m.ID, a.ID, a.Product, prod.RulesID, prod.RulesVersion, string(event), f.readsText(), int64(input.Balance), accrualNumerator(input.Accrued), f.knownAt.UTC()); err != nil {
-			return res, fmt.Errorf("products: record posting %s: %w", m.ID, err)
+		if _, err := q.ExecContext(ctx, `INSERT INTO product_postings (movement_id, account_id, product_id, rules, rules_version, event, parameters, input_balance, input_accrued_num, posted_at, cause_id, step)
+			VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)`,
+			m.ID, a.ID, a.Product, prod.RulesID, prod.RulesVersion, string(event), f.readsText(), int64(input.Balance), accrualNumerator(input.Accrued), f.knownAt.UTC(), cause.ID, posting.Step); err != nil {
+			return res, fmt.Errorf("products: record posting %s (%s, step %s): %w", m.ID, event, posting.Step, err)
+		}
+		if err := p.effect(a.ID, "posting"); err != nil {
+			return res, err
 		}
 		res.Applied += posting.Amount
 	}
 	for i, pos := range in.Positions {
 		if _, err := books.Project(pos.AccountID, pos.Day, pos.Accrued); err != nil {
 			return res, fmt.Errorf("products: project %s on %s: %w", pos.AccountID, pos.Day.Format(time.DateOnly), err)
+		}
+		if err := p.effect(a.ID, "position"); err != nil {
+			return res, err
 		}
 		if i == len(in.Positions)-2 {
 			base = pos // yesterday closed by this event
