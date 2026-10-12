@@ -91,6 +91,21 @@ func BuildDocsHTML(components []Component, contractDebt []CrossRead) string {
 	return s.String()
 }
 
+// BuildADRIndexHTML lists the architecture decision records compiled into
+// this build: number, title, status and date, each linking the record.
+func BuildADRIndexHTML() string {
+	var s strings.Builder
+	s.WriteString(`<h2 class="title is-4">Architecture decision records</h2>`)
+	s.WriteString(`<p class="subtitle is-6 has-text-grey">The decisions this build is made to, each served whole with its diagrams. The <a href="about/docs">documentation</a> page summarises them.</p>`)
+	s.WriteString(`<div class="box"><table class="table is-narrow is-fullwidth is-striped"><thead><tr><th>ADR</th><th>Title</th><th>Status</th><th>Date</th></tr></thead><tbody>`)
+	for _, r := range adr.All() {
+		s.WriteString(fmt.Sprintf(`<tr><td>%04d</td><td><a href="about/docs/adr/%s">%s</a></td><td>%s</td><td>%s</td></tr>`,
+			r.Number, html.EscapeString(r.Slug), html.EscapeString(r.Title), html.EscapeString(r.Status), html.EscapeString(r.Date)))
+	}
+	s.WriteString(`</tbody></table></div>`)
+	return s.String()
+}
+
 // BuildADRHTML renders one ADR from its markdown.
 func BuildADRHTML(slug string) (string, bool) {
 	r, ok := adr.BySlug(slug)
@@ -103,7 +118,7 @@ func BuildADRHTML(slug string) (string, bool) {
 		return fmt.Sprintf(`<div class="notification is-danger">ADR %s: %s</div>`, html.EscapeString(slug), html.EscapeString(err.Error())), false
 	}
 	var s strings.Builder
-	s.WriteString(`<p><a href="about/docs">&larr; Documentation</a></p>`)
+	s.WriteString(`<p><a href="about/adr">&larr; Architecture decision records</a></p>`)
 	s.WriteString(`<div class="box content">`)
 	s.WriteString(body.String())
 	s.WriteString(`</div>`)

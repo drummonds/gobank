@@ -75,10 +75,14 @@ func TestMovementSVG(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, want := range []string{"<svg", "-1001.27", "-1.27", "easy-access", "Interest"} {
+	// Money is written as the bank writes it, the boxes filled in the bank's colours.
+	for _, want := range []string{"<svg", "-£1,001.27", "-£1.27", "easy-access", "Interest", `fill="` + movementPalette["Expense"] + `"`, `fill="` + movementPalette["Liability"] + `"`} {
 		if !strings.Contains(svg, want) {
 			t.Errorf("svg missing %q", want)
 		}
+	}
+	if strings.Contains(svg, "GBP") {
+		t.Error("svg still writes the commodity code")
 	}
 	if from, to := strings.Index(svg, ">Interest<"), strings.Index(svg, ">easy-access<"); from < 0 || to < 0 || nodeX(svg, from) >= nodeX(svg, to) {
 		t.Errorf("the expense is not drawn left of the savings account: from at %d, to at %d", nodeX(svg, from), nodeX(svg, to))
@@ -99,17 +103,21 @@ func nodeX(svg string, i int) int {
 	return int(x)
 }
 
-// The page carries the movement's two accounts and signed amount, the
-// drawing and the goluca text with its links; in the customer view it
-// says the movement stays in the bank's; with the WASM asset served it
-// embeds the model as JSON and loads the browser renderer on it.
+// The page carries the movement's two accounts and signed amount, its
+// code expanded, the drawing and the goluca text with its links, and no
+// caption on the drawing; in the customer view it says the movement
+// stays in the bank's; with the WASM asset served it embeds the model and
+// the drawing options as JSON and loads the browser renderer on them.
 func TestBuildMovementHTML(t *testing.T) {
 	page := BuildMovementHTML(interestMovement(), view.Bank, false)
 	for _, want := range []string{"From", "To", "Liability:Savings:cust-001:easy-access", "Expense:Interest", "-£1,001.27", "-£1.27",
-		"LDAS:FTDP:ACRU", "<svg", `id="movement-goluca"`, `href="movements/7f3a.goluca"`, `href="movements/7f3a.json"`, "by the BFF"} {
+		"LDAS:FTDP:ACRU", "Loans, Deposits and Syndications / Fixed Term Deposits / ACRU", "<svg", `id="movement-goluca"`, `href="movements/7f3a.goluca"`, `href="movements/7f3a.json"`} {
 		if !strings.Contains(page, want) {
 			t.Errorf("page missing %q", want)
 		}
+	}
+	if strings.Contains(page, "Drawn by") || strings.Contains(page, "by the BFF") {
+		t.Error("the drawing carries a caption")
 	}
 	if strings.Contains(page, "wasm_exec.js") {
 		t.Error("page loads the WASM renderer with no asset served")
@@ -119,7 +127,8 @@ func TestBuildMovementHTML(t *testing.T) {
 	}
 	customer := BuildMovementHTML(interestMovement(), view.Customer, true)
 	for _, want := range []string{"customer view", "wasm/wasm_exec.js", "wasm/pta2svg.wasm", "pta2svg.renderModel(",
-		`<script type="application/json" id="movement-model">`, `"from":"Expense:Interest"`, `"amount":-1.27`} {
+		`<script type="application/json" id="movement-model">`, `"from":"Expense:Interest"`, `"amount":-1.27`,
+		`<script type="application/json" id="movement-options">`, `"GBP":{"symbol":"£","decimals":2,"thousands":","}`, `"Expense":"` + movementPalette["Expense"] + `"`} {
 		if !strings.Contains(customer, want) {
 			t.Errorf("customer-view page with WASM missing %q", want)
 		}

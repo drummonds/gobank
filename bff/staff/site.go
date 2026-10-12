@@ -25,6 +25,7 @@ import (
 
 	dbexplorer "git.bytestone.uk/hum3/go-dbexplorer"
 	gbp "git.bytestone.uk/hum3/gobank-products"
+	"git.bytestone.uk/hum3/gobank/adr"
 	"git.bytestone.uk/hum3/gobank/core"
 	"git.bytestone.uk/hum3/gobank/internal/session"
 	"git.bytestone.uk/hum3/lofigui"
@@ -118,6 +119,10 @@ func (s *Site) status() string {
 	}
 	return "Stopped"
 }
+
+// polling says whether a page's own fragments should re-poll: while the
+// console runs.
+func (s *Site) polling() bool { return s.status() == "Running" }
 
 // --- what a page uses ---
 
@@ -258,44 +263,70 @@ func (s *Site) routes() {
 		s.page(w, r, func() string { return BuildBalanceSheetHTML(bank) })
 	})
 
-	// Products
+	// Products: the masters (a family's products, the bank's own) and
+	// the detail, a parameter's own page, which is also where a staff
+	// setting is made (ADR-0010): decided by the signed-in user.
 	mux.HandleFunc("/products/savings", func(w http.ResponseWriter, r *http.Request) {
-		s.page(w, r, func() string { return BuildProductsHTML(bank, gbp.FamilySavings, s.role(r).Can("settings")) })
+		s.page(w, r, func() string { return BuildProductsHTML(bank, gbp.FamilySavings, s.view(r), s.polling()) })
 	})
 	mux.HandleFunc("/products/lending", func(w http.ResponseWriter, r *http.Request) {
-		s.page(w, r, func() string { return BuildProductsHTML(bank, gbp.FamilyLending, s.role(r).Can("settings")) })
+		s.page(w, r, func() string { return BuildProductsHTML(bank, gbp.FamilyLending, s.view(r), s.polling()) })
 	})
-	// A staff setting of a product's parameter, effective at an instant
-	// (ADR-0010): decided by the signed-in user.
-	mux.HandleFunc("/products/set", func(w http.ResponseWriter, r *http.Request) {
-		back := "products/savings"
-		if r.FormValue("family") == string(gbp.FamilyLending) {
-			back = "products/lending"
-		}
-		if r.Method != "POST" {
-			s.redirect(w, r, back)
+	mux.HandleFunc("/products/bank", func(w http.ResponseWriter, r *http.Request) {
+		s.page(w, r, func() string { return BuildBankHTML(bank, s.polling()) })
+	})
+	mux.HandleFunc("/products/{owner}/parameters/{key}", func(w http.ResponseWriter, r *http.Request) {
+		owner, key := r.PathValue("owner"), r.PathValue("key")
+		d, err := bank.Parameter(r.Context(), owner, key)
+		if err != nil {
+			http.NotFound(w, r)
 			return
 		}
-		if !s.require(w, r, "settings") {
-			return
+		detail := func(refused string) string {
+			d, _ = bank.Parameter(r.Context(), owner, key) // after a setting, the state as it now is
+			pos, _ := bank.Position(r.Context())
+			return BuildParameterHTML(d, pos.Day, s.role(r).Can("settings"), s.polling(), refused)
 		}
-		sess, _ := signedIn(r)
-		setting := core.ParameterSetting{ProductID: r.FormValue("product"), Key: r.FormValue("key"), Value: r.FormValue("value"), By: sess.user.Login}
-		if setting.Effective, _ = time.Parse("2006-01-02T15:04", r.FormValue("effective")); setting.Effective.IsZero() {
-			if pos, err := bank.Position(r.Context()); err == nil {
-				setting.Effective = pos.Day // an empty instant is the bank's day: in force from now
+		switch r.Method {
+		case "GET":
+			content := detail(r.URL.Query().Get("refused"))
+			if s.fragment(w, r, content) {
+				return
 			}
+			s.staticPage(w, r, `<p><a href="`+ownerPage(d)+`">&larr; Products</a></p>`+content)
+		case "POST":
+			if !s.require(w, r, "settings") {
+				return
+			}
+			if s.cfg.Commands == nil {
+				http.Error(w, "Forbidden", http.StatusForbidden)
+				return
+			}
+			sess, _ := signedIn(r)
+			setting := core.ParameterSetting{ProductID: owner, Key: key, Value: r.FormValue("value"), By: sess.user.Login}
+			if setting.Effective, _ = time.Parse("2006-01-02T15:04", r.FormValue("effective")); setting.Effective.IsZero() {
+				if pos, err := bank.Position(r.Context()); err == nil {
+					setting.Effective = pos.Day // an empty instant is the bank's day: in force from now
+				}
+			}
+			refused := ""
+			if err := s.cfg.Commands.SetParameter(r.Context(), setting); err != nil {
+				log.Printf("set parameter %+v: %v", setting, err)
+				refused = err.Error()
+			}
+			if r.Header.Get("HX-Request") == "true" {
+				w.Header().Set("Content-Type", "text/html; charset=utf-8")
+				fmt.Fprint(w, detail(refused))
+				return
+			}
+			page := parameterPath(owner, key)
+			if refused != "" {
+				page += "?refused=" + url.QueryEscape(refused)
+			}
+			s.redirect(w, r, page)
+		default:
+			http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 		}
-		if s.cfg.Commands == nil {
-			http.Error(w, "Forbidden", http.StatusForbidden)
-			return
-		}
-		if err := s.cfg.Commands.SetParameter(r.Context(), setting); err != nil {
-			log.Printf("set parameter %+v: %v", setting, err)
-			s.redirect(w, r, back+"?refused="+url.QueryEscape(err.Error()))
-			return
-		}
-		s.redirect(w, r, back)
 	})
 
 	// Customers
@@ -406,8 +437,18 @@ func (s *Site) routes() {
 	mux.HandleFunc("/about/docs", func(w http.ResponseWriter, r *http.Request) {
 		s.page(w, r, func() string { return BuildDocsHTML(s.cfg.Components, s.cfg.Debt) })
 	})
+	mux.HandleFunc("/about/adr", func(w http.ResponseWriter, r *http.Request) {
+		s.page(w, r, BuildADRIndexHTML)
+	})
+	// An ADR whole: its page, or one of the diagrams and sources its
+	// markdown names beside it.
 	mux.HandleFunc("/about/docs/adr/", func(w http.ResponseWriter, r *http.Request) {
 		slug := strings.TrimPrefix(r.URL.Path, "/about/docs/adr/")
+		if body, kind, ok := adr.Asset(slug); ok {
+			w.Header().Set("Content-Type", kind)
+			w.Write(body)
+			return
+		}
 		page, ok := BuildADRHTML(slug)
 		if !ok {
 			http.NotFound(w, r)

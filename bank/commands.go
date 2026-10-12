@@ -14,6 +14,7 @@ import (
 	"git.bytestone.uk/hum3/gobank/bank/customers"
 	"git.bytestone.uk/hum3/gobank/bank/events"
 	"git.bytestone.uk/hum3/gobank/bank/ledger"
+	"git.bytestone.uk/hum3/gobank/bank/market"
 	"git.bytestone.uk/hum3/gobank/bank/parameters"
 	"git.bytestone.uk/hum3/gobank/bank/payments"
 	"git.bytestone.uk/hum3/gobank/bank/products"
@@ -493,6 +494,55 @@ func (b *Bank) UpcomingSettings(ctx context.Context) ([]core.Setting, error) {
 		out[i] = core.Setting{Scope: string(u.Scope), Owner: u.Owner, Key: u.Key, Value: u.Value, Effective: u.Effective, Decided: u.Decided, By: u.By}
 	}
 	return out, nil
+}
+
+// Parameter implements core.ProductQueries: one parameter by its owner
+// and key. A product's is as its rules declare it, the value in force the
+// latest setting effective by the clock's instant or, failing one, the
+// published value; a currency's is its market's risk-free rate, which the
+// feed writes and nobody sets. The bank has none of its own until policy
+// as code.
+func (b *Bank) Parameter(ctx context.Context, owner, key string) (core.ParameterDetail, error) {
+	b.open.RLock()
+	defer b.open.RUnlock()
+	now := b.clock.Now()
+	var d gbp.Declaration
+	detail := core.ParameterDetail{Owner: owner, Key: key}
+	if prod, ok := b.products.ByID(owner); ok {
+		if !prod.Carried() {
+			return core.ParameterDetail{}, core.ErrNotFound
+		}
+		if d, ok = gbp.Declared(prod.Rules, key); !ok {
+			return core.ParameterDetail{}, core.ErrNotFound
+		}
+		detail.Family = string(prod.Family())
+		detail.Settable = d.Scope == gbp.ScopeVersion && d.Derived == nil
+		detail.InForce = d.Published
+	} else if src, ok := market.ByCurrency(owner); ok && key == gbp.RiskFreeRateKey {
+		d = gbp.Declaration{Key: key, Scope: gbp.ScopeMarket, Kind: gbp.KindBps, Description: src.Rate + ", as " + src.Name + " publishes it"}
+	} else {
+		return core.ParameterDetail{}, core.ErrNotFound
+	}
+	detail.Scope, detail.Kind, detail.Description = string(d.Scope), string(d.Kind), d.Description
+	if d.Derived != nil {
+		detail.Derived, detail.Derivation = true, describeDerivation(*d.Derived)
+	} else {
+		if value, ok, err := b.settings.Resolve(ctx, nil, d.Scope, owner, key, now, now); err != nil {
+			return core.ParameterDetail{}, err
+		} else if ok {
+			detail.InForce = value
+		}
+	}
+	upcoming, err := b.settings.Upcoming(ctx, nil, now)
+	if err != nil {
+		return core.ParameterDetail{}, err
+	}
+	for _, u := range upcoming {
+		if u.Scope == d.Scope && u.Owner == owner && u.Key == key {
+			detail.Upcoming = append(detail.Upcoming, core.Setting{Scope: string(u.Scope), Owner: u.Owner, Key: u.Key, Value: u.Value, Effective: u.Effective, Decided: u.Decided, By: u.By})
+		}
+	}
+	return detail, nil
 }
 
 // SetParameter implements core.ProductCommands: a staff member's setting

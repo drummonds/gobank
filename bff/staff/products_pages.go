@@ -5,30 +5,33 @@ import (
 	"fmt"
 	"html"
 	"math"
+	"net/url"
+	"strconv"
 	"strings"
 	"time"
 
 	gbp "git.bytestone.uk/hum3/gobank-products"
 	"git.bytestone.uk/hum3/gobank/core"
+	"git.bytestone.uk/hum3/gobank/internal/view"
 )
 
-// BuildProductsHTML renders product cards for a given family, with each
-// product's book from the core, the settings upcoming for each, and, for
-// a role that may set them, a form to set one of a product's own
-// parameters effective at an instant (ADR-0010). For savings, appends
-// the pound's market: the rate in force, its next decision day and the
-// rate's history.
-func BuildProductsHTML(q core.StaffQueries, family gbp.ProductFamily, canSet bool) string {
+// The products pages are a master-detail (lofigui's HTMX multipage
+// pattern): the master, a family's product cards or the bank's own, lists
+// parameters as rows; a row loads the parameter's own page into the
+// detail beside it. While the simulation runs the master re-polls itself
+// alone, so the detail and anything typed in it stand.
+
+// BuildProductsHTML renders a family's product cards, each with its book
+// from the core as the session's view shows it, its own parameters (the
+// version scope: the market's and the bank's are on the bank tab) and the
+// settings upcoming for each.
+func BuildProductsHTML(q core.StaffQueries, family gbp.ProductFamily, v view.View, polling bool) string {
 	ctx := context.Background()
 	products, _ := q.Products(ctx)
-	pos, _ := q.Position(ctx)
-	hist, _ := q.History(ctx)
 	upcoming, _ := q.UpcomingSettings(ctx)
-	rateHistory, riskFree := hist.RiskFree, pos.RiskFreeBps
 
 	var s strings.Builder
 	s.WriteString(fmt.Sprintf(`<h2 class="title is-4">%s Products</h2>`, family))
-
 	for _, p := range products {
 		if p.Family != string(family) {
 			continue
@@ -47,44 +50,87 @@ func BuildProductsHTML(q core.StaffQueries, family gbp.ProductFamily, canSet boo
 		s.WriteString(`<div class="columns">`)
 		s.WriteString(fmt.Sprintf(`<div class="column"><strong>Rate:</strong> %s</div>`, FormatRateBps(p.RateBps)))
 		s.WriteString(fmt.Sprintf(`<div class="column"><strong>Accounts:</strong> %d</div>`, p.Accounts))
-		s.WriteString(fmt.Sprintf(`<div class="column"><strong>Product total:</strong> %s</div>`, FormatMoney(p.Balance)))
+		s.WriteString(fmt.Sprintf(`<div class="column"><strong>Product total:</strong> %s</div>`, FormatMoney(v.Money(p.Balance, p.Family))))
 		s.WriteString(fmt.Sprintf(`<div class="column"><strong>Adopted:</strong> %s <span class="has-text-grey is-size-7">gobank-products %s</span></div>`, p.Adopted.Format("2006-01-02"), p.ModuleVersion))
 		s.WriteString(`</div>`)
-		s.WriteString(`<table class="table is-narrow is-size-7"><thead><tr><th>Parameter</th><th>Scope</th><th>Kind</th><th>Published</th></tr></thead><tbody>`)
+		var rows []string
 		for _, param := range p.Parameters {
-			s.WriteString(fmt.Sprintf(`<tr><td><code>%s</code></td><td>%s</td><td>%s</td><td>%s</td></tr>`, param.Key, param.Scope, param.Kind, param.Value))
+			if param.Scope == string(gbp.ScopeVersion) {
+				rows = append(rows, parameterRow(p.ID, param.Key, param.Kind, param.Value))
+			}
 		}
-		s.WriteString(`</tbody></table>`)
+		s.WriteString(parameterTable(rows, "Published"))
 		s.WriteString(renderUpcoming(p.ID, upcoming))
-		if canSet && p.Carried {
-			s.WriteString(renderSetParameter(p, family, pos.Day))
-		}
 		s.WriteString(`</div>`)
 	}
+	return masterDetail(s.String(), "products/"+strings.ToLower(string(family)), polling)
+}
 
-	// The pound's market (ADR-0009), for the savings family: the rate in
-	// force and the next decision day on its calendar, at which it
-	// publishes a change or nothing (ADR-0010).
-	if family == gbp.FamilySavings {
-		markets, _ := q.Markets(ctx)
-		for _, m := range markets {
-			if m.Currency != "GBP" {
-				continue
-			}
-			next := "none on the calendar"
-			if !m.NextDecision.IsZero() {
-				next = m.NextDecision.UTC().Format("2 Jan 2006 15:04") + " UTC"
-			}
-			s.WriteString(fmt.Sprintf(`<div class="box mt-4">
+// BuildBankHTML renders the bank tab: what is the bank's and not a
+// product's. Each market the bank knows (ADR-0009), with the rate in
+// force, the next decision day on its calendar, the rate's history and
+// its parameter at the market scope; then the bank's own: its reserve
+// ratio, and the parameters at the bank scope, which policy as code
+// brings.
+func BuildBankHTML(q core.StaffQueries, polling bool) string {
+	ctx := context.Background()
+	pos, _ := q.Position(ctx)
+	hist, _ := q.History(ctx)
+	markets, _ := q.Markets(ctx)
+
+	var s strings.Builder
+	s.WriteString(`<h2 class="title is-4">The Bank</h2>`)
+	for _, m := range markets {
+		next := "none on the calendar"
+		if !m.NextDecision.IsZero() {
+			next = m.NextDecision.UTC().Format("2 Jan 2006 15:04") + " UTC"
+		}
+		s.WriteString(fmt.Sprintf(`<div class="box">
   <h3 class="title is-5">%s (%s)</h3>
   <p class="subtitle is-6 has-text-grey">In force: %s &middot; Next decision day: %s &middot; <a href="%s">%s</a></p>`,
-				html.EscapeString(m.Rate), html.EscapeString(m.Name), FormatRateBps(riskFree), next, html.EscapeString(m.Page), html.EscapeString(m.Name)))
-			s.WriteString(buildBoERateGraph(rateHistory))
-			s.WriteString(`</div>`)
+			html.EscapeString(m.Rate), html.EscapeString(m.Name), FormatRateBps(m.RateBps), next, html.EscapeString(m.Page), html.EscapeString(m.Name)))
+		if m.Currency == "GBP" {
+			s.WriteString(buildBoERateGraph(hist.RiskFree))
 		}
+		s.WriteString(parameterTable([]string{parameterRow(m.Currency, gbp.RiskFreeRateKey, string(gbp.KindBps), strconv.FormatInt(m.RateBps, 10))}, "In force"))
+		s.WriteString(`</div>`)
 	}
+	s.WriteString(`<div class="box"><h3 class="title is-5">The bank's own</h3>`)
+	s.WriteString(fmt.Sprintf(`<p><strong>Reserve ratio:</strong> %.0f%% <span class="has-text-grey is-size-7">the fraction of deposits held as reserves at the Bank of England; a constant of the bank, not a parameter</span></p>`, pos.ReserveRatio*100))
+	s.WriteString(`<p class="has-text-grey mt-3">No parameters at the bank scope yet: policy as code brings the policy's spread and lag here.</p>`)
+	s.WriteString(`</div>`)
+	return masterDetail(s.String(), "products/bank", polling)
+}
 
-	return s.String()
+// masterDetail lays the master out beside an empty detail. While the
+// simulation runs the master re-polls its own page and keeps its own
+// column of it, so the detail stands.
+func masterDetail(master, page string, polling bool) string {
+	poll := ""
+	if polling {
+		poll = fmt.Sprintf(` hx-get="%s" hx-trigger="every 2s" hx-swap="outerHTML" hx-select="#products-master"`, page)
+	}
+	return fmt.Sprintf(`<div class="columns"><div class="column is-7" id="products-master"%s>%s</div><div class="column is-5"><div id="parameter-detail"></div></div></div>`, poll, master)
+}
+
+// parameterRow is a parameter's row in a master: its key a link that
+// loads the parameter's page into the detail, and the whole page for a
+// browser without HTMX.
+func parameterRow(owner, key, kind, value string) string {
+	page := parameterPath(owner, key)
+	return fmt.Sprintf(`<tr><td><a href="%s" hx-get="%s" hx-target="#parameter-detail" hx-swap="outerHTML" hx-push-url="true"><code>%s</code></a></td><td>%s</td><td>%s</td></tr>`,
+		page, page, html.EscapeString(key), html.EscapeString(kind), html.EscapeString(value))
+}
+
+func parameterPath(owner, key string) string {
+	return "products/" + url.PathEscape(owner) + "/parameters/" + url.PathEscape(key)
+}
+
+func parameterTable(rows []string, valueHeading string) string {
+	if len(rows) == 0 {
+		return ""
+	}
+	return `<table class="table is-narrow is-size-7"><thead><tr><th>Parameter</th><th>Kind</th><th>` + valueHeading + `</th></tr></thead><tbody>` + strings.Join(rows, "") + `</tbody></table>`
 }
 
 // renderUpcoming lists a product's settings decided and not yet in force.
@@ -92,40 +138,90 @@ func renderUpcoming(productID string, upcoming []core.Setting) string {
 	var rows []string
 	for _, u := range upcoming {
 		if u.Scope == string(gbp.ScopeVersion) && u.Owner == productID {
-			rows = append(rows, fmt.Sprintf(`<tr><td><code>%s</code></td><td>%s</td><td>%s</td><td>%s</td><td>%s</td></tr>`,
-				html.EscapeString(u.Key), html.EscapeString(u.Value), u.Effective.UTC().Format("2 Jan 2006 15:04"), u.Decided.UTC().Format("2 Jan 2006 15:04"), html.EscapeString(u.By)))
+			rows = append(rows, upcomingRow(u))
 		}
 	}
 	if len(rows) == 0 {
 		return ""
 	}
-	return `<h4 class="title is-6 mt-3 mb-1">Upcoming</h4><table class="table is-narrow is-size-7"><thead><tr><th>Parameter</th><th>Value</th><th>Effective (UTC)</th><th>Decided</th><th>By</th></tr></thead><tbody>` +
+	return `<h4 class="title is-6 mt-3 mb-1">Upcoming</h4>` + upcomingTable(rows)
+}
+
+func upcomingRow(u core.Setting) string {
+	return fmt.Sprintf(`<tr><td><code>%s</code></td><td>%s</td><td>%s</td><td>%s</td><td>%s</td></tr>`,
+		html.EscapeString(u.Key), html.EscapeString(u.Value), u.Effective.UTC().Format("2 Jan 2006 15:04"), u.Decided.UTC().Format("2 Jan 2006 15:04"), html.EscapeString(u.By))
+}
+
+func upcomingTable(rows []string) string {
+	return `<table class="table is-narrow is-size-7"><thead><tr><th>Parameter</th><th>Value</th><th>Effective (UTC)</th><th>Decided</th><th>By</th></tr></thead><tbody>` +
 		strings.Join(rows, "") + `</tbody></table>`
 }
 
-// renderSetParameter is the form to set one of a product's own
-// parameters: those its rules declare at the product's scope and do not
-// derive. The instant is UTC; empty means the bank's day, in force now.
-func renderSetParameter(p core.Product, family gbp.ProductFamily, day time.Time) string {
-	var options []string
-	for _, param := range p.Parameters {
-		if param.Scope == string(gbp.ScopeVersion) && !param.Derived {
-			options = append(options, fmt.Sprintf(`<option value="%s">%s (%s)</option>`, html.EscapeString(param.Key), html.EscapeString(param.Key), html.EscapeString(param.Kind)))
+// BuildParameterHTML renders a parameter's own page, the detail: its
+// declaration, its state (the value in force and the settings upcoming),
+// and, for a parameter staff may set and a role that may, the set form.
+// The state alone re-polls while the simulation runs; the form never
+// does, so what is typed stands. A refused setting is shown with its
+// reason. The instant is UTC; empty means the bank's day, in force now.
+func BuildParameterHTML(d core.ParameterDetail, day time.Time, canSet, polling bool, refused string) string {
+	page := parameterPath(d.Owner, d.Key)
+	var s strings.Builder
+	s.WriteString(`<div id="parameter-detail"><div class="box">`)
+	s.WriteString(fmt.Sprintf(`<h3 class="title is-5"><code>%s</code> <span class="tag is-light">%s</span> <span class="tag is-light">%s</span></h3>`,
+		html.EscapeString(d.Key), html.EscapeString(d.Scope), html.EscapeString(d.Kind)))
+	s.WriteString(fmt.Sprintf(`<p class="subtitle is-6 has-text-grey">%s &middot; <a href="%s">%s</a></p>`, html.EscapeString(d.Description), ownerPage(d), html.EscapeString(d.Owner)))
+	if d.Derived {
+		s.WriteString(fmt.Sprintf(`<p><strong>Derived:</strong> %s <span class="has-text-grey is-size-7">by the rules' code; it has no settings of its own</span></p>`, html.EscapeString(d.Derivation)))
+	}
+	poll := ""
+	if polling {
+		poll = fmt.Sprintf(` hx-get="%s" hx-trigger="every 2s" hx-swap="outerHTML" hx-select="#parameter-state"`, page)
+	}
+	s.WriteString(fmt.Sprintf(`<div id="parameter-state"%s>`, poll))
+	switch {
+	case d.Derived:
+	case d.Scope == string(gbp.ScopeAccount):
+		s.WriteString(`<p><strong>In force:</strong> <span class="has-text-grey">one value per account, written at its opening</span></p>`)
+	case d.InForce == "":
+		s.WriteString(`<p><strong>In force:</strong> <span class="has-text-grey">none yet</span></p>`)
+	default:
+		s.WriteString(fmt.Sprintf(`<p><strong>In force:</strong> %s</p>`, html.EscapeString(d.InForce)))
+	}
+	s.WriteString(`<h4 class="title is-6 mt-3 mb-1">Upcoming</h4>`)
+	if len(d.Upcoming) == 0 {
+		s.WriteString(`<p class="has-text-grey">Nothing upcoming.</p>`)
+	} else {
+		rows := make([]string, len(d.Upcoming))
+		for i, u := range d.Upcoming {
+			rows[i] = upcomingRow(u)
 		}
+		s.WriteString(upcomingTable(rows))
 	}
-	if len(options) == 0 {
-		return ""
+	s.WriteString(`</div>`)
+	if refused != "" {
+		s.WriteString(fmt.Sprintf(`<div class="notification is-danger is-light mt-3">Refused: %s</div>`, html.EscapeString(refused)))
 	}
-	return fmt.Sprintf(`<form action="products/set" method="post" class="mt-3">
-  <input type="hidden" name="product" value="%s"><input type="hidden" name="family" value="%s">
+	if canSet && d.Settable {
+		s.WriteString(fmt.Sprintf(`<form hx-post="%s" hx-target="#parameter-detail" hx-swap="outerHTML" action="%s" method="post" class="mt-3">
   <div class="field is-grouped is-grouped-multiline">
-    <div class="control"><div class="select is-small"><select name="key">%s</select></div></div>
-    <div class="control"><input class="input is-small" type="text" name="value" placeholder="value" required></div>
+    <div class="control"><input class="input is-small" type="text" name="value" placeholder="value (%s)" required></div>
     <div class="control"><input class="input is-small" type="datetime-local" name="effective" value="%s" min="%s"></div>
     <div class="control"><button class="button is-small is-primary" type="submit">Set parameter</button></div>
   </div>
   <p class="help">Decided now, effective at the instant (UTC); the product's accounts are told when the clock reaches it</p>
-</form>`, html.EscapeString(p.ID), family, strings.Join(options, ""), day.AddDate(0, 0, 1).Format("2006-01-02T15:04"), day.Format("2006-01-02T15:04"))
+</form>`, page, page, html.EscapeString(d.Kind), day.AddDate(0, 0, 1).Format("2006-01-02T15:04"), day.Format("2006-01-02T15:04")))
+	}
+	s.WriteString(`</div></div>`)
+	return s.String()
+}
+
+// ownerPage is the master a parameter's owner is listed on: a product's
+// family page, or the bank tab for a market's or the bank's own.
+func ownerPage(d core.ParameterDetail) string {
+	if d.Family != "" {
+		return "products/" + strings.ToLower(d.Family)
+	}
+	return "products/bank"
 }
 
 // buildBoERateGraph renders an SVG line chart of the risk-free rate (basis points, drawn as a percentage) over simulated time.

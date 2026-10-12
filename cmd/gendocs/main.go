@@ -1,4 +1,6 @@
-// Command gendocs generates docs/index.html from bff/staff/project_data.json.
+// Command gendocs generates docs/index.html from bff/staff/project_data.json
+// and docs/adr/index.html from the embedded ADRs, so the static site
+// carries the records with the same index the running system serves.
 package main
 
 import (
@@ -6,6 +8,8 @@ import (
 	"html/template"
 	"log"
 	"os"
+
+	"git.bytestone.uk/hum3/gobank/adr"
 )
 
 type scopeItem struct {
@@ -71,6 +75,7 @@ const tmpl = `<!DOCTYPE html>
             <p class="menu-label">Docs</p>
             <ul class="menu-list">
               <li><a href="ROADMAP.html">Roadmap</a></li>
+              <li><a href="adr/">Architecture decisions</a></li>
               <li><a href="benchmark.html">Performance</a></li>
               <li><a href="upgrade-drill.html">Upgrade drill</a></li>
               <li><a href="app.html">Customer app</a></li>
@@ -161,4 +166,63 @@ func main() {
 	}
 
 	log.Printf("generated %s from %s", outPath, dataPath)
+
+	if err := writeADRIndex("docs/adr/index.html"); err != nil {
+		log.Fatal(err)
+	}
+}
+
+const adrTmpl = `<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>gobank &mdash; Architecture decision records</title>
+  <link rel="icon" type="image/svg+xml" href="../favicon.svg">
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bulma@1.0.4/css/bulma.min.css">
+</head>
+<body>
+  <nav class="navbar is-primary">
+    <div class="navbar-brand">
+      <a class="navbar-item has-text-weight-bold" href="../">gobank</a>
+    </div>
+  </nav>
+  <section class="section">
+    <div class="container">
+      <h1 class="title">Architecture decision records</h1>
+      <p class="subtitle has-text-grey">The decisions the Model Bank is built to, each with its diagrams.</p>
+      <table class="table is-fullwidth is-striped">
+        <thead><tr><th>ADR</th><th>Title</th><th>Status</th><th>Date</th></tr></thead>
+        <tbody>
+        {{- range .}}
+        <tr><td>{{printf "%04d" .Number}}</td><td><a href="{{printf "%04d" .Number}}-{{.Slug}}.html">{{.Title}}</a></td><td>{{.Status}}</td><td>{{.Date}}</td></tr>
+        {{- end}}
+        </tbody>
+      </table>
+    </div>
+  </section>
+</body>
+</html>
+`
+
+// writeADRIndex writes the ADR index beside the records md2html renders,
+// one HTML file per numbered markdown file.
+func writeADRIndex(outPath string) error {
+	t, err := template.New("adr").Parse(adrTmpl)
+	if err != nil {
+		return err
+	}
+	if err := os.MkdirAll("docs/adr", 0o755); err != nil {
+		return err
+	}
+	f, err := os.Create(outPath)
+	if err != nil {
+		return err
+	}
+	defer f.Close()
+	if err := t.Execute(f, adr.All()); err != nil {
+		return err
+	}
+	log.Printf("generated %s from the ADRs", outPath)
+	return nil
 }

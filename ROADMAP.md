@@ -706,7 +706,7 @@ root module, `cmd/bff` is the service binary, and `app/` is the Flutter shell.
   position each account's fact. Out of scope: continuations (sleep,
   maturity, 1.8.11), human steps (the first workflow), any change to
   `core.Commands`
-- **1.8.7** a movement keeps its sign (ADR-0008 amended) — the ledger
+- **1.8.7** [x] (v0.35.0) a movement keeps its sign (ADR-0008 amended) — the ledger
   records a contract posting as written, a signed amount from the
   counterparty to the account, and the bank writes its own events the
   same way (a deposit negative from cash, a transfer negative from payer

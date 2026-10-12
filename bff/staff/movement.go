@@ -66,7 +66,17 @@ func (s *Site) movementRoutes() {
 			w.Header().Set("Content-Type", "application/json")
 			_ = json.NewEncoder(w).Encode(m)
 		default:
-			s.page(w, r, func() string { return BuildMovementHTML(m, s.view(r), s.wasmServed()) })
+			// Quiescent once loaded: a movement does not change, so the
+			// page never re-polls.
+			if r.Method != "GET" {
+				http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+				return
+			}
+			content := BuildMovementHTML(m, s.view(r), s.wasmServed())
+			if s.fragment(w, r, content) {
+				return
+			}
+			s.staticPage(w, r, content)
 		}
 	})
 	sub, _ := fs.Sub(wasmFiles, "wasm")
@@ -134,11 +144,31 @@ func major(v luca.Amount) float64 {
 	return float64(v) / 100
 }
 
+// movementPalette fills pta2svg's boxes in the bank's colours: the light
+// shades of the Bulma tags accountTypeTag uses for the same types.
+var movementPalette = map[string]string{
+	"Asset":     "#d1f0e2", // success
+	"Liability": "#fcd5dd", // danger
+	"Equity":    "#fff3c4", // warning
+	"Income":    "#d6e6f5", // info
+	"Expense":   "#ccfaf3", // primary
+}
+
+// movementOptions is how the movement is drawn, by the BFF and in the
+// browser alike: the layered layout, so the account the movement is from
+// sits left of the account it is to and the arrow reads with the
+// movement (the column layout would place them by account type); money
+// written as the bank writes it; the boxes in the bank's colours.
+func movementOptions(m core.Movement) pta2svg.Options {
+	return pta2svg.Options{
+		Layout: pta2svg.Sugiyama, Title: "Movement " + m.ID,
+		Commodities: map[string]pta2svg.Commodity{"GBP": {Symbol: "£", Decimals: 2, Thousands: ","}},
+		Palette:     movementPalette,
+	}
+}
+
 // MovementSVG is the movement drawn by pta2svg from its model, or an
-// empty string and the error when it cannot be drawn. The layered layout
-// puts the account the movement is from on the left and the account it
-// is to on the right, so the arrow reads with the movement; the column
-// layout would place them by account type.
+// empty string and the error when it cannot be drawn.
 func MovementSVG(m core.Movement) (string, error) {
 	model := MovementModel(m)
 	d, err := model.Diagram()
@@ -146,7 +176,7 @@ func MovementSVG(m core.Movement) (string, error) {
 		return "", err
 	}
 	var buf bytes.Buffer
-	err = pta2svg.RenderDiagram(&buf, d, pta2svg.Options{Layout: pta2svg.Sugiyama, Title: "Movement " + m.ID})
+	err = pta2svg.RenderDiagram(&buf, d, movementOptions(m))
 	return buf.String(), err
 }
 
@@ -159,7 +189,7 @@ func BuildMovementHTML(m core.Movement, v view.View, wasm bool) string {
 	fmt.Fprintf(&s, `<h2 class="title is-4">Movement</h2><p class="subtitle is-6 has-text-grey"><code>%s</code></p>`, html.EscapeString(m.ID))
 	s.WriteString(`<div class="box"><div class="columns">`)
 	fmt.Fprintf(&s, `<div class="column"><strong>Amount:</strong> %s</div>`, FormatMoney(m.Amount))
-	fmt.Fprintf(&s, `<div class="column"><strong>Code:</strong> <code>%s</code></div>`, html.EscapeString(m.Code))
+	fmt.Fprintf(&s, `<div class="column"><strong>Code:</strong> <code>%s</code> <span class="has-text-grey is-size-7">%s</span></div>`, html.EscapeString(m.Code), html.EscapeString(DescribeCode(m.Code)))
 	fmt.Fprintf(&s, `<div class="column"><strong>Value:</strong> %s</div>`, FormatUTC(m.ValueTime))
 	fmt.Fprintf(&s, `<div class="column"><strong>Known:</strong> %s</div>`, FormatUTC(m.KnowledgeTime))
 	s.WriteString(`</div>`)
@@ -186,22 +216,19 @@ func BuildMovementHTML(m core.Movement, v view.View, wasm bool) string {
 	} else {
 		s.WriteString(`<div id="movement-svg">` + svg + `</div>`)
 	}
-	s.WriteString(`<p class="has-text-grey is-size-7">Drawn by <a href="https://git.bytestone.uk/hum3/pta2svg">pta2svg</a> from the goluca text below`)
-	if wasm {
-		s.WriteString(`, in this browser <span id="movement-renderer">(loading…)</span>`)
-	} else {
-		s.WriteString(` by the BFF`)
-	}
-	s.WriteString(`.</p></div>`)
+	s.WriteString(`</div>`)
 
 	s.WriteString(`<div class="box"><h3 class="title is-5">As goluca</h3>`)
 	fmt.Fprintf(&s, `<pre id="movement-goluca">%s</pre>`, html.EscapeString(MovementGoluca(m)))
 	fmt.Fprintf(&s, `<p><a href="movements/%s.goluca">goluca</a> · <a href="movements/%s.json">JSON</a></p></div>`, html.EscapeString(m.ID), html.EscapeString(m.ID))
 	if wasm {
-		// The model the browser renders, as JSON; encoding/json escapes
-		// <, > and & so the script element cannot be closed early.
+		// The model the browser renders and the options it draws it
+		// under, as JSON; encoding/json escapes <, > and & so a script
+		// element cannot be closed early.
 		model, _ := json.Marshal(MovementModel(m))
+		options, _ := json.Marshal(movementOptions(m))
 		fmt.Fprintf(&s, `<script type="application/json" id="movement-model">%s</script>`, model)
+		fmt.Fprintf(&s, `<script type="application/json" id="movement-options">%s</script>`, options)
 		s.WriteString(movementWASMScript)
 	}
 	return s.String()
@@ -225,23 +252,25 @@ func accountTypeTag(kind string) string {
 	return fmt.Sprintf(`<span class="tag %s">%s</span>`, class, html.EscapeString(kind))
 }
 
-// movementWASMScript redraws the movement in the browser with pta2svg's
-// lite WASM build, from the model embedded in the page; failing that,
-// the BFF's drawing stands.
+// movementWASMScript redraws the movement once in the browser with
+// pta2svg's lite WASM build, from the model and options embedded in the
+// page; failing that, the BFF's drawing stands and the console says why.
+// The options' Go field names are the JSON keys the WASM entry reads,
+// lower-cased.
 const movementWASMScript = `<script src="wasm/wasm_exec.js"></script>
 <script>
 (async () => {
-  const note = document.getElementById('movement-renderer');
   try {
     const go = new Go();
     const result = await WebAssembly.instantiateStreaming(fetch('wasm/pta2svg.wasm'), go.importObject);
     go.run(result.instance);
     const model = JSON.parse(document.getElementById('movement-model').textContent);
-    const svg = pta2svg.renderModel(model, {layout: 'sugiyama', title: 'Movement'});
-    document.getElementById('movement-svg').innerHTML = svg;
-    if (note) note.textContent = '(rendered here by pta2svg.wasm)';
+    const o = JSON.parse(document.getElementById('movement-options').textContent);
+    const opts = {layout: o.Layout, title: o.Title, palette: o.Palette, commodities: {}};
+    for (const [code, c] of Object.entries(o.Commodities || {})) opts.commodities[code] = c;
+    document.getElementById('movement-svg').innerHTML = pta2svg.renderModel(model, opts);
   } catch (e) {
-    if (note) note.textContent = '(browser rendering unavailable: ' + e + '; the BFF’s drawing stands)';
+    console.warn('pta2svg in the browser: ' + e + '; the BFF’s drawing stands');
   }
 })();
 </script>`

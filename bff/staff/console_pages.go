@@ -119,11 +119,9 @@ func renderPaymentsPage(q core.StaffQueries, running, piiAuth bool, page int, ro
 // BuildSettingsHTML renders the settings page: a status line that polls
 // while the simulation runs, then the form, which is static so a value
 // being typed is never wiped before Save (as the dashboard's controls
-// are). The bank's parameters come from the core, the console's settings
-// from the simulation; the restart record follows the form.
+// are). The console's settings are the simulation's; the bank's own are
+// on the bank tab. The restart record follows the form.
 func BuildSettingsHTML(q core.BookQueries, settings Settings, polling bool, restarts []Restart) string {
-	pos, _ := q.Position(context.Background())
-
 	var s strings.Builder
 	s.WriteString(`<h2 class="title is-4">Settings</h2>`)
 	s.WriteString(RenderSettingsStatus(q, polling))
@@ -158,23 +156,7 @@ func BuildSettingsHTML(q core.BookQueries, settings Settings, polling bool, rest
 	s.WriteString(`<p class="help">Payments the generator puts on each simulated day while Auto Send is on (1-10,000)</p>`)
 	s.WriteString(`</div>`)
 
-	// The pound's risk-free rate (read-only: the market's, ADR-0009)
-	s.WriteString(`<div class="field">`)
-	s.WriteString(`<label class="label">Bank Rate (Bank of England)</label>`)
-	s.WriteString(`<div class="control">`)
-	s.WriteString(fmt.Sprintf(`<span class="tag is-medium is-info">%s</span>`, FormatRateBps(pos.RiskFreeBps)))
-	s.WriteString(`</div>`)
-	s.WriteString(`<p class="help">Published by the market: the simulation replays the Bank of England's series</p>`)
-	s.WriteString(`</div>`)
-
-	// Capital Reserve Ratio (read-only)
-	s.WriteString(`<div class="field">`)
-	s.WriteString(`<label class="label">Capital Reserve Ratio</label>`)
-	s.WriteString(`<div class="control">`)
-	s.WriteString(fmt.Sprintf(`<span class="tag is-medium is-warning">%.0f%%</span>`, pos.ReserveRatio*100))
-	s.WriteString(`</div>`)
-	s.WriteString(`<p class="help">Minimum fraction of deposits held as BoE reserves</p>`)
-	s.WriteString(`</div>`)
+	s.WriteString(`<p class="help mb-4">The pound's rate and the bank's reserve ratio are the bank's, not the simulation's: see <a href="products/bank">Products &rarr; Bank</a></p>`)
 
 	s.WriteString(`<div class="field">`)
 	s.WriteString(`<div class="control">`)

@@ -2,6 +2,52 @@
 
 ## [Unreleased]
 
+### Added
+- Story 1.8.8: the bank's parameters and their editing. A third tab
+  under Products, Bank, carries what is the bank's and not a product's:
+  the pound's market (the rate in force, the next decision day, the
+  rate's history, moved off the savings page), the reserve ratio (moved
+  off the console's settings) and the parameter at the market scope; the
+  bank scope waits for policy as code. A product page shows its own
+  parameters, the version scope, alone. Every parameter row links the
+  parameter's own page, `products/{owner}/parameters/{key}`: its
+  declaration, the value in force at the clock's instant, the settings
+  upcoming and the set form, which moves there from the product card.
+  The pages are a master-detail in HTMX (lofigui's multipage pattern):
+  the detail loads beside the master as a fragment, the form posts and
+  swaps the detail, and while the simulation runs the master and the
+  detail's state re-poll themselves alone, so a page open while an
+  event fires does not go stale and nothing typed is wiped; the same
+  route without `HX-Request` renders the whole page, so a parameter
+  deep-links. The core gains `ProductQueries.Parameter(owner, key)`.
+- ADRs published whole: the `adr` package embeds each record's diagrams
+  and their goluca sources beside its markdown and serves them at
+  `about/docs/adr/`, so a served ADR shows its pictures; `about/adr`
+  lists the records with number, title, status and date and is in the
+  About menu, the documentation page keeping its summary; the static
+  site renders `adr/*.md` to `docs/adr/` with the same index.
+
+### Changed
+- Events moves from the top of the staff navigation into the Internal
+  menu.
+- The movement page writes money in the drawing as the bank writes it
+  (`-£1,001.27`) and fills the boxes in the bank's colours, through
+  pta2svg's new `Commodities` and `Palette` options, in the browser as
+  by the BFF; the drawing's caption goes; the page is quiescent once
+  loaded, never re-polled; and the movement's code is expanded into its
+  ISO 20022 domain, family and sub-family (`PMNT:RCDT:BOOK`: Payments /
+  Received Credit Transfers / Internal Book Transfer). Both modules
+  carry a temporary `replace` to `../pta2svg` until its release is
+  pinned.
+
+### Fixed
+- The product total on the products page follows the session's view, as
+  every other balance does; it was always the bank's view.
+- The pass test's expectation of a January application on a savings
+  account read the balance's sign in the customer's view; since
+  ADR-0008 (v0.35.0) a savings balance is negative in the bank's view,
+  and the test went red on main.
+
 ## [0.35.0] - 2026-10-12
 
  - Story 1.8.7: a movement keeps its sign (ADR-0008 amended); reset release

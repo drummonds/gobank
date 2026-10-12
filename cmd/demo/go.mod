@@ -42,3 +42,5 @@ require (
 )
 
 replace git.bytestone.uk/hum3/gobank => ../..
+
+replace git.bytestone.uk/hum3/pta2svg => ../../../pta2svg

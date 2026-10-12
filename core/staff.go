@@ -381,6 +381,24 @@ type Setting struct {
 	By        string
 }
 
+// ParameterDetail is one parameter as its own page shows it (ADR-0006):
+// whose it is, what its declaration says, the value in force at the
+// clock's instant as known now, and the settings decided for it and not
+// yet in force.
+type ParameterDetail struct {
+	Owner       string // the product's ID, the currency or "bank"
+	Family      string // the product's family, for a product's; "" for a market's or the bank's
+	Scope       string // market, bank, version or account
+	Key         string
+	Kind        string
+	Description string
+	Derived     bool   // derived by code from another parameter: not set, only read
+	Derivation  string // the derivation in words, for a derived one
+	InForce     string // the value effective now as the bank knows it; "" when there is none yet
+	Settable    bool   // staff may set it: a carried product's own, not derived
+	Upcoming    []Setting
+}
+
 // ProductQueries is the products component as staff read it.
 type ProductQueries interface {
 	Products(ctx context.Context) ([]Product, error)
@@ -388,6 +406,10 @@ type ProductQueries interface {
 	// clock's instant, soonest first: what is decided and not yet in
 	// force, each an event the simulation's timeline carries (ADR-0010).
 	UpcomingSettings(ctx context.Context) ([]Setting, error)
+	// Parameter is one parameter by its owner (a product's ID, a
+	// currency with a market, or "bank") and key; one the bank does not
+	// know is ErrNotFound.
+	Parameter(ctx context.Context, owner, key string) (ParameterDetail, error)
 }
 
 // Market is a currency's market as the bank knows it (ADR-0009): who

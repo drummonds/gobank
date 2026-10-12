@@ -313,6 +313,40 @@ func runStaff(t *testing.T, f Fixture) {
 		}
 	})
 
+	t.Run("parameters are read by owner and key", func(t *testing.T) {
+		products, _ := s.Products(ctx)
+		for _, p := range products {
+			for _, param := range p.Parameters {
+				d, err := s.Parameter(ctx, p.ID, param.Key)
+				if err != nil || d.Owner != p.ID || d.Key != param.Key || d.Scope != param.Scope || d.Kind != param.Kind || d.Derived != param.Derived {
+					t.Errorf("Parameter(%s, %s) = %+v, %v; the catalogue declares %+v", p.ID, param.Key, d, err, param)
+					continue
+				}
+				if d.Settable != (d.Scope == "version" && !d.Derived) {
+					t.Errorf("Parameter(%s, %s).Settable = %v for %+v", p.ID, param.Key, d.Settable, d)
+				}
+				if d.InForce == "" && !d.Derived && d.Scope != "account" { // an account's is written per account at its opening
+					t.Errorf("Parameter(%s, %s) has no value in force", p.ID, param.Key)
+				}
+				for _, u := range d.Upcoming {
+					if u.Owner != p.ID || u.Key != param.Key {
+						t.Errorf("Parameter(%s, %s) lists another's setting %+v", p.ID, param.Key, u)
+					}
+				}
+			}
+		}
+		markets, _ := s.Markets(ctx)
+		for _, m := range markets {
+			d, err := s.Parameter(ctx, m.Currency, "risk_free_rate_bps")
+			if err != nil || d.Scope != "market" || d.Owner != m.Currency || d.Settable {
+				t.Errorf("Parameter(%s, risk_free_rate_bps) = %+v, %v; want the market's, not settable", m.Currency, d, err)
+			}
+		}
+		if _, err := s.Parameter(ctx, "no-such-owner", "rate_bps"); !errors.Is(err, core.ErrNotFound) {
+			t.Errorf("unknown owner: %v, want ErrNotFound", err)
+		}
+	})
+
 	t.Run("gilt yields are quoted", func(t *testing.T) {
 		yields, err := s.GiltYields(ctx)
 		if err != nil || len(yields) == 0 {

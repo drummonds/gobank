@@ -49,6 +49,8 @@ var staffPages = []string{
 	"/accounting/balance-sheet",
 	"/products/savings",
 	"/products/lending",
+	"/products/bank",
+	"/products/easy-access/parameters/rate_bps",
 	"/customers",
 	"/customers/cust-001",
 	"/customers/cust-001/account/0",
@@ -70,6 +72,7 @@ var staffPages = []string{
 	"/about/models",
 	"/about/docs",
 	"/about/docs/adr/contract-views",
+	"/about/adr",
 	"/v1/screen/login",
 }
 

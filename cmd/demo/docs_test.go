@@ -3,6 +3,8 @@ package main
 import (
 	"git.bytestone.uk/hum3/gobank/bff/staff"
 	"html"
+	"net/http"
+	"net/http/httptest"
 	"strings"
 	"testing"
 
@@ -51,6 +53,48 @@ func TestADRPage(t *testing.T) {
 	}
 	if _, ok := staff.BuildADRHTML("no-such-adr"); ok {
 		t.Error("unknown ADR reported as found")
+	}
+}
+
+// An ADR is served whole: its diagrams and their sources beside its
+// text, at the path the markdown names them by; the ADR index lists every
+// record with its number, title, status and date and is in the nav.
+func TestADRsServedWhole(t *testing.T) {
+	t.Setenv("GOBANK_ADMIN_PASSWORD", testAdminPassword)
+	ds := NewDemoState()
+	h := newHandler(ds, "test", "/")
+	admin := staffLogin(t, h)
+	fetch := func(path string) *httptest.ResponseRecorder {
+		rr := httptest.NewRecorder()
+		req := httptest.NewRequest("GET", path, nil)
+		req.AddCookie(admin)
+		h.ServeHTTP(rr, req)
+		return rr
+	}
+	if rr := fetch("/about/docs/adr/0008-decided.svg"); rr.Code != http.StatusOK || rr.Header().Get("Content-Type") != "image/svg+xml" || !strings.Contains(rr.Body.String(), "<svg") {
+		t.Errorf("the ADR's diagram: %d %s", rr.Code, rr.Header().Get("Content-Type"))
+	}
+	if rr := fetch("/about/docs/adr/0008-decided.goluca"); rr.Code != http.StatusOK || !strings.HasPrefix(rr.Header().Get("Content-Type"), "text/plain") {
+		t.Errorf("the diagram's source: %d %s", rr.Code, rr.Header().Get("Content-Type"))
+	}
+	if rr := fetch("/about/docs/adr/adr.go"); rr.Code != http.StatusNotFound {
+		t.Errorf("the package's code: %d, want 404", rr.Code)
+	}
+	if page := fetch("/about/docs/adr/ledger-is-the-banks-view").Body.String(); !strings.Contains(page, `src="0008-decided.svg"`) {
+		t.Error("the ADR page does not show its diagram")
+	}
+	index := fetch("/about/adr")
+	if index.Code != http.StatusOK {
+		t.Fatalf("ADR index: %d", index.Code)
+	}
+	body := index.Body.String()
+	for _, r := range adr.All() {
+		if !strings.Contains(body, html.EscapeString(r.Title)) || !strings.Contains(body, r.Date) || !strings.Contains(body, `href="about/docs/adr/`+r.Slug+`"`) {
+			t.Errorf("ADR index missing %04d %q (%s)", r.Number, r.Title, r.Date)
+		}
+	}
+	if !strings.Contains(body, `href="about/adr"`) {
+		t.Error("the nav does not link the ADR index")
 	}
 }
 

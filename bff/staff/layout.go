@@ -40,11 +40,11 @@ const layout = `<!DOCTYPE html>
           <div class="navbar-dropdown">
             <a class="navbar-item" href="products/savings">Savings</a>
             <a class="navbar-item" href="products/lending">Lending</a>
+            <a class="navbar-item" href="products/bank">Bank</a>
           </div>
         </div>
         <a class="navbar-item" href="customers">Customers</a>
         <a class="navbar-item" href="payments">Payments</a>
-        <a class="navbar-item" href="events">Events</a>
         <div class="navbar-item has-dropdown is-hoverable">
           <a class="navbar-link">Treasury</a>
           <div class="navbar-dropdown">
@@ -65,6 +65,7 @@ const layout = `<!DOCTYPE html>
           <a class="navbar-link">Internal</a>
           <div class="navbar-dropdown">
             <a class="navbar-item" href="settings">Settings</a>
+            <a class="navbar-item" href="events">Events</a>
             <a class="navbar-item" href="internal/explorer">DB Explorer</a>
           </div>
         </div>
@@ -76,6 +77,7 @@ const layout = `<!DOCTYPE html>
             <a class="navbar-item" href="about/runtime">Runtime</a>
             <a class="navbar-item" href="about/models">Models</a>
             <a class="navbar-item" href="about/docs">Documentation</a>
+            <a class="navbar-item" href="about/adr">ADRs</a>
           </div>
         </div>
       </div>

@@ -1293,3 +1293,48 @@ func diff(want, got string) string {
 	}
 	return strings.Join(out, "\n")
 }
+
+// A parameter's detail is read by its owner and key: a product's own
+// parameter carries its declaration, the value in force at the clock's
+// instant and the settings upcoming, and may be set; the pound's
+// risk-free rate is the market's, read but not set. What the bank does
+// not know is ErrNotFound.
+func TestParameterDetail(t *testing.T) {
+	f := open(t)
+	if _, err := f.bank.OpenCustomer(f.ctx, ada); err != nil {
+		t.Fatal(err)
+	}
+	d, err := f.bank.Parameter(f.ctx, "easy-access", "rate_bps")
+	if err != nil || d.Owner != "easy-access" || d.Scope != "version" || d.Kind != "bps" || d.Description != "annual gross rate" || d.Derived || d.InForce != "150" || !d.Settable || len(d.Upcoming) != 0 {
+		t.Errorf("Parameter(easy-access, rate_bps) = %+v, %v; want the published 150 in force, settable, nothing upcoming", d, err)
+	}
+	later := opening.Add(36 * time.Hour)
+	if err := f.bank.SetParameter(f.ctx, core.ParameterSetting{ProductID: "easy-access", Key: "rate_bps", Value: "175", Effective: later, By: "alice"}); err != nil {
+		t.Fatal(err)
+	}
+	d, _ = f.bank.Parameter(f.ctx, "easy-access", "rate_bps")
+	if d.InForce != "150" || len(d.Upcoming) != 1 || d.Upcoming[0].Value != "175" || d.Upcoming[0].Owner != "easy-access" || d.Upcoming[0].Key != "rate_bps" {
+		t.Errorf("after the setting %+v; want 150 still in force and 175 upcoming", d)
+	}
+	if other, _ := f.bank.Parameter(f.ctx, "easy-access", "cycle"); len(other.Upcoming) != 0 || other.InForce != "monthly" {
+		t.Errorf("another parameter of the product sees the setting: %+v", other)
+	}
+	f.now = later
+	if _, err := f.bank.StartDay(f.ctx); err != nil {
+		t.Fatal(err)
+	}
+	d, _ = f.bank.Parameter(f.ctx, "easy-access", "rate_bps")
+	if d.InForce != "175" || len(d.Upcoming) != 0 {
+		t.Errorf("at the instant %+v; want 175 in force and nothing upcoming", d)
+	}
+
+	m, err := f.bank.Parameter(f.ctx, "GBP", gbp.RiskFreeRateKey)
+	if err != nil || m.Owner != "GBP" || m.Scope != "market" || m.Kind != "bps" || m.Settable || m.InForce == "" || !strings.Contains(m.Description, "Bank of England") {
+		t.Errorf("Parameter(GBP, risk_free_rate_bps) = %+v, %v; want the market's rate, in force, not settable", m, err)
+	}
+	for _, unknown := range [][2]string{{"easy-access", "no-such"}, {"nope", "rate_bps"}, {"USD", gbp.RiskFreeRateKey}, {"GBP", "rate_bps"}, {"bank", "spread_bps"}} {
+		if _, err := f.bank.Parameter(f.ctx, unknown[0], unknown[1]); !errors.Is(err, core.ErrNotFound) {
+			t.Errorf("Parameter(%s, %s) = %v, want ErrNotFound", unknown[0], unknown[1], err)
+		}
+	}
+}
