@@ -150,10 +150,10 @@ tasks:
       - d2 app-bff.d2 docs/app-bff.svg
 
   wasm:pta2svg:
-    desc: Build pta2svg's browser renderer into the staff web (ADR-0008 movement page); absent, the BFF draws
+    desc: Build pta2svg's lite browser renderer (0.7 MB, TinyGo) into the staff web (ADR-0008 movement page); absent, the BFF draws
     cmds:
-      - GOOS=js GOARCH=wasm go build -o bff/staff/wasm/pta2svg.wasm git.bytestone.uk/hum3/pta2svg/cmd/pta2svg-wasm
-      - cp "$(go env GOROOT)/lib/wasm/wasm_exec.js" bff/staff/wasm/wasm_exec.js
+      - tinygo build -target wasm -no-debug -o bff/staff/wasm/pta2svg.wasm git.bytestone.uk/hum3/pta2svg/cmd/pta2svg-wasm-lite
+      - cp "$(tinygo env TINYGOROOT)/targets/wasm_exec.js" bff/staff/wasm/wasm_exec.js
 
   docs:build:
     desc: Build WASM demo and all pages into docs/

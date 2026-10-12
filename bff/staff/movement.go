@@ -17,20 +17,21 @@ import (
 	"git.bytestone.uk/hum3/gobank/core"
 	"git.bytestone.uk/hum3/gobank/internal/view"
 	"git.bytestone.uk/hum3/pta2svg"
-	"git.bytestone.uk/hum3/pta2svg/parse"
 )
 
 // The movement page (ADR-0008): beneath a statement line, the movement it
 // is one side of, as written: a signed amount from one account to
-// another. The page carries the two legs, the amount and times, and the movement drawn by pta2svg from
-// goluca text, the ledger's own format: rendered by the BFF, and again in
-// the browser by pta2svg's WASM build when the asset is served, the first
-// rendering a general client takes on. The same movement is served as
-// goluca text and as JSON.
+// another. The page carries the two legs, the amount and times, and the
+// movement drawn by pta2svg from its model, the ledger as data, so no
+// text is parsed: rendered by the BFF, and again in the browser by
+// pta2svg's lite WASM build from the model embedded in the page when the
+// asset is served, the first rendering a general client takes on. The
+// same movement is served as goluca text, the ledger's own format, and as
+// JSON.
 
-// wasmFiles is pta2svg's browser build, when the build step put it here
-// (task wasm:pta2svg): pta2svg.wasm and wasm_exec.js. Absent, the page
-// keeps the BFF's rendering.
+// wasmFiles is pta2svg's lite browser build, when the build step put it
+// here (task wasm:pta2svg): pta2svg.wasm, compiled by TinyGo, and its
+// wasm_exec.js. Absent, the page keeps the BFF's rendering.
 //
 //go:embed all:wasm
 var wasmFiles embed.FS
@@ -106,14 +107,46 @@ func golucaAmount(v luca.Amount) string {
 	return fmt.Sprintf("%s%d.%02d", sign, v/100, v%100)
 }
 
-// MovementSVG is the movement drawn by pta2svg, or an empty string and the
-// error when it cannot be drawn. The layered layout puts the account the
-// movement is from on the left and the account it is to on the right, so
-// the arrow reads with the movement; the column layout would place them
-// by account type.
+// MovementModel is the movement as pta2svg's model: the two accounts with
+// their types, the balances they held before as the opening, and one
+// transaction carrying the signed movement with its code as the arrow's
+// label. Money is in major units, as the model draws it.
+func MovementModel(m core.Movement) pta2svg.Model {
+	account := func(l core.Leg) pta2svg.ModelAccount {
+		return pta2svg.ModelAccount{Name: l.Path, Short: l.Path[strings.LastIndex(l.Path, ":")+1:], Type: l.Type}
+	}
+	return pta2svg.Model{
+		Accounts: []pta2svg.ModelAccount{account(m.From), account(m.To)},
+		Opening: map[string]float64{
+			m.From.Path: major(m.From.Balance + m.Amount),
+			m.To.Path:   major(m.To.Balance - m.Amount),
+		},
+		Transactions: []pta2svg.ModelTransaction{{
+			Date: m.ValueTime.UTC().Format("2006-01-02"), Flag: "*", Payee: m.Description,
+			Movements: []pta2svg.ModelMovement{{From: m.From.Path, To: m.To.Path, Amount: major(m.Amount), Commodity: m.Currency, Description: m.Code}},
+		}},
+	}
+}
+
+// major is minor units as the major unit a drawing shows: pounds, to two
+// places. For presentation only; the ledger holds minor units.
+func major(v luca.Amount) float64 {
+	return float64(v) / 100
+}
+
+// MovementSVG is the movement drawn by pta2svg from its model, or an
+// empty string and the error when it cannot be drawn. The layered layout
+// puts the account the movement is from on the left and the account it
+// is to on the right, so the arrow reads with the movement; the column
+// layout would place them by account type.
 func MovementSVG(m core.Movement) (string, error) {
+	model := MovementModel(m)
+	d, err := model.Diagram()
+	if err != nil {
+		return "", err
+	}
 	var buf bytes.Buffer
-	err := parse.Render(&buf, []byte(MovementGoluca(m)), parse.Goluca, pta2svg.Options{Layout: pta2svg.Sugiyama, Title: "Movement " + m.ID})
+	err = pta2svg.RenderDiagram(&buf, d, pta2svg.Options{Layout: pta2svg.Sugiyama, Title: "Movement " + m.ID})
 	return buf.String(), err
 }
 
@@ -165,6 +198,10 @@ func BuildMovementHTML(m core.Movement, v view.View, wasm bool) string {
 	fmt.Fprintf(&s, `<pre id="movement-goluca">%s</pre>`, html.EscapeString(MovementGoluca(m)))
 	fmt.Fprintf(&s, `<p><a href="movements/%s.goluca">goluca</a> · <a href="movements/%s.json">JSON</a></p></div>`, html.EscapeString(m.ID), html.EscapeString(m.ID))
 	if wasm {
+		// The model the browser renders, as JSON; encoding/json escapes
+		// <, > and & so the script element cannot be closed early.
+		model, _ := json.Marshal(MovementModel(m))
+		fmt.Fprintf(&s, `<script type="application/json" id="movement-model">%s</script>`, model)
 		s.WriteString(movementWASMScript)
 	}
 	return s.String()
@@ -189,8 +226,8 @@ func accountTypeTag(kind string) string {
 }
 
 // movementWASMScript redraws the movement in the browser with pta2svg's
-// WASM build, from the goluca text on the page; failing that, the BFF's
-// drawing stands.
+// lite WASM build, from the model embedded in the page; failing that,
+// the BFF's drawing stands.
 const movementWASMScript = `<script src="wasm/wasm_exec.js"></script>
 <script>
 (async () => {
@@ -199,8 +236,8 @@ const movementWASMScript = `<script src="wasm/wasm_exec.js"></script>
     const go = new Go();
     const result = await WebAssembly.instantiateStreaming(fetch('wasm/pta2svg.wasm'), go.importObject);
     go.run(result.instance);
-    const text = document.getElementById('movement-goluca').textContent;
-    const svg = pta2svg.render(text, {format: 'goluca', layout: 'sugiyama', title: 'Movement'});
+    const model = JSON.parse(document.getElementById('movement-model').textContent);
+    const svg = pta2svg.renderModel(model, {layout: 'sugiyama', title: 'Movement'});
     document.getElementById('movement-svg').innerHTML = svg;
     if (note) note.textContent = '(rendered here by pta2svg.wasm)';
   } catch (e) {

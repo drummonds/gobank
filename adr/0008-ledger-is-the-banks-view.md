@@ -136,13 +136,16 @@ Every statement line on the staff web links to it; the app follows.
 ![The movement beneath the statement line](0008-movement.svg)
 
 The renderer is pta2svg, the same tool that drew this ADR: the movement
-is handed over as goluca text, which is the ledger's own export format,
-and drawn where it is shown. On the staff web and the customer web that
-is a WASM component built from pta2svg, the first rendering a general
-client takes on from the BFF; the Flutter app reaches it through a web
-view or is left with the data until it has a renderer of its own. The
-core gains a query for one movement by its ID, with both legs, and the
-BFF serves it as the page, as goluca text and as data.
+is handed over as pta2svg's model, the ledger as data, so no text is
+parsed, and drawn where it is shown; the goluca text, the ledger's own
+export format, is shown and served beside it. On the staff web and the
+customer web the drawing is pta2svg's lite WASM build (0.7 MB under
+TinyGo, against 24 MB with the text parsers) rendering the model
+embedded in the page, the first rendering a general client takes on from
+the BFF; the Flutter app reaches it through a web view or is left with
+the data until it has a renderer of its own. The core gains a query for
+one movement by its ID, with both legs, and the BFF serves it as the
+page, as goluca text and as data.
 
 What pta2svg needs for this, as of v0.1.6, raised as its issues: a
 public library package, its parser, layout and renderer being internal

@@ -2,12 +2,14 @@ package staff
 
 import (
 	"fmt"
+	"reflect"
 	"strings"
 	"testing"
 	"time"
 
 	"git.bytestone.uk/hum3/gobank/core"
 	"git.bytestone.uk/hum3/gobank/internal/view"
+	"git.bytestone.uk/hum3/pta2svg"
 )
 
 // Savings interest as the contract writes it (ADR-0008): a negative
@@ -40,6 +42,28 @@ func TestMovementGoluca(t *testing.T) {
 `
 	if got != want {
 		t.Errorf("goluca:\n%s\nwant:\n%s", got, want)
+	}
+}
+
+// The movement as pta2svg's model, the ledger as data: the two accounts
+// with their types, the balances before as the opening, and one
+// transaction carrying the signed movement, its code the arrow's label.
+// No text is parsed on either side.
+func TestMovementModel(t *testing.T) {
+	got := MovementModel(interestMovement())
+	want := pta2svg.Model{
+		Accounts: []pta2svg.ModelAccount{
+			{Name: "Expense:Interest", Short: "Interest", Type: "Expense"},
+			{Name: "Liability:Savings:cust-001:easy-access", Short: "easy-access", Type: "Liability"},
+		},
+		Opening: map[string]float64{"Expense:Interest": 0, "Liability:Savings:cust-001:easy-access": -1000},
+		Transactions: []pta2svg.ModelTransaction{{
+			Date: "2026-01-31", Flag: "*", Payee: "Interest applied for month ending 2026-01-31",
+			Movements: []pta2svg.ModelMovement{{From: "Expense:Interest", To: "Liability:Savings:cust-001:easy-access", Amount: -1.27, Commodity: "GBP", Description: "LDAS:FTDP:ACRU"}},
+		}},
+	}
+	if !reflect.DeepEqual(got, want) {
+		t.Errorf("model:\n%+v\nwant:\n%+v", got, want)
 	}
 }
 
@@ -76,8 +100,9 @@ func nodeX(svg string, i int) int {
 }
 
 // The page carries the movement's two accounts and signed amount, the
-// drawing and the goluca text with its links; in the customer view it says the movement stays in the
-// bank's; with the WASM asset served it loads the browser renderer.
+// drawing and the goluca text with its links; in the customer view it
+// says the movement stays in the bank's; with the WASM asset served it
+// embeds the model as JSON and loads the browser renderer on it.
 func TestBuildMovementHTML(t *testing.T) {
 	page := BuildMovementHTML(interestMovement(), view.Bank, false)
 	for _, want := range []string{"From", "To", "Liability:Savings:cust-001:easy-access", "Expense:Interest", "-£1,001.27", "-£1.27",
@@ -89,8 +114,12 @@ func TestBuildMovementHTML(t *testing.T) {
 	if strings.Contains(page, "wasm_exec.js") {
 		t.Error("page loads the WASM renderer with no asset served")
 	}
+	if strings.Contains(page, `id="movement-model"`) {
+		t.Error("page embeds the model with no renderer to use it")
+	}
 	customer := BuildMovementHTML(interestMovement(), view.Customer, true)
-	for _, want := range []string{"customer view", "wasm/wasm_exec.js", "wasm/pta2svg.wasm", "pta2svg.render("} {
+	for _, want := range []string{"customer view", "wasm/wasm_exec.js", "wasm/pta2svg.wasm", "pta2svg.renderModel(",
+		`<script type="application/json" id="movement-model">`, `"from":"Expense:Interest"`, `"amount":-1.27`} {
 		if !strings.Contains(customer, want) {
 			t.Errorf("customer-view page with WASM missing %q", want)
 		}
