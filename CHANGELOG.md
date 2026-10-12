@@ -36,9 +36,8 @@
   by the BFF; the drawing's caption goes; the page is quiescent once
   loaded, never re-polled; and the movement's code is expanded into its
   ISO 20022 domain, family and sub-family (`PMNT:RCDT:BOOK`: Payments /
-  Received Credit Transfers / Internal Book Transfer). Both modules
-  carry a temporary `replace` to `../pta2svg` until its release is
-  pinned.
+  Received Credit Transfers / Internal Book Transfer). pta2svg is
+  pinned at v0.5.0 in both modules.
 
 ### Fixed
 - The product total on the products page follows the session's view, as
