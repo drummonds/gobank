@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+## [0.35.0] - 2026-10-12
+
+ - Story 1.8.7: a movement keeps its sign (ADR-0008 amended); reset release
+
 ### Changed
 - Story 1.8.7, ADR-0008 amended: a movement is a signed amount m from
   account a to account b, kept as written. The runner records a
