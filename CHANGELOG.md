@@ -8,6 +8,10 @@
   replays the root, and idempotency is structural from the first slice.
   Roadmap story 1.8.6 builds its first slice ahead of policy as code;
   the stories after it are renumbered 1.8.7 to 1.8.9.
+- Roadmap: 1.8.7 the bank's parameters tab and HTMX master-detail
+  editing (with the products page's view fix), 1.8.11 history of
+  parameters and products, and ADRs published whole with a root page;
+  policy as code and the stories after it renumbered 1.8.8 to 1.8.10.
 
 ## [0.33.0] - 2026-10-11
 
