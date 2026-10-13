@@ -25,6 +25,8 @@ func (s *Site) view(r *http.Request) view.View {
 // viewRoutes serves the switch: GET view/{name}?back=<path> sets the
 // cookie and returns to the page that offered it.
 func (s *Site) viewRoutes() {
+	// Switches this browser between the bank's view and the customer's:
+	// sets the staff_view cookie for a year and returns to ?back=.
 	s.mux.HandleFunc("/view/{name}", func(w http.ResponseWriter, r *http.Request) {
 		v := view.Parse(r.PathValue("name"))
 		http.SetCookie(w, &http.Cookie{

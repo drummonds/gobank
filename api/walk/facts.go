@@ -34,6 +34,7 @@ type scanner struct {
 	w       *walker
 	facts   *api.RouteFacts
 	visited map[string]bool
+	guard   bool // scanning a wrapper: what it reads is the route's security
 }
 
 // facts reads the route's facts from the handler expression it was
@@ -101,7 +102,10 @@ func (s *scanner) handler(e ast.Expr, en env, depth int) {
 		// A wrapper: its body (the closure it returns is inside it), then
 		// the handler it was given.
 		if f := s.w.callee(e); f != nil {
+			was := s.guard
+			s.guard = true
 			s.body(f.body, s.bind(f, e, en), depth+1, f.name)
+			s.guard = was
 		} else if id := calleeIdent(e); id != nil {
 			if fobj, ok := s.w.info.Uses[id].(*types.Func); ok {
 				s.unknown("wrapper " + s.w.funcName(fobj) + ": body outside the walk")
@@ -292,11 +296,11 @@ func (s *scanner) primitive(call *ast.CallExpr, en env, cur *api.Response, last 
 		return true
 	case "(net/http.Header).Get":
 		if onRequest(s.w, sel.X) {
-			s.read(&s.facts.Reads.Headers, str(0))
+			s.read(&s.reads().Headers, str(0))
 		}
 		return true
 	case "(*net/http.Request).Cookie":
-		s.read(&s.facts.Reads.Cookies, str(0))
+		s.read(&s.reads().Cookies, str(0))
 		return true
 	}
 	return false
@@ -310,6 +314,15 @@ func (s *scanner) param(name, in string) {
 	if !slices.Contains(s.facts.Params, p) {
 		s.facts.Params = append(s.facts.Params, p)
 	}
+}
+
+// reads is where what is read goes: the guards when a wrapper is being
+// scanned, else the handler's own.
+func (s *scanner) reads() *api.Reads {
+	if s.guard {
+		return &s.facts.Guards
+	}
+	return &s.facts.Reads
 }
 
 func (s *scanner) read(list *[]string, name string) {

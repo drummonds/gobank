@@ -39,8 +39,8 @@ func TestDirectRegistration(t *testing.T) {
 	if r.Handler != "(*Server).health" || !strings.HasPrefix(r.Pos, "bff/server.go:") || len(r.Wrappers) != 0 {
 		t.Errorf("route %+v", r)
 	}
-	if !strings.Contains(r.Doc, "health") {
-		t.Errorf("doc %q: want the handler's doc comment", r.Doc)
+	if !strings.HasPrefix(r.Doc, "Answers as soon as") {
+		t.Errorf("doc %q: want the handler's doc comment, without its leading name", r.Doc)
 	}
 }
 
@@ -86,7 +86,7 @@ func TestHandlerForms(t *testing.T) {
 	if r, ok := find(s, staffPkg, "", "/favicon.ico"); !ok || r.Handler != "lofigui.ServeFavicon" {
 		t.Errorf("favicon %+v, %v", r, ok)
 	}
-	if r, ok := find(s, staffPkg, "", "/accounting/pnl"); !ok || r.Handler != "" || !strings.Contains(r.Doc, "Accounting") {
+	if r, ok := find(s, staffPkg, "", "/accounting/pnl"); !ok || r.Handler != "" || !strings.Contains(r.Doc, "profit and loss") {
 		t.Errorf("pnl %+v, %v: want the comment above the registration", r, ok)
 	}
 }

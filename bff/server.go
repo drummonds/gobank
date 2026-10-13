@@ -121,6 +121,7 @@ func NewServer(cfg Config) *Server {
 	s.mux.HandleFunc("GET "+PathScreenHome, s.authed(s.accounts))
 	s.mux.HandleFunc("GET "+PathScreenTx, s.authed(s.activity))
 	s.mux.HandleFunc("GET "+PathScreenProduct+"{index}", s.authed(s.product))
+	// Every other path under /v1/: not_found, as JSON.
 	s.mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
 		s.writeError(w, r, http.StatusNotFound, "not_found", "No such endpoint", nil)
 	})
@@ -234,6 +235,8 @@ func (s *Server) openapi(w http.ResponseWriter, _ *http.Request) {
 	_, _ = w.Write(api.Document)
 }
 
+// loginScreen is the front door: the login form, whose submit is POST
+// /v1/login, with the deployment's note. No session.
 func (s *Server) loginScreen(w http.ResponseWriter, r *http.Request) {
 	s.writeScreen(w, r, http.StatusOK, s.frontDoor(""))
 }
@@ -267,6 +270,12 @@ type errorBody struct {
 	Screen  *screen.Screen `json:"screen,omitempty"`
 }
 
+// login checks the customer ID and password, from a JSON body or a form,
+// and opens a session: a JSON client gets the token and the home screen; a
+// form post or a browser gets the mb_session cookie and is sent to the
+// home screen. Five failures for one customer ID or from one address in
+// fifteen minutes lock that key for the rest of the window (429 with
+// Retry-After).
 func (s *Server) login(w http.ResponseWriter, r *http.Request) {
 	var req loginRequest
 	isForm := false
@@ -342,6 +351,8 @@ func (s *Server) login(w http.ResponseWriter, r *http.Request) {
 	_ = json.NewEncoder(w).Encode(loginResponse{Token: token, ExpiresAt: expires.UTC().Format(time.RFC3339), Screen: home})
 }
 
+// logout ends the session: a browser's cookie is cleared and it is sent
+// to the login screen; a JSON client gets the login screen.
 func (s *Server) logout(w http.ResponseWriter, r *http.Request) {
 	p := who(r)
 	s.sessions.Revoke(p.token)
@@ -367,6 +378,8 @@ func (s *Server) buildAccounts(ctx context.Context, custID string) (screen.Scree
 	return AccountsScreen(cust, accts), nil
 }
 
+// accounts is the home screen: the customer's net position and a row per
+// account, each opening its product screen.
 func (s *Server) accounts(w http.ResponseWriter, r *http.Request) {
 	sc, err := s.buildAccounts(r.Context(), who(r).customerID)
 	if err != nil {
@@ -376,6 +389,8 @@ func (s *Server) accounts(w http.ResponseWriter, r *http.Request) {
 	s.writeScreen(w, r, http.StatusOK, sc)
 }
 
+// activity is the customer's transactions across every account, newest
+// first, one page (?page=) at a time.
 func (s *Server) activity(w http.ResponseWriter, r *http.Request) {
 	p := who(r)
 	cust, err := s.cfg.Bank.Customer(r.Context(), p.customerID)
@@ -391,6 +406,9 @@ func (s *Server) activity(w http.ResponseWriter, r *http.Request) {
 	s.writeScreen(w, r, http.StatusOK, ActivityScreen(cust, page))
 }
 
+// product is one account, by its index in the customer's list: its
+// details and its own transactions, one page (?page=) at a time; 404 for
+// an index the customer has no account at.
 func (s *Server) product(w http.ResponseWriter, r *http.Request) {
 	p := who(r)
 	idx, err := strconv.Atoi(r.PathValue("index"))

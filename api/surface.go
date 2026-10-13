@@ -81,7 +81,8 @@ type RouteFacts struct {
 	Request   *Request
 	Responses []Response
 	Params    []Param
-	Reads     Reads
+	Reads     Reads    // what the handler itself looks at
+	Guards    Reads    // what the wrappers around it look at to let the request through: its security
 	Action    string   // the role action the handler requires (staff's require), "" when none
 	Methods   []string // the methods the handler tells apart ("GET", "POST"); none when it serves them all alike
 	Unknowns  []string // what the walker could not follow: a handler whose body is outside the walk, a route with no response found

@@ -736,11 +736,6 @@
         "in": "cookie",
         "name": "staff_session",
         "type": "apiKey"
-      },
-      "staff_view": {
-        "in": "cookie",
-        "name": "staff_view",
-        "type": "apiKey"
       }
     }
   },
@@ -753,7 +748,7 @@
   "paths": {
     "/": {
       "get": {
-        "description": "--- Dashboard ---",
+        "description": "The dashboard: the bank's position, the run's state and its controls;\nit polls its own sections.",
         "operationId": "get",
         "responses": {
           "200": {
@@ -793,22 +788,19 @@
           },
           {
             "bearer": []
-          },
-          {
-            "staff_view": []
           }
         ],
-        "summary": "--- Dashboard ---",
+        "summary": "The dashboard: the bank's position, the run's state and its controls; it polls its own sections",
         "tags": [
           "staff"
         ],
         "x-prefix": "serves every path no other route does",
-        "x-source": "bff/staff/console_routes.go:24"
+        "x-source": "bff/staff/console_routes.go:26"
       }
     },
     "/about": {
       "get": {
-        "description": "About",
+        "description": "The project: what the Model Bank is, its aims and its non-goals.",
         "operationId": "get-about",
         "responses": {
           "200": {
@@ -848,20 +840,18 @@
           },
           {
             "bearer": []
-          },
-          {
-            "staff_view": []
           }
         ],
-        "summary": "About",
+        "summary": "The project: what the Model Bank is, its aims and its non-goals",
         "tags": [
           "staff"
         ],
-        "x-source": "bff/staff/site.go:452"
+        "x-source": "bff/staff/site.go:480"
       }
     },
     "/about.json": {
       "get": {
+        "description": "The demo's state for another program (GET, no session): version,\nschema, settings, the run and its rates, the position and the restart\nrecord. gobank-deploy's upgrade drill reads it before and after each\nredeploy; a performance run reads the rates.",
         "operationId": "get-about-json",
         "responses": {
           "200": {
@@ -886,15 +876,16 @@
           }
         },
         "security": [],
-        "summary": "/about.json",
+        "summary": "The demo's state for another program (GET, no session): version, schema, settings, the run and its rates, the position and the restart record",
         "tags": [
           "staff"
         ],
-        "x-source": "bff/staff/console_routes.go:214"
+        "x-source": "bff/staff/console_routes.go:246"
       }
     },
     "/about/adr": {
       "get": {
+        "description": "The architecture decision records compiled into this build.",
         "operationId": "get-about-adr",
         "responses": {
           "200": {
@@ -924,20 +915,18 @@
           },
           {
             "bearer": []
-          },
-          {
-            "staff_view": []
           }
         ],
-        "summary": "/about/adr",
+        "summary": "The architecture decision records compiled into this build",
         "tags": [
           "staff"
         ],
-        "x-source": "bff/staff/site.go:465"
+        "x-source": "bff/staff/site.go:497"
       }
     },
     "/about/docs": {
       "get": {
+        "description": "The system documentation: the component registry, who may read what,\nthe pre-rule debt and the ADR list.",
         "operationId": "get-about-docs",
         "responses": {
           "200": {
@@ -967,16 +956,13 @@
           },
           {
             "bearer": []
-          },
-          {
-            "staff_view": []
           }
         ],
-        "summary": "/about/docs",
+        "summary": "The system documentation: the component registry, who may read what, the pre-rule debt and the ADR list",
         "tags": [
           "staff"
         ],
-        "x-source": "bff/staff/site.go:462"
+        "x-source": "bff/staff/site.go:493"
       }
     },
     "/about/docs/adr/": {
@@ -1021,21 +1007,19 @@
           },
           {
             "bearer": []
-          },
-          {
-            "staff_view": []
           }
         ],
-        "summary": "An ADR whole: its page, or one of the diagrams and sources its",
+        "summary": "An ADR whole: its page, or one of the diagrams and sources its markdown names beside it",
         "tags": [
           "staff"
         ],
         "x-prefix": "serves every path under it",
-        "x-source": "bff/staff/site.go:470"
+        "x-source": "bff/staff/site.go:502"
       }
     },
     "/about/models": {
       "get": {
+        "description": "The architecture models: the C4 system context and container diagrams.",
         "operationId": "get-about-models",
         "responses": {
           "200": {
@@ -1065,21 +1049,18 @@
           },
           {
             "bearer": []
-          },
-          {
-            "staff_view": []
           }
         ],
-        "summary": "/about/models",
+        "summary": "The architecture models: the C4 system context and container diagrams",
         "tags": [
           "staff"
         ],
-        "x-source": "bff/staff/site.go:459"
+        "x-source": "bff/staff/site.go:488"
       }
     },
     "/about/runtime": {
       "get": {
-        "description": "--- Runtime, and the demo's state for another program: gobank-deploy's\nupgrade drill reads the position and the restart record here ---",
+        "description": "Runtime: the process, its memory against the limit, the schema\nversions and the restart record.",
         "operationId": "get-about-runtime",
         "responses": {
           "200": {
@@ -1109,20 +1090,18 @@
           },
           {
             "bearer": []
-          },
-          {
-            "staff_view": []
           }
         ],
-        "summary": "--- Runtime, and the demo's state for another program: gobank-deploy's",
+        "summary": "Runtime: the process, its memory against the limit, the schema versions and the restart record",
         "tags": [
           "staff"
         ],
-        "x-source": "bff/staff/console_routes.go:211"
+        "x-source": "bff/staff/console_routes.go:239"
       }
     },
     "/accounting/balance-sheet": {
       "get": {
+        "description": "The balance sheet on the current business day, with the CET1 position.",
         "operationId": "get-accounting-balance-sheet",
         "responses": {
           "200": {
@@ -1152,21 +1131,18 @@
           },
           {
             "bearer": []
-          },
-          {
-            "staff_view": []
           }
         ],
-        "summary": "/accounting/balance-sheet",
+        "summary": "The balance sheet on the current business day, with the CET1 position",
         "tags": [
           "staff"
         ],
-        "x-source": "bff/staff/site.go:287"
+        "x-source": "bff/staff/site.go:292"
       }
     },
     "/accounting/pnl": {
       "get": {
-        "description": "Accounting",
+        "description": "The profit and loss statement since the bank opened, on an accrual\nbasis.",
         "operationId": "get-accounting-pnl",
         "responses": {
           "200": {
@@ -1196,20 +1172,18 @@
           },
           {
             "bearer": []
-          },
-          {
-            "staff_view": []
           }
         ],
-        "summary": "Accounting",
+        "summary": "The profit and loss statement since the bank opened, on an accrual basis",
         "tags": [
           "staff"
         ],
-        "x-source": "bff/staff/site.go:284"
+        "x-source": "bff/staff/site.go:288"
       }
     },
     "/add-customers": {
       "post": {
+        "description": "Opens n customers in the background (POST n=), with the product mix\nthe simulation uses; /about.json shows the batch's rate.",
         "operationId": "post-add-customers",
         "requestBody": {
           "content": {
@@ -1255,7 +1229,7 @@
             "bearer": []
           }
         ],
-        "summary": "/add-customers",
+        "summary": "Opens n customers in the background (POST n=), with the product mix the simulation uses; /about.json shows the batch's rate",
         "tags": [
           "staff"
         ],
@@ -1263,11 +1237,12 @@
           "via": "control"
         },
         "x-role-action": "sim_controls",
-        "x-source": "bff/staff/console_routes.go:72"
+        "x-source": "bff/staff/console_routes.go:83"
       }
     },
     "/advance": {
       "post": {
+        "description": "Runs one business day while the run is stopped (POST).",
         "operationId": "post-advance",
         "responses": {
           "303": {
@@ -1299,7 +1274,7 @@
             "bearer": []
           }
         ],
-        "summary": "/advance",
+        "summary": "Runs one business day while the run is stopped (POST)",
         "tags": [
           "staff"
         ],
@@ -1307,12 +1282,12 @@
           "via": "control"
         },
         "x-role-action": "sim_controls",
-        "x-source": "bff/staff/console_routes.go:70"
+        "x-source": "bff/staff/console_routes.go:77"
       }
     },
     "/auth/authorize": {
       "post": {
-        "description": "PII: an admin authorises themselves to see personal data for a while",
+        "description": "PII (POST): an admin authorises themselves to see personal data for a\nwhile, then returns to redirect=.",
         "operationId": "post-auth-authorize",
         "requestBody": {
           "content": {
@@ -1348,15 +1323,16 @@
             "bearer": []
           }
         ],
-        "summary": "PII: an admin authorises themselves to see personal data for a while",
+        "summary": "PII (POST): an admin authorises themselves to see personal data for a while, then returns to redirect=",
         "tags": [
           "staff"
         ],
-        "x-source": "bff/staff/site.go:262"
+        "x-source": "bff/staff/site.go:263"
       }
     },
     "/auth/revoke": {
       "post": {
+        "description": "PII (POST): the admin gives the authorisation up and returns to\nredirect=.",
         "operationId": "post-auth-revoke",
         "requestBody": {
           "content": {
@@ -1392,16 +1368,16 @@
             "bearer": []
           }
         ],
-        "summary": "/auth/revoke",
+        "summary": "PII (POST): the admin gives the authorisation up and returns to redirect=",
         "tags": [
           "staff"
         ],
-        "x-source": "bff/staff/site.go:272"
+        "x-source": "bff/staff/site.go:275"
       }
     },
     "/customers": {
       "get": {
-        "description": "Customers",
+        "description": "The customers, one page (?page=) at a time; personal data only for an\nauthorised admin.",
         "operationId": "get-customers",
         "parameters": [
           {
@@ -1440,20 +1416,18 @@
           },
           {
             "bearer": []
-          },
-          {
-            "staff_view": []
           }
         ],
-        "summary": "Customers",
+        "summary": "The customers, one page (?page=) at a time; personal data only for an authorised admin",
         "tags": [
           "staff"
         ],
-        "x-source": "bff/staff/site.go:358"
+        "x-source": "bff/staff/site.go:374"
       }
     },
     "/customers/": {
       "get": {
+        "description": "Under /customers/: a customer's detail at /customers/{id}, or one of\ntheir accounts at /customers/{id}/account/{index}, each with its\ntransactions one page (?txpage=) at a time.",
         "operationId": "get-customers",
         "parameters": [
           {
@@ -1512,21 +1486,19 @@
           },
           {
             "bearer": []
-          },
-          {
-            "staff_view": []
           }
         ],
-        "summary": "/customers/",
+        "summary": "Under /customers/: a customer's detail at /customers/{id}, or one of their accounts at /customers/{id}/account/{index}, each with its transactions one page (?txpage=) at a time",
         "tags": [
           "staff"
         ],
         "x-prefix": "serves every path under it",
-        "x-source": "bff/staff/site.go:361"
+        "x-source": "bff/staff/site.go:380"
       }
     },
     "/dashboard/update": {
       "get": {
+        "description": "The dashboard's polled sections, as an HTML fragment.",
         "operationId": "get-dashboard-update",
         "responses": {
           "200": {
@@ -1558,11 +1530,11 @@
             "bearer": []
           }
         ],
-        "summary": "/dashboard/update",
+        "summary": "The dashboard's polled sections, as an HTML fragment",
         "tags": [
           "staff"
         ],
-        "x-source": "bff/staff/console_routes.go:43"
+        "x-source": "bff/staff/console_routes.go:46"
       }
     },
     "/events": {
@@ -1597,21 +1569,18 @@
           },
           {
             "bearer": []
-          },
-          {
-            "staff_view": []
           }
         ],
         "summary": "Events: the record of what happened and what it caused (ADR-0011)",
         "tags": [
           "staff"
         ],
-        "x-source": "bff/staff/site.go:398"
+        "x-source": "bff/staff/site.go:417"
       }
     },
     "/export.goluca": {
       "get": {
-        "description": "--- Export/Import ---",
+        "description": "The whole book as a .goluca file (GET): admin only.",
         "operationId": "get-export-goluca",
         "responses": {
           "200": {
@@ -1663,20 +1632,21 @@
             "bearer": []
           }
         ],
-        "summary": "--- Export/Import ---",
+        "summary": "The whole book as a .goluca file (GET): admin only",
         "tags": [
           "staff"
         ],
         "x-role-action": "export",
-        "x-source": "bff/staff/console_routes.go:82"
+        "x-source": "bff/staff/console_routes.go:94"
       }
     },
     "/favicon.ico": {
       "get": {
+        "description": "The tab icon as .ico, from lofigui.",
         "operationId": "get-favicon-ico",
         "responses": {},
         "security": [],
-        "summary": "/favicon.ico",
+        "summary": "The tab icon as .ico, from lofigui",
         "tags": [
           "staff"
         ],
@@ -1684,7 +1654,7 @@
           "function": "lofigui.ServeFavicon"
         },
         "x-methods": "any",
-        "x-source": "bff/staff/site.go:485",
+        "x-source": "bff/staff/site.go:518",
         "x-unknowns": [
           "handler lofigui.ServeFavicon: body outside the walk",
           "no response found"
@@ -1693,6 +1663,7 @@
     },
     "/favicon.svg": {
       "get": {
+        "description": "The tab icon as SVG.",
         "operationId": "get-favicon-svg",
         "responses": {
           "200": {
@@ -1707,16 +1678,17 @@
           }
         },
         "security": [],
-        "summary": "/favicon.svg",
+        "summary": "The tab icon as SVG",
         "tags": [
           "staff"
         ],
         "x-methods": "any",
-        "x-source": "bff/staff/site.go:486"
+        "x-source": "bff/staff/site.go:520"
       }
     },
     "/import": {
       "post": {
+        "description": "Replaces the book with an uploaded .goluca file (POST, multipart\nfile=): admin only.",
         "operationId": "post-import",
         "requestBody": {
           "content": {
@@ -1793,16 +1765,17 @@
             "bearer": []
           }
         ],
-        "summary": "/import",
+        "summary": "Replaces the book with an uploaded .goluca file (POST, multipart file=): admin only",
         "tags": [
           "staff"
         ],
         "x-role-action": "export",
-        "x-source": "bff/staff/console_routes.go:99"
+        "x-source": "bff/staff/console_routes.go:113"
       }
     },
     "/internal/explorer": {
       "get": {
+        "description": "The DB explorer: every component's tables, read-only; a role sees only\nthe components it may (customers needs view_pii).",
         "operationId": "get-internal-explorer",
         "responses": {
           "200": {
@@ -1842,20 +1815,18 @@
           },
           {
             "bearer": []
-          },
-          {
-            "staff_view": []
           }
         ],
-        "summary": "/internal/explorer",
+        "summary": "The DB explorer: every component's tables, read-only; a role sees only the components it may (customers needs view_pii)",
         "tags": [
           "staff"
         ],
-        "x-source": "bff/staff/console_routes.go:205"
+        "x-source": "bff/staff/console_routes.go:230"
       }
     },
     "/internal/explorer/": {
       "get": {
+        "description": "The DB explorer's tables and rows, under its prefix.",
         "operationId": "get-internal-explorer",
         "responses": {
           "200": {
@@ -1895,21 +1866,19 @@
           },
           {
             "bearer": []
-          },
-          {
-            "staff_view": []
           }
         ],
-        "summary": "/internal/explorer/",
+        "summary": "The DB explorer's tables and rows, under its prefix",
         "tags": [
           "staff"
         ],
         "x-prefix": "serves every path under it",
-        "x-source": "bff/staff/console_routes.go:206"
+        "x-source": "bff/staff/console_routes.go:232"
       }
     },
     "/login": {
       "get": {
+        "description": "The staff login: the form (GET) and its check (POST login, password)\nagainst the users component. Five failures for one login or from one\naddress lock it for fifteen minutes; 503 on a deployment with no users.",
         "operationId": "get-post-login",
         "parameters": [
           {
@@ -1984,21 +1953,15 @@
             "description": "Staff login is not set up on this deployment."
           }
         },
-        "security": [
-          {
-            "staff_session": []
-          },
-          {
-            "staff_view": []
-          }
-        ],
-        "summary": "/login",
+        "security": [],
+        "summary": "The staff login: the form (GET) and its check (POST login, password) against the users component",
         "tags": [
           "staff"
         ],
-        "x-source": "bff/staff/login.go:22"
+        "x-source": "bff/staff/login.go:25"
       },
       "post": {
+        "description": "The staff login: the form (GET) and its check (POST login, password)\nagainst the users component. Five failures for one login or from one\naddress lock it for fifteen minutes; 503 on a deployment with no users.",
         "operationId": "get-post-login",
         "parameters": [
           {
@@ -2073,23 +2036,17 @@
             "description": "Staff login is not set up on this deployment."
           }
         },
-        "security": [
-          {
-            "staff_session": []
-          },
-          {
-            "staff_view": []
-          }
-        ],
-        "summary": "/login",
+        "security": [],
+        "summary": "The staff login: the form (GET) and its check (POST login, password) against the users component",
         "tags": [
           "staff"
         ],
-        "x-source": "bff/staff/login.go:22"
+        "x-source": "bff/staff/login.go:25"
       }
     },
     "/logout": {
       "post": {
+        "description": "Ends the staff session (POST): the cookie is cleared and the browser\nsent to the login page.",
         "operationId": "post-logout",
         "responses": {
           "303": {
@@ -2111,15 +2068,16 @@
             "bearer": []
           }
         ],
-        "summary": "/logout",
+        "summary": "Ends the staff session (POST): the cookie is cleared and the browser sent to the login page",
         "tags": [
           "staff"
         ],
-        "x-source": "bff/staff/login.go:36"
+        "x-source": "bff/staff/login.go:41"
       }
     },
     "/movements/{id}": {
       "get": {
+        "description": "One movement of the ledger (ADR-0008): its page; with the suffix\n.goluca its plain-text-accounting text, with .json the movement itself.",
         "operationId": "get-movements-id",
         "parameters": [
           {
@@ -2189,21 +2147,18 @@
           },
           {
             "bearer": []
-          },
-          {
-            "staff_view": []
           }
         ],
-        "summary": "/movements/{id}",
+        "summary": "One movement of the ledger (ADR-0008): its page; with the suffix .goluca its plain-text-accounting text, with .json the movement itself",
         "tags": [
           "staff"
         ],
-        "x-source": "bff/staff/movement.go:43"
+        "x-source": "bff/staff/movement.go:45"
       }
     },
     "/payments": {
       "get": {
-        "description": "--- Payments: the list with the generator's controls, and the generator ---",
+        "description": "Payments: the list, newest first, one page (?page=) at a time, with\nthe generator's controls.",
         "operationId": "get-payments",
         "parameters": [
           {
@@ -2242,20 +2197,18 @@
           },
           {
             "bearer": []
-          },
-          {
-            "staff_view": []
           }
         ],
-        "summary": "--- Payments: the list with the generator's controls, and the generator ---",
+        "summary": "Payments: the list, newest first, one page (?page=) at a time, with the generator's controls",
         "tags": [
           "staff"
         ],
-        "x-source": "bff/staff/console_routes.go:127"
+        "x-source": "bff/staff/console_routes.go:143"
       }
     },
     "/payments/run": {
       "post": {
+        "description": "Starts the payment generator (POST): the settings' payments a day.",
         "operationId": "post-payments-run",
         "responses": {
           "303": {
@@ -2287,7 +2240,7 @@
             "bearer": []
           }
         ],
-        "summary": "/payments/run",
+        "summary": "Starts the payment generator (POST): the settings' payments a day",
         "tags": [
           "staff"
         ],
@@ -2295,11 +2248,12 @@
           "via": "payments"
         },
         "x-role-action": "send_payment",
-        "x-source": "bff/staff/console_routes.go:146"
+        "x-source": "bff/staff/console_routes.go:164"
       }
     },
     "/payments/send": {
       "post": {
+        "description": "Sends one generated payment now (POST).",
         "operationId": "post-payments-send",
         "responses": {
           "303": {
@@ -2331,7 +2285,7 @@
             "bearer": []
           }
         ],
-        "summary": "/payments/send",
+        "summary": "Sends one generated payment now (POST)",
         "tags": [
           "staff"
         ],
@@ -2339,11 +2293,12 @@
           "via": "payments"
         },
         "x-role-action": "send_payment",
-        "x-source": "bff/staff/console_routes.go:145"
+        "x-source": "bff/staff/console_routes.go:162"
       }
     },
     "/payments/stop": {
       "post": {
+        "description": "Stops the payment generator (POST).",
         "operationId": "post-payments-stop",
         "responses": {
           "303": {
@@ -2375,7 +2330,7 @@
             "bearer": []
           }
         ],
-        "summary": "/payments/stop",
+        "summary": "Stops the payment generator (POST)",
         "tags": [
           "staff"
         ],
@@ -2383,12 +2338,12 @@
           "via": "payments"
         },
         "x-role-action": "send_payment",
-        "x-source": "bff/staff/console_routes.go:147"
+        "x-source": "bff/staff/console_routes.go:166"
       }
     },
     "/payments/{id}": {
       "get": {
-        "description": "Payments: the detail; the list carries the console's controls until 1.6.4",
+        "description": "One payment: its detail and the movements it made.",
         "operationId": "get-payments-id",
         "parameters": [
           {
@@ -2438,20 +2393,18 @@
           },
           {
             "bearer": []
-          },
-          {
-            "staff_view": []
           }
         ],
-        "summary": "Payments: the detail; the list carries the console's controls until 1",
+        "summary": "One payment: its detail and the movements it made",
         "tags": [
           "staff"
         ],
-        "x-source": "bff/staff/site.go:388"
+        "x-source": "bff/staff/site.go:407"
       }
     },
     "/products/bank": {
       "get": {
+        "description": "The bank's own parameters (Bank Rate, the reserve ratio and the rest),\nas the Bank tab shows them.",
         "operationId": "get-products-bank",
         "responses": {
           "200": {
@@ -2481,20 +2434,18 @@
           },
           {
             "bearer": []
-          },
-          {
-            "staff_view": []
           }
         ],
-        "summary": "/products/bank",
+        "summary": "The bank's own parameters (Bank Rate, the reserve ratio and the rest), as the Bank tab shows them",
         "tags": [
           "staff"
         ],
-        "x-source": "bff/staff/site.go:300"
+        "x-source": "bff/staff/site.go:312"
       }
     },
     "/products/lending": {
       "get": {
+        "description": "The lending products: the family's catalogue, each product with its\nbook.",
         "operationId": "get-products-lending",
         "responses": {
           "200": {
@@ -2524,21 +2475,18 @@
           },
           {
             "bearer": []
-          },
-          {
-            "staff_view": []
           }
         ],
-        "summary": "/products/lending",
+        "summary": "The lending products: the family's catalogue, each product with its book",
         "tags": [
           "staff"
         ],
-        "x-source": "bff/staff/site.go:297"
+        "x-source": "bff/staff/site.go:307"
       }
     },
     "/products/savings": {
       "get": {
-        "description": "Products: the masters (a family's products, the bank's own) and\nthe detail, a parameter's own page, which is also where a staff\nsetting is made (ADR-0010): decided by the signed-in user.",
+        "description": "The savings products: the family's catalogue, each product with its\nbook.",
         "operationId": "get-products-savings",
         "responses": {
           "200": {
@@ -2568,20 +2516,18 @@
           },
           {
             "bearer": []
-          },
-          {
-            "staff_view": []
           }
         ],
-        "summary": "Products: the masters (a family's products, the bank's own) and",
+        "summary": "The savings products: the family's catalogue, each product with its book",
         "tags": [
           "staff"
         ],
-        "x-source": "bff/staff/site.go:294"
+        "x-source": "bff/staff/site.go:302"
       }
     },
     "/products/{owner}/parameters/{key}": {
       "get": {
+        "description": "One parameter of a product or of the bank: its history and, for a\nsigned-in user who may, the form that sets it (POST value, effective);\n?refused= carries a refusal back to the page.",
         "operationId": "get-post-products-owner-parameters-key",
         "parameters": [
           {
@@ -2683,19 +2629,17 @@
           },
           {
             "bearer": []
-          },
-          {
-            "staff_view": []
           }
         ],
-        "summary": "/products/{owner}/parameters/{key}",
+        "summary": "One parameter of a product or of the bank: its history and, for a signed-in user who may, the form that sets it (POST value, effective); ?refused= carries a refusal back to the page",
         "tags": [
           "staff"
         ],
         "x-role-action": "settings",
-        "x-source": "bff/staff/site.go:303"
+        "x-source": "bff/staff/site.go:318"
       },
       "post": {
+        "description": "One parameter of a product or of the bank: its history and, for a\nsigned-in user who may, the form that sets it (POST value, effective);\n?refused= carries a refusal back to the page.",
         "operationId": "get-post-products-owner-parameters-key",
         "parameters": [
           {
@@ -2797,21 +2741,19 @@
           },
           {
             "bearer": []
-          },
-          {
-            "staff_view": []
           }
         ],
-        "summary": "/products/{owner}/parameters/{key}",
+        "summary": "One parameter of a product or of the bank: its history and, for a signed-in user who may, the form that sets it (POST value, effective); ?refused= carries a refusal back to the page",
         "tags": [
           "staff"
         ],
         "x-role-action": "settings",
-        "x-source": "bff/staff/site.go:303"
+        "x-source": "bff/staff/site.go:318"
       }
     },
     "/reports/bbsi": {
       "get": {
+        "description": "The BBSI return (Bank and Building Society Interest): each customer's\ninterest for the year; personal data only for an authorised admin.",
         "operationId": "get-reports-bbsi",
         "responses": {
           "200": {
@@ -2841,21 +2783,18 @@
           },
           {
             "bearer": []
-          },
-          {
-            "staff_view": []
           }
         ],
-        "summary": "/reports/bbsi",
+        "summary": "The BBSI return (Bank and Building Society Interest): each customer's interest for the year; personal data only for an authorised admin",
         "tags": [
           "staff"
         ],
-        "x-source": "bff/staff/site.go:406"
+        "x-source": "bff/staff/site.go:427"
       }
     },
     "/reports/charts": {
       "get": {
-        "description": "Reports",
+        "description": "The charts: the book, the customer count and the rates over the run.",
         "operationId": "get-reports-charts",
         "responses": {
           "200": {
@@ -2885,20 +2824,18 @@
           },
           {
             "bearer": []
-          },
-          {
-            "staff_view": []
           }
         ],
-        "summary": "Reports",
+        "summary": "The charts: the book, the customer count and the rates over the run",
         "tags": [
           "staff"
         ],
-        "x-source": "bff/staff/site.go:403"
+        "x-source": "bff/staff/site.go:422"
       }
     },
     "/reports/customer-view": {
       "get": {
+        "description": "A customer as the app shows them (?id=); without an id, the customer\nlist.",
         "operationId": "get-reports-customer-view",
         "parameters": [
           {
@@ -2947,20 +2884,18 @@
           },
           {
             "bearer": []
-          },
-          {
-            "staff_view": []
           }
         ],
-        "summary": "/reports/customer-view",
+        "summary": "A customer as the app shows them (?id=); without an id, the customer list",
         "tags": [
           "staff"
         ],
-        "x-source": "bff/staff/site.go:409"
+        "x-source": "bff/staff/site.go:432"
       }
     },
     "/reset": {
       "post": {
+        "description": "Empties the bank and starts again on its opening day (POST); the\nsettings are kept.",
         "operationId": "post-reset",
         "responses": {
           "303": {
@@ -2992,7 +2927,7 @@
             "bearer": []
           }
         ],
-        "summary": "/reset",
+        "summary": "Empties the bank and starts again on its opening day (POST); the settings are kept",
         "tags": [
           "staff"
         ],
@@ -3000,12 +2935,12 @@
           "via": "control"
         },
         "x-role-action": "sim_controls",
-        "x-source": "bff/staff/console_routes.go:71"
+        "x-source": "bff/staff/console_routes.go:80"
       }
     },
     "/settings": {
       "get": {
-        "description": "--- Settings ---",
+        "description": "The console settings: the page (GET), and the change (POST\nmax_customers, payments_per_day, day_length; 0s runs flat out, a day\nlength that does not parse leaves the current one). The day length set\nhere is the run's and outlives the process.",
         "operationId": "get-post-settings",
         "requestBody": {
           "content": {
@@ -3075,20 +3010,17 @@
           },
           {
             "bearer": []
-          },
-          {
-            "staff_view": []
           }
         ],
-        "summary": "--- Settings ---",
+        "summary": "The console settings: the page (GET), and the change (POST max_customers, payments_per_day, day_length; 0s runs flat out, a day length that does not parse leaves the current one)",
         "tags": [
           "staff"
         ],
         "x-role-action": "settings",
-        "x-source": "bff/staff/console_routes.go:151"
+        "x-source": "bff/staff/console_routes.go:174"
       },
       "post": {
-        "description": "--- Settings ---",
+        "description": "The console settings: the page (GET), and the change (POST\nmax_customers, payments_per_day, day_length; 0s runs flat out, a day\nlength that does not parse leaves the current one). The day length set\nhere is the run's and outlives the process.",
         "operationId": "get-post-settings",
         "requestBody": {
           "content": {
@@ -3158,17 +3090,14 @@
           },
           {
             "bearer": []
-          },
-          {
-            "staff_view": []
           }
         ],
-        "summary": "--- Settings ---",
+        "summary": "The console settings: the page (GET), and the change (POST max_customers, payments_per_day, day_length; 0s runs flat out, a day length that does not parse leaves the current one)",
         "tags": [
           "staff"
         ],
         "x-role-action": "settings",
-        "x-source": "bff/staff/console_routes.go:151"
+        "x-source": "bff/staff/console_routes.go:174"
       }
     },
     "/settings/status": {
@@ -3205,15 +3134,16 @@
             "bearer": []
           }
         ],
-        "summary": "The settings page's status line, polled on its own so the form is",
+        "summary": "The settings page's status line, polled on its own so the form is never re-rendered under the operator",
         "tags": [
           "staff"
         ],
-        "x-source": "bff/staff/console_routes.go:179"
+        "x-source": "bff/staff/console_routes.go:202"
       }
     },
     "/start": {
       "post": {
+        "description": "Starts the run (POST): the simulation moves day after day at the\nsettings' day length until stopped.",
         "operationId": "post-start",
         "responses": {
           "303": {
@@ -3245,7 +3175,7 @@
             "bearer": []
           }
         ],
-        "summary": "/start",
+        "summary": "Starts the run (POST): the simulation moves day after day at the settings' day length until stopped",
         "tags": [
           "staff"
         ],
@@ -3253,11 +3183,12 @@
           "via": "control"
         },
         "x-role-action": "sim_controls",
-        "x-source": "bff/staff/console_routes.go:68"
+        "x-source": "bff/staff/console_routes.go:73"
       }
     },
     "/stop": {
       "post": {
+        "description": "Stops the run after the day in progress (POST).",
         "operationId": "post-stop",
         "responses": {
           "303": {
@@ -3289,7 +3220,7 @@
             "bearer": []
           }
         ],
-        "summary": "/stop",
+        "summary": "Stops the run after the day in progress (POST)",
         "tags": [
           "staff"
         ],
@@ -3297,11 +3228,12 @@
           "via": "control"
         },
         "x-role-action": "sim_controls",
-        "x-source": "bff/staff/console_routes.go:69"
+        "x-source": "bff/staff/console_routes.go:75"
       }
     },
     "/treasury/capital": {
       "get": {
+        "description": "The reserve ratio against its requirement, and the lending headroom.",
         "operationId": "get-treasury-capital",
         "responses": {
           "200": {
@@ -3331,21 +3263,18 @@
           },
           {
             "bearer": []
-          },
-          {
-            "staff_view": []
           }
         ],
-        "summary": "/treasury/capital",
+        "summary": "The reserve ratio against its requirement, and the lending headroom",
         "tags": [
           "staff"
         ],
-        "x-source": "bff/staff/site.go:422"
+        "x-source": "bff/staff/site.go:447"
       }
     },
     "/treasury/cash": {
       "get": {
-        "description": "Treasury",
+        "description": "The cash position: deposits, loans, cash at the BoE against the\nrequired reserves, and the Bank Rate.",
         "operationId": "get-treasury-cash",
         "responses": {
           "200": {
@@ -3375,20 +3304,18 @@
           },
           {
             "bearer": []
-          },
-          {
-            "staff_view": []
           }
         ],
-        "summary": "Treasury",
+        "summary": "The cash position: deposits, loans, cash at the BoE against the required reserves, and the Bank Rate",
         "tags": [
           "staff"
         ],
-        "x-source": "bff/staff/site.go:419"
+        "x-source": "bff/staff/site.go:443"
       }
     },
     "/treasury/gilts": {
       "get": {
+        "description": "The gilt holdings and the purchase form.",
         "operationId": "get-treasury-gilts",
         "responses": {
           "200": {
@@ -3418,20 +3345,18 @@
           },
           {
             "bearer": []
-          },
-          {
-            "staff_view": []
           }
         ],
-        "summary": "/treasury/gilts",
+        "summary": "The gilt holdings and the purchase form",
         "tags": [
           "staff"
         ],
-        "x-source": "bff/staff/site.go:425"
+        "x-source": "bff/staff/site.go:451"
       }
     },
     "/treasury/gilts/buy": {
       "post": {
+        "description": "Buys a gilt (POST tenor, face_value in pounds): admin only; returns to\nthe gilts page.",
         "operationId": "post-treasury-gilts-buy",
         "requestBody": {
           "content": {
@@ -3480,17 +3405,17 @@
             "bearer": []
           }
         ],
-        "summary": "/treasury/gilts/buy",
+        "summary": "Buys a gilt (POST tenor, face_value in pounds): admin only; returns to the gilts page",
         "tags": [
           "staff"
         ],
         "x-role-action": "buy_gilt",
-        "x-source": "bff/staff/site.go:428"
+        "x-source": "bff/staff/site.go:456"
       }
     },
     "/v1/health": {
       "get": {
-        "description": "health answers as soon as the process serves HTTP. No session.",
+        "description": "Answers as soon as the process serves HTTP. No session.",
         "operationId": "get-v1-health",
         "responses": {
           "200": {
@@ -3505,7 +3430,7 @@
           }
         },
         "security": [],
-        "summary": "health answers as soon as the process serves HTTP",
+        "summary": "Answers as soon as the process serves HTTP",
         "tags": [
           "bff"
         ],
@@ -3517,6 +3442,7 @@
     },
     "/v1/login": {
       "post": {
+        "description": "Checks the customer ID and password, from a JSON body or a form,\nand opens a session: a JSON client gets the token and the home screen; a\nform post or a browser gets the mb_session cookie and is sent to the\nhome screen. Five failures for one customer ID or from one address in\nfifteen minutes lock that key for the rest of the window (429 with\nRetry-After).",
         "operationId": "post-v1-login",
         "requestBody": {
           "content": {
@@ -3651,7 +3577,7 @@
           }
         },
         "security": [],
-        "summary": "POST /v1/login",
+        "summary": "Checks the customer ID and password, from a JSON body or a form, and opens a session: a JSON client gets the token and the home screen; a form post or a browser gets the mb_session cookie and is sent to the home screen",
         "tags": [
           "bff"
         ],
@@ -3663,6 +3589,7 @@
     },
     "/v1/logout": {
       "post": {
+        "description": "Ends the session: a browser's cookie is cleared and it is sent\nto the login screen; a JSON client gets the login screen.",
         "operationId": "post-v1-logout",
         "responses": {
           "200": {
@@ -3716,7 +3643,7 @@
             "bearer": []
           }
         ],
-        "summary": "POST /v1/logout",
+        "summary": "Ends the session: a browser's cookie is cleared and it is sent to the login screen; a JSON client gets the login screen",
         "tags": [
           "bff"
         ],
@@ -3731,7 +3658,7 @@
     },
     "/v1/openapi.json": {
       "get": {
-        "description": "openapi serves the API document (package api): the surface this server\nand the staff web present, as built.",
+        "description": "Serves the API document (package api): the surface this server\nand the staff web present, as built.",
         "operationId": "get-v1-openapi-json",
         "responses": {
           "200": {
@@ -3746,7 +3673,7 @@
           }
         },
         "security": [],
-        "summary": "openapi serves the API document (package api): the surface this server",
+        "summary": "Serves the API document (package api): the surface this server and the staff web present, as built",
         "tags": [
           "bff"
         ],
@@ -3758,6 +3685,7 @@
     },
     "/v1/screen/accounts": {
       "get": {
+        "description": "The home screen: the customer's net position and a row per\naccount, each opening its product screen.",
         "operationId": "get-v1-screen-accounts",
         "responses": {
           "200": {
@@ -3860,7 +3788,7 @@
             "bearer": []
           }
         ],
-        "summary": "GET /v1/screen/accounts",
+        "summary": "The home screen: the customer's net position and a row per account, each opening its product screen",
         "tags": [
           "bff"
         ],
@@ -3875,6 +3803,7 @@
     },
     "/v1/screen/activity": {
       "get": {
+        "description": "The customer's transactions across every account, newest\nfirst, one page (?page=) at a time.",
         "operationId": "get-v1-screen-activity",
         "parameters": [
           {
@@ -3986,7 +3915,7 @@
             "bearer": []
           }
         ],
-        "summary": "GET /v1/screen/activity",
+        "summary": "The customer's transactions across every account, newest first, one page (?page=) at a time",
         "tags": [
           "bff"
         ],
@@ -4001,6 +3930,7 @@
     },
     "/v1/screen/login": {
       "get": {
+        "description": "The front door: the login form, whose submit is POST\n/v1/login, with the deployment's note. No session.",
         "operationId": "get-v1-screen-login",
         "responses": {
           "200": {
@@ -4020,7 +3950,7 @@
           }
         },
         "security": [],
-        "summary": "GET /v1/screen/login",
+        "summary": "The front door: the login form, whose submit is POST /v1/login, with the deployment's note",
         "tags": [
           "bff"
         ],
@@ -4032,6 +3962,7 @@
     },
     "/v1/screen/product/{index}": {
       "get": {
+        "description": "One account, by its index in the customer's list: its\ndetails and its own transactions, one page (?page=) at a time; 404 for\nan index the customer has no account at.",
         "operationId": "get-v1-screen-product-index",
         "parameters": [
           {
@@ -4151,7 +4082,7 @@
             "bearer": []
           }
         ],
-        "summary": "GET /v1/screen/product/{index}",
+        "summary": "One account, by its index in the customer's list: its details and its own transactions, one page (?page=) at a time; 404 for an index the customer has no account at",
         "tags": [
           "bff"
         ],
@@ -4166,6 +4097,7 @@
     },
     "/view/{name}": {
       "get": {
+        "description": "Switches this browser between the bank's view and the customer's:\nsets the staff_view cookie for a year and returns to ?back=.",
         "operationId": "get-view-name",
         "parameters": [
           {
@@ -4204,16 +4136,17 @@
             "bearer": []
           }
         ],
-        "summary": "/view/{name}",
+        "summary": "Switches this browser between the bank's view and the customer's: sets the staff_view cookie for a year and returns to ?back=",
         "tags": [
           "staff"
         ],
         "x-methods": "any",
-        "x-source": "bff/staff/view.go:28"
+        "x-source": "bff/staff/view.go:30"
       }
     },
     "/wasm/": {
       "get": {
+        "description": "pta2svg's browser renderer and its loader, embedded (ADR-0008), so the\nmovement page draws in the tab.",
         "operationId": "get-wasm",
         "responses": {
           "200": {
@@ -4228,7 +4161,7 @@
             "bearer": []
           }
         ],
-        "summary": "/wasm/",
+        "summary": "pta2svg's browser renderer and its loader, embedded (ADR-0008), so the movement page draws in the tab",
         "tags": [
           "staff"
         ],
@@ -4239,7 +4172,7 @@
         },
         "x-methods": "any",
         "x-prefix": "serves every path under it",
-        "x-source": "bff/staff/movement.go:83"
+        "x-source": "bff/staff/movement.go:87"
       }
     }
   },

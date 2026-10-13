@@ -38,7 +38,7 @@ func TestRenderingOfOneRoute(t *testing.T) {
 			{Package: "example.com/app/bff", Method: "GET", Path: "/things/{id}", Pos: "bff/x.go:10", Handler: "(*S).thing", Doc: "thing is one thing.\nMore.",
 				RouteFacts: api.RouteFacts{
 					Params: []api.Param{{Name: "page", In: "query"}},
-					Reads:  api.Reads{Headers: []string{"Authorization"}},
+					Guards: api.Reads{Headers: []string{"Authorization"}},
 					Responses: []api.Response{
 						{Status: 200, Media: "application/json", Type: "bff.Thing"},
 						{Status: 404, Media: "application/json", Type: "bff.Err", Note: "not_found"},

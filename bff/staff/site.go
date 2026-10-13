@@ -258,7 +258,8 @@ func (s *Site) routes() {
 	bank := s.cfg.Bank
 	mux := s.mux
 
-	// PII: an admin authorises themselves to see personal data for a while
+	// PII (POST): an admin authorises themselves to see personal data for a
+	// while, then returns to redirect=.
 	mux.HandleFunc("/auth/authorize", func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != "POST" {
 			s.redirect(w, r, "")
@@ -269,6 +270,8 @@ func (s *Site) routes() {
 		}
 		s.redirect(w, r, r.FormValue("redirect"))
 	})
+	// PII (POST): the admin gives the authorisation up and returns to
+	// redirect=.
 	mux.HandleFunc("/auth/revoke", func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != "POST" {
 			s.redirect(w, r, "")
@@ -280,10 +283,12 @@ func (s *Site) routes() {
 		s.redirect(w, r, r.FormValue("redirect"))
 	})
 
-	// Accounting
+	// The profit and loss statement since the bank opened, on an accrual
+	// basis.
 	mux.HandleFunc("/accounting/pnl", func(w http.ResponseWriter, r *http.Request) {
 		s.page(w, r, func() string { return BuildPnLHTML(bank) })
 	})
+	// The balance sheet on the current business day, with the CET1 position.
 	mux.HandleFunc("/accounting/balance-sheet", func(w http.ResponseWriter, r *http.Request) {
 		s.page(w, r, func() string { return BuildBalanceSheetHTML(bank) })
 	})
@@ -291,15 +296,25 @@ func (s *Site) routes() {
 	// Products: the masters (a family's products, the bank's own) and
 	// the detail, a parameter's own page, which is also where a staff
 	// setting is made (ADR-0010): decided by the signed-in user.
+
+	// The savings products: the family's catalogue, each product with its
+	// book.
 	mux.HandleFunc("/products/savings", func(w http.ResponseWriter, r *http.Request) {
 		s.masterPage(w, r, func() string { return BuildProductsHTML(bank, gbp.FamilySavings, s.view(r), s.polling()) })
 	})
+	// The lending products: the family's catalogue, each product with its
+	// book.
 	mux.HandleFunc("/products/lending", func(w http.ResponseWriter, r *http.Request) {
 		s.masterPage(w, r, func() string { return BuildProductsHTML(bank, gbp.FamilyLending, s.view(r), s.polling()) })
 	})
+	// The bank's own parameters (Bank Rate, the reserve ratio and the rest),
+	// as the Bank tab shows them.
 	mux.HandleFunc("/products/bank", func(w http.ResponseWriter, r *http.Request) {
 		s.masterPage(w, r, func() string { return BuildBankHTML(bank, s.polling()) })
 	})
+	// One parameter of a product or of the bank: its history and, for a
+	// signed-in user who may, the form that sets it (POST value, effective);
+	// ?refused= carries a refusal back to the page.
 	mux.HandleFunc("/products/{owner}/parameters/{key}", func(w http.ResponseWriter, r *http.Request) {
 		owner, key := r.PathValue("owner"), r.PathValue("key")
 		d, err := bank.Parameter(r.Context(), owner, key)
@@ -354,10 +369,14 @@ func (s *Site) routes() {
 		}
 	})
 
-	// Customers
+	// The customers, one page (?page=) at a time; personal data only for an
+	// authorised admin.
 	mux.HandleFunc("/customers", func(w http.ResponseWriter, r *http.Request) {
 		s.page(w, r, func() string { return BuildCustomersHTML(bank, pageParam(r, "page"), s.piiAuthorised(r)) })
 	})
+	// Under /customers/: a customer's detail at /customers/{id}, or one of
+	// their accounts at /customers/{id}/account/{index}, each with its
+	// transactions one page (?txpage=) at a time.
 	mux.HandleFunc("/customers/", func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != "GET" {
 			http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
@@ -384,7 +403,7 @@ func (s *Site) routes() {
 		s.page(w, r, func() string { return BuildCustomerDetailHTML(bank, parts[0], pii, txPage, s.view(r)) })
 	})
 
-	// Payments: the detail; the list carries the console's controls until 1.6.4
+	// One payment: its detail and the movements it made.
 	mux.HandleFunc("/payments/{id}", func(w http.ResponseWriter, r *http.Request) {
 		id, err := strconv.Atoi(r.PathValue("id"))
 		if err != nil {
@@ -399,13 +418,17 @@ func (s *Site) routes() {
 		s.page(w, r, func() string { return BuildEventsHTML(bank) })
 	})
 
-	// Reports
+	// The charts: the book, the customer count and the rates over the run.
 	mux.HandleFunc("/reports/charts", func(w http.ResponseWriter, r *http.Request) {
 		s.page(w, r, func() string { return BuildChartsHTML(bank) })
 	})
+	// The BBSI return (Bank and Building Society Interest): each customer's
+	// interest for the year; personal data only for an authorised admin.
 	mux.HandleFunc("/reports/bbsi", func(w http.ResponseWriter, r *http.Request) {
 		s.page(w, r, func() string { return BuildBBSIHTML(bank, s.piiAuthorised(r)) })
 	})
+	// A customer as the app shows them (?id=); without an id, the customer
+	// list.
 	mux.HandleFunc("/reports/customer-view", func(w http.ResponseWriter, r *http.Request) {
 		id := r.URL.Query().Get("id")
 		if id == "" {
@@ -415,16 +438,21 @@ func (s *Site) routes() {
 		s.page(w, r, func() string { return BuildCustomerViewHTML(bank, id, s.piiAuthorised(r)) })
 	})
 
-	// Treasury
+	// The cash position: deposits, loans, cash at the BoE against the
+	// required reserves, and the Bank Rate.
 	mux.HandleFunc("/treasury/cash", func(w http.ResponseWriter, r *http.Request) {
 		s.page(w, r, func() string { return BuildCashPositionHTML(bank) })
 	})
+	// The reserve ratio against its requirement, and the lending headroom.
 	mux.HandleFunc("/treasury/capital", func(w http.ResponseWriter, r *http.Request) {
 		s.page(w, r, func() string { return BuildCapitalHTML(bank) })
 	})
+	// The gilt holdings and the purchase form.
 	mux.HandleFunc("/treasury/gilts", func(w http.ResponseWriter, r *http.Request) {
 		s.page(w, r, func() string { return BuildGiltsHTML(bank) })
 	})
+	// Buys a gilt (POST tenor, face_value in pounds): admin only; returns to
+	// the gilts page.
 	mux.HandleFunc("/treasury/gilts/buy", func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != "POST" {
 			s.redirect(w, r, "treasury/gilts")
@@ -448,7 +476,7 @@ func (s *Site) routes() {
 		s.redirect(w, r, "treasury/gilts")
 	})
 
-	// About
+	// The project: what the Model Bank is, its aims and its non-goals.
 	mux.HandleFunc("/about", func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path != "/about" {
 			http.NotFound(w, r)
@@ -456,12 +484,16 @@ func (s *Site) routes() {
 		}
 		s.page(w, r, BuildProjectAboutHTML)
 	})
+	// The architecture models: the C4 system context and container diagrams.
 	mux.HandleFunc("/about/models", func(w http.ResponseWriter, r *http.Request) {
 		s.page(w, r, BuildModelsHTML)
 	})
+	// The system documentation: the component registry, who may read what,
+	// the pre-rule debt and the ADR list.
 	mux.HandleFunc("/about/docs", func(w http.ResponseWriter, r *http.Request) {
 		s.page(w, r, func() string { return BuildDocsHTML(s.cfg.Components, s.cfg.Debt) })
 	})
+	// The architecture decision records compiled into this build.
 	mux.HandleFunc("/about/adr", func(w http.ResponseWriter, r *http.Request) {
 		s.page(w, r, BuildADRIndexHTML)
 	})
@@ -482,7 +514,9 @@ func (s *Site) routes() {
 		s.page(w, r, func() string { return page })
 	})
 
+	// The tab icon as .ico, from lofigui.
 	mux.HandleFunc("/favicon.ico", lofigui.ServeFavicon)
+	// The tab icon as SVG.
 	mux.HandleFunc("/favicon.svg", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "image/svg+xml")
 		w.Write(faviconSVG)

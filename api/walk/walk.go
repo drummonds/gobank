@@ -393,10 +393,26 @@ func (w *walker) docOf(name string, lit *ast.FuncLit) string {
 	}
 	for _, f := range w.fns {
 		if f.decl != nil && f.name == name && f.decl.Doc != nil {
-			return strings.TrimSpace(f.decl.Doc.Text())
+			return withoutLeadingName(strings.TrimSpace(f.decl.Doc.Text()), f.decl.Name.Name)
 		}
 	}
 	return ""
+}
+
+// withoutLeadingName turns a Go doc comment ("health answers ...") into
+// prose about the route ("Answers ..."), when it starts with the name.
+func withoutLeadingName(doc, name string) string {
+	rest, ok := strings.CutPrefix(doc, name+" ")
+	if !ok || rest == "" {
+		return doc
+	}
+	for _, verb := range []string{"is ", "are "} { // "product is one account" → "One account"
+		if r, ok := strings.CutPrefix(rest, verb); ok && r != "" {
+			rest = r
+			break
+		}
+	}
+	return strings.ToUpper(rest[:1]) + rest[1:]
 }
 
 // commentAbove is the comment group on the statement that makes the
@@ -408,13 +424,13 @@ func (w *walker) commentAbove(file *ast.File, call *ast.CallExpr) string {
 		if !ok {
 			continue
 		}
-		var parts []string
+		doc := ""
 		for _, g := range w.comments[file][stmt] {
-			if g.End() <= stmt.Pos() {
-				parts = append(parts, strings.TrimSpace(g.Text()))
+			if g.End() <= stmt.Pos() { // the nearest group above wins over a section banner
+				doc = strings.TrimSpace(strings.Trim(strings.TrimSpace(g.Text()), "-"))
 			}
 		}
-		return strings.Join(parts, "\n")
+		return doc
 	}
 	return ""
 }

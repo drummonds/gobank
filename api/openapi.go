@@ -173,7 +173,7 @@ func operation(r Route, pkg string, gate Gate, schemes map[string]any) map[strin
 	if gate.Wrapper != "" && !slices.Contains(gate.Open, r.Path) {
 		add(gate.Reads)
 	}
-	add(r.Reads)
+	add(r.Guards)
 	if security == nil {
 		security = []any{}
 	}
@@ -379,10 +379,18 @@ func summary(r Route) string {
 	if doc == "" {
 		return strings.TrimSpace(r.Method + " " + r.Path)
 	}
-	if i := strings.IndexAny(doc, ".\n"); i > 0 {
-		doc = doc[:i]
+	// The first sentence: up to a full stop that ends one (not the dot of
+	// .goluca) or the first paragraph break; a comment's line wrapping is
+	// not a break.
+	doc = strings.ReplaceAll(doc, "\n\n", "\x00")
+	doc = strings.ReplaceAll(doc, "\n", " ")
+	for i := 0; i < len(doc); i++ {
+		if doc[i] == 0 || doc[i] == '.' && (i+1 == len(doc) || doc[i+1] == ' ' || doc[i+1] == 0) {
+			doc = doc[:i]
+			break
+		}
 	}
-	return strings.TrimSuffix(doc, ".")
+	return strings.TrimSpace(doc)
 }
 
 var nonWord = regexp.MustCompile(`[^A-Za-z0-9]+`)

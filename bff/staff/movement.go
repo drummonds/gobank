@@ -40,6 +40,8 @@ var wasmFiles embed.FS
 // the WASM assets.
 func (s *Site) movementRoutes() {
 	bank := s.cfg.Bank
+	// One movement of the ledger (ADR-0008): its page; with the suffix
+	// .goluca its plain-text-accounting text, with .json the movement itself.
 	s.mux.HandleFunc("/movements/{id}", func(w http.ResponseWriter, r *http.Request) {
 		id := r.PathValue("id")
 		format := ""
@@ -80,6 +82,8 @@ func (s *Site) movementRoutes() {
 		}
 	})
 	sub, _ := fs.Sub(wasmFiles, "wasm")
+	// pta2svg's browser renderer and its loader, embedded (ADR-0008), so the
+	// movement page draws in the tab.
 	s.mux.Handle("/wasm/", http.StripPrefix("/wasm/", http.FileServer(http.FS(sub))))
 }
 

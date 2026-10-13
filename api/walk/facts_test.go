@@ -83,8 +83,11 @@ func TestScreenFacts(t *testing.T) {
 	if !hasParam(r, "page", "query") {
 		t.Errorf("params %+v", r.Params)
 	}
-	if strings.Join(r.Reads.Cookies, ",") != "mb_session" || !slices.Contains(r.Reads.Headers, "Authorization") {
-		t.Errorf("reads %+v: want the wrapper's cookie and bearer", r.Reads)
+	if strings.Join(r.Guards.Cookies, ",") != "mb_session" || !slices.Contains(r.Guards.Headers, "Authorization") {
+		t.Errorf("guards %+v: want the wrapper's cookie and bearer", r.Guards)
+	}
+	if len(r.Reads.Cookies) != 0 {
+		t.Errorf("reads %+v: the handler itself reads no cookie", r.Reads)
 	}
 }
 

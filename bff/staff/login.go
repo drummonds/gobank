@@ -19,6 +19,9 @@ import (
 
 // loginRoutes mounts the login page and the logout.
 func (s *Site) loginRoutes() {
+	// The staff login: the form (GET) and its check (POST login, password)
+	// against the users component. Five failures for one login or from one
+	// address lock it for fifteen minutes; 503 on a deployment with no users.
 	s.mux.HandleFunc("/login", func(w http.ResponseWriter, r *http.Request) {
 		switch r.Method {
 		case "GET":
@@ -33,6 +36,8 @@ func (s *Site) loginRoutes() {
 			http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 		}
 	})
+	// Ends the staff session (POST): the cookie is cleared and the browser
+	// sent to the login page.
 	s.mux.HandleFunc("/logout", func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != "POST" {
 			s.redirect(w, r, "")
