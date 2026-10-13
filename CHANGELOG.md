@@ -43,6 +43,11 @@
   v0.35.0 and v0.36.0 drills failed at the upgrade hop.
 
 ### Changed
+- One `tp release` on the story branch now opens the pull request, waits
+  up to ten minutes for the merge (`merge_wait`), tags, publishes, has
+  the gobank-deploy appliance fetch the binaries and starts the upgrade
+  drill on preprod (`task cloud:drill`); promoting prod stays a button
+  once the drill has passed.
 - The roadmap is in task-plus's `tp roadmap` format: twenty named epics
   of items, each an open issue labelled `roadmap` on the Forgejo (#66 to
   #130), the forge the truth about what is done. The shipped stories

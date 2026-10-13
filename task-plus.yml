@@ -1,6 +1,7 @@
 maturity:
   code: 1
   deploy: 2
+merge_wait: 10m
 remotes:
   - name: origin
     forge: forgejo
@@ -14,3 +15,4 @@ pages_deploy:
     rc_site: gobank-rc
 post_release:
   - task cloud:fetch
+  - task cloud:drill

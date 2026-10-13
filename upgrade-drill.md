@@ -16,7 +16,7 @@ path gets sorted out where a failure costs nothing.
 |---|---|---|---|
 | 1 | Set a day length long enough for an upgrade to land mid-day (`2h`) and let the run go | demo settings page | dashboard day tile counting down |
 | 2 | Note the day, customers, savings and lending | demo dashboard | the position before |
-| 3 | Release N+1 (`tp release` on `main` once the story's PR is merged); its `post_release` fetches the binaries into the store | laptop | release printed; `gobank-deploy status preprod` shows N+1 as the next deploy |
+| 3 | Release N+1 (`tp release` on the story branch opens the PR, waits for the merge and tags); its `post_release` fetches the binaries into the store and starts the drill on preprod | laptop | release printed; `gobank-deploy status preprod` shows N+1 as the next deploy; the drill running on the gobank-deploy page |
 | 4 | Redeploy preprod | gobank-deploy page on hydrogen | job log: `systemctl restart`, then `Model Bank N+1` |
 | 5 | Read the newest row of the restart record | demo settings page, Restarts | downtime; previous version N with a stop time; day and customers at stop → start equal |
 | 6 | Check the position against step 2 | demo dashboard | the same day or the next (the stop finishes the day in progress and a restart begins a new one); customers, savings, lending the same |
@@ -53,7 +53,8 @@ the setting is made again after each hop, since a release before v0.10.3
 forgets it on restart. A hop may land one day on at the stop and one
 more after the start; further than that is the run going on at full
 speed, and the hop fails.
-Step 3, the release, and step 9, promoting prod, stay yours. The drill
+Step 3, the release, starts the drill (`task cloud:drill`, the release's
+`post_release`); step 9, promoting prod, stays yours. The drill
 page there gives the line for the record below.
 
 ## Record the result
