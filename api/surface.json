@@ -1,0 +1,4719 @@
+{
+  "Packages": [
+    {
+      "Path": "git.bytestone.uk/hum3/gobank/bff",
+      "Name": "bff",
+      "Doc": "Package bff is the backend-for-frontend for the Model Bank apps.\n\nIt is the only server the thin clients talk to. It owns sessions and login,\nand turns banking data into screen-ready trees (package screen). Apart from\nhealth, the public login screen and login itself, every endpoint requires a\nsession; the customer identity always comes from the session, never from\nthe request.\n\nThe banking core is reached through the core package's CustomerQueries and\nAuthenticator contracts (ADR-0002)."
+    },
+    {
+      "Path": "git.bytestone.uk/hum3/gobank/bff/staff",
+      "Name": "staff",
+      "Doc": "Package staff is the staff web of the Model Bank: the login (story\n1.7.1), the pages a member of staff reads the bank through (accounting,\nproducts, customers, payments, treasury, reports, about and the\ndocumentation), the role the signed-in user holds and the PII\nauthorisation that gate what they see, the layout every page is\nrendered in, and the simulation console when there is one (ADR-0002\nstage 6, stories 1.6.3 and 1.6.4).\n\nIt reads the bank through core.StaffQueries, acts on it through\ncore.Commands, checks logins through core.Users and drives the\nsimulation through Console, and knows nothing else of it. The BFF mounts\nit beside the customer routes (bff.Config.Staff) and its sessions are\nkept in the BFF's store."
+    }
+  ],
+  "Routes": [
+    {
+      "Package": "git.bytestone.uk/hum3/gobank/bff",
+      "Method": "",
+      "Path": "/",
+      "Pos": "bff/server.go:125",
+      "Handler": "",
+      "Wrappers": null,
+      "Via": "",
+      "Args": null,
+      "Doc": "Every other path under /v1/: not_found, as JSON.",
+      "Request": null,
+      "Responses": [
+        {
+          "Status": 404,
+          "Media": "text/html; charset=utf-8",
+          "Type": "",
+          "Note": "not_found",
+          "Redirect": ""
+        },
+        {
+          "Status": 404,
+          "Media": "application/json",
+          "Type": "screen.Screen",
+          "Note": "not_found",
+          "Redirect": ""
+        },
+        {
+          "Status": 404,
+          "Media": "application/json",
+          "Type": "bff.errorBody",
+          "Note": "not_found",
+          "Redirect": ""
+        }
+      ],
+      "Params": null,
+      "Reads": {
+        "Headers": [
+          "Accept"
+        ],
+        "Cookies": null
+      },
+      "Guards": {
+        "Headers": null,
+        "Cookies": null
+      },
+      "Action": "",
+      "Methods": null,
+      "Unknowns": null
+    },
+    {
+      "Package": "git.bytestone.uk/hum3/gobank/bff",
+      "Method": "GET",
+      "Path": "/v1/health",
+      "Pos": "bff/server.go:116",
+      "Handler": "(*Server).health",
+      "Wrappers": null,
+      "Via": "",
+      "Args": null,
+      "Doc": "Answers as soon as the process serves HTTP. No session.",
+      "Request": null,
+      "Responses": [
+        {
+          "Status": 200,
+          "Media": "application/json",
+          "Type": "",
+          "Note": "",
+          "Redirect": ""
+        }
+      ],
+      "Params": null,
+      "Reads": {
+        "Headers": null,
+        "Cookies": null
+      },
+      "Guards": {
+        "Headers": null,
+        "Cookies": null
+      },
+      "Action": "",
+      "Methods": null,
+      "Unknowns": null
+    },
+    {
+      "Package": "git.bytestone.uk/hum3/gobank/bff",
+      "Method": "POST",
+      "Path": "/v1/login",
+      "Pos": "bff/server.go:119",
+      "Handler": "(*Server).login",
+      "Wrappers": null,
+      "Via": "",
+      "Args": null,
+      "Doc": "Checks the customer ID and password, from a JSON body or a form,\nand opens a session: a JSON client gets the token and the home screen; a\nform post or a browser gets the mb_session cookie and is sent to the\nhome screen. Five failures for one customer ID or from one address in\nfifteen minutes lock that key for the rest of the window (429 with\nRetry-After).",
+      "Request": {
+        "Type": "bff.loginRequest"
+      },
+      "Responses": [
+        {
+          "Status": 400,
+          "Media": "text/html; charset=utf-8",
+          "Type": "",
+          "Note": "bad_request",
+          "Redirect": ""
+        },
+        {
+          "Status": 400,
+          "Media": "application/json",
+          "Type": "screen.Screen",
+          "Note": "bad_request",
+          "Redirect": ""
+        },
+        {
+          "Status": 400,
+          "Media": "application/json",
+          "Type": "bff.errorBody",
+          "Note": "bad_request",
+          "Redirect": ""
+        },
+        {
+          "Status": 400,
+          "Media": "application/json",
+          "Type": "bff.errorBody",
+          "Note": "bad_request",
+          "Redirect": ""
+        },
+        {
+          "Status": 400,
+          "Media": "application/json",
+          "Type": "bff.errorBody",
+          "Note": "bad_request",
+          "Redirect": ""
+        },
+        {
+          "Status": 429,
+          "Media": "text/html; charset=utf-8",
+          "Type": "",
+          "Note": "rate_limited",
+          "Redirect": ""
+        },
+        {
+          "Status": 429,
+          "Media": "application/json",
+          "Type": "screen.Screen",
+          "Note": "rate_limited",
+          "Redirect": ""
+        },
+        {
+          "Status": 429,
+          "Media": "application/json",
+          "Type": "bff.errorBody",
+          "Note": "rate_limited",
+          "Redirect": ""
+        },
+        {
+          "Status": 401,
+          "Media": "text/html; charset=utf-8",
+          "Type": "",
+          "Note": "bad_credentials",
+          "Redirect": ""
+        },
+        {
+          "Status": 401,
+          "Media": "application/json",
+          "Type": "screen.Screen",
+          "Note": "bad_credentials",
+          "Redirect": ""
+        },
+        {
+          "Status": 401,
+          "Media": "application/json",
+          "Type": "bff.errorBody",
+          "Note": "bad_credentials",
+          "Redirect": ""
+        },
+        {
+          "Status": 303,
+          "Media": "",
+          "Type": "",
+          "Note": "",
+          "Redirect": "/v1/screen/accounts"
+        },
+        {
+          "Status": 500,
+          "Media": "text/html; charset=utf-8",
+          "Type": "",
+          "Note": "internal",
+          "Redirect": ""
+        },
+        {
+          "Status": 500,
+          "Media": "application/json",
+          "Type": "screen.Screen",
+          "Note": "internal",
+          "Redirect": ""
+        },
+        {
+          "Status": 500,
+          "Media": "application/json",
+          "Type": "bff.errorBody",
+          "Note": "internal",
+          "Redirect": ""
+        },
+        {
+          "Status": 200,
+          "Media": "application/json",
+          "Type": "bff.loginResponse",
+          "Note": "",
+          "Redirect": ""
+        }
+      ],
+      "Params": [
+        {
+          "Name": "customer_id",
+          "In": "form"
+        },
+        {
+          "Name": "password",
+          "In": "form"
+        }
+      ],
+      "Reads": {
+        "Headers": [
+          "Content-Type",
+          "Accept"
+        ],
+        "Cookies": null
+      },
+      "Guards": {
+        "Headers": null,
+        "Cookies": null
+      },
+      "Action": "",
+      "Methods": null,
+      "Unknowns": null
+    },
+    {
+      "Package": "git.bytestone.uk/hum3/gobank/bff",
+      "Method": "POST",
+      "Path": "/v1/logout",
+      "Pos": "bff/server.go:120",
+      "Handler": "(*Server).logout",
+      "Wrappers": [
+        "(*Server).authed"
+      ],
+      "Via": "",
+      "Args": null,
+      "Doc": "Ends the session: a browser's cookie is cleared and it is sent\nto the login screen; a JSON client gets the login screen.",
+      "Request": null,
+      "Responses": [
+        {
+          "Status": 303,
+          "Media": "",
+          "Type": "",
+          "Note": "",
+          "Redirect": "/v1/screen/login"
+        },
+        {
+          "Status": 401,
+          "Media": "text/html; charset=utf-8",
+          "Type": "",
+          "Note": "unauthenticated",
+          "Redirect": ""
+        },
+        {
+          "Status": 401,
+          "Media": "application/json",
+          "Type": "screen.Screen",
+          "Note": "unauthenticated",
+          "Redirect": ""
+        },
+        {
+          "Status": 401,
+          "Media": "application/json",
+          "Type": "bff.errorBody",
+          "Note": "unauthenticated",
+          "Redirect": ""
+        },
+        {
+          "Status": 200,
+          "Media": "application/json",
+          "Type": "bff.screenBody",
+          "Note": "",
+          "Redirect": ""
+        }
+      ],
+      "Params": null,
+      "Reads": {
+        "Headers": null,
+        "Cookies": null
+      },
+      "Guards": {
+        "Headers": [
+          "Authorization",
+          "Accept"
+        ],
+        "Cookies": [
+          "mb_session"
+        ]
+      },
+      "Action": "",
+      "Methods": null,
+      "Unknowns": null
+    },
+    {
+      "Package": "git.bytestone.uk/hum3/gobank/bff",
+      "Method": "GET",
+      "Path": "/v1/openapi.json",
+      "Pos": "bff/server.go:117",
+      "Handler": "(*Server).openapi",
+      "Wrappers": null,
+      "Via": "",
+      "Args": null,
+      "Doc": "Serves the API document (package api): the surface this server\nand the staff web present, as built.",
+      "Request": null,
+      "Responses": [
+        {
+          "Status": 200,
+          "Media": "application/json",
+          "Type": "",
+          "Note": "",
+          "Redirect": ""
+        }
+      ],
+      "Params": null,
+      "Reads": {
+        "Headers": null,
+        "Cookies": null
+      },
+      "Guards": {
+        "Headers": null,
+        "Cookies": null
+      },
+      "Action": "",
+      "Methods": null,
+      "Unknowns": null
+    },
+    {
+      "Package": "git.bytestone.uk/hum3/gobank/bff",
+      "Method": "GET",
+      "Path": "/v1/screen/accounts",
+      "Pos": "bff/server.go:121",
+      "Handler": "(*Server).accounts",
+      "Wrappers": [
+        "(*Server).authed"
+      ],
+      "Via": "",
+      "Args": null,
+      "Doc": "The home screen: the customer's net position and a row per\naccount, each opening its product screen.",
+      "Request": null,
+      "Responses": [
+        {
+          "Status": 303,
+          "Media": "",
+          "Type": "",
+          "Note": "",
+          "Redirect": "/v1/screen/login"
+        },
+        {
+          "Status": 401,
+          "Media": "text/html; charset=utf-8",
+          "Type": "",
+          "Note": "unauthenticated",
+          "Redirect": ""
+        },
+        {
+          "Status": 401,
+          "Media": "application/json",
+          "Type": "screen.Screen",
+          "Note": "unauthenticated",
+          "Redirect": ""
+        },
+        {
+          "Status": 401,
+          "Media": "application/json",
+          "Type": "bff.errorBody",
+          "Note": "unauthenticated",
+          "Redirect": ""
+        },
+        {
+          "Status": 404,
+          "Media": "text/html; charset=utf-8",
+          "Type": "",
+          "Note": "not_found",
+          "Redirect": ""
+        },
+        {
+          "Status": 404,
+          "Media": "application/json",
+          "Type": "screen.Screen",
+          "Note": "not_found",
+          "Redirect": ""
+        },
+        {
+          "Status": 404,
+          "Media": "application/json",
+          "Type": "bff.errorBody",
+          "Note": "not_found",
+          "Redirect": ""
+        },
+        {
+          "Status": 500,
+          "Media": "text/html; charset=utf-8",
+          "Type": "",
+          "Note": "internal",
+          "Redirect": ""
+        },
+        {
+          "Status": 500,
+          "Media": "application/json",
+          "Type": "screen.Screen",
+          "Note": "internal",
+          "Redirect": ""
+        },
+        {
+          "Status": 500,
+          "Media": "application/json",
+          "Type": "bff.errorBody",
+          "Note": "internal",
+          "Redirect": ""
+        },
+        {
+          "Status": 200,
+          "Media": "text/html; charset=utf-8",
+          "Type": "",
+          "Note": "",
+          "Redirect": ""
+        },
+        {
+          "Status": 200,
+          "Media": "application/json",
+          "Type": "screen.Screen",
+          "Note": "",
+          "Redirect": ""
+        }
+      ],
+      "Params": null,
+      "Reads": {
+        "Headers": [
+          "Accept"
+        ],
+        "Cookies": null
+      },
+      "Guards": {
+        "Headers": [
+          "Authorization",
+          "Accept"
+        ],
+        "Cookies": [
+          "mb_session"
+        ]
+      },
+      "Action": "",
+      "Methods": null,
+      "Unknowns": null
+    },
+    {
+      "Package": "git.bytestone.uk/hum3/gobank/bff",
+      "Method": "GET",
+      "Path": "/v1/screen/activity",
+      "Pos": "bff/server.go:122",
+      "Handler": "(*Server).activity",
+      "Wrappers": [
+        "(*Server).authed"
+      ],
+      "Via": "",
+      "Args": null,
+      "Doc": "The customer's transactions across every account, newest\nfirst, one page (?page=) at a time.",
+      "Request": null,
+      "Responses": [
+        {
+          "Status": 303,
+          "Media": "",
+          "Type": "",
+          "Note": "",
+          "Redirect": "/v1/screen/login"
+        },
+        {
+          "Status": 401,
+          "Media": "text/html; charset=utf-8",
+          "Type": "",
+          "Note": "unauthenticated",
+          "Redirect": ""
+        },
+        {
+          "Status": 401,
+          "Media": "application/json",
+          "Type": "screen.Screen",
+          "Note": "unauthenticated",
+          "Redirect": ""
+        },
+        {
+          "Status": 401,
+          "Media": "application/json",
+          "Type": "bff.errorBody",
+          "Note": "unauthenticated",
+          "Redirect": ""
+        },
+        {
+          "Status": 404,
+          "Media": "text/html; charset=utf-8",
+          "Type": "",
+          "Note": "not_found",
+          "Redirect": ""
+        },
+        {
+          "Status": 404,
+          "Media": "application/json",
+          "Type": "screen.Screen",
+          "Note": "not_found",
+          "Redirect": ""
+        },
+        {
+          "Status": 404,
+          "Media": "application/json",
+          "Type": "bff.errorBody",
+          "Note": "not_found",
+          "Redirect": ""
+        },
+        {
+          "Status": 500,
+          "Media": "text/html; charset=utf-8",
+          "Type": "",
+          "Note": "internal",
+          "Redirect": ""
+        },
+        {
+          "Status": 500,
+          "Media": "application/json",
+          "Type": "screen.Screen",
+          "Note": "internal",
+          "Redirect": ""
+        },
+        {
+          "Status": 500,
+          "Media": "application/json",
+          "Type": "bff.errorBody",
+          "Note": "internal",
+          "Redirect": ""
+        },
+        {
+          "Status": 200,
+          "Media": "text/html; charset=utf-8",
+          "Type": "",
+          "Note": "",
+          "Redirect": ""
+        },
+        {
+          "Status": 200,
+          "Media": "application/json",
+          "Type": "screen.Screen",
+          "Note": "",
+          "Redirect": ""
+        }
+      ],
+      "Params": [
+        {
+          "Name": "page",
+          "In": "query"
+        }
+      ],
+      "Reads": {
+        "Headers": [
+          "Accept"
+        ],
+        "Cookies": null
+      },
+      "Guards": {
+        "Headers": [
+          "Authorization",
+          "Accept"
+        ],
+        "Cookies": [
+          "mb_session"
+        ]
+      },
+      "Action": "",
+      "Methods": null,
+      "Unknowns": null
+    },
+    {
+      "Package": "git.bytestone.uk/hum3/gobank/bff",
+      "Method": "GET",
+      "Path": "/v1/screen/login",
+      "Pos": "bff/server.go:118",
+      "Handler": "(*Server).loginScreen",
+      "Wrappers": null,
+      "Via": "",
+      "Args": null,
+      "Doc": "The front door: the login form, whose submit is POST\n/v1/login, with the deployment's note. No session.",
+      "Request": null,
+      "Responses": [
+        {
+          "Status": 200,
+          "Media": "text/html; charset=utf-8",
+          "Type": "",
+          "Note": "",
+          "Redirect": ""
+        },
+        {
+          "Status": 200,
+          "Media": "application/json",
+          "Type": "screen.Screen",
+          "Note": "",
+          "Redirect": ""
+        }
+      ],
+      "Params": null,
+      "Reads": {
+        "Headers": [
+          "Accept"
+        ],
+        "Cookies": null
+      },
+      "Guards": {
+        "Headers": null,
+        "Cookies": null
+      },
+      "Action": "",
+      "Methods": null,
+      "Unknowns": null
+    },
+    {
+      "Package": "git.bytestone.uk/hum3/gobank/bff",
+      "Method": "GET",
+      "Path": "/v1/screen/product/{index}",
+      "Pos": "bff/server.go:123",
+      "Handler": "(*Server).product",
+      "Wrappers": [
+        "(*Server).authed"
+      ],
+      "Via": "",
+      "Args": null,
+      "Doc": "One account, by its index in the customer's list: its\ndetails and its own transactions, one page (?page=) at a time; 404 for\nan index the customer has no account at.",
+      "Request": null,
+      "Responses": [
+        {
+          "Status": 303,
+          "Media": "",
+          "Type": "",
+          "Note": "",
+          "Redirect": "/v1/screen/login"
+        },
+        {
+          "Status": 401,
+          "Media": "text/html; charset=utf-8",
+          "Type": "",
+          "Note": "unauthenticated",
+          "Redirect": ""
+        },
+        {
+          "Status": 401,
+          "Media": "application/json",
+          "Type": "screen.Screen",
+          "Note": "unauthenticated",
+          "Redirect": ""
+        },
+        {
+          "Status": 401,
+          "Media": "application/json",
+          "Type": "bff.errorBody",
+          "Note": "unauthenticated",
+          "Redirect": ""
+        },
+        {
+          "Status": 404,
+          "Media": "text/html; charset=utf-8",
+          "Type": "",
+          "Note": "not_found",
+          "Redirect": ""
+        },
+        {
+          "Status": 404,
+          "Media": "application/json",
+          "Type": "screen.Screen",
+          "Note": "not_found",
+          "Redirect": ""
+        },
+        {
+          "Status": 404,
+          "Media": "application/json",
+          "Type": "bff.errorBody",
+          "Note": "not_found",
+          "Redirect": ""
+        },
+        {
+          "Status": 404,
+          "Media": "application/json",
+          "Type": "bff.errorBody",
+          "Note": "not_found",
+          "Redirect": ""
+        },
+        {
+          "Status": 500,
+          "Media": "text/html; charset=utf-8",
+          "Type": "",
+          "Note": "internal",
+          "Redirect": ""
+        },
+        {
+          "Status": 500,
+          "Media": "application/json",
+          "Type": "screen.Screen",
+          "Note": "internal",
+          "Redirect": ""
+        },
+        {
+          "Status": 500,
+          "Media": "application/json",
+          "Type": "bff.errorBody",
+          "Note": "internal",
+          "Redirect": ""
+        },
+        {
+          "Status": 200,
+          "Media": "text/html; charset=utf-8",
+          "Type": "",
+          "Note": "",
+          "Redirect": ""
+        },
+        {
+          "Status": 200,
+          "Media": "application/json",
+          "Type": "screen.Screen",
+          "Note": "",
+          "Redirect": ""
+        }
+      ],
+      "Params": [
+        {
+          "Name": "index",
+          "In": "path"
+        },
+        {
+          "Name": "page",
+          "In": "query"
+        }
+      ],
+      "Reads": {
+        "Headers": [
+          "Accept"
+        ],
+        "Cookies": null
+      },
+      "Guards": {
+        "Headers": [
+          "Authorization",
+          "Accept"
+        ],
+        "Cookies": [
+          "mb_session"
+        ]
+      },
+      "Action": "",
+      "Methods": null,
+      "Unknowns": null
+    },
+    {
+      "Package": "git.bytestone.uk/hum3/gobank/bff/staff",
+      "Method": "",
+      "Path": "/",
+      "Pos": "bff/staff/console_routes.go:26",
+      "Handler": "",
+      "Wrappers": null,
+      "Via": "",
+      "Args": null,
+      "Doc": "The dashboard: the bank's position, the run's state and its controls;\nit polls its own sections.",
+      "Request": null,
+      "Responses": [
+        {
+          "Status": 404,
+          "Media": "text/plain; charset=utf-8",
+          "Type": "",
+          "Note": "",
+          "Redirect": ""
+        },
+        {
+          "Status": 405,
+          "Media": "text/plain; charset=utf-8",
+          "Type": "",
+          "Note": "Method not allowed",
+          "Redirect": ""
+        },
+        {
+          "Status": 200,
+          "Media": "text/html; charset=utf-8",
+          "Type": "",
+          "Note": "",
+          "Redirect": ""
+        }
+      ],
+      "Params": null,
+      "Reads": {
+        "Headers": [
+          "HX-Request",
+          "HX-Boosted"
+        ],
+        "Cookies": [
+          "staff_view"
+        ]
+      },
+      "Guards": {
+        "Headers": null,
+        "Cookies": null
+      },
+      "Action": "",
+      "Methods": [
+        "GET"
+      ],
+      "Unknowns": null
+    },
+    {
+      "Package": "git.bytestone.uk/hum3/gobank/bff/staff",
+      "Method": "",
+      "Path": "/about",
+      "Pos": "bff/staff/site.go:481",
+      "Handler": "",
+      "Wrappers": null,
+      "Via": "",
+      "Args": null,
+      "Doc": "The project: what the Model Bank is, its aims and its non-goals.",
+      "Request": null,
+      "Responses": [
+        {
+          "Status": 404,
+          "Media": "text/plain; charset=utf-8",
+          "Type": "",
+          "Note": "",
+          "Redirect": ""
+        },
+        {
+          "Status": 405,
+          "Media": "text/plain; charset=utf-8",
+          "Type": "",
+          "Note": "Method not allowed",
+          "Redirect": ""
+        },
+        {
+          "Status": 200,
+          "Media": "text/html; charset=utf-8",
+          "Type": "",
+          "Note": "",
+          "Redirect": ""
+        }
+      ],
+      "Params": null,
+      "Reads": {
+        "Headers": [
+          "HX-Request",
+          "HX-Boosted"
+        ],
+        "Cookies": [
+          "staff_view"
+        ]
+      },
+      "Guards": {
+        "Headers": null,
+        "Cookies": null
+      },
+      "Action": "",
+      "Methods": [
+        "GET"
+      ],
+      "Unknowns": null
+    },
+    {
+      "Package": "git.bytestone.uk/hum3/gobank/bff/staff",
+      "Method": "",
+      "Path": "/about.json",
+      "Pos": "bff/staff/console_routes.go:246",
+      "Handler": "",
+      "Wrappers": null,
+      "Via": "",
+      "Args": null,
+      "Doc": "The demo's state for another program (GET, no session): version,\nschema, settings, the run and its rates, the position and the restart\nrecord. gobank-deploy's upgrade drill reads it before and after each\nredeploy; a performance run reads the rates.",
+      "Request": null,
+      "Responses": [
+        {
+          "Status": 405,
+          "Media": "text/plain; charset=utf-8",
+          "Type": "",
+          "Note": "Method not allowed",
+          "Redirect": ""
+        },
+        {
+          "Status": 200,
+          "Media": "application/json",
+          "Type": "staff.AboutStatus",
+          "Note": "",
+          "Redirect": ""
+        }
+      ],
+      "Params": null,
+      "Reads": {
+        "Headers": null,
+        "Cookies": null
+      },
+      "Guards": {
+        "Headers": null,
+        "Cookies": null
+      },
+      "Action": "",
+      "Methods": [
+        "GET"
+      ],
+      "Unknowns": null
+    },
+    {
+      "Package": "git.bytestone.uk/hum3/gobank/bff/staff",
+      "Method": "",
+      "Path": "/about/adr",
+      "Pos": "bff/staff/site.go:504",
+      "Handler": "",
+      "Wrappers": null,
+      "Via": "",
+      "Args": null,
+      "Doc": "The architecture decision records compiled into this build.",
+      "Request": null,
+      "Responses": [
+        {
+          "Status": 405,
+          "Media": "text/plain; charset=utf-8",
+          "Type": "",
+          "Note": "Method not allowed",
+          "Redirect": ""
+        },
+        {
+          "Status": 200,
+          "Media": "text/html; charset=utf-8",
+          "Type": "",
+          "Note": "",
+          "Redirect": ""
+        }
+      ],
+      "Params": null,
+      "Reads": {
+        "Headers": [
+          "HX-Request",
+          "HX-Boosted"
+        ],
+        "Cookies": [
+          "staff_view"
+        ]
+      },
+      "Guards": {
+        "Headers": null,
+        "Cookies": null
+      },
+      "Action": "",
+      "Methods": [
+        "GET"
+      ],
+      "Unknowns": null
+    },
+    {
+      "Package": "git.bytestone.uk/hum3/gobank/bff/staff",
+      "Method": "",
+      "Path": "/about/api",
+      "Pos": "bff/staff/site.go:500",
+      "Handler": "",
+      "Wrappers": null,
+      "Via": "",
+      "Args": null,
+      "Doc": "The API: every route the BFF and the staff web serve, read off the\ncode at build time (package api), with the types the bodies are\nmade of; the OpenAPI document is at v1/openapi.json.",
+      "Request": null,
+      "Responses": [
+        {
+          "Status": 405,
+          "Media": "text/plain; charset=utf-8",
+          "Type": "",
+          "Note": "Method not allowed",
+          "Redirect": ""
+        },
+        {
+          "Status": 200,
+          "Media": "text/html; charset=utf-8",
+          "Type": "",
+          "Note": "",
+          "Redirect": ""
+        }
+      ],
+      "Params": null,
+      "Reads": {
+        "Headers": [
+          "HX-Request",
+          "HX-Boosted"
+        ],
+        "Cookies": [
+          "staff_view"
+        ]
+      },
+      "Guards": {
+        "Headers": null,
+        "Cookies": null
+      },
+      "Action": "",
+      "Methods": [
+        "GET"
+      ],
+      "Unknowns": null
+    },
+    {
+      "Package": "git.bytestone.uk/hum3/gobank/bff/staff",
+      "Method": "",
+      "Path": "/about/docs",
+      "Pos": "bff/staff/site.go:494",
+      "Handler": "",
+      "Wrappers": null,
+      "Via": "",
+      "Args": null,
+      "Doc": "The system documentation: the component registry, who may read what,\nthe pre-rule debt and the ADR list.",
+      "Request": null,
+      "Responses": [
+        {
+          "Status": 405,
+          "Media": "text/plain; charset=utf-8",
+          "Type": "",
+          "Note": "Method not allowed",
+          "Redirect": ""
+        },
+        {
+          "Status": 200,
+          "Media": "text/html; charset=utf-8",
+          "Type": "",
+          "Note": "",
+          "Redirect": ""
+        }
+      ],
+      "Params": null,
+      "Reads": {
+        "Headers": [
+          "HX-Request",
+          "HX-Boosted"
+        ],
+        "Cookies": [
+          "staff_view"
+        ]
+      },
+      "Guards": {
+        "Headers": null,
+        "Cookies": null
+      },
+      "Action": "",
+      "Methods": [
+        "GET"
+      ],
+      "Unknowns": null
+    },
+    {
+      "Package": "git.bytestone.uk/hum3/gobank/bff/staff",
+      "Method": "",
+      "Path": "/about/docs/adr/",
+      "Pos": "bff/staff/site.go:509",
+      "Handler": "",
+      "Wrappers": null,
+      "Via": "",
+      "Args": null,
+      "Doc": "An ADR whole: its page, or one of the diagrams and sources its\nmarkdown names beside it.",
+      "Request": null,
+      "Responses": [
+        {
+          "Status": 200,
+          "Media": "",
+          "Type": "",
+          "Note": "",
+          "Redirect": ""
+        },
+        {
+          "Status": 404,
+          "Media": "text/plain; charset=utf-8",
+          "Type": "",
+          "Note": "",
+          "Redirect": ""
+        },
+        {
+          "Status": 405,
+          "Media": "text/plain; charset=utf-8",
+          "Type": "",
+          "Note": "Method not allowed",
+          "Redirect": ""
+        },
+        {
+          "Status": 200,
+          "Media": "text/html; charset=utf-8",
+          "Type": "",
+          "Note": "",
+          "Redirect": ""
+        }
+      ],
+      "Params": null,
+      "Reads": {
+        "Headers": [
+          "HX-Request",
+          "HX-Boosted"
+        ],
+        "Cookies": [
+          "staff_view"
+        ]
+      },
+      "Guards": {
+        "Headers": null,
+        "Cookies": null
+      },
+      "Action": "",
+      "Methods": [
+        "GET"
+      ],
+      "Unknowns": null
+    },
+    {
+      "Package": "git.bytestone.uk/hum3/gobank/bff/staff",
+      "Method": "",
+      "Path": "/about/models",
+      "Pos": "bff/staff/site.go:489",
+      "Handler": "",
+      "Wrappers": null,
+      "Via": "",
+      "Args": null,
+      "Doc": "The architecture models: the C4 system context and container diagrams.",
+      "Request": null,
+      "Responses": [
+        {
+          "Status": 405,
+          "Media": "text/plain; charset=utf-8",
+          "Type": "",
+          "Note": "Method not allowed",
+          "Redirect": ""
+        },
+        {
+          "Status": 200,
+          "Media": "text/html; charset=utf-8",
+          "Type": "",
+          "Note": "",
+          "Redirect": ""
+        }
+      ],
+      "Params": null,
+      "Reads": {
+        "Headers": [
+          "HX-Request",
+          "HX-Boosted"
+        ],
+        "Cookies": [
+          "staff_view"
+        ]
+      },
+      "Guards": {
+        "Headers": null,
+        "Cookies": null
+      },
+      "Action": "",
+      "Methods": [
+        "GET"
+      ],
+      "Unknowns": null
+    },
+    {
+      "Package": "git.bytestone.uk/hum3/gobank/bff/staff",
+      "Method": "",
+      "Path": "/about/runtime",
+      "Pos": "bff/staff/console_routes.go:239",
+      "Handler": "",
+      "Wrappers": null,
+      "Via": "",
+      "Args": null,
+      "Doc": "Runtime: the process, its memory against the limit, the schema\nversions and the restart record.",
+      "Request": null,
+      "Responses": [
+        {
+          "Status": 405,
+          "Media": "text/plain; charset=utf-8",
+          "Type": "",
+          "Note": "Method not allowed",
+          "Redirect": ""
+        },
+        {
+          "Status": 200,
+          "Media": "text/html; charset=utf-8",
+          "Type": "",
+          "Note": "",
+          "Redirect": ""
+        }
+      ],
+      "Params": null,
+      "Reads": {
+        "Headers": [
+          "HX-Request",
+          "HX-Boosted"
+        ],
+        "Cookies": [
+          "staff_view"
+        ]
+      },
+      "Guards": {
+        "Headers": null,
+        "Cookies": null
+      },
+      "Action": "",
+      "Methods": [
+        "GET"
+      ],
+      "Unknowns": null
+    },
+    {
+      "Package": "git.bytestone.uk/hum3/gobank/bff/staff",
+      "Method": "",
+      "Path": "/accounting/balance-sheet",
+      "Pos": "bff/staff/site.go:293",
+      "Handler": "",
+      "Wrappers": null,
+      "Via": "",
+      "Args": null,
+      "Doc": "The balance sheet on the current business day, with the CET1 position.",
+      "Request": null,
+      "Responses": [
+        {
+          "Status": 405,
+          "Media": "text/plain; charset=utf-8",
+          "Type": "",
+          "Note": "Method not allowed",
+          "Redirect": ""
+        },
+        {
+          "Status": 200,
+          "Media": "text/html; charset=utf-8",
+          "Type": "",
+          "Note": "",
+          "Redirect": ""
+        }
+      ],
+      "Params": null,
+      "Reads": {
+        "Headers": [
+          "HX-Request",
+          "HX-Boosted"
+        ],
+        "Cookies": [
+          "staff_view"
+        ]
+      },
+      "Guards": {
+        "Headers": null,
+        "Cookies": null
+      },
+      "Action": "",
+      "Methods": [
+        "GET"
+      ],
+      "Unknowns": null
+    },
+    {
+      "Package": "git.bytestone.uk/hum3/gobank/bff/staff",
+      "Method": "",
+      "Path": "/accounting/pnl",
+      "Pos": "bff/staff/site.go:289",
+      "Handler": "",
+      "Wrappers": null,
+      "Via": "",
+      "Args": null,
+      "Doc": "The profit and loss statement since the bank opened, on an accrual\nbasis.",
+      "Request": null,
+      "Responses": [
+        {
+          "Status": 405,
+          "Media": "text/plain; charset=utf-8",
+          "Type": "",
+          "Note": "Method not allowed",
+          "Redirect": ""
+        },
+        {
+          "Status": 200,
+          "Media": "text/html; charset=utf-8",
+          "Type": "",
+          "Note": "",
+          "Redirect": ""
+        }
+      ],
+      "Params": null,
+      "Reads": {
+        "Headers": [
+          "HX-Request",
+          "HX-Boosted"
+        ],
+        "Cookies": [
+          "staff_view"
+        ]
+      },
+      "Guards": {
+        "Headers": null,
+        "Cookies": null
+      },
+      "Action": "",
+      "Methods": [
+        "GET"
+      ],
+      "Unknowns": null
+    },
+    {
+      "Package": "git.bytestone.uk/hum3/gobank/bff/staff",
+      "Method": "",
+      "Path": "/add-customers",
+      "Pos": "bff/staff/console_routes.go:83",
+      "Handler": "",
+      "Wrappers": null,
+      "Via": "control",
+      "Args": [
+        "sim_controls"
+      ],
+      "Doc": "Opens n customers in the background (POST n=), with the product mix\nthe simulation uses; /about.json shows the batch's rate.",
+      "Request": null,
+      "Responses": [
+        {
+          "Status": 303,
+          "Media": "",
+          "Type": "",
+          "Note": "",
+          "Redirect": ""
+        },
+        {
+          "Status": 403,
+          "Media": "text/plain; charset=utf-8",
+          "Type": "",
+          "Note": "Forbidden",
+          "Redirect": ""
+        }
+      ],
+      "Params": [
+        {
+          "Name": "n",
+          "In": "form"
+        }
+      ],
+      "Reads": {
+        "Headers": null,
+        "Cookies": null
+      },
+      "Guards": {
+        "Headers": null,
+        "Cookies": null
+      },
+      "Action": "sim_controls",
+      "Methods": [
+        "POST"
+      ],
+      "Unknowns": null
+    },
+    {
+      "Package": "git.bytestone.uk/hum3/gobank/bff/staff",
+      "Method": "",
+      "Path": "/advance",
+      "Pos": "bff/staff/console_routes.go:77",
+      "Handler": "",
+      "Wrappers": null,
+      "Via": "control",
+      "Args": [
+        "sim_controls"
+      ],
+      "Doc": "Runs one business day while the run is stopped (POST).",
+      "Request": null,
+      "Responses": [
+        {
+          "Status": 303,
+          "Media": "",
+          "Type": "",
+          "Note": "",
+          "Redirect": ""
+        },
+        {
+          "Status": 403,
+          "Media": "text/plain; charset=utf-8",
+          "Type": "",
+          "Note": "Forbidden",
+          "Redirect": ""
+        }
+      ],
+      "Params": null,
+      "Reads": {
+        "Headers": null,
+        "Cookies": null
+      },
+      "Guards": {
+        "Headers": null,
+        "Cookies": null
+      },
+      "Action": "sim_controls",
+      "Methods": [
+        "POST"
+      ],
+      "Unknowns": null
+    },
+    {
+      "Package": "git.bytestone.uk/hum3/gobank/bff/staff",
+      "Method": "",
+      "Path": "/auth/authorize",
+      "Pos": "bff/staff/site.go:264",
+      "Handler": "",
+      "Wrappers": null,
+      "Via": "",
+      "Args": null,
+      "Doc": "PII (POST): an admin authorises themselves to see personal data for a\nwhile, then returns to redirect=.",
+      "Request": null,
+      "Responses": [
+        {
+          "Status": 303,
+          "Media": "",
+          "Type": "",
+          "Note": "",
+          "Redirect": ""
+        },
+        {
+          "Status": 303,
+          "Media": "",
+          "Type": "",
+          "Note": "",
+          "Redirect": ""
+        }
+      ],
+      "Params": [
+        {
+          "Name": "redirect",
+          "In": "form"
+        }
+      ],
+      "Reads": {
+        "Headers": null,
+        "Cookies": null
+      },
+      "Guards": {
+        "Headers": null,
+        "Cookies": null
+      },
+      "Action": "",
+      "Methods": [
+        "POST"
+      ],
+      "Unknowns": null
+    },
+    {
+      "Package": "git.bytestone.uk/hum3/gobank/bff/staff",
+      "Method": "",
+      "Path": "/auth/revoke",
+      "Pos": "bff/staff/site.go:276",
+      "Handler": "",
+      "Wrappers": null,
+      "Via": "",
+      "Args": null,
+      "Doc": "PII (POST): the admin gives the authorisation up and returns to\nredirect=.",
+      "Request": null,
+      "Responses": [
+        {
+          "Status": 303,
+          "Media": "",
+          "Type": "",
+          "Note": "",
+          "Redirect": ""
+        },
+        {
+          "Status": 303,
+          "Media": "",
+          "Type": "",
+          "Note": "",
+          "Redirect": ""
+        }
+      ],
+      "Params": [
+        {
+          "Name": "redirect",
+          "In": "form"
+        }
+      ],
+      "Reads": {
+        "Headers": null,
+        "Cookies": null
+      },
+      "Guards": {
+        "Headers": null,
+        "Cookies": null
+      },
+      "Action": "",
+      "Methods": [
+        "POST"
+      ],
+      "Unknowns": null
+    },
+    {
+      "Package": "git.bytestone.uk/hum3/gobank/bff/staff",
+      "Method": "",
+      "Path": "/customers",
+      "Pos": "bff/staff/site.go:375",
+      "Handler": "",
+      "Wrappers": null,
+      "Via": "",
+      "Args": null,
+      "Doc": "The customers, one page (?page=) at a time; personal data only for an\nauthorised admin.",
+      "Request": null,
+      "Responses": [
+        {
+          "Status": 405,
+          "Media": "text/plain; charset=utf-8",
+          "Type": "",
+          "Note": "Method not allowed",
+          "Redirect": ""
+        },
+        {
+          "Status": 200,
+          "Media": "text/html; charset=utf-8",
+          "Type": "",
+          "Note": "",
+          "Redirect": ""
+        }
+      ],
+      "Params": [
+        {
+          "Name": "page",
+          "In": "query"
+        }
+      ],
+      "Reads": {
+        "Headers": [
+          "HX-Request",
+          "HX-Boosted"
+        ],
+        "Cookies": [
+          "staff_view"
+        ]
+      },
+      "Guards": {
+        "Headers": null,
+        "Cookies": null
+      },
+      "Action": "",
+      "Methods": [
+        "GET"
+      ],
+      "Unknowns": null
+    },
+    {
+      "Package": "git.bytestone.uk/hum3/gobank/bff/staff",
+      "Method": "",
+      "Path": "/customers/",
+      "Pos": "bff/staff/site.go:381",
+      "Handler": "",
+      "Wrappers": null,
+      "Via": "",
+      "Args": null,
+      "Doc": "Under /customers/: a customer's detail at /customers/{id}, or one of\ntheir accounts at /customers/{id}/account/{index}, each with its\ntransactions one page (?txpage=) at a time.",
+      "Request": null,
+      "Responses": [
+        {
+          "Status": 405,
+          "Media": "text/plain; charset=utf-8",
+          "Type": "",
+          "Note": "Method not allowed",
+          "Redirect": ""
+        },
+        {
+          "Status": 303,
+          "Media": "",
+          "Type": "",
+          "Note": "",
+          "Redirect": ""
+        },
+        {
+          "Status": 404,
+          "Media": "text/plain; charset=utf-8",
+          "Type": "",
+          "Note": "",
+          "Redirect": ""
+        },
+        {
+          "Status": 405,
+          "Media": "text/plain; charset=utf-8",
+          "Type": "",
+          "Note": "Method not allowed",
+          "Redirect": ""
+        },
+        {
+          "Status": 200,
+          "Media": "text/html; charset=utf-8",
+          "Type": "",
+          "Note": "",
+          "Redirect": ""
+        },
+        {
+          "Status": 200,
+          "Media": "",
+          "Type": "",
+          "Note": "",
+          "Redirect": ""
+        },
+        {
+          "Status": 200,
+          "Media": "",
+          "Type": "",
+          "Note": "",
+          "Redirect": ""
+        }
+      ],
+      "Params": [
+        {
+          "Name": "txpage",
+          "In": "query"
+        }
+      ],
+      "Reads": {
+        "Headers": [
+          "HX-Request",
+          "HX-Boosted"
+        ],
+        "Cookies": [
+          "staff_view"
+        ]
+      },
+      "Guards": {
+        "Headers": null,
+        "Cookies": null
+      },
+      "Action": "",
+      "Methods": [
+        "GET"
+      ],
+      "Unknowns": null
+    },
+    {
+      "Package": "git.bytestone.uk/hum3/gobank/bff/staff",
+      "Method": "",
+      "Path": "/dashboard/update",
+      "Pos": "bff/staff/console_routes.go:46",
+      "Handler": "",
+      "Wrappers": null,
+      "Via": "",
+      "Args": null,
+      "Doc": "The dashboard's polled sections, as an HTML fragment.",
+      "Request": null,
+      "Responses": [
+        {
+          "Status": 405,
+          "Media": "text/plain; charset=utf-8",
+          "Type": "",
+          "Note": "Method not allowed",
+          "Redirect": ""
+        },
+        {
+          "Status": 200,
+          "Media": "text/html; charset=utf-8",
+          "Type": "",
+          "Note": "",
+          "Redirect": ""
+        }
+      ],
+      "Params": null,
+      "Reads": {
+        "Headers": null,
+        "Cookies": null
+      },
+      "Guards": {
+        "Headers": null,
+        "Cookies": null
+      },
+      "Action": "",
+      "Methods": [
+        "GET"
+      ],
+      "Unknowns": null
+    },
+    {
+      "Package": "git.bytestone.uk/hum3/gobank/bff/staff",
+      "Method": "",
+      "Path": "/events",
+      "Pos": "bff/staff/site.go:418",
+      "Handler": "",
+      "Wrappers": null,
+      "Via": "",
+      "Args": null,
+      "Doc": "Events: the record of what happened and what it caused (ADR-0011)",
+      "Request": null,
+      "Responses": [
+        {
+          "Status": 405,
+          "Media": "text/plain; charset=utf-8",
+          "Type": "",
+          "Note": "Method not allowed",
+          "Redirect": ""
+        },
+        {
+          "Status": 200,
+          "Media": "text/html; charset=utf-8",
+          "Type": "",
+          "Note": "",
+          "Redirect": ""
+        },
+        {
+          "Status": 200,
+          "Media": "",
+          "Type": "",
+          "Note": "",
+          "Redirect": ""
+        },
+        {
+          "Status": 200,
+          "Media": "",
+          "Type": "",
+          "Note": "",
+          "Redirect": ""
+        }
+      ],
+      "Params": null,
+      "Reads": {
+        "Headers": [
+          "HX-Request",
+          "HX-Boosted"
+        ],
+        "Cookies": [
+          "staff_view"
+        ]
+      },
+      "Guards": {
+        "Headers": null,
+        "Cookies": null
+      },
+      "Action": "",
+      "Methods": [
+        "GET"
+      ],
+      "Unknowns": null
+    },
+    {
+      "Package": "git.bytestone.uk/hum3/gobank/bff/staff",
+      "Method": "",
+      "Path": "/export.goluca",
+      "Pos": "bff/staff/console_routes.go:94",
+      "Handler": "",
+      "Wrappers": null,
+      "Via": "",
+      "Args": null,
+      "Doc": "The whole book as a .goluca file (GET): admin only.",
+      "Request": null,
+      "Responses": [
+        {
+          "Status": 403,
+          "Media": "text/plain; charset=utf-8",
+          "Type": "",
+          "Note": "Forbidden",
+          "Redirect": ""
+        },
+        {
+          "Status": 405,
+          "Media": "text/plain; charset=utf-8",
+          "Type": "",
+          "Note": "Method not allowed",
+          "Redirect": ""
+        },
+        {
+          "Status": 500,
+          "Media": "text/plain; charset=utf-8",
+          "Type": "",
+          "Note": "",
+          "Redirect": ""
+        },
+        {
+          "Status": 200,
+          "Media": "application/octet-stream",
+          "Type": "",
+          "Note": "",
+          "Redirect": ""
+        }
+      ],
+      "Params": null,
+      "Reads": {
+        "Headers": null,
+        "Cookies": null
+      },
+      "Guards": {
+        "Headers": null,
+        "Cookies": null
+      },
+      "Action": "export",
+      "Methods": [
+        "GET"
+      ],
+      "Unknowns": null
+    },
+    {
+      "Package": "git.bytestone.uk/hum3/gobank/bff/staff",
+      "Method": "",
+      "Path": "/favicon.ico",
+      "Pos": "bff/staff/site.go:525",
+      "Handler": "lofigui.ServeFavicon",
+      "Wrappers": null,
+      "Via": "",
+      "Args": null,
+      "Doc": "The tab icon as .ico, from lofigui.",
+      "Request": null,
+      "Responses": null,
+      "Params": null,
+      "Reads": {
+        "Headers": null,
+        "Cookies": null
+      },
+      "Guards": {
+        "Headers": null,
+        "Cookies": null
+      },
+      "Action": "",
+      "Methods": null,
+      "Unknowns": [
+        "handler lofigui.ServeFavicon: body outside the walk",
+        "no response found"
+      ]
+    },
+    {
+      "Package": "git.bytestone.uk/hum3/gobank/bff/staff",
+      "Method": "",
+      "Path": "/favicon.svg",
+      "Pos": "bff/staff/site.go:527",
+      "Handler": "",
+      "Wrappers": null,
+      "Via": "",
+      "Args": null,
+      "Doc": "The tab icon as SVG.",
+      "Request": null,
+      "Responses": [
+        {
+          "Status": 200,
+          "Media": "image/svg+xml",
+          "Type": "",
+          "Note": "",
+          "Redirect": ""
+        }
+      ],
+      "Params": null,
+      "Reads": {
+        "Headers": null,
+        "Cookies": null
+      },
+      "Guards": {
+        "Headers": null,
+        "Cookies": null
+      },
+      "Action": "",
+      "Methods": null,
+      "Unknowns": null
+    },
+    {
+      "Package": "git.bytestone.uk/hum3/gobank/bff/staff",
+      "Method": "",
+      "Path": "/import",
+      "Pos": "bff/staff/console_routes.go:113",
+      "Handler": "",
+      "Wrappers": null,
+      "Via": "",
+      "Args": null,
+      "Doc": "Replaces the book with an uploaded .goluca file (POST, multipart\nfile=): admin only.",
+      "Request": null,
+      "Responses": [
+        {
+          "Status": 403,
+          "Media": "text/plain; charset=utf-8",
+          "Type": "",
+          "Note": "Forbidden",
+          "Redirect": ""
+        },
+        {
+          "Status": 405,
+          "Media": "text/plain; charset=utf-8",
+          "Type": "",
+          "Note": "Method not allowed",
+          "Redirect": ""
+        },
+        {
+          "Status": 400,
+          "Media": "text/plain; charset=utf-8",
+          "Type": "",
+          "Note": "No file uploaded",
+          "Redirect": ""
+        },
+        {
+          "Status": 400,
+          "Media": "text/plain; charset=utf-8",
+          "Type": "",
+          "Note": "Read error",
+          "Redirect": ""
+        },
+        {
+          "Status": 500,
+          "Media": "text/plain; charset=utf-8",
+          "Type": "",
+          "Note": "",
+          "Redirect": ""
+        },
+        {
+          "Status": 303,
+          "Media": "",
+          "Type": "",
+          "Note": "",
+          "Redirect": ""
+        }
+      ],
+      "Params": [
+        {
+          "Name": "file",
+          "In": "file"
+        }
+      ],
+      "Reads": {
+        "Headers": null,
+        "Cookies": null
+      },
+      "Guards": {
+        "Headers": null,
+        "Cookies": null
+      },
+      "Action": "export",
+      "Methods": [
+        "POST"
+      ],
+      "Unknowns": null
+    },
+    {
+      "Package": "git.bytestone.uk/hum3/gobank/bff/staff",
+      "Method": "",
+      "Path": "/internal/explorer",
+      "Pos": "bff/staff/console_routes.go:230",
+      "Handler": "",
+      "Wrappers": null,
+      "Via": "",
+      "Args": null,
+      "Doc": "The DB explorer: every component's tables, read-only; a role sees only\nthe components it may (customers needs view_pii).",
+      "Request": null,
+      "Responses": [
+        {
+          "Status": 405,
+          "Media": "text/plain; charset=utf-8",
+          "Type": "",
+          "Note": "Method not allowed",
+          "Redirect": ""
+        },
+        {
+          "Status": 303,
+          "Media": "",
+          "Type": "",
+          "Note": "",
+          "Redirect": ""
+        },
+        {
+          "Status": 200,
+          "Media": "text/html; charset=utf-8",
+          "Type": "",
+          "Note": "",
+          "Redirect": ""
+        },
+        {
+          "Status": 405,
+          "Media": "text/plain; charset=utf-8",
+          "Type": "",
+          "Note": "Method not allowed",
+          "Redirect": ""
+        }
+      ],
+      "Params": null,
+      "Reads": {
+        "Headers": [
+          "HX-Request",
+          "HX-Boosted"
+        ],
+        "Cookies": [
+          "staff_view"
+        ]
+      },
+      "Guards": {
+        "Headers": null,
+        "Cookies": null
+      },
+      "Action": "",
+      "Methods": [
+        "GET"
+      ],
+      "Unknowns": null
+    },
+    {
+      "Package": "git.bytestone.uk/hum3/gobank/bff/staff",
+      "Method": "",
+      "Path": "/internal/explorer/",
+      "Pos": "bff/staff/console_routes.go:232",
+      "Handler": "",
+      "Wrappers": null,
+      "Via": "",
+      "Args": null,
+      "Doc": "The DB explorer's tables and rows, under its prefix.",
+      "Request": null,
+      "Responses": [
+        {
+          "Status": 405,
+          "Media": "text/plain; charset=utf-8",
+          "Type": "",
+          "Note": "Method not allowed",
+          "Redirect": ""
+        },
+        {
+          "Status": 303,
+          "Media": "",
+          "Type": "",
+          "Note": "",
+          "Redirect": ""
+        },
+        {
+          "Status": 200,
+          "Media": "text/html; charset=utf-8",
+          "Type": "",
+          "Note": "",
+          "Redirect": ""
+        },
+        {
+          "Status": 405,
+          "Media": "text/plain; charset=utf-8",
+          "Type": "",
+          "Note": "Method not allowed",
+          "Redirect": ""
+        }
+      ],
+      "Params": null,
+      "Reads": {
+        "Headers": [
+          "HX-Request",
+          "HX-Boosted"
+        ],
+        "Cookies": [
+          "staff_view"
+        ]
+      },
+      "Guards": {
+        "Headers": null,
+        "Cookies": null
+      },
+      "Action": "",
+      "Methods": [
+        "GET"
+      ],
+      "Unknowns": null
+    },
+    {
+      "Package": "git.bytestone.uk/hum3/gobank/bff/staff",
+      "Method": "",
+      "Path": "/login",
+      "Pos": "bff/staff/login.go:25",
+      "Handler": "",
+      "Wrappers": null,
+      "Via": "",
+      "Args": null,
+      "Doc": "The staff login: the form (GET) and its check (POST login, password)\nagainst the users component. Five failures for one login or from one\naddress lock it for fifteen minutes; 503 on a deployment with no users.",
+      "Request": null,
+      "Responses": [
+        {
+          "Status": 303,
+          "Media": "",
+          "Type": "",
+          "Note": "",
+          "Redirect": ""
+        },
+        {
+          "Status": 200,
+          "Media": "",
+          "Type": "",
+          "Note": "",
+          "Redirect": ""
+        },
+        {
+          "Status": 400,
+          "Media": "text/plain; charset=utf-8",
+          "Type": "",
+          "Note": "Malformed login form",
+          "Redirect": ""
+        },
+        {
+          "Status": 503,
+          "Media": "",
+          "Type": "",
+          "Note": "Staff login is not set up on this deployment.",
+          "Redirect": ""
+        },
+        {
+          "Status": 400,
+          "Media": "",
+          "Type": "",
+          "Note": "Enter your login and password.",
+          "Redirect": ""
+        },
+        {
+          "Status": 429,
+          "Media": "",
+          "Type": "",
+          "Note": "",
+          "Redirect": ""
+        },
+        {
+          "Status": 401,
+          "Media": "",
+          "Type": "",
+          "Note": "Unknown login or wrong password.",
+          "Redirect": ""
+        },
+        {
+          "Status": 303,
+          "Media": "",
+          "Type": "",
+          "Note": "",
+          "Redirect": ""
+        },
+        {
+          "Status": 405,
+          "Media": "text/plain; charset=utf-8",
+          "Type": "",
+          "Note": "Method not allowed",
+          "Redirect": ""
+        }
+      ],
+      "Params": [
+        {
+          "Name": "redirect",
+          "In": "query"
+        },
+        {
+          "Name": "login",
+          "In": "form"
+        },
+        {
+          "Name": "password",
+          "In": "form"
+        },
+        {
+          "Name": "redirect",
+          "In": "form"
+        }
+      ],
+      "Reads": {
+        "Headers": null,
+        "Cookies": [
+          "staff_session",
+          "staff_view"
+        ]
+      },
+      "Guards": {
+        "Headers": null,
+        "Cookies": null
+      },
+      "Action": "",
+      "Methods": [
+        "GET",
+        "POST"
+      ],
+      "Unknowns": null
+    },
+    {
+      "Package": "git.bytestone.uk/hum3/gobank/bff/staff",
+      "Method": "",
+      "Path": "/logout",
+      "Pos": "bff/staff/login.go:41",
+      "Handler": "",
+      "Wrappers": null,
+      "Via": "",
+      "Args": null,
+      "Doc": "Ends the staff session (POST): the cookie is cleared and the browser\nsent to the login page.",
+      "Request": null,
+      "Responses": [
+        {
+          "Status": 303,
+          "Media": "",
+          "Type": "",
+          "Note": "",
+          "Redirect": ""
+        },
+        {
+          "Status": 303,
+          "Media": "",
+          "Type": "",
+          "Note": "",
+          "Redirect": ""
+        }
+      ],
+      "Params": null,
+      "Reads": {
+        "Headers": null,
+        "Cookies": null
+      },
+      "Guards": {
+        "Headers": null,
+        "Cookies": null
+      },
+      "Action": "",
+      "Methods": [
+        "POST"
+      ],
+      "Unknowns": null
+    },
+    {
+      "Package": "git.bytestone.uk/hum3/gobank/bff/staff",
+      "Method": "",
+      "Path": "/movements/{id}",
+      "Pos": "bff/staff/movement.go:45",
+      "Handler": "",
+      "Wrappers": null,
+      "Via": "",
+      "Args": null,
+      "Doc": "One movement of the ledger (ADR-0008): its page; with the suffix\n.goluca its plain-text-accounting text, with .json the movement itself.",
+      "Request": null,
+      "Responses": [
+        {
+          "Status": 404,
+          "Media": "text/plain; charset=utf-8",
+          "Type": "",
+          "Note": "",
+          "Redirect": ""
+        },
+        {
+          "Status": 500,
+          "Media": "text/plain; charset=utf-8",
+          "Type": "",
+          "Note": "Internal error",
+          "Redirect": ""
+        },
+        {
+          "Status": 200,
+          "Media": "text/plain; charset=utf-8",
+          "Type": "",
+          "Note": "",
+          "Redirect": ""
+        },
+        {
+          "Status": 200,
+          "Media": "",
+          "Type": "",
+          "Note": "",
+          "Redirect": ""
+        },
+        {
+          "Status": 200,
+          "Media": "",
+          "Type": "",
+          "Note": "",
+          "Redirect": ""
+        },
+        {
+          "Status": 200,
+          "Media": "",
+          "Type": "",
+          "Note": "",
+          "Redirect": ""
+        },
+        {
+          "Status": 200,
+          "Media": "",
+          "Type": "",
+          "Note": "",
+          "Redirect": ""
+        },
+        {
+          "Status": 200,
+          "Media": "",
+          "Type": "",
+          "Note": "",
+          "Redirect": ""
+        },
+        {
+          "Status": 200,
+          "Media": "",
+          "Type": "",
+          "Note": "",
+          "Redirect": ""
+        },
+        {
+          "Status": 200,
+          "Media": "application/json",
+          "Type": "core.Movement",
+          "Note": "",
+          "Redirect": ""
+        },
+        {
+          "Status": 405,
+          "Media": "text/plain; charset=utf-8",
+          "Type": "",
+          "Note": "Method not allowed",
+          "Redirect": ""
+        },
+        {
+          "Status": 200,
+          "Media": "",
+          "Type": "",
+          "Note": "",
+          "Redirect": ""
+        },
+        {
+          "Status": 200,
+          "Media": "",
+          "Type": "",
+          "Note": "",
+          "Redirect": ""
+        },
+        {
+          "Status": 200,
+          "Media": "",
+          "Type": "",
+          "Note": "",
+          "Redirect": ""
+        },
+        {
+          "Status": 200,
+          "Media": "",
+          "Type": "",
+          "Note": "",
+          "Redirect": ""
+        },
+        {
+          "Status": 200,
+          "Media": "",
+          "Type": "",
+          "Note": "",
+          "Redirect": ""
+        },
+        {
+          "Status": 200,
+          "Media": "",
+          "Type": "",
+          "Note": "",
+          "Redirect": ""
+        },
+        {
+          "Status": 200,
+          "Media": "",
+          "Type": "",
+          "Note": "",
+          "Redirect": ""
+        },
+        {
+          "Status": 200,
+          "Media": "",
+          "Type": "",
+          "Note": "",
+          "Redirect": ""
+        },
+        {
+          "Status": 200,
+          "Media": "",
+          "Type": "",
+          "Note": "",
+          "Redirect": ""
+        },
+        {
+          "Status": 200,
+          "Media": "",
+          "Type": "",
+          "Note": "",
+          "Redirect": ""
+        },
+        {
+          "Status": 200,
+          "Media": "",
+          "Type": "",
+          "Note": "",
+          "Redirect": ""
+        },
+        {
+          "Status": 200,
+          "Media": "",
+          "Type": "",
+          "Note": "",
+          "Redirect": ""
+        },
+        {
+          "Status": 200,
+          "Media": "text/html; charset=utf-8",
+          "Type": "",
+          "Note": "",
+          "Redirect": ""
+        }
+      ],
+      "Params": [
+        {
+          "Name": "id",
+          "In": "path"
+        }
+      ],
+      "Reads": {
+        "Headers": [
+          "HX-Request",
+          "HX-Boosted"
+        ],
+        "Cookies": [
+          "staff_view"
+        ]
+      },
+      "Guards": {
+        "Headers": null,
+        "Cookies": null
+      },
+      "Action": "",
+      "Methods": [
+        "GET"
+      ],
+      "Unknowns": null
+    },
+    {
+      "Package": "git.bytestone.uk/hum3/gobank/bff/staff",
+      "Method": "",
+      "Path": "/payments",
+      "Pos": "bff/staff/console_routes.go:143",
+      "Handler": "",
+      "Wrappers": null,
+      "Via": "",
+      "Args": null,
+      "Doc": "Payments: the list, newest first, one page (?page=) at a time, with\nthe generator's controls.",
+      "Request": null,
+      "Responses": [
+        {
+          "Status": 405,
+          "Media": "text/plain; charset=utf-8",
+          "Type": "",
+          "Note": "Method not allowed",
+          "Redirect": ""
+        },
+        {
+          "Status": 200,
+          "Media": "text/html; charset=utf-8",
+          "Type": "",
+          "Note": "",
+          "Redirect": ""
+        },
+        {
+          "Status": 200,
+          "Media": "",
+          "Type": "",
+          "Note": "",
+          "Redirect": ""
+        }
+      ],
+      "Params": [
+        {
+          "Name": "page",
+          "In": "query"
+        }
+      ],
+      "Reads": {
+        "Headers": [
+          "HX-Request",
+          "HX-Boosted"
+        ],
+        "Cookies": [
+          "staff_view"
+        ]
+      },
+      "Guards": {
+        "Headers": null,
+        "Cookies": null
+      },
+      "Action": "",
+      "Methods": [
+        "GET"
+      ],
+      "Unknowns": null
+    },
+    {
+      "Package": "git.bytestone.uk/hum3/gobank/bff/staff",
+      "Method": "",
+      "Path": "/payments/run",
+      "Pos": "bff/staff/console_routes.go:164",
+      "Handler": "",
+      "Wrappers": null,
+      "Via": "payments",
+      "Args": null,
+      "Doc": "Starts the payment generator (POST): the settings' payments a day.",
+      "Request": null,
+      "Responses": [
+        {
+          "Status": 303,
+          "Media": "",
+          "Type": "",
+          "Note": "",
+          "Redirect": ""
+        },
+        {
+          "Status": 403,
+          "Media": "text/plain; charset=utf-8",
+          "Type": "",
+          "Note": "Forbidden",
+          "Redirect": ""
+        }
+      ],
+      "Params": null,
+      "Reads": {
+        "Headers": null,
+        "Cookies": null
+      },
+      "Guards": {
+        "Headers": null,
+        "Cookies": null
+      },
+      "Action": "send_payment",
+      "Methods": [
+        "POST"
+      ],
+      "Unknowns": null
+    },
+    {
+      "Package": "git.bytestone.uk/hum3/gobank/bff/staff",
+      "Method": "",
+      "Path": "/payments/send",
+      "Pos": "bff/staff/console_routes.go:162",
+      "Handler": "",
+      "Wrappers": null,
+      "Via": "payments",
+      "Args": null,
+      "Doc": "Sends one generated payment now (POST).",
+      "Request": null,
+      "Responses": [
+        {
+          "Status": 303,
+          "Media": "",
+          "Type": "",
+          "Note": "",
+          "Redirect": ""
+        },
+        {
+          "Status": 403,
+          "Media": "text/plain; charset=utf-8",
+          "Type": "",
+          "Note": "Forbidden",
+          "Redirect": ""
+        }
+      ],
+      "Params": null,
+      "Reads": {
+        "Headers": null,
+        "Cookies": null
+      },
+      "Guards": {
+        "Headers": null,
+        "Cookies": null
+      },
+      "Action": "send_payment",
+      "Methods": [
+        "POST"
+      ],
+      "Unknowns": null
+    },
+    {
+      "Package": "git.bytestone.uk/hum3/gobank/bff/staff",
+      "Method": "",
+      "Path": "/payments/stop",
+      "Pos": "bff/staff/console_routes.go:166",
+      "Handler": "",
+      "Wrappers": null,
+      "Via": "payments",
+      "Args": null,
+      "Doc": "Stops the payment generator (POST).",
+      "Request": null,
+      "Responses": [
+        {
+          "Status": 303,
+          "Media": "",
+          "Type": "",
+          "Note": "",
+          "Redirect": ""
+        },
+        {
+          "Status": 403,
+          "Media": "text/plain; charset=utf-8",
+          "Type": "",
+          "Note": "Forbidden",
+          "Redirect": ""
+        }
+      ],
+      "Params": null,
+      "Reads": {
+        "Headers": null,
+        "Cookies": null
+      },
+      "Guards": {
+        "Headers": null,
+        "Cookies": null
+      },
+      "Action": "send_payment",
+      "Methods": [
+        "POST"
+      ],
+      "Unknowns": null
+    },
+    {
+      "Package": "git.bytestone.uk/hum3/gobank/bff/staff",
+      "Method": "",
+      "Path": "/payments/{id}",
+      "Pos": "bff/staff/site.go:408",
+      "Handler": "",
+      "Wrappers": null,
+      "Via": "",
+      "Args": null,
+      "Doc": "One payment: its detail and the movements it made.",
+      "Request": null,
+      "Responses": [
+        {
+          "Status": 404,
+          "Media": "text/plain; charset=utf-8",
+          "Type": "",
+          "Note": "",
+          "Redirect": ""
+        },
+        {
+          "Status": 405,
+          "Media": "text/plain; charset=utf-8",
+          "Type": "",
+          "Note": "Method not allowed",
+          "Redirect": ""
+        },
+        {
+          "Status": 200,
+          "Media": "text/html; charset=utf-8",
+          "Type": "",
+          "Note": "",
+          "Redirect": ""
+        }
+      ],
+      "Params": [
+        {
+          "Name": "id",
+          "In": "path"
+        }
+      ],
+      "Reads": {
+        "Headers": [
+          "HX-Request",
+          "HX-Boosted"
+        ],
+        "Cookies": [
+          "staff_view"
+        ]
+      },
+      "Guards": {
+        "Headers": null,
+        "Cookies": null
+      },
+      "Action": "",
+      "Methods": [
+        "GET"
+      ],
+      "Unknowns": null
+    },
+    {
+      "Package": "git.bytestone.uk/hum3/gobank/bff/staff",
+      "Method": "",
+      "Path": "/products/bank",
+      "Pos": "bff/staff/site.go:313",
+      "Handler": "",
+      "Wrappers": null,
+      "Via": "",
+      "Args": null,
+      "Doc": "The bank's own parameters (Bank Rate, the reserve ratio and the rest),\nas the Bank tab shows them.",
+      "Request": null,
+      "Responses": [
+        {
+          "Status": 405,
+          "Media": "text/plain; charset=utf-8",
+          "Type": "",
+          "Note": "Method not allowed",
+          "Redirect": ""
+        },
+        {
+          "Status": 200,
+          "Media": "text/html; charset=utf-8",
+          "Type": "",
+          "Note": "",
+          "Redirect": ""
+        }
+      ],
+      "Params": null,
+      "Reads": {
+        "Headers": [
+          "HX-Request",
+          "HX-Boosted"
+        ],
+        "Cookies": [
+          "staff_view"
+        ]
+      },
+      "Guards": {
+        "Headers": null,
+        "Cookies": null
+      },
+      "Action": "",
+      "Methods": [
+        "GET"
+      ],
+      "Unknowns": null
+    },
+    {
+      "Package": "git.bytestone.uk/hum3/gobank/bff/staff",
+      "Method": "",
+      "Path": "/products/lending",
+      "Pos": "bff/staff/site.go:308",
+      "Handler": "",
+      "Wrappers": null,
+      "Via": "",
+      "Args": null,
+      "Doc": "The lending products: the family's catalogue, each product with its\nbook.",
+      "Request": null,
+      "Responses": [
+        {
+          "Status": 405,
+          "Media": "text/plain; charset=utf-8",
+          "Type": "",
+          "Note": "Method not allowed",
+          "Redirect": ""
+        },
+        {
+          "Status": 200,
+          "Media": "text/html; charset=utf-8",
+          "Type": "",
+          "Note": "",
+          "Redirect": ""
+        }
+      ],
+      "Params": null,
+      "Reads": {
+        "Headers": [
+          "HX-Request",
+          "HX-Boosted"
+        ],
+        "Cookies": [
+          "staff_view"
+        ]
+      },
+      "Guards": {
+        "Headers": null,
+        "Cookies": null
+      },
+      "Action": "",
+      "Methods": [
+        "GET"
+      ],
+      "Unknowns": null
+    },
+    {
+      "Package": "git.bytestone.uk/hum3/gobank/bff/staff",
+      "Method": "",
+      "Path": "/products/savings",
+      "Pos": "bff/staff/site.go:303",
+      "Handler": "",
+      "Wrappers": null,
+      "Via": "",
+      "Args": null,
+      "Doc": "The savings products: the family's catalogue, each product with its\nbook.",
+      "Request": null,
+      "Responses": [
+        {
+          "Status": 405,
+          "Media": "text/plain; charset=utf-8",
+          "Type": "",
+          "Note": "Method not allowed",
+          "Redirect": ""
+        },
+        {
+          "Status": 200,
+          "Media": "text/html; charset=utf-8",
+          "Type": "",
+          "Note": "",
+          "Redirect": ""
+        }
+      ],
+      "Params": null,
+      "Reads": {
+        "Headers": [
+          "HX-Request",
+          "HX-Boosted"
+        ],
+        "Cookies": [
+          "staff_view"
+        ]
+      },
+      "Guards": {
+        "Headers": null,
+        "Cookies": null
+      },
+      "Action": "",
+      "Methods": [
+        "GET"
+      ],
+      "Unknowns": null
+    },
+    {
+      "Package": "git.bytestone.uk/hum3/gobank/bff/staff",
+      "Method": "",
+      "Path": "/products/{owner}/parameters/{key}",
+      "Pos": "bff/staff/site.go:319",
+      "Handler": "",
+      "Wrappers": null,
+      "Via": "",
+      "Args": null,
+      "Doc": "One parameter of a product or of the bank: its history and, for a\nsigned-in user who may, the form that sets it (POST value, effective);\n?refused= carries a refusal back to the page.",
+      "Request": null,
+      "Responses": [
+        {
+          "Status": 404,
+          "Media": "text/plain; charset=utf-8",
+          "Type": "",
+          "Note": "",
+          "Redirect": ""
+        },
+        {
+          "Status": 200,
+          "Media": "text/html; charset=utf-8",
+          "Type": "",
+          "Note": "",
+          "Redirect": ""
+        },
+        {
+          "Status": 403,
+          "Media": "text/plain; charset=utf-8",
+          "Type": "",
+          "Note": "Forbidden",
+          "Redirect": ""
+        },
+        {
+          "Status": 403,
+          "Media": "text/plain; charset=utf-8",
+          "Type": "",
+          "Note": "Forbidden",
+          "Redirect": ""
+        },
+        {
+          "Status": 200,
+          "Media": "text/html; charset=utf-8",
+          "Type": "",
+          "Note": "",
+          "Redirect": ""
+        },
+        {
+          "Status": 303,
+          "Media": "",
+          "Type": "",
+          "Note": "",
+          "Redirect": ""
+        },
+        {
+          "Status": 405,
+          "Media": "text/plain; charset=utf-8",
+          "Type": "",
+          "Note": "Method not allowed",
+          "Redirect": ""
+        }
+      ],
+      "Params": [
+        {
+          "Name": "owner",
+          "In": "path"
+        },
+        {
+          "Name": "key",
+          "In": "path"
+        },
+        {
+          "Name": "refused",
+          "In": "query"
+        },
+        {
+          "Name": "value",
+          "In": "form"
+        },
+        {
+          "Name": "effective",
+          "In": "form"
+        }
+      ],
+      "Reads": {
+        "Headers": [
+          "HX-Request",
+          "HX-Boosted"
+        ],
+        "Cookies": [
+          "staff_view"
+        ]
+      },
+      "Guards": {
+        "Headers": null,
+        "Cookies": null
+      },
+      "Action": "settings",
+      "Methods": [
+        "GET",
+        "POST"
+      ],
+      "Unknowns": null
+    },
+    {
+      "Package": "git.bytestone.uk/hum3/gobank/bff/staff",
+      "Method": "",
+      "Path": "/reports/bbsi",
+      "Pos": "bff/staff/site.go:428",
+      "Handler": "",
+      "Wrappers": null,
+      "Via": "",
+      "Args": null,
+      "Doc": "The BBSI return (Bank and Building Society Interest): each customer's\ninterest for the year; personal data only for an authorised admin.",
+      "Request": null,
+      "Responses": [
+        {
+          "Status": 405,
+          "Media": "text/plain; charset=utf-8",
+          "Type": "",
+          "Note": "Method not allowed",
+          "Redirect": ""
+        },
+        {
+          "Status": 200,
+          "Media": "text/html; charset=utf-8",
+          "Type": "",
+          "Note": "",
+          "Redirect": ""
+        }
+      ],
+      "Params": null,
+      "Reads": {
+        "Headers": [
+          "HX-Request",
+          "HX-Boosted"
+        ],
+        "Cookies": [
+          "staff_view"
+        ]
+      },
+      "Guards": {
+        "Headers": null,
+        "Cookies": null
+      },
+      "Action": "",
+      "Methods": [
+        "GET"
+      ],
+      "Unknowns": null
+    },
+    {
+      "Package": "git.bytestone.uk/hum3/gobank/bff/staff",
+      "Method": "",
+      "Path": "/reports/charts",
+      "Pos": "bff/staff/site.go:423",
+      "Handler": "",
+      "Wrappers": null,
+      "Via": "",
+      "Args": null,
+      "Doc": "The charts: the book, the customer count and the rates over the run.",
+      "Request": null,
+      "Responses": [
+        {
+          "Status": 405,
+          "Media": "text/plain; charset=utf-8",
+          "Type": "",
+          "Note": "Method not allowed",
+          "Redirect": ""
+        },
+        {
+          "Status": 200,
+          "Media": "text/html; charset=utf-8",
+          "Type": "",
+          "Note": "",
+          "Redirect": ""
+        }
+      ],
+      "Params": null,
+      "Reads": {
+        "Headers": [
+          "HX-Request",
+          "HX-Boosted"
+        ],
+        "Cookies": [
+          "staff_view"
+        ]
+      },
+      "Guards": {
+        "Headers": null,
+        "Cookies": null
+      },
+      "Action": "",
+      "Methods": [
+        "GET"
+      ],
+      "Unknowns": null
+    },
+    {
+      "Package": "git.bytestone.uk/hum3/gobank/bff/staff",
+      "Method": "",
+      "Path": "/reports/customer-view",
+      "Pos": "bff/staff/site.go:433",
+      "Handler": "",
+      "Wrappers": null,
+      "Via": "",
+      "Args": null,
+      "Doc": "A customer as the app shows them (?id=); without an id, the customer\nlist.",
+      "Request": null,
+      "Responses": [
+        {
+          "Status": 303,
+          "Media": "",
+          "Type": "",
+          "Note": "",
+          "Redirect": ""
+        },
+        {
+          "Status": 405,
+          "Media": "text/plain; charset=utf-8",
+          "Type": "",
+          "Note": "Method not allowed",
+          "Redirect": ""
+        },
+        {
+          "Status": 200,
+          "Media": "text/html; charset=utf-8",
+          "Type": "",
+          "Note": "",
+          "Redirect": ""
+        }
+      ],
+      "Params": [
+        {
+          "Name": "id",
+          "In": "query"
+        }
+      ],
+      "Reads": {
+        "Headers": [
+          "HX-Request",
+          "HX-Boosted"
+        ],
+        "Cookies": [
+          "staff_view"
+        ]
+      },
+      "Guards": {
+        "Headers": null,
+        "Cookies": null
+      },
+      "Action": "",
+      "Methods": [
+        "GET"
+      ],
+      "Unknowns": null
+    },
+    {
+      "Package": "git.bytestone.uk/hum3/gobank/bff/staff",
+      "Method": "",
+      "Path": "/reset",
+      "Pos": "bff/staff/console_routes.go:80",
+      "Handler": "",
+      "Wrappers": null,
+      "Via": "control",
+      "Args": [
+        "sim_controls"
+      ],
+      "Doc": "Empties the bank and starts again on its opening day (POST); the\nsettings are kept.",
+      "Request": null,
+      "Responses": [
+        {
+          "Status": 303,
+          "Media": "",
+          "Type": "",
+          "Note": "",
+          "Redirect": ""
+        },
+        {
+          "Status": 403,
+          "Media": "text/plain; charset=utf-8",
+          "Type": "",
+          "Note": "Forbidden",
+          "Redirect": ""
+        }
+      ],
+      "Params": null,
+      "Reads": {
+        "Headers": null,
+        "Cookies": null
+      },
+      "Guards": {
+        "Headers": null,
+        "Cookies": null
+      },
+      "Action": "sim_controls",
+      "Methods": [
+        "POST"
+      ],
+      "Unknowns": null
+    },
+    {
+      "Package": "git.bytestone.uk/hum3/gobank/bff/staff",
+      "Method": "",
+      "Path": "/settings",
+      "Pos": "bff/staff/console_routes.go:174",
+      "Handler": "",
+      "Wrappers": null,
+      "Via": "",
+      "Args": null,
+      "Doc": "The console settings: the page (GET), and the change (POST\nmax_customers, payments_per_day, day_length; 0s runs flat out, a day\nlength that does not parse leaves the current one). The day length set\nhere is the run's and outlives the process.",
+      "Request": null,
+      "Responses": [
+        {
+          "Status": 403,
+          "Media": "text/plain; charset=utf-8",
+          "Type": "",
+          "Note": "Forbidden",
+          "Redirect": ""
+        },
+        {
+          "Status": 303,
+          "Media": "",
+          "Type": "",
+          "Note": "",
+          "Redirect": ""
+        },
+        {
+          "Status": 405,
+          "Media": "text/plain; charset=utf-8",
+          "Type": "",
+          "Note": "Method not allowed",
+          "Redirect": ""
+        },
+        {
+          "Status": 200,
+          "Media": "text/html; charset=utf-8",
+          "Type": "",
+          "Note": "",
+          "Redirect": ""
+        }
+      ],
+      "Params": [
+        {
+          "Name": "max_customers",
+          "In": "form"
+        },
+        {
+          "Name": "payments_per_day",
+          "In": "form"
+        },
+        {
+          "Name": "day_length",
+          "In": "form"
+        }
+      ],
+      "Reads": {
+        "Headers": [
+          "HX-Request",
+          "HX-Boosted"
+        ],
+        "Cookies": [
+          "staff_view"
+        ]
+      },
+      "Guards": {
+        "Headers": null,
+        "Cookies": null
+      },
+      "Action": "settings",
+      "Methods": [
+        "GET",
+        "POST"
+      ],
+      "Unknowns": null
+    },
+    {
+      "Package": "git.bytestone.uk/hum3/gobank/bff/staff",
+      "Method": "",
+      "Path": "/settings/status",
+      "Pos": "bff/staff/console_routes.go:202",
+      "Handler": "",
+      "Wrappers": null,
+      "Via": "",
+      "Args": null,
+      "Doc": "The settings page's status line, polled on its own so the form is\nnever re-rendered under the operator.",
+      "Request": null,
+      "Responses": [
+        {
+          "Status": 405,
+          "Media": "text/plain; charset=utf-8",
+          "Type": "",
+          "Note": "Method not allowed",
+          "Redirect": ""
+        },
+        {
+          "Status": 200,
+          "Media": "text/html; charset=utf-8",
+          "Type": "",
+          "Note": "",
+          "Redirect": ""
+        }
+      ],
+      "Params": null,
+      "Reads": {
+        "Headers": null,
+        "Cookies": null
+      },
+      "Guards": {
+        "Headers": null,
+        "Cookies": null
+      },
+      "Action": "",
+      "Methods": [
+        "GET"
+      ],
+      "Unknowns": null
+    },
+    {
+      "Package": "git.bytestone.uk/hum3/gobank/bff/staff",
+      "Method": "",
+      "Path": "/start",
+      "Pos": "bff/staff/console_routes.go:73",
+      "Handler": "",
+      "Wrappers": null,
+      "Via": "control",
+      "Args": [
+        "sim_controls"
+      ],
+      "Doc": "Starts the run (POST): the simulation moves day after day at the\nsettings' day length until stopped.",
+      "Request": null,
+      "Responses": [
+        {
+          "Status": 303,
+          "Media": "",
+          "Type": "",
+          "Note": "",
+          "Redirect": ""
+        },
+        {
+          "Status": 403,
+          "Media": "text/plain; charset=utf-8",
+          "Type": "",
+          "Note": "Forbidden",
+          "Redirect": ""
+        }
+      ],
+      "Params": null,
+      "Reads": {
+        "Headers": null,
+        "Cookies": null
+      },
+      "Guards": {
+        "Headers": null,
+        "Cookies": null
+      },
+      "Action": "sim_controls",
+      "Methods": [
+        "POST"
+      ],
+      "Unknowns": null
+    },
+    {
+      "Package": "git.bytestone.uk/hum3/gobank/bff/staff",
+      "Method": "",
+      "Path": "/stop",
+      "Pos": "bff/staff/console_routes.go:75",
+      "Handler": "",
+      "Wrappers": null,
+      "Via": "control",
+      "Args": [
+        "sim_controls"
+      ],
+      "Doc": "Stops the run after the day in progress (POST).",
+      "Request": null,
+      "Responses": [
+        {
+          "Status": 303,
+          "Media": "",
+          "Type": "",
+          "Note": "",
+          "Redirect": ""
+        },
+        {
+          "Status": 403,
+          "Media": "text/plain; charset=utf-8",
+          "Type": "",
+          "Note": "Forbidden",
+          "Redirect": ""
+        }
+      ],
+      "Params": null,
+      "Reads": {
+        "Headers": null,
+        "Cookies": null
+      },
+      "Guards": {
+        "Headers": null,
+        "Cookies": null
+      },
+      "Action": "sim_controls",
+      "Methods": [
+        "POST"
+      ],
+      "Unknowns": null
+    },
+    {
+      "Package": "git.bytestone.uk/hum3/gobank/bff/staff",
+      "Method": "",
+      "Path": "/treasury/capital",
+      "Pos": "bff/staff/site.go:448",
+      "Handler": "",
+      "Wrappers": null,
+      "Via": "",
+      "Args": null,
+      "Doc": "The reserve ratio against its requirement, and the lending headroom.",
+      "Request": null,
+      "Responses": [
+        {
+          "Status": 405,
+          "Media": "text/plain; charset=utf-8",
+          "Type": "",
+          "Note": "Method not allowed",
+          "Redirect": ""
+        },
+        {
+          "Status": 200,
+          "Media": "text/html; charset=utf-8",
+          "Type": "",
+          "Note": "",
+          "Redirect": ""
+        }
+      ],
+      "Params": null,
+      "Reads": {
+        "Headers": [
+          "HX-Request",
+          "HX-Boosted"
+        ],
+        "Cookies": [
+          "staff_view"
+        ]
+      },
+      "Guards": {
+        "Headers": null,
+        "Cookies": null
+      },
+      "Action": "",
+      "Methods": [
+        "GET"
+      ],
+      "Unknowns": null
+    },
+    {
+      "Package": "git.bytestone.uk/hum3/gobank/bff/staff",
+      "Method": "",
+      "Path": "/treasury/cash",
+      "Pos": "bff/staff/site.go:444",
+      "Handler": "",
+      "Wrappers": null,
+      "Via": "",
+      "Args": null,
+      "Doc": "The cash position: deposits, loans, cash at the BoE against the\nrequired reserves, and the Bank Rate.",
+      "Request": null,
+      "Responses": [
+        {
+          "Status": 405,
+          "Media": "text/plain; charset=utf-8",
+          "Type": "",
+          "Note": "Method not allowed",
+          "Redirect": ""
+        },
+        {
+          "Status": 200,
+          "Media": "text/html; charset=utf-8",
+          "Type": "",
+          "Note": "",
+          "Redirect": ""
+        }
+      ],
+      "Params": null,
+      "Reads": {
+        "Headers": [
+          "HX-Request",
+          "HX-Boosted"
+        ],
+        "Cookies": [
+          "staff_view"
+        ]
+      },
+      "Guards": {
+        "Headers": null,
+        "Cookies": null
+      },
+      "Action": "",
+      "Methods": [
+        "GET"
+      ],
+      "Unknowns": null
+    },
+    {
+      "Package": "git.bytestone.uk/hum3/gobank/bff/staff",
+      "Method": "",
+      "Path": "/treasury/gilts",
+      "Pos": "bff/staff/site.go:452",
+      "Handler": "",
+      "Wrappers": null,
+      "Via": "",
+      "Args": null,
+      "Doc": "The gilt holdings and the purchase form.",
+      "Request": null,
+      "Responses": [
+        {
+          "Status": 405,
+          "Media": "text/plain; charset=utf-8",
+          "Type": "",
+          "Note": "Method not allowed",
+          "Redirect": ""
+        },
+        {
+          "Status": 200,
+          "Media": "text/html; charset=utf-8",
+          "Type": "",
+          "Note": "",
+          "Redirect": ""
+        }
+      ],
+      "Params": null,
+      "Reads": {
+        "Headers": [
+          "HX-Request",
+          "HX-Boosted"
+        ],
+        "Cookies": [
+          "staff_view"
+        ]
+      },
+      "Guards": {
+        "Headers": null,
+        "Cookies": null
+      },
+      "Action": "",
+      "Methods": [
+        "GET"
+      ],
+      "Unknowns": null
+    },
+    {
+      "Package": "git.bytestone.uk/hum3/gobank/bff/staff",
+      "Method": "",
+      "Path": "/treasury/gilts/buy",
+      "Pos": "bff/staff/site.go:457",
+      "Handler": "",
+      "Wrappers": null,
+      "Via": "",
+      "Args": null,
+      "Doc": "Buys a gilt (POST tenor, face_value in pounds): admin only; returns to\nthe gilts page.",
+      "Request": null,
+      "Responses": [
+        {
+          "Status": 303,
+          "Media": "",
+          "Type": "",
+          "Note": "",
+          "Redirect": ""
+        },
+        {
+          "Status": 403,
+          "Media": "text/plain; charset=utf-8",
+          "Type": "",
+          "Note": "Forbidden",
+          "Redirect": ""
+        },
+        {
+          "Status": 403,
+          "Media": "text/plain; charset=utf-8",
+          "Type": "",
+          "Note": "Forbidden",
+          "Redirect": ""
+        }
+      ],
+      "Params": [
+        {
+          "Name": "tenor",
+          "In": "form"
+        },
+        {
+          "Name": "face_value",
+          "In": "form"
+        }
+      ],
+      "Reads": {
+        "Headers": null,
+        "Cookies": null
+      },
+      "Guards": {
+        "Headers": null,
+        "Cookies": null
+      },
+      "Action": "buy_gilt",
+      "Methods": [
+        "POST"
+      ],
+      "Unknowns": null
+    },
+    {
+      "Package": "git.bytestone.uk/hum3/gobank/bff/staff",
+      "Method": "",
+      "Path": "/view/{name}",
+      "Pos": "bff/staff/view.go:30",
+      "Handler": "",
+      "Wrappers": null,
+      "Via": "",
+      "Args": null,
+      "Doc": "Switches this browser between the bank's view and the customer's:\nsets the staff_view cookie for a year and returns to ?back=.",
+      "Request": null,
+      "Responses": [
+        {
+          "Status": 303,
+          "Media": "",
+          "Type": "",
+          "Note": "",
+          "Redirect": ""
+        }
+      ],
+      "Params": [
+        {
+          "Name": "name",
+          "In": "path"
+        },
+        {
+          "Name": "back",
+          "In": "query"
+        }
+      ],
+      "Reads": {
+        "Headers": null,
+        "Cookies": null
+      },
+      "Guards": {
+        "Headers": null,
+        "Cookies": null
+      },
+      "Action": "",
+      "Methods": null,
+      "Unknowns": null
+    },
+    {
+      "Package": "git.bytestone.uk/hum3/gobank/bff/staff",
+      "Method": "",
+      "Path": "/wasm/",
+      "Pos": "bff/staff/movement.go:87",
+      "Handler": "",
+      "Wrappers": [
+        "http.StripPrefix"
+      ],
+      "Via": "",
+      "Args": null,
+      "Doc": "pta2svg's browser renderer and its loader, embedded (ADR-0008), so the\nmovement page draws in the tab.",
+      "Request": null,
+      "Responses": [
+        {
+          "Status": 200,
+          "Media": "",
+          "Type": "",
+          "Note": "static files",
+          "Redirect": ""
+        }
+      ],
+      "Params": null,
+      "Reads": {
+        "Headers": null,
+        "Cookies": null
+      },
+      "Guards": {
+        "Headers": null,
+        "Cookies": null
+      },
+      "Action": "",
+      "Methods": null,
+      "Unknowns": null
+    }
+  ],
+  "Gates": [
+    {
+      "Package": "git.bytestone.uk/hum3/gobank/bff/staff",
+      "Wrapper": "(*Site).requireLogin",
+      "Doc": "requireLogin serves the open paths as they are and every other with the\nsession the request's cookie names, or sends the browser to the login\npage with the page it wanted to come back to. An HTMX request that has\nlost its session is told to load the login page whole.",
+      "Reads": {
+        "Headers": [
+          "Authorization",
+          "HX-Request"
+        ],
+        "Cookies": [
+          "staff_session"
+        ]
+      },
+      "Open": [
+        "/about.json",
+        "/favicon.ico",
+        "/favicon.svg",
+        "/login"
+      ]
+    }
+  ],
+  "Types": [
+    {
+      "Name": "[]screen.Component",
+      "Package": "",
+      "Kind": "array",
+      "Doc": "",
+      "Fields": null,
+      "Elem": "screen.Component",
+      "Enum": null,
+      "Format": ""
+    },
+    {
+      "Name": "[]screen.Field",
+      "Package": "",
+      "Kind": "array",
+      "Doc": "",
+      "Fields": null,
+      "Elem": "screen.Field",
+      "Enum": null,
+      "Format": ""
+    },
+    {
+      "Name": "[]screen.Pair",
+      "Package": "",
+      "Kind": "array",
+      "Doc": "",
+      "Fields": null,
+      "Elem": "screen.Pair",
+      "Enum": null,
+      "Format": ""
+    },
+    {
+      "Name": "[]screen.Tab",
+      "Package": "",
+      "Kind": "array",
+      "Doc": "",
+      "Fields": null,
+      "Elem": "screen.Tab",
+      "Enum": null,
+      "Format": ""
+    },
+    {
+      "Name": "[]staff.AboutRestart",
+      "Package": "",
+      "Kind": "array",
+      "Doc": "",
+      "Fields": null,
+      "Elem": "staff.AboutRestart",
+      "Enum": null,
+      "Format": ""
+    },
+    {
+      "Name": "[]staff.SchemaVersion",
+      "Package": "",
+      "Kind": "array",
+      "Doc": "",
+      "Fields": null,
+      "Elem": "staff.SchemaVersion",
+      "Enum": null,
+      "Format": ""
+    },
+    {
+      "Name": "bff.errorBody",
+      "Package": "git.bytestone.uk/hum3/gobank/bff",
+      "Kind": "object",
+      "Doc": "errorBody is every error as a JSON client gets it: a stable code to\nswitch on, what to tell the customer, and the screen to show with it\nwhen there is one (the login screen with its notice).",
+      "Fields": [
+        {
+          "Name": "error",
+          "Type": "string",
+          "Doc": "bad_request, unauthenticated, bad_credentials, rate_limited, not_found or internal",
+          "Optional": false,
+          "Nullable": false
+        },
+        {
+          "Name": "message",
+          "Type": "string",
+          "Doc": "",
+          "Optional": false,
+          "Nullable": false
+        },
+        {
+          "Name": "screen",
+          "Type": "screen.Screen",
+          "Doc": "",
+          "Optional": true,
+          "Nullable": true
+        }
+      ],
+      "Elem": "",
+      "Enum": null,
+      "Format": ""
+    },
+    {
+      "Name": "bff.loginRequest",
+      "Package": "git.bytestone.uk/hum3/gobank/bff",
+      "Kind": "object",
+      "Doc": "",
+      "Fields": [
+        {
+          "Name": "customer_id",
+          "Type": "string",
+          "Doc": "",
+          "Optional": false,
+          "Nullable": false
+        },
+        {
+          "Name": "password",
+          "Type": "string",
+          "Doc": "",
+          "Optional": false,
+          "Nullable": false
+        }
+      ],
+      "Elem": "",
+      "Enum": null,
+      "Format": ""
+    },
+    {
+      "Name": "bff.loginResponse",
+      "Package": "git.bytestone.uk/hum3/gobank/bff",
+      "Kind": "object",
+      "Doc": "loginResponse is what a JSON client gets for a login: the session token\nto send back as a bearer, when the session ends whatever happens (it\nalso ends after fifteen idle minutes), and the home screen, so the\nclient has nothing more to fetch.",
+      "Fields": [
+        {
+          "Name": "token",
+          "Type": "string",
+          "Doc": "",
+          "Optional": false,
+          "Nullable": false
+        },
+        {
+          "Name": "expires_at",
+          "Type": "string",
+          "Doc": "RFC 3339, UTC",
+          "Optional": false,
+          "Nullable": false
+        },
+        {
+          "Name": "screen",
+          "Type": "screen.Screen",
+          "Doc": "",
+          "Optional": false,
+          "Nullable": false
+        }
+      ],
+      "Elem": "",
+      "Enum": null,
+      "Format": ""
+    },
+    {
+      "Name": "bff.screenBody",
+      "Package": "git.bytestone.uk/hum3/gobank/bff",
+      "Kind": "object",
+      "Doc": "screenBody is a screen on its own, as the logout answers a JSON client.",
+      "Fields": [
+        {
+          "Name": "screen",
+          "Type": "screen.Screen",
+          "Doc": "",
+          "Optional": false,
+          "Nullable": false
+        }
+      ],
+      "Elem": "",
+      "Enum": null,
+      "Format": ""
+    },
+    {
+      "Name": "core.EventRecord",
+      "Package": "git.bytestone.uk/hum3/gobank/core",
+      "Kind": "object",
+      "Doc": "EventRecord is one event on the bank's record (ADR-0011): something\nthat happened at an instant, raised by someone, whose cascade is\npending or done.",
+      "Fields": [
+        {
+          "Name": "ID",
+          "Type": "string",
+          "Doc": "",
+          "Optional": false,
+          "Nullable": false
+        },
+        {
+          "Name": "Kind",
+          "Type": "string",
+          "Doc": "\"start of day\", \"publication\", \"payment\", \"setting\", \"opening\"",
+          "Optional": false,
+          "Nullable": false
+        },
+        {
+          "Name": "At",
+          "Type": "time.Time",
+          "Doc": "",
+          "Optional": false,
+          "Nullable": false
+        },
+        {
+          "Name": "Status",
+          "Type": "string",
+          "Doc": "\"pending\", \"done\"",
+          "Optional": false,
+          "Nullable": false
+        },
+        {
+          "Name": "By",
+          "Type": "string",
+          "Doc": "who raised it: a user, a customer, a market's name, \"clock\"",
+          "Optional": false,
+          "Nullable": false
+        },
+        {
+          "Name": "DoneAt",
+          "Type": "time.Time",
+          "Doc": "",
+          "Optional": false,
+          "Nullable": false
+        }
+      ],
+      "Elem": "",
+      "Enum": null,
+      "Format": ""
+    },
+    {
+      "Name": "core.Leg",
+      "Package": "git.bytestone.uk/hum3/gobank/core",
+      "Kind": "object",
+      "Doc": "Leg is one side of a movement: the account and the balance it was left\nwith, signed as the ledger holds it.",
+      "Fields": [
+        {
+          "Name": "AccountID",
+          "Type": "string",
+          "Doc": "",
+          "Optional": false,
+          "Nullable": false
+        },
+        {
+          "Name": "Path",
+          "Type": "string",
+          "Doc": "\"Liability:Savings:cust-001:easy-access\"",
+          "Optional": false,
+          "Nullable": false
+        },
+        {
+          "Name": "Type",
+          "Type": "string",
+          "Doc": "the path's first segment: Asset, Liability, Equity, Income, Expense",
+          "Optional": false,
+          "Nullable": false
+        },
+        {
+          "Name": "Balance",
+          "Type": "luca.Amount",
+          "Doc": "",
+          "Optional": false,
+          "Nullable": false
+        }
+      ],
+      "Elem": "",
+      "Enum": null,
+      "Format": ""
+    },
+    {
+      "Name": "core.Movement",
+      "Package": "git.bytestone.uk/hum3/gobank/core",
+      "Kind": "object",
+      "Doc": "Movement is one ledger movement as written (ADR-0008): a signed amount\nfrom one account to another, the to account's balance rising by it and\nthe from account's falling, with the balance each is left with, in the\nbank's view.",
+      "Fields": [
+        {
+          "Name": "ID",
+          "Type": "string",
+          "Doc": "",
+          "Optional": false,
+          "Nullable": false
+        },
+        {
+          "Name": "From",
+          "Type": "core.Leg",
+          "Doc": "",
+          "Optional": false,
+          "Nullable": false
+        },
+        {
+          "Name": "To",
+          "Type": "core.Leg",
+          "Doc": "",
+          "Optional": false,
+          "Nullable": false
+        },
+        {
+          "Name": "Amount",
+          "Type": "luca.Amount",
+          "Doc": "",
+          "Optional": false,
+          "Nullable": false
+        },
+        {
+          "Name": "Currency",
+          "Type": "string",
+          "Doc": "",
+          "Optional": false,
+          "Nullable": false
+        },
+        {
+          "Name": "Code",
+          "Type": "string",
+          "Doc": "",
+          "Optional": false,
+          "Nullable": false
+        },
+        {
+          "Name": "ValueTime",
+          "Type": "time.Time",
+          "Doc": "",
+          "Optional": false,
+          "Nullable": false
+        },
+        {
+          "Name": "KnowledgeTime",
+          "Type": "time.Time",
+          "Doc": "",
+          "Optional": false,
+          "Nullable": false
+        },
+        {
+          "Name": "Description",
+          "Type": "string",
+          "Doc": "",
+          "Optional": false,
+          "Nullable": false
+        },
+        {
+          "Name": "Cause",
+          "Type": "core.EventRecord",
+          "Doc": "Cause is the root event a rule's posting was made under (ADR-0011)\nand Step the posting's name within it; nil and empty for a movement\nthat is not a rule's, or from before the record.",
+          "Optional": false,
+          "Nullable": true
+        },
+        {
+          "Name": "Step",
+          "Type": "string",
+          "Doc": "",
+          "Optional": false,
+          "Nullable": false
+        }
+      ],
+      "Elem": "",
+      "Enum": null,
+      "Format": ""
+    },
+    {
+      "Name": "luca.Amount",
+      "Package": "git.bytestone.uk/hum3/go-luca",
+      "Kind": "integer",
+      "Doc": "",
+      "Fields": null,
+      "Elem": "",
+      "Enum": null,
+      "Format": ""
+    },
+    {
+      "Name": "screen.Action",
+      "Package": "git.bytestone.uk/hum3/gobank/screen",
+      "Kind": "object",
+      "Doc": "Action is what happens when the user taps a component. Exactly one of the\nfields is set.",
+      "Fields": [
+        {
+          "Name": "screen",
+          "Type": "string",
+          "Doc": "GET this path and show the result",
+          "Optional": true,
+          "Nullable": false
+        },
+        {
+          "Name": "submit",
+          "Type": "string",
+          "Doc": "POST form values to this path",
+          "Optional": true,
+          "Nullable": false
+        },
+        {
+          "Name": "logout",
+          "Type": "boolean",
+          "Doc": "end the session",
+          "Optional": true,
+          "Nullable": false
+        }
+      ],
+      "Elem": "",
+      "Enum": null,
+      "Format": ""
+    },
+    {
+      "Name": "screen.Component",
+      "Package": "git.bytestone.uk/hum3/gobank/screen",
+      "Kind": "object",
+      "Doc": "Component is one element of a screen body. Type selects the component and\nwhich of the other fields are meaningful; unused fields are omitted from\nJSON.",
+      "Fields": [
+        {
+          "Name": "type",
+          "Type": "string",
+          "Doc": "",
+          "Optional": false,
+          "Nullable": false
+        },
+        {
+          "Name": "tone",
+          "Type": "screen.Tone",
+          "Doc": "",
+          "Optional": true,
+          "Nullable": false
+        },
+        {
+          "Name": "icon",
+          "Type": "screen.Icon",
+          "Doc": "",
+          "Optional": true,
+          "Nullable": false
+        },
+        {
+          "Name": "title",
+          "Type": "string",
+          "Doc": "",
+          "Optional": true,
+          "Nullable": false
+        },
+        {
+          "Name": "subtitle",
+          "Type": "string",
+          "Doc": "",
+          "Optional": true,
+          "Nullable": false
+        },
+        {
+          "Name": "value",
+          "Type": "string",
+          "Doc": "",
+          "Optional": true,
+          "Nullable": false
+        },
+        {
+          "Name": "note",
+          "Type": "string",
+          "Doc": "",
+          "Optional": true,
+          "Nullable": false
+        },
+        {
+          "Name": "currency",
+          "Type": "string",
+          "Doc": "ISO 4217 code of the money a row or tx shows; the renderer picks the glyph by it",
+          "Optional": true,
+          "Nullable": false
+        },
+        {
+          "Name": "text",
+          "Type": "string",
+          "Doc": "",
+          "Optional": true,
+          "Nullable": false
+        },
+        {
+          "Name": "pairs",
+          "Type": "[]screen.Pair",
+          "Doc": "",
+          "Optional": true,
+          "Nullable": false
+        },
+        {
+          "Name": "fields",
+          "Type": "[]screen.Field",
+          "Doc": "",
+          "Optional": true,
+          "Nullable": false
+        },
+        {
+          "Name": "action",
+          "Type": "screen.Action",
+          "Doc": "",
+          "Optional": true,
+          "Nullable": true
+        }
+      ],
+      "Elem": "",
+      "Enum": null,
+      "Format": ""
+    },
+    {
+      "Name": "screen.Field",
+      "Package": "git.bytestone.uk/hum3/gobank/screen",
+      "Kind": "object",
+      "Doc": "Field is one input in a form.",
+      "Fields": [
+        {
+          "Name": "name",
+          "Type": "string",
+          "Doc": "",
+          "Optional": false,
+          "Nullable": false
+        },
+        {
+          "Name": "label",
+          "Type": "string",
+          "Doc": "",
+          "Optional": false,
+          "Nullable": false
+        },
+        {
+          "Name": "kind",
+          "Type": "string",
+          "Doc": "\"text\", \"password\", \"number\"",
+          "Optional": false,
+          "Nullable": false
+        },
+        {
+          "Name": "placeholder",
+          "Type": "string",
+          "Doc": "",
+          "Optional": true,
+          "Nullable": false
+        },
+        {
+          "Name": "required",
+          "Type": "boolean",
+          "Doc": "",
+          "Optional": true,
+          "Nullable": false
+        }
+      ],
+      "Elem": "",
+      "Enum": null,
+      "Format": ""
+    },
+    {
+      "Name": "screen.Icon",
+      "Package": "git.bytestone.uk/hum3/gobank/screen",
+      "Kind": "string",
+      "Doc": "Icon names a glyph. Clients map icons to their icon set.",
+      "Fields": null,
+      "Elem": "",
+      "Enum": [
+        "accounts",
+        "activity",
+        "bank",
+        "home",
+        "in",
+        "interest",
+        "lending",
+        "loan",
+        "",
+        "out",
+        "savings"
+      ],
+      "Format": ""
+    },
+    {
+      "Name": "screen.Nav",
+      "Package": "git.bytestone.uk/hum3/gobank/screen",
+      "Kind": "object",
+      "Doc": "Nav is the bottom tab bar.",
+      "Fields": [
+        {
+          "Name": "active",
+          "Type": "string",
+          "Doc": "",
+          "Optional": false,
+          "Nullable": false
+        },
+        {
+          "Name": "tabs",
+          "Type": "[]screen.Tab",
+          "Doc": "",
+          "Optional": false,
+          "Nullable": false
+        }
+      ],
+      "Elem": "",
+      "Enum": null,
+      "Format": ""
+    },
+    {
+      "Name": "screen.Pair",
+      "Package": "git.bytestone.uk/hum3/gobank/screen",
+      "Kind": "object",
+      "Doc": "Pair is a label/value line inside a hero or details component.",
+      "Fields": [
+        {
+          "Name": "label",
+          "Type": "string",
+          "Doc": "",
+          "Optional": false,
+          "Nullable": false
+        },
+        {
+          "Name": "value",
+          "Type": "string",
+          "Doc": "",
+          "Optional": false,
+          "Nullable": false
+        }
+      ],
+      "Elem": "",
+      "Enum": null,
+      "Format": ""
+    },
+    {
+      "Name": "screen.Screen",
+      "Package": "git.bytestone.uk/hum3/gobank/screen",
+      "Kind": "object",
+      "Doc": "Screen is one app view.",
+      "Fields": [
+        {
+          "Name": "schema",
+          "Type": "integer",
+          "Doc": "",
+          "Optional": false,
+          "Nullable": false
+        },
+        {
+          "Name": "id",
+          "Type": "string",
+          "Doc": "",
+          "Optional": false,
+          "Nullable": false
+        },
+        {
+          "Name": "path",
+          "Type": "string",
+          "Doc": "GET path that returns this screen",
+          "Optional": false,
+          "Nullable": false
+        },
+        {
+          "Name": "title",
+          "Type": "string",
+          "Doc": "",
+          "Optional": false,
+          "Nullable": false
+        },
+        {
+          "Name": "subtitle",
+          "Type": "string",
+          "Doc": "",
+          "Optional": true,
+          "Nullable": false
+        },
+        {
+          "Name": "back",
+          "Type": "screen.Action",
+          "Doc": "",
+          "Optional": true,
+          "Nullable": true
+        },
+        {
+          "Name": "body",
+          "Type": "[]screen.Component",
+          "Doc": "",
+          "Optional": false,
+          "Nullable": false
+        },
+        {
+          "Name": "nav",
+          "Type": "screen.Nav",
+          "Doc": "",
+          "Optional": true,
+          "Nullable": true
+        }
+      ],
+      "Elem": "",
+      "Enum": null,
+      "Format": ""
+    },
+    {
+      "Name": "screen.Tab",
+      "Package": "git.bytestone.uk/hum3/gobank/screen",
+      "Kind": "object",
+      "Doc": "Tab is one entry in the bottom tab bar.",
+      "Fields": [
+        {
+          "Name": "key",
+          "Type": "string",
+          "Doc": "",
+          "Optional": false,
+          "Nullable": false
+        },
+        {
+          "Name": "label",
+          "Type": "string",
+          "Doc": "",
+          "Optional": false,
+          "Nullable": false
+        },
+        {
+          "Name": "icon",
+          "Type": "screen.Icon",
+          "Doc": "",
+          "Optional": false,
+          "Nullable": false
+        },
+        {
+          "Name": "screen",
+          "Type": "string",
+          "Doc": "",
+          "Optional": false,
+          "Nullable": false
+        }
+      ],
+      "Elem": "",
+      "Enum": null,
+      "Format": ""
+    },
+    {
+      "Name": "screen.Tone",
+      "Package": "git.bytestone.uk/hum3/gobank/screen",
+      "Kind": "string",
+      "Doc": "Tone selects a colour treatment. Clients map tones to their theme.",
+      "Fields": null,
+      "Elem": "",
+      "Enum": [
+        "danger",
+        "lending",
+        "muted",
+        "negative",
+        "",
+        "positive",
+        "savings"
+      ],
+      "Format": ""
+    },
+    {
+      "Name": "staff.AboutOwed",
+      "Package": "git.bytestone.uk/hum3/gobank/bff/staff",
+      "Kind": "object",
+      "Doc": "AboutOwed is core.Owed as another program reads it.",
+      "Fields": [
+        {
+          "Name": "at_rest",
+          "Type": "boolean",
+          "Doc": "",
+          "Optional": false,
+          "Nullable": false
+        },
+        {
+          "Name": "days",
+          "Type": "integer",
+          "Doc": "",
+          "Optional": false,
+          "Nullable": false
+        },
+        {
+          "Name": "unprojected",
+          "Type": "integer",
+          "Doc": "",
+          "Optional": false,
+          "Nullable": false
+        },
+        {
+          "Name": "events",
+          "Type": "integer",
+          "Doc": "root events due and not done: cascades in progress (ADR-0011)",
+          "Optional": false,
+          "Nullable": false
+        }
+      ],
+      "Elem": "",
+      "Enum": null,
+      "Format": ""
+    },
+    {
+      "Name": "staff.AboutPosition",
+      "Package": "git.bytestone.uk/hum3/gobank/bff/staff",
+      "Kind": "object",
+      "Doc": "AboutPosition is the bank's position: what the dashboard leads with.",
+      "Fields": [
+        {
+          "Name": "day",
+          "Type": "string",
+          "Doc": "YYYY-MM-DD",
+          "Optional": false,
+          "Nullable": false
+        },
+        {
+          "Name": "day_count",
+          "Type": "integer",
+          "Doc": "",
+          "Optional": false,
+          "Nullable": false
+        },
+        {
+          "Name": "customers",
+          "Type": "integer",
+          "Doc": "",
+          "Optional": false,
+          "Nullable": false
+        },
+        {
+          "Name": "savings",
+          "Type": "string",
+          "Doc": "formatted, as the dashboard shows it",
+          "Optional": false,
+          "Nullable": false
+        },
+        {
+          "Name": "lending",
+          "Type": "string",
+          "Doc": "",
+          "Optional": false,
+          "Nullable": false
+        }
+      ],
+      "Elem": "",
+      "Enum": null,
+      "Format": ""
+    },
+    {
+      "Name": "staff.AboutRestart",
+      "Package": "git.bytestone.uk/hum3/gobank/bff/staff",
+      "Kind": "object",
+      "Doc": "AboutRestart is one row of the restart record, newest first, read with\nthe row before it (see Restart).",
+      "Fields": [
+        {
+          "Name": "version",
+          "Type": "string",
+          "Doc": "",
+          "Optional": false,
+          "Nullable": false
+        },
+        {
+          "Name": "started_at",
+          "Type": "time.Time",
+          "Doc": "",
+          "Optional": false,
+          "Nullable": false
+        },
+        {
+          "Name": "day_count",
+          "Type": "integer",
+          "Doc": "",
+          "Optional": false,
+          "Nullable": false
+        },
+        {
+          "Name": "customers",
+          "Type": "integer",
+          "Doc": "",
+          "Optional": false,
+          "Nullable": false
+        },
+        {
+          "Name": "previous_version",
+          "Type": "string",
+          "Doc": "\"\" for unrecorded or none",
+          "Optional": false,
+          "Nullable": false
+        },
+        {
+          "Name": "previous_stopped_at",
+          "Type": "time.Time",
+          "Doc": "",
+          "Optional": false,
+          "Nullable": true
+        },
+        {
+          "Name": "downtime",
+          "Type": "string",
+          "Doc": "Go duration; \"\" when unknown",
+          "Optional": false,
+          "Nullable": false
+        },
+        {
+          "Name": "intact",
+          "Type": "boolean",
+          "Doc": "day and customers equal across the stop; null when the previous row cannot say",
+          "Optional": false,
+          "Nullable": true
+        },
+        {
+          "Name": "stopped_at",
+          "Type": "time.Time",
+          "Doc": "",
+          "Optional": false,
+          "Nullable": true
+        },
+        {
+          "Name": "stop_day_count",
+          "Type": "integer",
+          "Doc": "",
+          "Optional": false,
+          "Nullable": false
+        },
+        {
+          "Name": "stop_customers",
+          "Type": "integer",
+          "Doc": "",
+          "Optional": false,
+          "Nullable": false
+        }
+      ],
+      "Elem": "",
+      "Enum": null,
+      "Format": ""
+    },
+    {
+      "Name": "staff.AboutSettings",
+      "Package": "git.bytestone.uk/hum3/gobank/bff/staff",
+      "Kind": "object",
+      "Doc": "AboutSettings are the console settings.",
+      "Fields": [
+        {
+          "Name": "day_length",
+          "Type": "string",
+          "Doc": "Go duration; \"0s\" is flat out",
+          "Optional": false,
+          "Nullable": false
+        },
+        {
+          "Name": "max_customers",
+          "Type": "integer",
+          "Doc": "",
+          "Optional": false,
+          "Nullable": false
+        }
+      ],
+      "Elem": "",
+      "Enum": null,
+      "Format": ""
+    },
+    {
+      "Name": "staff.AboutSim",
+      "Package": "git.bytestone.uk/hum3/gobank/bff/staff",
+      "Kind": "object",
+      "Doc": "AboutSim is the run as it is now, with the two rates a performance run\nreads: customers added per second (the live rate while a batch add runs,\nelse the last batch's) and account days per 12h at the pass's measured\nwhole-day rate, with the last day it is made of.",
+      "Fields": [
+        {
+          "Name": "running",
+          "Type": "boolean",
+          "Doc": "",
+          "Optional": false,
+          "Nullable": false
+        },
+        {
+          "Name": "wall",
+          "Type": "string",
+          "Doc": "the wall clock now, RFC 3339 UTC",
+          "Optional": false,
+          "Nullable": false
+        },
+        {
+          "Name": "clock",
+          "Type": "string",
+          "Doc": "the bank's clock now (simulated time), RFC 3339 UTC",
+          "Optional": false,
+          "Nullable": false
+        },
+        {
+          "Name": "warp",
+          "Type": "number",
+          "Doc": "simulated seconds per wall second; 0 when flat out",
+          "Optional": false,
+          "Nullable": false
+        },
+        {
+          "Name": "day_ends_in",
+          "Type": "string",
+          "Doc": "Go duration; \"0s\" when flat out or stopped",
+          "Optional": false,
+          "Nullable": false
+        },
+        {
+          "Name": "adding_customers",
+          "Type": "boolean",
+          "Doc": "",
+          "Optional": false,
+          "Nullable": false
+        },
+        {
+          "Name": "customers_per_sec",
+          "Type": "number",
+          "Doc": "",
+          "Optional": false,
+          "Nullable": false
+        },
+        {
+          "Name": "account_days_per_12h",
+          "Type": "integer",
+          "Doc": "",
+          "Optional": false,
+          "Nullable": false
+        },
+        {
+          "Name": "last_day_duration",
+          "Type": "string",
+          "Doc": "Go duration; \"\" before the first day",
+          "Optional": false,
+          "Nullable": false
+        },
+        {
+          "Name": "last_day_accounts",
+          "Type": "integer",
+          "Doc": "",
+          "Optional": false,
+          "Nullable": false
+        },
+        {
+          "Name": "day_refused",
+          "Type": "string",
+          "Doc": "why the bank would not follow the clock when last asked",
+          "Optional": true,
+          "Nullable": false
+        },
+        {
+          "Name": "owed",
+          "Type": "staff.AboutOwed",
+          "Doc": "what the bank owed when last asked (ADR-0010); a drill waits for at_rest",
+          "Optional": false,
+          "Nullable": false
+        },
+        {
+          "Name": "next_event",
+          "Type": "string",
+          "Doc": "the event the run loop waits for: \"payment at 2020-03-04T10:32:00Z\"",
+          "Optional": true,
+          "Nullable": false
+        }
+      ],
+      "Elem": "",
+      "Enum": null,
+      "Format": ""
+    },
+    {
+      "Name": "staff.AboutStatus",
+      "Package": "git.bytestone.uk/hum3/gobank/bff/staff",
+      "Kind": "object",
+      "Doc": "AboutStatus is the demo's state as another program reads it, at\n/about.json: the version and schema this process runs, the console\nsettings, the run's position and the restart record. gobank-deploy's\nupgrade drill reads it before and after each redeploy to compare the\nposition and read the downtime off the newest restart row.",
+      "Fields": [
+        {
+          "Name": "version",
+          "Type": "string",
+          "Doc": "",
+          "Optional": false,
+          "Nullable": false
+        },
+        {
+          "Name": "schema",
+          "Type": "[]staff.SchemaVersion",
+          "Doc": "",
+          "Optional": false,
+          "Nullable": false
+        },
+        {
+          "Name": "settings",
+          "Type": "staff.AboutSettings",
+          "Doc": "",
+          "Optional": false,
+          "Nullable": false
+        },
+        {
+          "Name": "sim",
+          "Type": "staff.AboutSim",
+          "Doc": "",
+          "Optional": false,
+          "Nullable": false
+        },
+        {
+          "Name": "position",
+          "Type": "staff.AboutPosition",
+          "Doc": "",
+          "Optional": false,
+          "Nullable": false
+        },
+        {
+          "Name": "restarts",
+          "Type": "[]staff.AboutRestart",
+          "Doc": "",
+          "Optional": false,
+          "Nullable": false
+        }
+      ],
+      "Elem": "",
+      "Enum": null,
+      "Format": ""
+    },
+    {
+      "Name": "staff.SchemaVersion",
+      "Package": "git.bytestone.uk/hum3/gobank/bff/staff",
+      "Kind": "object",
+      "Doc": "SchemaVersion is the version a component's tables are at.",
+      "Fields": [
+        {
+          "Name": "component",
+          "Type": "string",
+          "Doc": "",
+          "Optional": false,
+          "Nullable": false
+        },
+        {
+          "Name": "version",
+          "Type": "integer",
+          "Doc": "",
+          "Optional": false,
+          "Nullable": false
+        }
+      ],
+      "Elem": "",
+      "Enum": null,
+      "Format": ""
+    },
+    {
+      "Name": "time.Time",
+      "Package": "time",
+      "Kind": "string",
+      "Doc": "RFC 3339",
+      "Fields": null,
+      "Elem": "",
+      "Enum": null,
+      "Format": "date-time"
+    }
+  ]
+}

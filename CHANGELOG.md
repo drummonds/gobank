@@ -2,6 +2,27 @@
 
 ## [Unreleased]
 
+### Added
+- Full API documentation (#133), read off the code: `api/walk` loads the
+  BFF and staff packages with go/packages and finds every route they
+  register — directly or through a helper that passes the pattern on —
+  with what each handler reads and answers (status, media, the type
+  encoded, parameters, the cookies and headers its wrappers check, the
+  role action), the gate in front of the staff mux, and the schemas of
+  every body type from the Go declarations and their comments. `api`
+  renders it as OpenAPI 3.1, served at `/v1/openapi.json`, and as a
+  page: About → API in the staff web and `api.html` on the docs site
+  (with `openapi.json` beside it). `go generate ./api` writes the
+  document and the surface; the `api` test regenerates and fails when
+  the committed files are behind the code, and each server's test holds
+  what its mux serves at run time to exactly what the walker found.
+  Every route carries a comment in the code, which is its description.
+  Replaces the hand-written BFF API research page.
+
+### Changed
+- The BFF's error, login and logout bodies are named types
+  (`errorBody`, `loginResponse`, `screenBody`), unchanged on the wire.
+
 ## [0.40.0] - 2026-10-13
 
  - The family map: the build's module graph on the docs site with lags drawn; roadmap #135 and #136; diagrams no longer 403 on the docs site

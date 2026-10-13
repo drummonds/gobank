@@ -13,6 +13,7 @@ import (
 	"strings"
 
 	"git.bytestone.uk/hum3/gobank/adr"
+	"git.bytestone.uk/hum3/gobank/api"
 	"git.bytestone.uk/hum3/gobank/internal/family"
 )
 
@@ -72,7 +73,6 @@ const tmpl = `<!DOCTYPE html>
               <li><a href="https://gobank-db.docs.bytestone.uk/blue-green-schemas.html">Blue-Green Schemas (gobank-db)</a></li>
               <li><a href="https://gobank-db.docs.bytestone.uk/expand-contract.html">Expand/Contract Migrations (gobank-db)</a></li>
               <li><a href="research/scaling-benchmarks.html">Scaling Benchmarks</a></li>
-              <li><a href="research/bff-api.html">BFF API Reference</a></li>
               <li><a href="research/development-notes.html">Development Notes</a></li>
             </ul>
             <p class="menu-label">Docs</p>
@@ -83,6 +83,7 @@ const tmpl = `<!DOCTYPE html>
               <li><a href="upgrade-drill.html">Upgrade drill</a></li>
               <li><a href="app.html">Customer app</a></li>
               <li><a href="family.html">The family</a></li>
+              <li><a href="api.html">API reference</a></li>
               <li><a href="README.html">README</a></li>
               <li><a href="CHANGELOG.html">CHANGELOG</a></li>
             </ul>
@@ -177,7 +178,61 @@ func main() {
 	if err := writeFamily("docs/family.d2", "cmd/demo"); err != nil {
 		log.Fatal(err)
 	}
+	if err := writeAPI("docs/api.html", "docs/openapi.json"); err != nil {
+		log.Fatal(err)
+	}
 }
+
+// writeAPI writes the API reference page from the generated surface and
+// puts the OpenAPI document beside it.
+func writeAPI(pagePath, docPath string) error {
+	s, err := api.Load()
+	if err != nil {
+		return err
+	}
+	t, err := template.New("api").Parse(apiTmpl)
+	if err != nil {
+		return err
+	}
+	f, err := os.Create(pagePath)
+	if err != nil {
+		return err
+	}
+	defer f.Close()
+	if err := t.Execute(f, api.HTML(s)); err != nil {
+		return err
+	}
+	if err := os.WriteFile(docPath, api.Document, 0o644); err != nil {
+		return err
+	}
+	log.Printf("generated %s and %s from the API surface", pagePath, docPath)
+	return nil
+}
+
+const apiTmpl = `<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>gobank &mdash; API reference</title>
+  <link rel="icon" type="image/svg+xml" href="favicon.svg">
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bulma@1.0.4/css/bulma.min.css">
+</head>
+<body>
+  <nav class="navbar is-primary">
+    <div class="navbar-brand">
+      <a class="navbar-item has-text-weight-bold" href="./">gobank</a>
+    </div>
+  </nav>
+  <section class="section">
+    <div class="container">
+      <p class="is-size-7 has-text-grey">The OpenAPI document this page is rendered from: <a href="openapi.json">openapi.json</a>. In a running bank it is served at <code>/v1/openapi.json</code> and this page under About.</p>
+      {{.}}
+    </div>
+  </section>
+</body>
+</html>
+`
 
 // writeFamily writes the family map (internal/family) as d2, read from
 // the module at dir: the demo, which is the build that ships.

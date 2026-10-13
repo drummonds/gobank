@@ -77,6 +77,7 @@ const layout = `<!DOCTYPE html>
             <a class="navbar-item" href="about/runtime">Runtime</a>
             <a class="navbar-item" href="about/models">Models</a>
             <a class="navbar-item" href="about/docs">Documentation</a>
+            <a class="navbar-item" href="about/api">API</a>
             <a class="navbar-item" href="about/adr">ADRs</a>
           </div>
         </div>

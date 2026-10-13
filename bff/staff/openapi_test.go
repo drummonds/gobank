@@ -27,3 +27,12 @@ func TestServedRoutesAreTheWalkedRoutes(t *testing.T) {
 		t.Errorf("walked:\n%s\nserved:\n%s", strings.Join(walked, "\n"), strings.Join(served, "\n"))
 	}
 }
+
+// About → API renders the generated surface for a signed-in user.
+func TestAPIPage(t *testing.T) {
+	site := newSite(t, "/")
+	rec := get(site, "/about/api", signIn(t, site, "ro"))
+	if rec.Code != 200 || !strings.Contains(rec.Body.String(), "<code>/v1/openapi.json</code>") || !strings.Contains(rec.Body.String(), "<code>/about/api</code>") {
+		t.Errorf("GET /about/api: %d, page lacks the routes", rec.Code)
+	}
+}

@@ -24,6 +24,7 @@ func TestStaffWebKnowsOnlyTheCore(t *testing.T) {
 	allowed := []string{
 		"git.bytestone.uk/hum3/gobank/core",
 		"git.bytestone.uk/hum3/gobank/adr",
+		"git.bytestone.uk/hum3/gobank/api",
 		"git.bytestone.uk/hum3/gobank/api/walk",
 		"git.bytestone.uk/hum3/gobank/internal/daylength",
 		"git.bytestone.uk/hum3/gobank/internal/servemux",

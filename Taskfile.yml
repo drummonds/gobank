@@ -120,11 +120,15 @@ tasks:
       - bff/staff/project_data.json
       - cmd/gendocs/main.go
       - internal/family/family.go
+      - api/surface.json
+      - api/openapi.json
       - cmd/demo/go.mod
       - cmd/demo/go.sum
     generates:
       - docs/index.html
       - docs/family.d2
+      - docs/api.html
+      - docs/openapi.json
     cmds:
       - go run ./cmd/gendocs
 

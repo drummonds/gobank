@@ -26,6 +26,7 @@ import (
 	dbexplorer "git.bytestone.uk/hum3/go-dbexplorer"
 	gbp "git.bytestone.uk/hum3/gobank-products"
 	"git.bytestone.uk/hum3/gobank/adr"
+	"git.bytestone.uk/hum3/gobank/api"
 	"git.bytestone.uk/hum3/gobank/core"
 	"git.bytestone.uk/hum3/gobank/internal/servemux"
 	"git.bytestone.uk/hum3/gobank/internal/session"
@@ -493,6 +494,12 @@ func (s *Site) routes() {
 	mux.HandleFunc("/about/docs", func(w http.ResponseWriter, r *http.Request) {
 		s.page(w, r, func() string { return BuildDocsHTML(s.cfg.Components, s.cfg.Debt) })
 	})
+	// The API: every route the BFF and the staff web serve, read off the
+	// code at build time (package api), with the types the bodies are
+	// made of; the OpenAPI document is at v1/openapi.json.
+	mux.HandleFunc("/about/api", func(w http.ResponseWriter, r *http.Request) {
+		s.page(w, r, BuildAPIHTML)
+	})
 	// The architecture decision records compiled into this build.
 	mux.HandleFunc("/about/adr", func(w http.ResponseWriter, r *http.Request) {
 		s.page(w, r, BuildADRIndexHTML)
@@ -530,4 +537,13 @@ func pageParam(r *http.Request, name string) int {
 		page = 1
 	}
 	return page
+}
+
+// BuildAPIHTML renders the API page from the generated surface.
+func BuildAPIHTML() string {
+	s, err := api.Load()
+	if err != nil {
+		return "<p>The API surface did not load: " + template.HTMLEscapeString(err.Error()) + "</p>"
+	}
+	return string(api.HTML(s))
 }

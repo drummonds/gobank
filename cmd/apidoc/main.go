@@ -11,6 +11,7 @@ import (
 	"flag"
 	"fmt"
 	"os"
+	"path/filepath"
 
 	"git.bytestone.uk/hum3/gobank/api"
 	"git.bytestone.uk/hum3/gobank/api/walk"
@@ -45,5 +46,17 @@ func main() {
 		fmt.Fprintln(os.Stderr, err)
 		os.Exit(1)
 	}
-	fmt.Fprintf(os.Stderr, "apidoc: wrote %s (%d routes)\n", *out, len(surface.Routes))
+	// The surface itself beside it, for the page the staff web and the
+	// docs site render from.
+	sj, err := json.MarshalIndent(surface, "", "  ")
+	if err != nil {
+		fmt.Fprintln(os.Stderr, err)
+		os.Exit(1)
+	}
+	surfacePath := filepath.Join(filepath.Dir(*out), "surface.json")
+	if err := os.WriteFile(surfacePath, append(sj, '\n'), 0o644); err != nil {
+		fmt.Fprintln(os.Stderr, err)
+		os.Exit(1)
+	}
+	fmt.Fprintf(os.Stderr, "apidoc: wrote %s and %s (%d routes)\n", *out, surfacePath, len(surface.Routes))
 }

@@ -24,6 +24,33 @@ func TestDocumentIsCurrent(t *testing.T) {
 	if !bytes.Equal(bytes.TrimSpace(got), bytes.TrimSpace(api.Document)) {
 		t.Fatal("api/openapi.json is behind the code: run `go generate ./api`")
 	}
+	sj, _ := json.MarshalIndent(s, "", "  ")
+	if !bytes.Equal(bytes.TrimSpace(sj), bytes.TrimSpace(api.SurfaceJSON)) {
+		t.Fatal("api/surface.json is behind the code: run `go generate ./api`")
+	}
+}
+
+// The page renders every route and type of the generated surface, each
+// route with what it needs and answers.
+func TestHTMLPage(t *testing.T) {
+	s, err := api.Load()
+	if err != nil {
+		t.Fatal(err)
+	}
+	page := string(api.HTML(s))
+	for _, want := range []string{
+		"<code>/v1/login</code>", "<code>/about.json</code>", "<code>/settings</code>",
+		`id="type-screen-Screen"`, `href="#type-screen-Component"`,
+		"cookie staff_session", "bearer token", "nothing: open",
+		"<code>sim_controls</code>",
+	} {
+		if !strings.Contains(page, want) {
+			t.Errorf("page lacks %q", want)
+		}
+	}
+	if strings.Contains(page, "api: ") && strings.Contains(page, "template") {
+		t.Errorf("template error in page")
+	}
 }
 
 // A route renders as an operation under its method with its source, its

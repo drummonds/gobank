@@ -846,7 +846,7 @@
         "tags": [
           "staff"
         ],
-        "x-source": "bff/staff/site.go:480"
+        "x-source": "bff/staff/site.go:481"
       }
     },
     "/about.json": {
@@ -921,7 +921,48 @@
         "tags": [
           "staff"
         ],
-        "x-source": "bff/staff/site.go:497"
+        "x-source": "bff/staff/site.go:504"
+      }
+    },
+    "/about/api": {
+      "get": {
+        "description": "The API: every route the BFF and the staff web serve, read off the\ncode at build time (package api), with the types the bodies are\nmade of; the OpenAPI document is at v1/openapi.json.",
+        "operationId": "get-about-api",
+        "responses": {
+          "200": {
+            "content": {
+              "text/html": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "405": {
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "description": "Method not allowed"
+          }
+        },
+        "security": [
+          {
+            "staff_session": []
+          },
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "The API: every route the BFF and the staff web serve, read off the code at build time (package api), with the types the bodies are made of; the OpenAPI document is at v1/openapi.json",
+        "tags": [
+          "staff"
+        ],
+        "x-source": "bff/staff/site.go:500"
       }
     },
     "/about/docs": {
@@ -962,7 +1003,7 @@
         "tags": [
           "staff"
         ],
-        "x-source": "bff/staff/site.go:493"
+        "x-source": "bff/staff/site.go:494"
       }
     },
     "/about/docs/adr/": {
@@ -1014,7 +1055,7 @@
           "staff"
         ],
         "x-prefix": "serves every path under it",
-        "x-source": "bff/staff/site.go:502"
+        "x-source": "bff/staff/site.go:509"
       }
     },
     "/about/models": {
@@ -1055,7 +1096,7 @@
         "tags": [
           "staff"
         ],
-        "x-source": "bff/staff/site.go:488"
+        "x-source": "bff/staff/site.go:489"
       }
     },
     "/about/runtime": {
@@ -1137,7 +1178,7 @@
         "tags": [
           "staff"
         ],
-        "x-source": "bff/staff/site.go:292"
+        "x-source": "bff/staff/site.go:293"
       }
     },
     "/accounting/pnl": {
@@ -1178,7 +1219,7 @@
         "tags": [
           "staff"
         ],
-        "x-source": "bff/staff/site.go:288"
+        "x-source": "bff/staff/site.go:289"
       }
     },
     "/add-customers": {
@@ -1327,7 +1368,7 @@
         "tags": [
           "staff"
         ],
-        "x-source": "bff/staff/site.go:263"
+        "x-source": "bff/staff/site.go:264"
       }
     },
     "/auth/revoke": {
@@ -1372,7 +1413,7 @@
         "tags": [
           "staff"
         ],
-        "x-source": "bff/staff/site.go:275"
+        "x-source": "bff/staff/site.go:276"
       }
     },
     "/customers": {
@@ -1422,7 +1463,7 @@
         "tags": [
           "staff"
         ],
-        "x-source": "bff/staff/site.go:374"
+        "x-source": "bff/staff/site.go:375"
       }
     },
     "/customers/": {
@@ -1493,7 +1534,7 @@
           "staff"
         ],
         "x-prefix": "serves every path under it",
-        "x-source": "bff/staff/site.go:380"
+        "x-source": "bff/staff/site.go:381"
       }
     },
     "/dashboard/update": {
@@ -1575,7 +1616,7 @@
         "tags": [
           "staff"
         ],
-        "x-source": "bff/staff/site.go:417"
+        "x-source": "bff/staff/site.go:418"
       }
     },
     "/export.goluca": {
@@ -1654,7 +1695,7 @@
           "function": "lofigui.ServeFavicon"
         },
         "x-methods": "any",
-        "x-source": "bff/staff/site.go:518",
+        "x-source": "bff/staff/site.go:525",
         "x-unknowns": [
           "handler lofigui.ServeFavicon: body outside the walk",
           "no response found"
@@ -1683,7 +1724,7 @@
           "staff"
         ],
         "x-methods": "any",
-        "x-source": "bff/staff/site.go:520"
+        "x-source": "bff/staff/site.go:527"
       }
     },
     "/import": {
@@ -2399,7 +2440,7 @@
         "tags": [
           "staff"
         ],
-        "x-source": "bff/staff/site.go:407"
+        "x-source": "bff/staff/site.go:408"
       }
     },
     "/products/bank": {
@@ -2440,7 +2481,7 @@
         "tags": [
           "staff"
         ],
-        "x-source": "bff/staff/site.go:312"
+        "x-source": "bff/staff/site.go:313"
       }
     },
     "/products/lending": {
@@ -2481,7 +2522,7 @@
         "tags": [
           "staff"
         ],
-        "x-source": "bff/staff/site.go:307"
+        "x-source": "bff/staff/site.go:308"
       }
     },
     "/products/savings": {
@@ -2522,7 +2563,7 @@
         "tags": [
           "staff"
         ],
-        "x-source": "bff/staff/site.go:302"
+        "x-source": "bff/staff/site.go:303"
       }
     },
     "/products/{owner}/parameters/{key}": {
@@ -2636,7 +2677,7 @@
           "staff"
         ],
         "x-role-action": "settings",
-        "x-source": "bff/staff/site.go:318"
+        "x-source": "bff/staff/site.go:319"
       },
       "post": {
         "description": "One parameter of a product or of the bank: its history and, for a\nsigned-in user who may, the form that sets it (POST value, effective);\n?refused= carries a refusal back to the page.",
@@ -2748,7 +2789,7 @@
           "staff"
         ],
         "x-role-action": "settings",
-        "x-source": "bff/staff/site.go:318"
+        "x-source": "bff/staff/site.go:319"
       }
     },
     "/reports/bbsi": {
@@ -2789,7 +2830,7 @@
         "tags": [
           "staff"
         ],
-        "x-source": "bff/staff/site.go:427"
+        "x-source": "bff/staff/site.go:428"
       }
     },
     "/reports/charts": {
@@ -2830,7 +2871,7 @@
         "tags": [
           "staff"
         ],
-        "x-source": "bff/staff/site.go:422"
+        "x-source": "bff/staff/site.go:423"
       }
     },
     "/reports/customer-view": {
@@ -2890,7 +2931,7 @@
         "tags": [
           "staff"
         ],
-        "x-source": "bff/staff/site.go:432"
+        "x-source": "bff/staff/site.go:433"
       }
     },
     "/reset": {
@@ -3269,7 +3310,7 @@
         "tags": [
           "staff"
         ],
-        "x-source": "bff/staff/site.go:447"
+        "x-source": "bff/staff/site.go:448"
       }
     },
     "/treasury/cash": {
@@ -3310,7 +3351,7 @@
         "tags": [
           "staff"
         ],
-        "x-source": "bff/staff/site.go:443"
+        "x-source": "bff/staff/site.go:444"
       }
     },
     "/treasury/gilts": {
@@ -3351,7 +3392,7 @@
         "tags": [
           "staff"
         ],
-        "x-source": "bff/staff/site.go:451"
+        "x-source": "bff/staff/site.go:452"
       }
     },
     "/treasury/gilts/buy": {
@@ -3410,7 +3451,7 @@
           "staff"
         ],
         "x-role-action": "buy_gilt",
-        "x-source": "bff/staff/site.go:456"
+        "x-source": "bff/staff/site.go:457"
       }
     },
     "/v1/health": {
