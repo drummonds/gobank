@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+## [0.44.0] - 2026-10-14
+
+ - UUID columns across the family (#66): ledger ids retyped in customers, products and gl; needs go-postgres v0.9.0 and go-luca v0.6.0
+
 ### Changed
 - UUID columns across the family (#66): every column that holds a ledger
   id is `UUID`, not `VARCHAR`: `customer_accounts.ledger_account_id`,
@@ -18,6 +22,23 @@
   compared to an account id as text. Needs go-postgres v0.9.0, whose
   pglike retypes by rebuilding the table and validates UUID columns:
   tests that wrote a made-up cause such as `root-1` now write a UUID.
+
+### Roadmap
+- #133 Full API documentation (OpenAPI) — the running system describes
+  its whole HTTP surface in one OpenAPI 3 document, served at
+  `/v1/openapi.json` and rendered into the docs site by `docs:build`
+  (Swagger UI or Redoc over the same file) in place of the hand-written
+  `docs/research/bff-api.html`: every `/v1/` route with the screen
+  schema its responses carry, the console and settings routes the
+  operator token reaches, `/about.json` and the health check, each with
+  its auth (session, bearer, none) and its errors. A test walks the
+  router and fails when a route is missing from the document or the
+  document names a route that is not served, so the two cannot drift.
+  Out of scope: client generation from the spec (the Flutter shell
+  interprets screens, not endpoints), the staff web's HTML pages. Open:
+  a hand-written spec checked against the router by the test
+  (recommended: no new machinery) versus one generated from the Go types
+  (swag or ogen)
 
 ## [0.43.0] - 2026-10-13
 
