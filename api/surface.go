@@ -8,9 +8,15 @@ package api
 // Surface is every route of the packages walked, and the gates in front
 // of their muxes.
 type Surface struct {
-	Routes []Route
-	Gates  []Gate
-	Types  []Schema // every type the routes' bodies are made of, by name
+	Packages []Package // the packages walked, with their doc comments
+	Routes   []Route
+	Gates    []Gate
+	Types    []Schema // every type the routes' bodies are made of, by name
+}
+
+// Package is one package walked: a server, described by its own doc.
+type Package struct {
+	Path, Name, Doc string
 }
 
 // Route is one registration on a ServeMux.

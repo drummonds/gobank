@@ -12,6 +12,7 @@ import (
 	"fmt"
 	"os"
 
+	"git.bytestone.uk/hum3/gobank/api"
 	"git.bytestone.uk/hum3/gobank/api/walk"
 )
 
@@ -30,7 +31,19 @@ func main() {
 		_ = enc.Encode(surface)
 		return
 	}
-	_ = out
-	fmt.Fprintln(os.Stderr, "apidoc: -o not implemented yet")
-	os.Exit(2)
+	doc, err := api.OpenAPI(surface)
+	if err != nil {
+		fmt.Fprintln(os.Stderr, err)
+		os.Exit(1)
+	}
+	doc = append(doc, '\n')
+	if *out == "" {
+		os.Stdout.Write(doc)
+		return
+	}
+	if err := os.WriteFile(*out, doc, 0o644); err != nil {
+		fmt.Fprintln(os.Stderr, err)
+		os.Exit(1)
+	}
+	fmt.Fprintf(os.Stderr, "apidoc: wrote %s (%d routes)\n", *out, len(surface.Routes))
 }

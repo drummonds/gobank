@@ -41,6 +41,7 @@ func Walk(patterns ...string) (api.Surface, error) {
 			return api.Surface{}, fmt.Errorf("walk: %s: %v", p.PkgPath, p.Errors[0])
 		}
 		w := newWalker(p, sch)
+		s.Packages = append(s.Packages, api.Package{Path: p.PkgPath, Name: p.Name, Doc: w.packageDoc()})
 		s.Routes = append(s.Routes, w.routes()...)
 		s.Gates = append(s.Gates, w.gates()...)
 	}
@@ -450,3 +451,13 @@ func splitPattern(pattern string) (method, path string) {
 // Packages are the packages that serve HTTP: what the API document is
 // walked from.
 var Packages = []string{"git.bytestone.uk/hum3/gobank/bff", "git.bytestone.uk/hum3/gobank/bff/staff"}
+
+// packageDoc is the package's doc comment, from whichever file carries it.
+func (w *walker) packageDoc() string {
+	for _, file := range w.pkg.Syntax {
+		if file.Doc != nil {
+			return strings.TrimSpace(file.Doc.Text())
+		}
+	}
+	return ""
+}

@@ -1,491 +1,4256 @@
 {
-  "openapi": "3.1.0",
-  "info": {
-    "title": "Model Bank API",
-    "version": "1",
-    "summary": "The Model Bank's HTTP surface: the customer BFF, the console routes an operator drives, and the health check.",
-    "description": "Two servers share one process and one host. The customer BFF under `/v1/` serves the banking app: every response is a **screen tree** (`Screen`), rendered by the Flutter shell or as HTML for a browser, so a client interprets screens, not endpoints. Everything outside `/v1/` is the staff web; its HTML pages are not in this document, only the console routes another program drives (gobank-deploy's upgrade drill and performance runs) and `/about.json`, which it reads.\n\n**Content negotiation.** A `/v1/` screen is JSON unless the request's `Accept` lists `text/html` and not `application/json`, when it is the same screen rendered as an HTML document. Errors follow the same rule: a browser gets the accompanying screen rendered, a JSON client gets `Error` with the screen under `screen`.\n\n**Sessions.** `POST /v1/login` answers a JSON client with a bearer token and a browser with the `mb_session` cookie. The customer's identity always comes from the session, never from the request. A console route is reached with the operator token (`GOBANK_API_TOKEN`) as a bearer, or by a signed-in admin's `staff_session` cookie."
-  },
-  "tags": [
-    {"name": "customer", "description": "The customer app's screens and session, under /v1/."},
-    {"name": "console", "description": "The simulation console as another program drives it; HTML pages of the staff web are not documented."},
-    {"name": "meta", "description": "The process about itself."}
-  ],
-  "paths": {
-    "/v1/health": {
-      "get": {
-        "tags": ["meta"],
-        "summary": "Health check",
-        "description": "Answers as soon as the process serves HTTP. No session.",
-        "security": [],
-        "responses": {
-          "200": {"description": "Serving.", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/Health"}}}}
-        }
-      }
-    },
-    "/v1/openapi.json": {
-      "get": {
-        "tags": ["meta"],
-        "summary": "This document",
-        "description": "The OpenAPI document the running process was built with. No session.",
-        "security": [],
-        "responses": {
-          "200": {"description": "The document.", "content": {"application/json": {"schema": {"type": "object"}}}}
-        }
-      }
-    },
-    "/v1/screen/login": {
-      "get": {
-        "tags": ["customer"],
-        "summary": "The login screen",
-        "description": "The front door: a form whose `submit` is `POST /v1/login`. No session. The deployment's login note is the screen's text.",
-        "security": [],
-        "responses": {
-          "200": {"$ref": "#/components/responses/Screen"}
-        }
-      }
-    },
-    "/v1/login": {
-      "post": {
-        "tags": ["customer"],
-        "summary": "Log in",
-        "description": "Checks the customer ID and password and opens a session. A JSON client gets the token and the home screen; a form post or a browser gets the `mb_session` cookie and is sent to the home screen. Five failures for one customer ID or from one address in fifteen minutes lock that key for the rest of the window.",
-        "security": [],
-        "requestBody": {
-          "required": true,
-          "content": {
-            "application/json": {"schema": {"$ref": "#/components/schemas/LoginRequest"}},
-            "application/x-www-form-urlencoded": {"schema": {"$ref": "#/components/schemas/LoginRequest"}}
+  "components": {
+    "schemas": {
+      "bff.errorBody": {
+        "description": "errorBody is every error as a JSON client gets it: a stable code to\nswitch on, what to tell the customer, and the screen to show with it\nwhen there is one (the login screen with its notice).",
+        "properties": {
+          "error": {
+            "description": "bad_request, unauthenticated, bad_credentials, rate_limited, not_found or internal",
+            "type": "string"
+          },
+          "message": {
+            "type": "string"
+          },
+          "screen": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/screen.Screen"
+              },
+              {
+                "type": "null"
+              }
+            ]
           }
         },
-        "responses": {
-          "200": {"description": "Logged in (JSON client).", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/LoginResponse"}}}},
-          "303": {"description": "Logged in (form or browser): the `mb_session` cookie is set and the browser is sent to `/v1/screen/accounts`.", "headers": {"Location": {"schema": {"type": "string"}}, "Set-Cookie": {"schema": {"type": "string"}}}},
-          "400": {"$ref": "#/components/responses/BadRequest"},
-          "401": {"description": "Unknown customer ID or wrong password (`bad_credentials`), with the login screen carrying the notice.", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/Error"}}, "text/html": {"schema": {"type": "string"}}}},
-          "429": {"description": "Too many attempts for this customer ID or from this address (`rate_limited`); `Retry-After` says how long.", "headers": {"Retry-After": {"schema": {"type": "integer"}, "description": "Seconds until the next attempt is accepted."}}, "content": {"application/json": {"schema": {"$ref": "#/components/schemas/Error"}}, "text/html": {"schema": {"type": "string"}}}}
-        }
-      }
-    },
-    "/v1/logout": {
-      "post": {
-        "tags": ["customer"],
-        "summary": "Log out",
-        "description": "Ends the session. A browser's cookie is cleared and it is sent to the login screen; a JSON client gets the login screen.",
-        "security": [{"customerBearer": []}, {"customerCookie": []}],
-        "responses": {
-          "200": {"description": "Logged out (JSON client).", "content": {"application/json": {"schema": {"type": "object", "required": ["screen"], "properties": {"screen": {"$ref": "#/components/schemas/Screen"}}}}}},
-          "303": {"description": "Logged out (browser): sent to `/v1/screen/login`.", "headers": {"Location": {"schema": {"type": "string"}}}},
-          "401": {"$ref": "#/components/responses/Unauthenticated"}
-        }
-      }
-    },
-    "/v1/screen/accounts": {
-      "get": {
-        "tags": ["customer"],
-        "summary": "Home: the customer's accounts",
-        "description": "The screen the app lands on: a hero with the net position and a row per account, each opening its product screen.",
-        "security": [{"customerBearer": []}, {"customerCookie": []}],
-        "responses": {
-          "200": {"$ref": "#/components/responses/Screen"},
-          "401": {"$ref": "#/components/responses/Unauthenticated"},
-          "500": {"$ref": "#/components/responses/Internal"}
-        }
-      }
-    },
-    "/v1/screen/activity": {
-      "get": {
-        "tags": ["customer"],
-        "summary": "Activity across every account",
-        "description": "The customer's transactions, newest first, one page at a time.",
-        "security": [{"customerBearer": []}, {"customerCookie": []}],
-        "parameters": [{"$ref": "#/components/parameters/page"}],
-        "responses": {
-          "200": {"$ref": "#/components/responses/Screen"},
-          "401": {"$ref": "#/components/responses/Unauthenticated"},
-          "500": {"$ref": "#/components/responses/Internal"}
-        }
-      }
-    },
-    "/v1/screen/product/{index}": {
-      "get": {
-        "tags": ["customer"],
-        "summary": "One account",
-        "description": "The account's details (sort code, number, rate, balance) and its own transactions, one page at a time. `index` is the account's position in the customer's list on the home screen.",
-        "security": [{"customerBearer": []}, {"customerCookie": []}],
-        "parameters": [
-          {"name": "index", "in": "path", "required": true, "schema": {"type": "integer", "minimum": 0}, "description": "The account's index in the customer's accounts."},
-          {"$ref": "#/components/parameters/page"}
+        "required": [
+          "error",
+          "message"
         ],
+        "type": "object"
+      },
+      "bff.loginRequest": {
+        "properties": {
+          "customer_id": {
+            "type": "string"
+          },
+          "password": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "customer_id",
+          "password"
+        ],
+        "type": "object"
+      },
+      "bff.loginResponse": {
+        "description": "loginResponse is what a JSON client gets for a login: the session token\nto send back as a bearer, when the session ends whatever happens (it\nalso ends after fifteen idle minutes), and the home screen, so the\nclient has nothing more to fetch.",
+        "properties": {
+          "expires_at": {
+            "description": "RFC 3339, UTC",
+            "type": "string"
+          },
+          "screen": {
+            "$ref": "#/components/schemas/screen.Screen"
+          },
+          "token": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "token",
+          "expires_at",
+          "screen"
+        ],
+        "type": "object"
+      },
+      "bff.screenBody": {
+        "description": "screenBody is a screen on its own, as the logout answers a JSON client.",
+        "properties": {
+          "screen": {
+            "$ref": "#/components/schemas/screen.Screen"
+          }
+        },
+        "required": [
+          "screen"
+        ],
+        "type": "object"
+      },
+      "core.EventRecord": {
+        "description": "EventRecord is one event on the bank's record (ADR-0011): something\nthat happened at an instant, raised by someone, whose cascade is\npending or done.",
+        "properties": {
+          "At": {
+            "$ref": "#/components/schemas/time.Time"
+          },
+          "By": {
+            "description": "who raised it: a user, a customer, a market's name, \"clock\"",
+            "type": "string"
+          },
+          "DoneAt": {
+            "$ref": "#/components/schemas/time.Time"
+          },
+          "ID": {
+            "type": "string"
+          },
+          "Kind": {
+            "description": "\"start of day\", \"publication\", \"payment\", \"setting\", \"opening\"",
+            "type": "string"
+          },
+          "Status": {
+            "description": "\"pending\", \"done\"",
+            "type": "string"
+          }
+        },
+        "required": [
+          "ID",
+          "Kind",
+          "At",
+          "Status",
+          "By",
+          "DoneAt"
+        ],
+        "type": "object"
+      },
+      "core.Leg": {
+        "description": "Leg is one side of a movement: the account and the balance it was left\nwith, signed as the ledger holds it.",
+        "properties": {
+          "AccountID": {
+            "type": "string"
+          },
+          "Balance": {
+            "$ref": "#/components/schemas/luca.Amount"
+          },
+          "Path": {
+            "description": "\"Liability:Savings:cust-001:easy-access\"",
+            "type": "string"
+          },
+          "Type": {
+            "description": "the path's first segment: Asset, Liability, Equity, Income, Expense",
+            "type": "string"
+          }
+        },
+        "required": [
+          "AccountID",
+          "Path",
+          "Type",
+          "Balance"
+        ],
+        "type": "object"
+      },
+      "core.Movement": {
+        "description": "Movement is one ledger movement as written (ADR-0008): a signed amount\nfrom one account to another, the to account's balance rising by it and\nthe from account's falling, with the balance each is left with, in the\nbank's view.",
+        "properties": {
+          "Amount": {
+            "$ref": "#/components/schemas/luca.Amount"
+          },
+          "Cause": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/core.EventRecord"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Cause is the root event a rule's posting was made under (ADR-0011)\nand Step the posting's name within it; nil and empty for a movement\nthat is not a rule's, or from before the record."
+          },
+          "Code": {
+            "type": "string"
+          },
+          "Currency": {
+            "type": "string"
+          },
+          "Description": {
+            "type": "string"
+          },
+          "From": {
+            "$ref": "#/components/schemas/core.Leg"
+          },
+          "ID": {
+            "type": "string"
+          },
+          "KnowledgeTime": {
+            "$ref": "#/components/schemas/time.Time"
+          },
+          "Step": {
+            "type": "string"
+          },
+          "To": {
+            "$ref": "#/components/schemas/core.Leg"
+          },
+          "ValueTime": {
+            "$ref": "#/components/schemas/time.Time"
+          }
+        },
+        "required": [
+          "ID",
+          "From",
+          "To",
+          "Amount",
+          "Currency",
+          "Code",
+          "ValueTime",
+          "KnowledgeTime",
+          "Description",
+          "Cause",
+          "Step"
+        ],
+        "type": "object"
+      },
+      "luca.Amount": {
+        "type": "integer"
+      },
+      "screen.Action": {
+        "description": "Action is what happens when the user taps a component. Exactly one of the\nfields is set.",
+        "properties": {
+          "logout": {
+            "description": "end the session",
+            "type": "boolean"
+          },
+          "screen": {
+            "description": "GET this path and show the result",
+            "type": "string"
+          },
+          "submit": {
+            "description": "POST form values to this path",
+            "type": "string"
+          }
+        },
+        "type": "object"
+      },
+      "screen.Component": {
+        "description": "Component is one element of a screen body. Type selects the component and\nwhich of the other fields are meaningful; unused fields are omitted from\nJSON.",
+        "properties": {
+          "action": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/screen.Action"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "currency": {
+            "description": "ISO 4217 code of the money a row or tx shows; the renderer picks the glyph by it",
+            "type": "string"
+          },
+          "fields": {
+            "items": {
+              "$ref": "#/components/schemas/screen.Field"
+            },
+            "type": "array"
+          },
+          "icon": {
+            "$ref": "#/components/schemas/screen.Icon"
+          },
+          "note": {
+            "type": "string"
+          },
+          "pairs": {
+            "items": {
+              "$ref": "#/components/schemas/screen.Pair"
+            },
+            "type": "array"
+          },
+          "subtitle": {
+            "type": "string"
+          },
+          "text": {
+            "type": "string"
+          },
+          "title": {
+            "type": "string"
+          },
+          "tone": {
+            "$ref": "#/components/schemas/screen.Tone"
+          },
+          "type": {
+            "type": "string"
+          },
+          "value": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "type"
+        ],
+        "type": "object"
+      },
+      "screen.Field": {
+        "description": "Field is one input in a form.",
+        "properties": {
+          "kind": {
+            "description": "\"text\", \"password\", \"number\"",
+            "type": "string"
+          },
+          "label": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "placeholder": {
+            "type": "string"
+          },
+          "required": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "name",
+          "label",
+          "kind"
+        ],
+        "type": "object"
+      },
+      "screen.Icon": {
+        "description": "Icon names a glyph. Clients map icons to their icon set.",
+        "enum": [
+          "accounts",
+          "activity",
+          "bank",
+          "home",
+          "in",
+          "interest",
+          "lending",
+          "loan",
+          "",
+          "out",
+          "savings"
+        ],
+        "type": "string"
+      },
+      "screen.Nav": {
+        "description": "Nav is the bottom tab bar.",
+        "properties": {
+          "active": {
+            "type": "string"
+          },
+          "tabs": {
+            "items": {
+              "$ref": "#/components/schemas/screen.Tab"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "active",
+          "tabs"
+        ],
+        "type": "object"
+      },
+      "screen.Pair": {
+        "description": "Pair is a label/value line inside a hero or details component.",
+        "properties": {
+          "label": {
+            "type": "string"
+          },
+          "value": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "label",
+          "value"
+        ],
+        "type": "object"
+      },
+      "screen.Screen": {
+        "description": "Screen is one app view.",
+        "properties": {
+          "back": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/screen.Action"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "body": {
+            "items": {
+              "$ref": "#/components/schemas/screen.Component"
+            },
+            "type": "array"
+          },
+          "id": {
+            "type": "string"
+          },
+          "nav": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/screen.Nav"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "path": {
+            "description": "GET path that returns this screen",
+            "type": "string"
+          },
+          "schema": {
+            "type": "integer"
+          },
+          "subtitle": {
+            "type": "string"
+          },
+          "title": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "schema",
+          "id",
+          "path",
+          "title",
+          "body"
+        ],
+        "type": "object"
+      },
+      "screen.Tab": {
+        "description": "Tab is one entry in the bottom tab bar.",
+        "properties": {
+          "icon": {
+            "$ref": "#/components/schemas/screen.Icon"
+          },
+          "key": {
+            "type": "string"
+          },
+          "label": {
+            "type": "string"
+          },
+          "screen": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "key",
+          "label",
+          "icon",
+          "screen"
+        ],
+        "type": "object"
+      },
+      "screen.Tone": {
+        "description": "Tone selects a colour treatment. Clients map tones to their theme.",
+        "enum": [
+          "danger",
+          "lending",
+          "muted",
+          "negative",
+          "",
+          "positive",
+          "savings"
+        ],
+        "type": "string"
+      },
+      "staff.AboutOwed": {
+        "description": "AboutOwed is core.Owed as another program reads it.",
+        "properties": {
+          "at_rest": {
+            "type": "boolean"
+          },
+          "days": {
+            "type": "integer"
+          },
+          "events": {
+            "description": "root events due and not done: cascades in progress (ADR-0011)",
+            "type": "integer"
+          },
+          "unprojected": {
+            "type": "integer"
+          }
+        },
+        "required": [
+          "at_rest",
+          "days",
+          "unprojected",
+          "events"
+        ],
+        "type": "object"
+      },
+      "staff.AboutPosition": {
+        "description": "AboutPosition is the bank's position: what the dashboard leads with.",
+        "properties": {
+          "customers": {
+            "type": "integer"
+          },
+          "day": {
+            "description": "YYYY-MM-DD",
+            "type": "string"
+          },
+          "day_count": {
+            "type": "integer"
+          },
+          "lending": {
+            "type": "string"
+          },
+          "savings": {
+            "description": "formatted, as the dashboard shows it",
+            "type": "string"
+          }
+        },
+        "required": [
+          "day",
+          "day_count",
+          "customers",
+          "savings",
+          "lending"
+        ],
+        "type": "object"
+      },
+      "staff.AboutRestart": {
+        "description": "AboutRestart is one row of the restart record, newest first, read with\nthe row before it (see Restart).",
+        "properties": {
+          "customers": {
+            "type": "integer"
+          },
+          "day_count": {
+            "type": "integer"
+          },
+          "downtime": {
+            "description": "Go duration; \"\" when unknown",
+            "type": "string"
+          },
+          "intact": {
+            "description": "day and customers equal across the stop; null when the previous row cannot say",
+            "type": [
+              "boolean",
+              "null"
+            ]
+          },
+          "previous_stopped_at": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/time.Time"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "previous_version": {
+            "description": "\"\" for unrecorded or none",
+            "type": "string"
+          },
+          "started_at": {
+            "$ref": "#/components/schemas/time.Time"
+          },
+          "stop_customers": {
+            "type": "integer"
+          },
+          "stop_day_count": {
+            "type": "integer"
+          },
+          "stopped_at": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/time.Time"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "version": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "version",
+          "started_at",
+          "day_count",
+          "customers",
+          "previous_version",
+          "previous_stopped_at",
+          "downtime",
+          "intact",
+          "stopped_at",
+          "stop_day_count",
+          "stop_customers"
+        ],
+        "type": "object"
+      },
+      "staff.AboutSettings": {
+        "description": "AboutSettings are the console settings.",
+        "properties": {
+          "day_length": {
+            "description": "Go duration; \"0s\" is flat out",
+            "type": "string"
+          },
+          "max_customers": {
+            "type": "integer"
+          }
+        },
+        "required": [
+          "day_length",
+          "max_customers"
+        ],
+        "type": "object"
+      },
+      "staff.AboutSim": {
+        "description": "AboutSim is the run as it is now, with the two rates a performance run\nreads: customers added per second (the live rate while a batch add runs,\nelse the last batch's) and account days per 12h at the pass's measured\nwhole-day rate, with the last day it is made of.",
+        "properties": {
+          "account_days_per_12h": {
+            "type": "integer"
+          },
+          "adding_customers": {
+            "type": "boolean"
+          },
+          "clock": {
+            "description": "the bank's clock now (simulated time), RFC 3339 UTC",
+            "type": "string"
+          },
+          "customers_per_sec": {
+            "type": "number"
+          },
+          "day_ends_in": {
+            "description": "Go duration; \"0s\" when flat out or stopped",
+            "type": "string"
+          },
+          "day_refused": {
+            "description": "why the bank would not follow the clock when last asked",
+            "type": "string"
+          },
+          "last_day_accounts": {
+            "type": "integer"
+          },
+          "last_day_duration": {
+            "description": "Go duration; \"\" before the first day",
+            "type": "string"
+          },
+          "next_event": {
+            "description": "the event the run loop waits for: \"payment at 2020-03-04T10:32:00Z\"",
+            "type": "string"
+          },
+          "owed": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/staff.AboutOwed"
+              }
+            ],
+            "description": "what the bank owed when last asked (ADR-0010); a drill waits for at_rest"
+          },
+          "running": {
+            "type": "boolean"
+          },
+          "wall": {
+            "description": "the wall clock now, RFC 3339 UTC",
+            "type": "string"
+          },
+          "warp": {
+            "description": "simulated seconds per wall second; 0 when flat out",
+            "type": "number"
+          }
+        },
+        "required": [
+          "running",
+          "wall",
+          "clock",
+          "warp",
+          "day_ends_in",
+          "adding_customers",
+          "customers_per_sec",
+          "account_days_per_12h",
+          "last_day_duration",
+          "last_day_accounts",
+          "owed"
+        ],
+        "type": "object"
+      },
+      "staff.AboutStatus": {
+        "description": "AboutStatus is the demo's state as another program reads it, at\n/about.json: the version and schema this process runs, the console\nsettings, the run's position and the restart record. gobank-deploy's\nupgrade drill reads it before and after each redeploy to compare the\nposition and read the downtime off the newest restart row.",
+        "properties": {
+          "position": {
+            "$ref": "#/components/schemas/staff.AboutPosition"
+          },
+          "restarts": {
+            "items": {
+              "$ref": "#/components/schemas/staff.AboutRestart"
+            },
+            "type": "array"
+          },
+          "schema": {
+            "items": {
+              "$ref": "#/components/schemas/staff.SchemaVersion"
+            },
+            "type": "array"
+          },
+          "settings": {
+            "$ref": "#/components/schemas/staff.AboutSettings"
+          },
+          "sim": {
+            "$ref": "#/components/schemas/staff.AboutSim"
+          },
+          "version": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "version",
+          "schema",
+          "settings",
+          "sim",
+          "position",
+          "restarts"
+        ],
+        "type": "object"
+      },
+      "staff.SchemaVersion": {
+        "description": "SchemaVersion is the version a component's tables are at.",
+        "properties": {
+          "component": {
+            "type": "string"
+          },
+          "version": {
+            "type": "integer"
+          }
+        },
+        "required": [
+          "component",
+          "version"
+        ],
+        "type": "object"
+      },
+      "time.Time": {
+        "description": "RFC 3339",
+        "format": "date-time",
+        "type": "string"
+      }
+    },
+    "securitySchemes": {
+      "bearer": {
+        "scheme": "bearer",
+        "type": "http"
+      },
+      "mb_session": {
+        "in": "cookie",
+        "name": "mb_session",
+        "type": "apiKey"
+      },
+      "staff_session": {
+        "in": "cookie",
+        "name": "staff_session",
+        "type": "apiKey"
+      },
+      "staff_view": {
+        "in": "cookie",
+        "name": "staff_view",
+        "type": "apiKey"
+      }
+    }
+  },
+  "info": {
+    "description": "Read off the code by api/walk: every route the servers register, with what each handler can answer. Branches are not followed, so a response listed is one the handler can write on some path through it; a route whose handler the walk could not see into says so under x-unknowns.",
+    "title": "Model Bank API",
+    "version": "1"
+  },
+  "openapi": "3.1.0",
+  "paths": {
+    "/": {
+      "get": {
+        "description": "--- Dashboard ---",
+        "operationId": "get",
         "responses": {
-          "200": {"$ref": "#/components/responses/Screen"},
-          "401": {"$ref": "#/components/responses/Unauthenticated"},
-          "404": {"$ref": "#/components/responses/NotFound"},
-          "500": {"$ref": "#/components/responses/Internal"}
-        }
+          "200": {
+            "content": {
+              "text/html": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "404": {
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "description": "Not found"
+          },
+          "405": {
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "description": "Method not allowed"
+          }
+        },
+        "security": [
+          {
+            "staff_session": []
+          },
+          {
+            "bearer": []
+          },
+          {
+            "staff_view": []
+          }
+        ],
+        "summary": "--- Dashboard ---",
+        "tags": [
+          "staff"
+        ],
+        "x-prefix": "serves every path no other route does",
+        "x-source": "bff/staff/console_routes.go:24"
+      }
+    },
+    "/about": {
+      "get": {
+        "description": "About",
+        "operationId": "get-about",
+        "responses": {
+          "200": {
+            "content": {
+              "text/html": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "404": {
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "description": "Not found"
+          },
+          "405": {
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "description": "Method not allowed"
+          }
+        },
+        "security": [
+          {
+            "staff_session": []
+          },
+          {
+            "bearer": []
+          },
+          {
+            "staff_view": []
+          }
+        ],
+        "summary": "About",
+        "tags": [
+          "staff"
+        ],
+        "x-source": "bff/staff/site.go:452"
       }
     },
     "/about.json": {
       "get": {
-        "tags": ["meta"],
-        "summary": "The process about itself",
-        "description": "The version and schema this process runs, the console settings, the run's position and the restart record. gobank-deploy's upgrade drill reads it before and after each redeploy to compare the position and read the downtime off the newest restart row; a performance run reads the two rates under `sim`. No session.",
+        "operationId": "get-about-json",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/staff.AboutStatus"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "405": {
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "description": "Method not allowed"
+          }
+        },
         "security": [],
-        "responses": {
-          "200": {"description": "The status.", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/AboutStatus"}}}},
-          "405": {"$ref": "#/components/responses/MethodNotAllowed"}
-        }
+        "summary": "/about.json",
+        "tags": [
+          "staff"
+        ],
+        "x-source": "bff/staff/console_routes.go:214"
       }
     },
-    "/start": {
-      "post": {
-        "tags": ["console"],
-        "summary": "Start the run",
-        "description": "The simulation runs day after day at the settings' day length until stopped.",
-        "security": [{"operatorToken": []}, {"staffSession": []}],
+    "/about/adr": {
+      "get": {
+        "operationId": "get-about-adr",
         "responses": {
-          "303": {"$ref": "#/components/responses/BackToDashboard"},
-          "401": {"$ref": "#/components/responses/InvalidToken"},
-          "403": {"$ref": "#/components/responses/Forbidden"}
-        }
+          "200": {
+            "content": {
+              "text/html": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "405": {
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "description": "Method not allowed"
+          }
+        },
+        "security": [
+          {
+            "staff_session": []
+          },
+          {
+            "bearer": []
+          },
+          {
+            "staff_view": []
+          }
+        ],
+        "summary": "/about/adr",
+        "tags": [
+          "staff"
+        ],
+        "x-source": "bff/staff/site.go:465"
       }
     },
-    "/stop": {
-      "post": {
-        "tags": ["console"],
-        "summary": "Stop the run",
-        "description": "The run stops after the day in progress.",
-        "security": [{"operatorToken": []}, {"staffSession": []}],
+    "/about/docs": {
+      "get": {
+        "operationId": "get-about-docs",
         "responses": {
-          "303": {"$ref": "#/components/responses/BackToDashboard"},
-          "401": {"$ref": "#/components/responses/InvalidToken"},
-          "403": {"$ref": "#/components/responses/Forbidden"}
-        }
+          "200": {
+            "content": {
+              "text/html": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "405": {
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "description": "Method not allowed"
+          }
+        },
+        "security": [
+          {
+            "staff_session": []
+          },
+          {
+            "bearer": []
+          },
+          {
+            "staff_view": []
+          }
+        ],
+        "summary": "/about/docs",
+        "tags": [
+          "staff"
+        ],
+        "x-source": "bff/staff/site.go:462"
       }
     },
-    "/advance": {
-      "post": {
-        "tags": ["console"],
-        "summary": "Advance one day",
-        "description": "Runs one business day while the run is stopped.",
-        "security": [{"operatorToken": []}, {"staffSession": []}],
+    "/about/docs/adr/": {
+      "get": {
+        "description": "An ADR whole: its page, or one of the diagrams and sources its\nmarkdown names beside it.",
+        "operationId": "get-about-docs-adr",
         "responses": {
-          "303": {"$ref": "#/components/responses/BackToDashboard"},
-          "401": {"$ref": "#/components/responses/InvalidToken"},
-          "403": {"$ref": "#/components/responses/Forbidden"}
-        }
+          "200": {
+            "content": {
+              "text/html": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "404": {
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "description": "Not found"
+          },
+          "405": {
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "description": "Method not allowed"
+          }
+        },
+        "security": [
+          {
+            "staff_session": []
+          },
+          {
+            "bearer": []
+          },
+          {
+            "staff_view": []
+          }
+        ],
+        "summary": "An ADR whole: its page, or one of the diagrams and sources its",
+        "tags": [
+          "staff"
+        ],
+        "x-prefix": "serves every path under it",
+        "x-source": "bff/staff/site.go:470"
       }
     },
-    "/reset": {
-      "post": {
-        "tags": ["console"],
-        "summary": "Reset the bank",
-        "description": "Empties the bank and starts again on its opening day. Settings are kept.",
-        "security": [{"operatorToken": []}, {"staffSession": []}],
+    "/about/models": {
+      "get": {
+        "operationId": "get-about-models",
         "responses": {
-          "303": {"$ref": "#/components/responses/BackToDashboard"},
-          "401": {"$ref": "#/components/responses/InvalidToken"},
-          "403": {"$ref": "#/components/responses/Forbidden"}
-        }
+          "200": {
+            "content": {
+              "text/html": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "405": {
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "description": "Method not allowed"
+          }
+        },
+        "security": [
+          {
+            "staff_session": []
+          },
+          {
+            "bearer": []
+          },
+          {
+            "staff_view": []
+          }
+        ],
+        "summary": "/about/models",
+        "tags": [
+          "staff"
+        ],
+        "x-source": "bff/staff/site.go:459"
+      }
+    },
+    "/about/runtime": {
+      "get": {
+        "description": "--- Runtime, and the demo's state for another program: gobank-deploy's\nupgrade drill reads the position and the restart record here ---",
+        "operationId": "get-about-runtime",
+        "responses": {
+          "200": {
+            "content": {
+              "text/html": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "405": {
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "description": "Method not allowed"
+          }
+        },
+        "security": [
+          {
+            "staff_session": []
+          },
+          {
+            "bearer": []
+          },
+          {
+            "staff_view": []
+          }
+        ],
+        "summary": "--- Runtime, and the demo's state for another program: gobank-deploy's",
+        "tags": [
+          "staff"
+        ],
+        "x-source": "bff/staff/console_routes.go:211"
+      }
+    },
+    "/accounting/balance-sheet": {
+      "get": {
+        "operationId": "get-accounting-balance-sheet",
+        "responses": {
+          "200": {
+            "content": {
+              "text/html": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "405": {
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "description": "Method not allowed"
+          }
+        },
+        "security": [
+          {
+            "staff_session": []
+          },
+          {
+            "bearer": []
+          },
+          {
+            "staff_view": []
+          }
+        ],
+        "summary": "/accounting/balance-sheet",
+        "tags": [
+          "staff"
+        ],
+        "x-source": "bff/staff/site.go:287"
+      }
+    },
+    "/accounting/pnl": {
+      "get": {
+        "description": "Accounting",
+        "operationId": "get-accounting-pnl",
+        "responses": {
+          "200": {
+            "content": {
+              "text/html": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "405": {
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "description": "Method not allowed"
+          }
+        },
+        "security": [
+          {
+            "staff_session": []
+          },
+          {
+            "bearer": []
+          },
+          {
+            "staff_view": []
+          }
+        ],
+        "summary": "Accounting",
+        "tags": [
+          "staff"
+        ],
+        "x-source": "bff/staff/site.go:284"
       }
     },
     "/add-customers": {
       "post": {
-        "tags": ["console"],
-        "summary": "Add customers",
-        "description": "Opens `n` customers with the product mix the simulation uses, in the background; `sim.adding_customers` and `sim.customers_per_sec` on `/about.json` follow the batch. `n` is read from the form or the query.",
-        "security": [{"operatorToken": []}, {"staffSession": []}],
-        "parameters": [{"name": "n", "in": "query", "schema": {"type": "integer", "minimum": 1}, "description": "How many customers to add; zero or absent adds none."}],
-        "requestBody": {"required": false, "content": {"application/x-www-form-urlencoded": {"schema": {"type": "object", "properties": {"n": {"type": "integer", "minimum": 1}}}}}},
+        "operationId": "post-add-customers",
+        "requestBody": {
+          "content": {
+            "application/x-www-form-urlencoded": {
+              "schema": {
+                "properties": {
+                  "n": {
+                    "type": "string"
+                  }
+                },
+                "type": "object"
+              }
+            }
+          }
+        },
         "responses": {
-          "303": {"$ref": "#/components/responses/BackToDashboard"},
-          "401": {"$ref": "#/components/responses/InvalidToken"},
-          "403": {"$ref": "#/components/responses/Forbidden"}
-        }
+          "303": {
+            "description": "Redirect",
+            "headers": {
+              "Location": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "403": {
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "description": "Forbidden"
+          }
+        },
+        "security": [
+          {
+            "staff_session": []
+          },
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "/add-customers",
+        "tags": [
+          "staff"
+        ],
+        "x-handler": {
+          "via": "control"
+        },
+        "x-role-action": "sim_controls",
+        "x-source": "bff/staff/console_routes.go:72"
+      }
+    },
+    "/advance": {
+      "post": {
+        "operationId": "post-advance",
+        "responses": {
+          "303": {
+            "description": "Redirect",
+            "headers": {
+              "Location": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "403": {
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "description": "Forbidden"
+          }
+        },
+        "security": [
+          {
+            "staff_session": []
+          },
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "/advance",
+        "tags": [
+          "staff"
+        ],
+        "x-handler": {
+          "via": "control"
+        },
+        "x-role-action": "sim_controls",
+        "x-source": "bff/staff/console_routes.go:70"
+      }
+    },
+    "/auth/authorize": {
+      "post": {
+        "description": "PII: an admin authorises themselves to see personal data for a while",
+        "operationId": "post-auth-authorize",
+        "requestBody": {
+          "content": {
+            "application/x-www-form-urlencoded": {
+              "schema": {
+                "properties": {
+                  "redirect": {
+                    "type": "string"
+                  }
+                },
+                "type": "object"
+              }
+            }
+          }
+        },
+        "responses": {
+          "303": {
+            "description": "Redirect",
+            "headers": {
+              "Location": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "staff_session": []
+          },
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "PII: an admin authorises themselves to see personal data for a while",
+        "tags": [
+          "staff"
+        ],
+        "x-source": "bff/staff/site.go:262"
+      }
+    },
+    "/auth/revoke": {
+      "post": {
+        "operationId": "post-auth-revoke",
+        "requestBody": {
+          "content": {
+            "application/x-www-form-urlencoded": {
+              "schema": {
+                "properties": {
+                  "redirect": {
+                    "type": "string"
+                  }
+                },
+                "type": "object"
+              }
+            }
+          }
+        },
+        "responses": {
+          "303": {
+            "description": "Redirect",
+            "headers": {
+              "Location": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "staff_session": []
+          },
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "/auth/revoke",
+        "tags": [
+          "staff"
+        ],
+        "x-source": "bff/staff/site.go:272"
+      }
+    },
+    "/customers": {
+      "get": {
+        "description": "Customers",
+        "operationId": "get-customers",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "page",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "text/html": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "405": {
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "description": "Method not allowed"
+          }
+        },
+        "security": [
+          {
+            "staff_session": []
+          },
+          {
+            "bearer": []
+          },
+          {
+            "staff_view": []
+          }
+        ],
+        "summary": "Customers",
+        "tags": [
+          "staff"
+        ],
+        "x-source": "bff/staff/site.go:358"
+      }
+    },
+    "/customers/": {
+      "get": {
+        "operationId": "get-customers",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "txpage",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "text/html": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "303": {
+            "description": "Redirect",
+            "headers": {
+              "Location": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "404": {
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "description": "Not found"
+          },
+          "405": {
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "description": "Method not allowed"
+          }
+        },
+        "security": [
+          {
+            "staff_session": []
+          },
+          {
+            "bearer": []
+          },
+          {
+            "staff_view": []
+          }
+        ],
+        "summary": "/customers/",
+        "tags": [
+          "staff"
+        ],
+        "x-prefix": "serves every path under it",
+        "x-source": "bff/staff/site.go:361"
+      }
+    },
+    "/dashboard/update": {
+      "get": {
+        "operationId": "get-dashboard-update",
+        "responses": {
+          "200": {
+            "content": {
+              "text/html": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "405": {
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "description": "Method not allowed"
+          }
+        },
+        "security": [
+          {
+            "staff_session": []
+          },
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "/dashboard/update",
+        "tags": [
+          "staff"
+        ],
+        "x-source": "bff/staff/console_routes.go:43"
+      }
+    },
+    "/events": {
+      "get": {
+        "description": "Events: the record of what happened and what it caused (ADR-0011)",
+        "operationId": "get-events",
+        "responses": {
+          "200": {
+            "content": {
+              "text/html": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "405": {
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "description": "Method not allowed"
+          }
+        },
+        "security": [
+          {
+            "staff_session": []
+          },
+          {
+            "bearer": []
+          },
+          {
+            "staff_view": []
+          }
+        ],
+        "summary": "Events: the record of what happened and what it caused (ADR-0011)",
+        "tags": [
+          "staff"
+        ],
+        "x-source": "bff/staff/site.go:398"
+      }
+    },
+    "/export.goluca": {
+      "get": {
+        "description": "--- Export/Import ---",
+        "operationId": "get-export-goluca",
+        "responses": {
+          "200": {
+            "content": {
+              "application/octet-stream": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "403": {
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "405": {
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "description": "Method not allowed"
+          },
+          "500": {
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "description": "Internal error"
+          }
+        },
+        "security": [
+          {
+            "staff_session": []
+          },
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "--- Export/Import ---",
+        "tags": [
+          "staff"
+        ],
+        "x-role-action": "export",
+        "x-source": "bff/staff/console_routes.go:82"
+      }
+    },
+    "/favicon.ico": {
+      "get": {
+        "operationId": "get-favicon-ico",
+        "responses": {},
+        "security": [],
+        "summary": "/favicon.ico",
+        "tags": [
+          "staff"
+        ],
+        "x-handler": {
+          "function": "lofigui.ServeFavicon"
+        },
+        "x-methods": "any",
+        "x-source": "bff/staff/site.go:485",
+        "x-unknowns": [
+          "handler lofigui.ServeFavicon: body outside the walk",
+          "no response found"
+        ]
+      }
+    },
+    "/favicon.svg": {
+      "get": {
+        "operationId": "get-favicon-svg",
+        "responses": {
+          "200": {
+            "content": {
+              "image/svg+xml": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "description": "OK"
+          }
+        },
+        "security": [],
+        "summary": "/favicon.svg",
+        "tags": [
+          "staff"
+        ],
+        "x-methods": "any",
+        "x-source": "bff/staff/site.go:486"
+      }
+    },
+    "/import": {
+      "post": {
+        "operationId": "post-import",
+        "requestBody": {
+          "content": {
+            "multipart/form-data": {
+              "schema": {
+                "properties": {
+                  "file": {
+                    "format": "binary",
+                    "type": "string"
+                  }
+                },
+                "type": "object"
+              }
+            }
+          }
+        },
+        "responses": {
+          "303": {
+            "description": "Redirect",
+            "headers": {
+              "Location": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "400": {
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "description": "No file uploaded; Read error"
+          },
+          "403": {
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "405": {
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "description": "Method not allowed"
+          },
+          "500": {
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "description": "Internal error"
+          }
+        },
+        "security": [
+          {
+            "staff_session": []
+          },
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "/import",
+        "tags": [
+          "staff"
+        ],
+        "x-role-action": "export",
+        "x-source": "bff/staff/console_routes.go:99"
+      }
+    },
+    "/internal/explorer": {
+      "get": {
+        "operationId": "get-internal-explorer",
+        "responses": {
+          "200": {
+            "content": {
+              "text/html": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "303": {
+            "description": "Redirect",
+            "headers": {
+              "Location": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "405": {
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "description": "Method not allowed"
+          }
+        },
+        "security": [
+          {
+            "staff_session": []
+          },
+          {
+            "bearer": []
+          },
+          {
+            "staff_view": []
+          }
+        ],
+        "summary": "/internal/explorer",
+        "tags": [
+          "staff"
+        ],
+        "x-source": "bff/staff/console_routes.go:205"
+      }
+    },
+    "/internal/explorer/": {
+      "get": {
+        "operationId": "get-internal-explorer",
+        "responses": {
+          "200": {
+            "content": {
+              "text/html": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "303": {
+            "description": "Redirect",
+            "headers": {
+              "Location": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "405": {
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "description": "Method not allowed"
+          }
+        },
+        "security": [
+          {
+            "staff_session": []
+          },
+          {
+            "bearer": []
+          },
+          {
+            "staff_view": []
+          }
+        ],
+        "summary": "/internal/explorer/",
+        "tags": [
+          "staff"
+        ],
+        "x-prefix": "serves every path under it",
+        "x-source": "bff/staff/console_routes.go:206"
+      }
+    },
+    "/login": {
+      "get": {
+        "operationId": "get-post-login",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "redirect",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/x-www-form-urlencoded": {
+              "schema": {
+                "properties": {
+                  "login": {
+                    "type": "string"
+                  },
+                  "password": {
+                    "type": "string"
+                  },
+                  "redirect": {
+                    "type": "string"
+                  }
+                },
+                "type": "object"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "303": {
+            "description": "Redirect",
+            "headers": {
+              "Location": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "400": {
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "description": "Malformed login form; Enter your login and password."
+          },
+          "401": {
+            "description": "Unknown login or wrong password."
+          },
+          "405": {
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "description": "Method not allowed"
+          },
+          "429": {
+            "description": "Too many requests"
+          },
+          "503": {
+            "description": "Staff login is not set up on this deployment."
+          }
+        },
+        "security": [
+          {
+            "staff_session": []
+          },
+          {
+            "staff_view": []
+          }
+        ],
+        "summary": "/login",
+        "tags": [
+          "staff"
+        ],
+        "x-source": "bff/staff/login.go:22"
+      },
+      "post": {
+        "operationId": "get-post-login",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "redirect",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/x-www-form-urlencoded": {
+              "schema": {
+                "properties": {
+                  "login": {
+                    "type": "string"
+                  },
+                  "password": {
+                    "type": "string"
+                  },
+                  "redirect": {
+                    "type": "string"
+                  }
+                },
+                "type": "object"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "303": {
+            "description": "Redirect",
+            "headers": {
+              "Location": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "400": {
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "description": "Malformed login form; Enter your login and password."
+          },
+          "401": {
+            "description": "Unknown login or wrong password."
+          },
+          "405": {
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "description": "Method not allowed"
+          },
+          "429": {
+            "description": "Too many requests"
+          },
+          "503": {
+            "description": "Staff login is not set up on this deployment."
+          }
+        },
+        "security": [
+          {
+            "staff_session": []
+          },
+          {
+            "staff_view": []
+          }
+        ],
+        "summary": "/login",
+        "tags": [
+          "staff"
+        ],
+        "x-source": "bff/staff/login.go:22"
+      }
+    },
+    "/logout": {
+      "post": {
+        "operationId": "post-logout",
+        "responses": {
+          "303": {
+            "description": "Redirect",
+            "headers": {
+              "Location": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "staff_session": []
+          },
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "/logout",
+        "tags": [
+          "staff"
+        ],
+        "x-source": "bff/staff/login.go:36"
+      }
+    },
+    "/movements/{id}": {
+      "get": {
+        "operationId": "get-movements-id",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/core.Movement"
+                }
+              },
+              "text/html": {
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "text/plain": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "404": {
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "description": "Not found"
+          },
+          "405": {
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "description": "Method not allowed"
+          },
+          "500": {
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "description": "Internal error"
+          }
+        },
+        "security": [
+          {
+            "staff_session": []
+          },
+          {
+            "bearer": []
+          },
+          {
+            "staff_view": []
+          }
+        ],
+        "summary": "/movements/{id}",
+        "tags": [
+          "staff"
+        ],
+        "x-source": "bff/staff/movement.go:43"
+      }
+    },
+    "/payments": {
+      "get": {
+        "description": "--- Payments: the list with the generator's controls, and the generator ---",
+        "operationId": "get-payments",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "page",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "text/html": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "405": {
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "description": "Method not allowed"
+          }
+        },
+        "security": [
+          {
+            "staff_session": []
+          },
+          {
+            "bearer": []
+          },
+          {
+            "staff_view": []
+          }
+        ],
+        "summary": "--- Payments: the list with the generator's controls, and the generator ---",
+        "tags": [
+          "staff"
+        ],
+        "x-source": "bff/staff/console_routes.go:127"
+      }
+    },
+    "/payments/run": {
+      "post": {
+        "operationId": "post-payments-run",
+        "responses": {
+          "303": {
+            "description": "Redirect",
+            "headers": {
+              "Location": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "403": {
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "description": "Forbidden"
+          }
+        },
+        "security": [
+          {
+            "staff_session": []
+          },
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "/payments/run",
+        "tags": [
+          "staff"
+        ],
+        "x-handler": {
+          "via": "payments"
+        },
+        "x-role-action": "send_payment",
+        "x-source": "bff/staff/console_routes.go:146"
+      }
+    },
+    "/payments/send": {
+      "post": {
+        "operationId": "post-payments-send",
+        "responses": {
+          "303": {
+            "description": "Redirect",
+            "headers": {
+              "Location": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "403": {
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "description": "Forbidden"
+          }
+        },
+        "security": [
+          {
+            "staff_session": []
+          },
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "/payments/send",
+        "tags": [
+          "staff"
+        ],
+        "x-handler": {
+          "via": "payments"
+        },
+        "x-role-action": "send_payment",
+        "x-source": "bff/staff/console_routes.go:145"
+      }
+    },
+    "/payments/stop": {
+      "post": {
+        "operationId": "post-payments-stop",
+        "responses": {
+          "303": {
+            "description": "Redirect",
+            "headers": {
+              "Location": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "403": {
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "description": "Forbidden"
+          }
+        },
+        "security": [
+          {
+            "staff_session": []
+          },
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "/payments/stop",
+        "tags": [
+          "staff"
+        ],
+        "x-handler": {
+          "via": "payments"
+        },
+        "x-role-action": "send_payment",
+        "x-source": "bff/staff/console_routes.go:147"
+      }
+    },
+    "/payments/{id}": {
+      "get": {
+        "description": "Payments: the detail; the list carries the console's controls until 1.6.4",
+        "operationId": "get-payments-id",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "text/html": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "404": {
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "description": "Not found"
+          },
+          "405": {
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "description": "Method not allowed"
+          }
+        },
+        "security": [
+          {
+            "staff_session": []
+          },
+          {
+            "bearer": []
+          },
+          {
+            "staff_view": []
+          }
+        ],
+        "summary": "Payments: the detail; the list carries the console's controls until 1",
+        "tags": [
+          "staff"
+        ],
+        "x-source": "bff/staff/site.go:388"
+      }
+    },
+    "/products/bank": {
+      "get": {
+        "operationId": "get-products-bank",
+        "responses": {
+          "200": {
+            "content": {
+              "text/html": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "405": {
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "description": "Method not allowed"
+          }
+        },
+        "security": [
+          {
+            "staff_session": []
+          },
+          {
+            "bearer": []
+          },
+          {
+            "staff_view": []
+          }
+        ],
+        "summary": "/products/bank",
+        "tags": [
+          "staff"
+        ],
+        "x-source": "bff/staff/site.go:300"
+      }
+    },
+    "/products/lending": {
+      "get": {
+        "operationId": "get-products-lending",
+        "responses": {
+          "200": {
+            "content": {
+              "text/html": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "405": {
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "description": "Method not allowed"
+          }
+        },
+        "security": [
+          {
+            "staff_session": []
+          },
+          {
+            "bearer": []
+          },
+          {
+            "staff_view": []
+          }
+        ],
+        "summary": "/products/lending",
+        "tags": [
+          "staff"
+        ],
+        "x-source": "bff/staff/site.go:297"
+      }
+    },
+    "/products/savings": {
+      "get": {
+        "description": "Products: the masters (a family's products, the bank's own) and\nthe detail, a parameter's own page, which is also where a staff\nsetting is made (ADR-0010): decided by the signed-in user.",
+        "operationId": "get-products-savings",
+        "responses": {
+          "200": {
+            "content": {
+              "text/html": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "405": {
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "description": "Method not allowed"
+          }
+        },
+        "security": [
+          {
+            "staff_session": []
+          },
+          {
+            "bearer": []
+          },
+          {
+            "staff_view": []
+          }
+        ],
+        "summary": "Products: the masters (a family's products, the bank's own) and",
+        "tags": [
+          "staff"
+        ],
+        "x-source": "bff/staff/site.go:294"
+      }
+    },
+    "/products/{owner}/parameters/{key}": {
+      "get": {
+        "operationId": "get-post-products-owner-parameters-key",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "owner",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "key",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "refused",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/x-www-form-urlencoded": {
+              "schema": {
+                "properties": {
+                  "effective": {
+                    "type": "string"
+                  },
+                  "value": {
+                    "type": "string"
+                  }
+                },
+                "type": "object"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "text/html": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "303": {
+            "description": "Redirect",
+            "headers": {
+              "Location": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "403": {
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "404": {
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "description": "Not found"
+          },
+          "405": {
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "description": "Method not allowed"
+          }
+        },
+        "security": [
+          {
+            "staff_session": []
+          },
+          {
+            "bearer": []
+          },
+          {
+            "staff_view": []
+          }
+        ],
+        "summary": "/products/{owner}/parameters/{key}",
+        "tags": [
+          "staff"
+        ],
+        "x-role-action": "settings",
+        "x-source": "bff/staff/site.go:303"
+      },
+      "post": {
+        "operationId": "get-post-products-owner-parameters-key",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "owner",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "key",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "refused",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/x-www-form-urlencoded": {
+              "schema": {
+                "properties": {
+                  "effective": {
+                    "type": "string"
+                  },
+                  "value": {
+                    "type": "string"
+                  }
+                },
+                "type": "object"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "text/html": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "303": {
+            "description": "Redirect",
+            "headers": {
+              "Location": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "403": {
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "404": {
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "description": "Not found"
+          },
+          "405": {
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "description": "Method not allowed"
+          }
+        },
+        "security": [
+          {
+            "staff_session": []
+          },
+          {
+            "bearer": []
+          },
+          {
+            "staff_view": []
+          }
+        ],
+        "summary": "/products/{owner}/parameters/{key}",
+        "tags": [
+          "staff"
+        ],
+        "x-role-action": "settings",
+        "x-source": "bff/staff/site.go:303"
+      }
+    },
+    "/reports/bbsi": {
+      "get": {
+        "operationId": "get-reports-bbsi",
+        "responses": {
+          "200": {
+            "content": {
+              "text/html": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "405": {
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "description": "Method not allowed"
+          }
+        },
+        "security": [
+          {
+            "staff_session": []
+          },
+          {
+            "bearer": []
+          },
+          {
+            "staff_view": []
+          }
+        ],
+        "summary": "/reports/bbsi",
+        "tags": [
+          "staff"
+        ],
+        "x-source": "bff/staff/site.go:406"
+      }
+    },
+    "/reports/charts": {
+      "get": {
+        "description": "Reports",
+        "operationId": "get-reports-charts",
+        "responses": {
+          "200": {
+            "content": {
+              "text/html": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "405": {
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "description": "Method not allowed"
+          }
+        },
+        "security": [
+          {
+            "staff_session": []
+          },
+          {
+            "bearer": []
+          },
+          {
+            "staff_view": []
+          }
+        ],
+        "summary": "Reports",
+        "tags": [
+          "staff"
+        ],
+        "x-source": "bff/staff/site.go:403"
+      }
+    },
+    "/reports/customer-view": {
+      "get": {
+        "operationId": "get-reports-customer-view",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "id",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "text/html": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "303": {
+            "description": "Redirect",
+            "headers": {
+              "Location": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "405": {
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "description": "Method not allowed"
+          }
+        },
+        "security": [
+          {
+            "staff_session": []
+          },
+          {
+            "bearer": []
+          },
+          {
+            "staff_view": []
+          }
+        ],
+        "summary": "/reports/customer-view",
+        "tags": [
+          "staff"
+        ],
+        "x-source": "bff/staff/site.go:409"
+      }
+    },
+    "/reset": {
+      "post": {
+        "operationId": "post-reset",
+        "responses": {
+          "303": {
+            "description": "Redirect",
+            "headers": {
+              "Location": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "403": {
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "description": "Forbidden"
+          }
+        },
+        "security": [
+          {
+            "staff_session": []
+          },
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "/reset",
+        "tags": [
+          "staff"
+        ],
+        "x-handler": {
+          "via": "control"
+        },
+        "x-role-action": "sim_controls",
+        "x-source": "bff/staff/console_routes.go:71"
       }
     },
     "/settings": {
-      "post": {
-        "tags": ["console"],
-        "summary": "Change the console settings",
-        "description": "The customer ceiling, the payments the generator sends a day, and the day length. Each is read from the form or the query; a day length that does not parse leaves the current one. The day length set here is the run's and outlives the process.",
-        "security": [{"operatorToken": []}, {"staffSession": []}],
-        "parameters": [
-          {"name": "max_customers", "in": "query", "schema": {"type": "integer", "minimum": 0}, "description": "The customer count the run stops adding at."},
-          {"name": "payments_per_day", "in": "query", "schema": {"type": "integer", "minimum": 0}, "description": "Payments the generator sends each simulated day."},
-          {"name": "day_length", "in": "query", "schema": {"$ref": "#/components/schemas/Duration"}, "description": "Wall-clock length of a simulated day; `0s` runs flat out."}
-        ],
-        "requestBody": {"required": false, "content": {"application/x-www-form-urlencoded": {"schema": {"$ref": "#/components/schemas/Settings"}}}},
+      "get": {
+        "description": "--- Settings ---",
+        "operationId": "get-post-settings",
+        "requestBody": {
+          "content": {
+            "application/x-www-form-urlencoded": {
+              "schema": {
+                "properties": {
+                  "day_length": {
+                    "type": "string"
+                  },
+                  "max_customers": {
+                    "type": "string"
+                  },
+                  "payments_per_day": {
+                    "type": "string"
+                  }
+                },
+                "type": "object"
+              }
+            }
+          }
+        },
         "responses": {
-          "303": {"description": "Applied; the browser is sent to the settings page.", "headers": {"Location": {"schema": {"type": "string"}}}},
-          "401": {"$ref": "#/components/responses/InvalidToken"},
-          "403": {"$ref": "#/components/responses/Forbidden"}
-        }
+          "200": {
+            "content": {
+              "text/html": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "303": {
+            "description": "Redirect",
+            "headers": {
+              "Location": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "403": {
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "405": {
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "description": "Method not allowed"
+          }
+        },
+        "security": [
+          {
+            "staff_session": []
+          },
+          {
+            "bearer": []
+          },
+          {
+            "staff_view": []
+          }
+        ],
+        "summary": "--- Settings ---",
+        "tags": [
+          "staff"
+        ],
+        "x-role-action": "settings",
+        "x-source": "bff/staff/console_routes.go:151"
+      },
+      "post": {
+        "description": "--- Settings ---",
+        "operationId": "get-post-settings",
+        "requestBody": {
+          "content": {
+            "application/x-www-form-urlencoded": {
+              "schema": {
+                "properties": {
+                  "day_length": {
+                    "type": "string"
+                  },
+                  "max_customers": {
+                    "type": "string"
+                  },
+                  "payments_per_day": {
+                    "type": "string"
+                  }
+                },
+                "type": "object"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "text/html": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "303": {
+            "description": "Redirect",
+            "headers": {
+              "Location": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "403": {
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "405": {
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "description": "Method not allowed"
+          }
+        },
+        "security": [
+          {
+            "staff_session": []
+          },
+          {
+            "bearer": []
+          },
+          {
+            "staff_view": []
+          }
+        ],
+        "summary": "--- Settings ---",
+        "tags": [
+          "staff"
+        ],
+        "x-role-action": "settings",
+        "x-source": "bff/staff/console_routes.go:151"
+      }
+    },
+    "/settings/status": {
+      "get": {
+        "description": "The settings page's status line, polled on its own so the form is\nnever re-rendered under the operator.",
+        "operationId": "get-settings-status",
+        "responses": {
+          "200": {
+            "content": {
+              "text/html": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "405": {
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "description": "Method not allowed"
+          }
+        },
+        "security": [
+          {
+            "staff_session": []
+          },
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "The settings page's status line, polled on its own so the form is",
+        "tags": [
+          "staff"
+        ],
+        "x-source": "bff/staff/console_routes.go:179"
+      }
+    },
+    "/start": {
+      "post": {
+        "operationId": "post-start",
+        "responses": {
+          "303": {
+            "description": "Redirect",
+            "headers": {
+              "Location": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "403": {
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "description": "Forbidden"
+          }
+        },
+        "security": [
+          {
+            "staff_session": []
+          },
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "/start",
+        "tags": [
+          "staff"
+        ],
+        "x-handler": {
+          "via": "control"
+        },
+        "x-role-action": "sim_controls",
+        "x-source": "bff/staff/console_routes.go:68"
+      }
+    },
+    "/stop": {
+      "post": {
+        "operationId": "post-stop",
+        "responses": {
+          "303": {
+            "description": "Redirect",
+            "headers": {
+              "Location": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "403": {
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "description": "Forbidden"
+          }
+        },
+        "security": [
+          {
+            "staff_session": []
+          },
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "/stop",
+        "tags": [
+          "staff"
+        ],
+        "x-handler": {
+          "via": "control"
+        },
+        "x-role-action": "sim_controls",
+        "x-source": "bff/staff/console_routes.go:69"
+      }
+    },
+    "/treasury/capital": {
+      "get": {
+        "operationId": "get-treasury-capital",
+        "responses": {
+          "200": {
+            "content": {
+              "text/html": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "405": {
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "description": "Method not allowed"
+          }
+        },
+        "security": [
+          {
+            "staff_session": []
+          },
+          {
+            "bearer": []
+          },
+          {
+            "staff_view": []
+          }
+        ],
+        "summary": "/treasury/capital",
+        "tags": [
+          "staff"
+        ],
+        "x-source": "bff/staff/site.go:422"
+      }
+    },
+    "/treasury/cash": {
+      "get": {
+        "description": "Treasury",
+        "operationId": "get-treasury-cash",
+        "responses": {
+          "200": {
+            "content": {
+              "text/html": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "405": {
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "description": "Method not allowed"
+          }
+        },
+        "security": [
+          {
+            "staff_session": []
+          },
+          {
+            "bearer": []
+          },
+          {
+            "staff_view": []
+          }
+        ],
+        "summary": "Treasury",
+        "tags": [
+          "staff"
+        ],
+        "x-source": "bff/staff/site.go:419"
+      }
+    },
+    "/treasury/gilts": {
+      "get": {
+        "operationId": "get-treasury-gilts",
+        "responses": {
+          "200": {
+            "content": {
+              "text/html": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "405": {
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "description": "Method not allowed"
+          }
+        },
+        "security": [
+          {
+            "staff_session": []
+          },
+          {
+            "bearer": []
+          },
+          {
+            "staff_view": []
+          }
+        ],
+        "summary": "/treasury/gilts",
+        "tags": [
+          "staff"
+        ],
+        "x-source": "bff/staff/site.go:425"
+      }
+    },
+    "/treasury/gilts/buy": {
+      "post": {
+        "operationId": "post-treasury-gilts-buy",
+        "requestBody": {
+          "content": {
+            "application/x-www-form-urlencoded": {
+              "schema": {
+                "properties": {
+                  "face_value": {
+                    "type": "string"
+                  },
+                  "tenor": {
+                    "type": "string"
+                  }
+                },
+                "type": "object"
+              }
+            }
+          }
+        },
+        "responses": {
+          "303": {
+            "description": "Redirect",
+            "headers": {
+              "Location": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "403": {
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "description": "Forbidden"
+          }
+        },
+        "security": [
+          {
+            "staff_session": []
+          },
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "/treasury/gilts/buy",
+        "tags": [
+          "staff"
+        ],
+        "x-role-action": "buy_gilt",
+        "x-source": "bff/staff/site.go:428"
+      }
+    },
+    "/v1/health": {
+      "get": {
+        "description": "health answers as soon as the process serves HTTP. No session.",
+        "operationId": "get-v1-health",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            },
+            "description": "OK"
+          }
+        },
+        "security": [],
+        "summary": "health answers as soon as the process serves HTTP",
+        "tags": [
+          "bff"
+        ],
+        "x-handler": {
+          "function": "(*Server).health"
+        },
+        "x-source": "bff/server.go:116"
+      }
+    },
+    "/v1/login": {
+      "post": {
+        "operationId": "post-v1-login",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/bff.loginRequest"
+              }
+            },
+            "application/x-www-form-urlencoded": {
+              "schema": {
+                "properties": {
+                  "customer_id": {
+                    "type": "string"
+                  },
+                  "password": {
+                    "type": "string"
+                  }
+                },
+                "type": "object"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/bff.loginResponse"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "303": {
+            "description": "Redirect to /v1/screen/accounts.",
+            "headers": {
+              "Location": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "oneOf": [
+                    {
+                      "$ref": "#/components/schemas/bff.errorBody"
+                    },
+                    {
+                      "$ref": "#/components/schemas/screen.Screen"
+                    }
+                  ]
+                }
+              },
+              "text/html": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "description": "bad_request"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "oneOf": [
+                    {
+                      "$ref": "#/components/schemas/bff.errorBody"
+                    },
+                    {
+                      "$ref": "#/components/schemas/screen.Screen"
+                    }
+                  ]
+                }
+              },
+              "text/html": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "description": "bad_credentials"
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "oneOf": [
+                    {
+                      "$ref": "#/components/schemas/bff.errorBody"
+                    },
+                    {
+                      "$ref": "#/components/schemas/screen.Screen"
+                    }
+                  ]
+                }
+              },
+              "text/html": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "description": "rate_limited"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "oneOf": [
+                    {
+                      "$ref": "#/components/schemas/bff.errorBody"
+                    },
+                    {
+                      "$ref": "#/components/schemas/screen.Screen"
+                    }
+                  ]
+                }
+              },
+              "text/html": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "description": "internal"
+          }
+        },
+        "security": [],
+        "summary": "POST /v1/login",
+        "tags": [
+          "bff"
+        ],
+        "x-handler": {
+          "function": "(*Server).login"
+        },
+        "x-source": "bff/server.go:119"
+      }
+    },
+    "/v1/logout": {
+      "post": {
+        "operationId": "post-v1-logout",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/bff.screenBody"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "303": {
+            "description": "Redirect to /v1/screen/login.",
+            "headers": {
+              "Location": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "oneOf": [
+                    {
+                      "$ref": "#/components/schemas/bff.errorBody"
+                    },
+                    {
+                      "$ref": "#/components/schemas/screen.Screen"
+                    }
+                  ]
+                }
+              },
+              "text/html": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "description": "unauthenticated"
+          }
+        },
+        "security": [
+          {
+            "mb_session": []
+          },
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "POST /v1/logout",
+        "tags": [
+          "bff"
+        ],
+        "x-handler": {
+          "function": "(*Server).logout",
+          "wrappers": [
+            "(*Server).authed"
+          ]
+        },
+        "x-source": "bff/server.go:120"
+      }
+    },
+    "/v1/openapi.json": {
+      "get": {
+        "description": "openapi serves the API document (package api): the surface this server\nand the staff web present, as built.",
+        "operationId": "get-v1-openapi-json",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            },
+            "description": "OK"
+          }
+        },
+        "security": [],
+        "summary": "openapi serves the API document (package api): the surface this server",
+        "tags": [
+          "bff"
+        ],
+        "x-handler": {
+          "function": "(*Server).openapi"
+        },
+        "x-source": "bff/server.go:117"
+      }
+    },
+    "/v1/screen/accounts": {
+      "get": {
+        "operationId": "get-v1-screen-accounts",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/screen.Screen"
+                }
+              },
+              "text/html": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "303": {
+            "description": "Redirect to /v1/screen/login.",
+            "headers": {
+              "Location": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "oneOf": [
+                    {
+                      "$ref": "#/components/schemas/bff.errorBody"
+                    },
+                    {
+                      "$ref": "#/components/schemas/screen.Screen"
+                    }
+                  ]
+                }
+              },
+              "text/html": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "description": "unauthenticated"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "oneOf": [
+                    {
+                      "$ref": "#/components/schemas/bff.errorBody"
+                    },
+                    {
+                      "$ref": "#/components/schemas/screen.Screen"
+                    }
+                  ]
+                }
+              },
+              "text/html": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "description": "not_found"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "oneOf": [
+                    {
+                      "$ref": "#/components/schemas/bff.errorBody"
+                    },
+                    {
+                      "$ref": "#/components/schemas/screen.Screen"
+                    }
+                  ]
+                }
+              },
+              "text/html": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "description": "internal"
+          }
+        },
+        "security": [
+          {
+            "mb_session": []
+          },
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "GET /v1/screen/accounts",
+        "tags": [
+          "bff"
+        ],
+        "x-handler": {
+          "function": "(*Server).accounts",
+          "wrappers": [
+            "(*Server).authed"
+          ]
+        },
+        "x-source": "bff/server.go:121"
+      }
+    },
+    "/v1/screen/activity": {
+      "get": {
+        "operationId": "get-v1-screen-activity",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "page",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/screen.Screen"
+                }
+              },
+              "text/html": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "303": {
+            "description": "Redirect to /v1/screen/login.",
+            "headers": {
+              "Location": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "oneOf": [
+                    {
+                      "$ref": "#/components/schemas/bff.errorBody"
+                    },
+                    {
+                      "$ref": "#/components/schemas/screen.Screen"
+                    }
+                  ]
+                }
+              },
+              "text/html": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "description": "unauthenticated"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "oneOf": [
+                    {
+                      "$ref": "#/components/schemas/bff.errorBody"
+                    },
+                    {
+                      "$ref": "#/components/schemas/screen.Screen"
+                    }
+                  ]
+                }
+              },
+              "text/html": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "description": "not_found"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "oneOf": [
+                    {
+                      "$ref": "#/components/schemas/bff.errorBody"
+                    },
+                    {
+                      "$ref": "#/components/schemas/screen.Screen"
+                    }
+                  ]
+                }
+              },
+              "text/html": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "description": "internal"
+          }
+        },
+        "security": [
+          {
+            "mb_session": []
+          },
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "GET /v1/screen/activity",
+        "tags": [
+          "bff"
+        ],
+        "x-handler": {
+          "function": "(*Server).activity",
+          "wrappers": [
+            "(*Server).authed"
+          ]
+        },
+        "x-source": "bff/server.go:122"
+      }
+    },
+    "/v1/screen/login": {
+      "get": {
+        "operationId": "get-v1-screen-login",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/screen.Screen"
+                }
+              },
+              "text/html": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "description": "OK"
+          }
+        },
+        "security": [],
+        "summary": "GET /v1/screen/login",
+        "tags": [
+          "bff"
+        ],
+        "x-handler": {
+          "function": "(*Server).loginScreen"
+        },
+        "x-source": "bff/server.go:118"
+      }
+    },
+    "/v1/screen/product/{index}": {
+      "get": {
+        "operationId": "get-v1-screen-product-index",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "index",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "page",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/screen.Screen"
+                }
+              },
+              "text/html": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "303": {
+            "description": "Redirect to /v1/screen/login.",
+            "headers": {
+              "Location": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "oneOf": [
+                    {
+                      "$ref": "#/components/schemas/bff.errorBody"
+                    },
+                    {
+                      "$ref": "#/components/schemas/screen.Screen"
+                    }
+                  ]
+                }
+              },
+              "text/html": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "description": "unauthenticated"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "oneOf": [
+                    {
+                      "$ref": "#/components/schemas/bff.errorBody"
+                    },
+                    {
+                      "$ref": "#/components/schemas/screen.Screen"
+                    }
+                  ]
+                }
+              },
+              "text/html": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "description": "not_found"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "oneOf": [
+                    {
+                      "$ref": "#/components/schemas/bff.errorBody"
+                    },
+                    {
+                      "$ref": "#/components/schemas/screen.Screen"
+                    }
+                  ]
+                }
+              },
+              "text/html": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "description": "internal"
+          }
+        },
+        "security": [
+          {
+            "mb_session": []
+          },
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "GET /v1/screen/product/{index}",
+        "tags": [
+          "bff"
+        ],
+        "x-handler": {
+          "function": "(*Server).product",
+          "wrappers": [
+            "(*Server).authed"
+          ]
+        },
+        "x-source": "bff/server.go:123"
+      }
+    },
+    "/view/{name}": {
+      "get": {
+        "operationId": "get-view-name",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "name",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "back",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "303": {
+            "description": "Redirect",
+            "headers": {
+              "Location": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "staff_session": []
+          },
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "/view/{name}",
+        "tags": [
+          "staff"
+        ],
+        "x-methods": "any",
+        "x-source": "bff/staff/view.go:28"
+      }
+    },
+    "/wasm/": {
+      "get": {
+        "operationId": "get-wasm",
+        "responses": {
+          "200": {
+            "description": "static files"
+          }
+        },
+        "security": [
+          {
+            "staff_session": []
+          },
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "/wasm/",
+        "tags": [
+          "staff"
+        ],
+        "x-handler": {
+          "wrappers": [
+            "http.StripPrefix"
+          ]
+        },
+        "x-methods": "any",
+        "x-prefix": "serves every path under it",
+        "x-source": "bff/staff/movement.go:83"
       }
     }
   },
-  "components": {
-    "securitySchemes": {
-      "customerBearer": {"type": "http", "scheme": "bearer", "description": "The token `POST /v1/login` returned to a JSON client. Sessions last eight hours and expire after fifteen idle minutes."},
-      "customerCookie": {"type": "apiKey", "in": "cookie", "name": "mb_session", "description": "The session cookie `POST /v1/login` set for a browser, scoped to `/v1`."},
-      "operatorToken": {"type": "http", "scheme": "bearer", "description": "The deployment's operator token (`GOBANK_API_TOKEN`): another program driving the console. A wrong token is refused outright (401), never sent to the login page."},
-      "staffSession": {"type": "apiKey", "in": "cookie", "name": "staff_session", "description": "A signed-in staff user's session, from the staff web's login page. The console routes need the admin or operator role."}
+  "tags": [
+    {
+      "description": "Package bff is the backend-for-frontend for the Model Bank apps.\n\nIt is the only server the thin clients talk to. It owns sessions and login,\nand turns banking data into screen-ready trees (package screen). Apart from\nhealth, the public login screen and login itself, every endpoint requires a\nsession; the customer identity always comes from the session, never from\nthe request.\n\nThe banking core is reached through the core package's CustomerQueries and\nAuthenticator contracts (ADR-0002).",
+      "name": "bff"
     },
-    "parameters": {
-      "page": {"name": "page", "in": "query", "schema": {"type": "integer", "minimum": 1, "default": 1}, "description": "The page of transactions, from 1; anything else is page 1."}
-    },
-    "responses": {
-      "Screen": {
-        "description": "The screen, as JSON or, for a browser, as an HTML document.",
-        "content": {
-          "application/json": {"schema": {"$ref": "#/components/schemas/Screen"}},
-          "text/html": {"schema": {"type": "string"}}
-        }
-      },
-      "BadRequest": {
-        "description": "The request could not be read, or the login fields were empty or too long (`bad_request`).",
-        "content": {"application/json": {"schema": {"$ref": "#/components/schemas/Error"}}, "text/html": {"schema": {"type": "string"}}}
-      },
-      "Unauthenticated": {
-        "description": "No session, or one that has expired (`unauthenticated`): the login screen comes with the error. A browser is sent to `/v1/screen/login` instead (303).",
-        "content": {"application/json": {"schema": {"$ref": "#/components/schemas/Error"}}}
-      },
-      "NotFound": {
-        "description": "No such account or endpoint (`not_found`).",
-        "content": {"application/json": {"schema": {"$ref": "#/components/schemas/Error"}}}
-      },
-      "Internal": {
-        "description": "The bank could not answer (`internal`); the cause is in the server log, never in the response.",
-        "content": {"application/json": {"schema": {"$ref": "#/components/schemas/Error"}}}
-      },
-      "BackToDashboard": {
-        "description": "Done; the browser is sent to the dashboard.",
-        "headers": {"Location": {"schema": {"type": "string"}}}
-      },
-      "InvalidToken": {
-        "description": "The bearer token is not the operator token. Without any credential a browser is sent to the staff login page (303) instead.",
-        "content": {"text/plain": {"schema": {"type": "string", "const": "invalid API token"}}}
-      },
-      "Forbidden": {
-        "description": "The signed-in user's role may not do this.",
-        "content": {"text/plain": {"schema": {"type": "string", "const": "Forbidden"}}}
-      },
-      "MethodNotAllowed": {
-        "description": "Only GET is served here.",
-        "content": {"text/plain": {"schema": {"type": "string"}}}
-      }
-    },
-    "schemas": {
-      "Health": {
-        "type": "object",
-        "required": ["status"],
-        "properties": {"status": {"type": "string", "const": "ok"}}
-      },
-      "Error": {
-        "type": "object",
-        "required": ["error", "message"],
-        "properties": {
-          "error": {"type": "string", "enum": ["bad_request", "unauthenticated", "bad_credentials", "rate_limited", "not_found", "internal"], "description": "A stable code a client can switch on."},
-          "message": {"type": "string", "description": "What to tell the customer."},
-          "screen": {"$ref": "#/components/schemas/Screen", "description": "The screen to show with the error, when there is one: the login screen with its notice."}
-        }
-      },
-      "LoginRequest": {
-        "type": "object",
-        "required": ["customer_id", "password"],
-        "properties": {
-          "customer_id": {"type": "string", "maxLength": 64, "examples": ["cust-000001"]},
-          "password": {"type": "string", "maxLength": 256}
-        }
-      },
-      "LoginResponse": {
-        "type": "object",
-        "required": ["token", "expires_at", "screen"],
-        "properties": {
-          "token": {"type": "string", "description": "The session token, sent back as a bearer."},
-          "expires_at": {"type": "string", "format": "date-time", "description": "When the session ends whatever happens; it also ends after fifteen idle minutes."},
-          "screen": {"$ref": "#/components/schemas/Screen", "description": "The home screen, so the client has nothing more to fetch."}
-        }
-      },
-      "Screen": {
-        "type": "object",
-        "description": "One screen of the app as a tree the client renders: a title, a body of components top to bottom, and the tab bar when the screen has one. `schema` is the tree's version; a client refuses a version it does not know.",
-        "required": ["schema", "id", "path", "title", "body"],
-        "properties": {
-          "schema": {"type": "integer", "const": 1},
-          "id": {"type": "string", "description": "The screen's name: `login`, `accounts`, `activity`, `product`.", "examples": ["accounts"]},
-          "path": {"type": "string", "description": "The GET path that returns this screen."},
-          "title": {"type": "string"},
-          "subtitle": {"type": "string"},
-          "back": {"$ref": "#/components/schemas/Action", "description": "Where the back control goes, when the screen has one."},
-          "body": {"type": "array", "items": {"$ref": "#/components/schemas/Component"}},
-          "nav": {"$ref": "#/components/schemas/Nav"}
-        }
-      },
-      "Component": {
-        "type": "object",
-        "description": "One element of a screen's body. `type` says which fields carry meaning: hero (title as label, value, pairs, tone); row (icon, title, subtitle, value, note, tone, action); tx (as row, no action); heading (text); text (text, tone); details (title, pairs); form (fields, title as the submit label, action.submit); button (title, tone, action).",
-        "required": ["type"],
-        "properties": {
-          "type": {"type": "string", "enum": ["hero", "row", "tx", "heading", "text", "details", "form", "button"]},
-          "tone": {"$ref": "#/components/schemas/Tone"},
-          "icon": {"$ref": "#/components/schemas/Icon"},
-          "title": {"type": "string"},
-          "subtitle": {"type": "string"},
-          "value": {"type": "string", "description": "Money already formatted for display, e.g. `£1,234.56`; the client never does arithmetic on it."},
-          "note": {"type": "string"},
-          "currency": {"type": "string", "description": "ISO 4217 code of the money a row or tx shows; the renderer picks the glyph by it.", "examples": ["GBP"]},
-          "text": {"type": "string"},
-          "pairs": {"type": "array", "items": {"$ref": "#/components/schemas/Pair"}},
-          "fields": {"type": "array", "items": {"$ref": "#/components/schemas/Field"}},
-          "action": {"$ref": "#/components/schemas/Action"}
-        }
-      },
-      "Action": {
-        "type": "object",
-        "description": "What a tap does: exactly one of the three.",
-        "properties": {
-          "screen": {"type": "string", "description": "GET this path and show the screen it returns."},
-          "submit": {"type": "string", "description": "POST the form's values to this path."},
-          "logout": {"type": "boolean", "description": "End the session (POST /v1/logout)."}
-        }
-      },
-      "Nav": {
-        "type": "object",
-        "required": ["active", "tabs"],
-        "properties": {
-          "active": {"type": "string", "description": "The key of the tab this screen belongs to."},
-          "tabs": {"type": "array", "items": {"$ref": "#/components/schemas/Tab"}}
-        }
-      },
-      "Tab": {
-        "type": "object",
-        "required": ["key", "label", "icon", "screen"],
-        "properties": {
-          "key": {"type": "string"},
-          "label": {"type": "string"},
-          "icon": {"$ref": "#/components/schemas/Icon"},
-          "screen": {"type": "string", "description": "The GET path the tab opens."}
-        }
-      },
-      "Pair": {
-        "type": "object",
-        "required": ["label", "value"],
-        "properties": {"label": {"type": "string"}, "value": {"type": "string"}}
-      },
-      "Field": {
-        "type": "object",
-        "required": ["name", "label", "kind"],
-        "properties": {
-          "name": {"type": "string", "description": "The form value's name when submitted."},
-          "label": {"type": "string"},
-          "kind": {"type": "string", "enum": ["text", "password", "number"]},
-          "placeholder": {"type": "string"},
-          "required": {"type": "boolean"}
-        }
-      },
-      "Tone": {
-        "type": "string",
-        "description": "How the client colours the component; empty is neutral.",
-        "enum": ["", "savings", "lending", "positive", "negative", "danger", "muted"]
-      },
-      "Icon": {
-        "type": "string",
-        "description": "The glyph the client draws; empty is none.",
-        "enum": ["", "home", "accounts", "activity", "savings", "lending", "in", "out", "interest", "loan", "bank"]
-      },
-      "Duration": {
-        "type": "string",
-        "description": "A Go duration: `2h`, `90s`, `0s`.",
-        "pattern": "^-?([0-9]+(\\.[0-9]*)?(ns|us|µs|ms|s|m|h))+$|^0$",
-        "examples": ["2h", "0s"]
-      },
-      "Settings": {
-        "type": "object",
-        "properties": {
-          "max_customers": {"type": "integer", "minimum": 0},
-          "payments_per_day": {"type": "integer", "minimum": 0},
-          "day_length": {"$ref": "#/components/schemas/Duration"}
-        }
-      },
-      "AboutStatus": {
-        "type": "object",
-        "required": ["version", "schema", "settings", "sim", "position", "restarts"],
-        "properties": {
-          "version": {"type": "string", "description": "The release this process runs.", "examples": ["v0.39.0"]},
-          "schema": {"type": "array", "description": "Each component's schema version in the database this process opened.", "items": {"$ref": "#/components/schemas/SchemaVersion"}},
-          "settings": {"type": "object", "required": ["day_length", "max_customers"], "properties": {"day_length": {"$ref": "#/components/schemas/Duration"}, "max_customers": {"type": "integer"}}},
-          "sim": {"$ref": "#/components/schemas/AboutSim"},
-          "position": {"$ref": "#/components/schemas/AboutPosition"},
-          "restarts": {"type": "array", "description": "The restart record, newest first, ten rows at most.", "items": {"$ref": "#/components/schemas/AboutRestart"}}
-        }
-      },
-      "SchemaVersion": {
-        "type": "object",
-        "required": ["component", "version"],
-        "properties": {"component": {"type": "string"}, "version": {"type": "integer"}}
-      },
-      "AboutSim": {
-        "type": "object",
-        "description": "The run as it is now, with the two rates a performance run reads.",
-        "required": ["running", "wall", "clock", "warp", "day_ends_in", "adding_customers", "customers_per_sec", "account_days_per_12h", "last_day_duration", "last_day_accounts", "owed"],
-        "properties": {
-          "running": {"type": "boolean"},
-          "wall": {"type": "string", "format": "date-time", "description": "The wall clock now, UTC."},
-          "clock": {"type": "string", "format": "date-time", "description": "The bank's clock now (simulated time), UTC."},
-          "warp": {"type": "number", "description": "Simulated seconds per wall second; 0 when flat out."},
-          "day_ends_in": {"$ref": "#/components/schemas/Duration", "description": "`0s` when flat out or stopped."},
-          "adding_customers": {"type": "boolean", "description": "A batch add is running."},
-          "customers_per_sec": {"type": "number", "description": "The live rate while a batch add runs, else the last batch's."},
-          "account_days_per_12h": {"type": "integer", "description": "Account days per 12h at the pass's measured whole-day rate."},
-          "last_day_duration": {"type": "string", "description": "A Go duration; empty before the first day."},
-          "last_day_accounts": {"type": "integer", "description": "The accounts the last whole day ran over."},
-          "day_refused": {"type": "string", "description": "Why the bank would not follow the clock when last asked; absent when it did."},
-          "owed": {"$ref": "#/components/schemas/AboutOwed"},
-          "next_event": {"type": "string", "description": "The event the run loop waits for, e.g. `payment at 2020-03-04T10:32:00Z`; absent when stopped."}
-        }
-      },
-      "AboutOwed": {
-        "type": "object",
-        "description": "What the bank owed when last asked; a drill waits for `at_rest`.",
-        "required": ["at_rest", "days", "unprojected", "events"],
-        "properties": {
-          "at_rest": {"type": "boolean"},
-          "days": {"type": "integer", "description": "Business days the clock has passed that the bank has not run."},
-          "unprojected": {"type": "integer", "description": "Accounts whose position is behind the ledger."},
-          "events": {"type": "integer", "description": "Root events due and not done: cascades in progress."}
-        }
-      },
-      "AboutPosition": {
-        "type": "object",
-        "description": "The bank's position: what the dashboard leads with.",
-        "required": ["day", "day_count", "customers", "savings", "lending"],
-        "properties": {
-          "day": {"type": "string", "format": "date", "description": "The bank's business day."},
-          "day_count": {"type": "integer", "description": "Business days run since the bank opened."},
-          "customers": {"type": "integer"},
-          "savings": {"type": "string", "description": "Formatted as the dashboard shows it.", "examples": ["£135,459.28"]},
-          "lending": {"type": "string", "description": "Formatted as the dashboard shows it."}
-        }
-      },
-      "AboutRestart": {
-        "type": "object",
-        "description": "One row of the restart record, read with the row before it.",
-        "required": ["version", "started_at", "day_count", "customers", "previous_version", "previous_stopped_at", "downtime", "intact", "stopped_at", "stop_day_count", "stop_customers"],
-        "properties": {
-          "version": {"type": "string"},
-          "started_at": {"type": "string", "format": "date-time"},
-          "day_count": {"type": "integer", "description": "The position found on starting."},
-          "customers": {"type": "integer"},
-          "previous_version": {"type": "string", "description": "Empty for unrecorded or none."},
-          "previous_stopped_at": {"type": ["string", "null"], "format": "date-time"},
-          "downtime": {"type": "string", "description": "A Go duration; empty when unknown."},
-          "intact": {"type": ["boolean", "null"], "description": "Day and customers equal across the stop; null when the previous row cannot say."},
-          "stopped_at": {"type": ["string", "null"], "format": "date-time", "description": "Null while this process runs."},
-          "stop_day_count": {"type": "integer"},
-          "stop_customers": {"type": "integer"}
-        }
-      }
+    {
+      "description": "Package staff is the staff web of the Model Bank: the login (story\n1.7.1), the pages a member of staff reads the bank through (accounting,\nproducts, customers, payments, treasury, reports, about and the\ndocumentation), the role the signed-in user holds and the PII\nauthorisation that gate what they see, the layout every page is\nrendered in, and the simulation console when there is one (ADR-0002\nstage 6, stories 1.6.3 and 1.6.4).\n\nIt reads the bank through core.StaffQueries, acts on it through\ncore.Commands, checks logins through core.Users and drives the\nsimulation through Console, and knows nothing else of it. The BFF mounts\nit beside the customer routes (bff.Config.Staff) and its sessions are\nkept in the BFF's store.",
+      "name": "staff"
     }
-  }
+  ]
 }
