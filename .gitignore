@@ -1,6 +1,7 @@
 .claude/settings.json
 .vscode
 .tp-release-comment
+.tp-release-inflight
 
 .task/
 bff/staff/diagrams/*.svg
