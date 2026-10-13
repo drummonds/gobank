@@ -233,11 +233,7 @@ func (f *facts) fail(err error) {
 }
 
 func (f *facts) Parameter(key string, day time.Time) (gbp.Param, error) {
-	param, err := f.p.resolve(f.ctx, f.books.Querier(), f.prod, f.a.ID, key, startOfDay(day), f.knownAt)
-	if err == nil {
-		f.reads = append(f.reads, param)
-	}
-	return param, err
+	return f.p.versionResolver(f.ctx, f.books.Querier(), f.prod, f.a.ID, f.knownAt, &f.reads).Parameter(key, day)
 }
 
 // readsText is the parameters read, "key=value" in the order first read,
@@ -258,42 +254,141 @@ func (f *facts) readsText() string {
 	return strings.Join(parts, " ")
 }
 
-// resolve is a parameter for a day: resolveAt the end of the day
-// (ADR-0009: a setting is effective from an instant, and a noon
-// publication counts for its day).
+// resolver is the parameter resolution of ADR-0006 for one declarer: a
+// product's rules, for an account on the product, or the bank's policy.
+// A derived parameter is its formula over its source, or its algorithm
+// run over the resolver itself; a declared one is the latest setting in
+// effect at the instant at its scope, as known at knownAt, or, at the
+// declarer's own scope, the value it publishes. A read at the bank scope
+// that the policy declares is the policy's to answer, so a product that
+// tracks the bank's rate reads the policy's algorithm. Every read made
+// by day, an algorithm's included, is logged where the facts ask.
+type resolver struct {
+	p       *Products
+	ctx     context.Context
+	q       ledger.Querier
+	who     string // for errors: "easy-access v2", "Model Bank policy v1"
+	decls   []gbp.Declaration
+	own     gbp.Scope // the scope whose published values are the declarer's
+	owner   func(gbp.Scope) string
+	knownAt time.Time
+	reads   *[]gbp.Param
+	policy  *resolver // the policy's, for a version's reads at the bank scope; nil for the policy itself, or with none
+}
+
+// versionResolver resolves a product's declarations for an account on it,
+// logging reads to reads when given.
+func (p *Products) versionResolver(ctx context.Context, q ledger.Querier, prod Product, accountID string, knownAt time.Time, reads *[]gbp.Param) *resolver {
+	return &resolver{p: p, ctx: ctx, q: q, who: fmt.Sprintf("%s v%d", prod.RulesID, prod.RulesVersion), decls: prod.Rules.Parameters(),
+		own: gbp.ScopeVersion, owner: func(scope gbp.Scope) string { return p.owner(scope, prod, accountID) },
+		knownAt: knownAt, reads: reads, policy: p.policyResolver(ctx, q, knownAt, reads)}
+}
+
+// policyResolver resolves the policy's declarations; nil with no policy.
+func (p *Products) policyResolver(ctx context.Context, q ledger.Querier, knownAt time.Time, reads *[]gbp.Param) *resolver {
+	if p.policy == nil {
+		return nil
+	}
+	return &resolver{p: p, ctx: ctx, q: q, who: fmt.Sprintf("%s v%d", p.policy.Name(), p.policy.Version()), decls: p.policy.Parameters(),
+		own: gbp.ScopeBank, owner: func(scope gbp.Scope) string { return p.owner(scope, Product{Currency: Currency}, "") },
+		knownAt: knownAt, reads: reads}
+}
+
+// Parameter is the value for a day: at the end of the day (ADR-0009: a
+// setting is effective from an instant, and a noon publication counts
+// for its day). Logged.
+func (r *resolver) Parameter(key string, day time.Time) (gbp.Param, error) {
+	param, err := r.at(key, parameters.EndOfDay(day))
+	if err == nil {
+		r.log(param)
+	}
+	return param, err
+}
+
+func (r *resolver) log(p gbp.Param) {
+	if r.reads != nil {
+		*r.reads = append(*r.reads, p)
+	}
+}
+
+// at is the value at an instant.
+func (r *resolver) at(key string, at time.Time) (gbp.Param, error) {
+	d, ok := declared(r.decls, key)
+	if !ok {
+		return gbp.Param{}, fmt.Errorf("parameter %s: not declared by %s", key, r.who)
+	}
+	if d.Scope == gbp.ScopeBank && r.policy != nil {
+		if _, ok := declared(r.policy.decls, key); ok {
+			return r.policy.at(key, at)
+		}
+	}
+	switch {
+	case d.Derived != nil:
+		source, err := r.at(d.Derived.Source, at)
+		if err != nil {
+			return gbp.Param{}, err
+		}
+		r.log(source) // the source is what produced the value: on the record
+		return d.Parse(strconv.FormatInt(d.Derived.Apply(source.Bps()), 10))
+	case d.Algorithm != nil:
+		text, err := d.Algorithm(r, startOfDay(at))
+		if err != nil {
+			return gbp.Param{}, fmt.Errorf("parameter %s: %w", key, err)
+		}
+		return d.Parse(text)
+	}
+	text, found, err := r.p.params.Resolve(r.ctx, r.q, d.Scope, r.owner(d.Scope), key, at, r.knownAt)
+	if err != nil {
+		return gbp.Param{}, err
+	}
+	if !found && d.Scope == r.own && d.Published != "" {
+		text, found = d.Published, true
+	}
+	if !found {
+		return gbp.Param{}, fmt.Errorf("parameter %s: no %s setting for %s at %s", key, d.Scope, r.owner(d.Scope), at.Format(time.RFC3339))
+	}
+	return d.Parse(text)
+}
+
+func declared(decls []gbp.Declaration, key string) (gbp.Declaration, bool) {
+	for _, d := range decls {
+		if d.Key == key {
+			return d, true
+		}
+	}
+	return gbp.Declaration{}, false
+}
+
+// resolve is a product's parameter for a day, for an account on it, as
+// a rule reads it: at the end of the day.
 func (p *Products) resolve(ctx context.Context, q ledger.Querier, prod Product, accountID, key string, day, knownAt time.Time) (gbp.Param, error) {
 	return p.resolveAt(ctx, q, prod, accountID, key, parameters.EndOfDay(day), knownAt)
 }
 
-// resolveAt is the parameter resolution of ADR-0006 at an instant: a
-// derived parameter from its source and the formula; a declared one from
-// the latest setting in effect at the instant at its scope, as known at
-// knownAt, or, at the product's scope (the contract's "version" scope),
-// the value the rules publish. A market-scope parameter is the product's
-// currency's.
+// resolveAt is a product's parameter at an instant, for an account on it.
 func (p *Products) resolveAt(ctx context.Context, q ledger.Querier, prod Product, accountID, key string, at, knownAt time.Time) (gbp.Param, error) {
-	d, ok := gbp.Declared(prod.Rules, key)
-	if !ok {
-		return gbp.Param{}, fmt.Errorf("parameter %s: not declared by %s v%d", key, prod.RulesID, prod.RulesVersion)
+	return p.versionResolver(ctx, q, prod, accountID, knownAt, nil).at(key, at)
+}
+
+// ProductParameter is one of a product's parameters at an instant, as
+// known at knownAt, with no account: what the bank's pages show, and the
+// rate a product pays now. A product this build does not carry has none.
+func (p *Products) ProductParameter(ctx context.Context, q ledger.Querier, prod Product, key string, at, knownAt time.Time) (gbp.Param, error) {
+	if !prod.Carried() {
+		return gbp.Param{}, fmt.Errorf("%w: %s", ErrNotCarried, prod.ID)
 	}
-	if d.Derived != nil {
-		source, err := p.resolveAt(ctx, q, prod, accountID, d.Derived.Source, at, knownAt)
-		if err != nil {
-			return gbp.Param{}, err
-		}
-		return d.Parse(strconv.FormatInt(d.Derived.Apply(source.Bps()), 10))
+	return p.resolveAt(ctx, q, prod, "", key, at, knownAt)
+}
+
+// BankParameter is one of the policy's parameters at an instant, as
+// known at knownAt: a published value the bank may have set, or a rate
+// the policy derives. Refused with no policy.
+func (p *Products) BankParameter(ctx context.Context, q ledger.Querier, key string, at, knownAt time.Time) (gbp.Param, error) {
+	r := p.policyResolver(ctx, q, knownAt, nil)
+	if r == nil {
+		return gbp.Param{}, errors.New("products: the bank has no policy")
 	}
-	text, found, err := p.params.Resolve(ctx, q, d.Scope, p.owner(d.Scope, prod, accountID), key, at, knownAt)
-	if err != nil {
-		return gbp.Param{}, err
-	}
-	if !found && d.Scope == gbp.ScopeVersion && d.Published != "" {
-		text, found = d.Published, true
-	}
-	if !found {
-		return gbp.Param{}, fmt.Errorf("parameter %s: no %s setting for %s at %s", key, d.Scope, p.owner(d.Scope, prod, accountID), at.Format(time.RFC3339))
-	}
-	return d.Parse(text)
+	return r.at(key, at)
 }
 
 // owner is whose setting a parameter at a scope is, for an account on a

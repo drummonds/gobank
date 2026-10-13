@@ -452,6 +452,7 @@ func (b *Bank) Products(ctx context.Context) ([]core.Product, error) {
 	b.open.RLock()
 	defer b.open.RUnlock()
 	k := b.book.get(ctx)
+	now := b.clock.Now()
 	byProduct, err := b.products.AccountsByProduct(ctx)
 	if err != nil {
 		return nil, err
@@ -460,19 +461,21 @@ func (b *Bank) Products(ctx context.Context) ([]core.Product, error) {
 	out := make([]core.Product, 0, len(catalogue))
 	for _, prod := range catalogue {
 		var params []core.Parameter
+		var rate int64
 		if prod.Carried() {
 			for _, d := range prod.Rules.Parameters() {
-				value := d.Published
-				if d.Derived != nil {
-					value = describeDerivation(*d.Derived)
-				}
-				params = append(params, core.Parameter{Key: d.Key, Scope: string(d.Scope), Kind: string(d.Kind), Value: value, Derived: d.Derived != nil})
+				params = append(params, core.Parameter{Key: d.Key, Scope: string(d.Scope), Kind: string(d.Kind), Value: publishedOrDerived(d), Derived: d.IsDerived()})
+			}
+			// The rate the product pays now: resolved, so a tracker's is
+			// the bank's rate through its derivation.
+			if p, err := b.products.ProductParameter(ctx, nil, prod, "rate_bps", now, now); err == nil {
+				rate = p.Bps()
 			}
 		}
 		out = append(out, core.Product{
 			ID: prod.ID, Name: prod.Name, Rules: prod.RulesID, RulesVersion: prod.RulesVersion, Carried: prod.Carried(),
 			Family: string(prod.Family()), Currency: prod.Currency,
-			RateBps: prod.RateBps(), Parameters: params, Description: prod.Description,
+			RateBps: rate, Parameters: params, Description: prod.Description,
 			Adopted: prod.Adopted, ModuleVersion: prod.ModuleVersion, OnSale: prod.OnSale(),
 			Accounts: byProduct[prod.ID], Balance: k.products[prod.ID].balance,
 		})
@@ -497,17 +500,18 @@ func (b *Bank) UpcomingSettings(ctx context.Context) ([]core.Setting, error) {
 }
 
 // Parameter implements core.ProductQueries: one parameter by its owner
-// and key. A product's is as its rules declare it, the value in force the
-// latest setting effective by the clock's instant or, failing one, the
-// published value; a currency's is its market's risk-free rate, which the
-// feed writes and nobody sets. The bank has none of its own until policy
-// as code.
+// and key. A product's is as its rules declare it, the value in force
+// resolved at the clock's instant (a setting, the published value, or a
+// derivation); a currency's is its market's risk-free rate, which the feed
+// writes and nobody sets; the bank's own are its policy's, settable where
+// the policy publishes a value and derived where it does not.
 func (b *Bank) Parameter(ctx context.Context, owner, key string) (core.ParameterDetail, error) {
 	b.open.RLock()
 	defer b.open.RUnlock()
 	now := b.clock.Now()
 	var d gbp.Declaration
 	detail := core.ParameterDetail{Owner: owner, Key: key}
+	var resolve func() (gbp.Param, error) // the value in force, by whose parameter it is
 	if prod, ok := b.products.ByID(owner); ok {
 		if !prod.Carried() {
 			return core.ParameterDetail{}, core.ErrNotFound
@@ -516,22 +520,34 @@ func (b *Bank) Parameter(ctx context.Context, owner, key string) (core.Parameter
 			return core.ParameterDetail{}, core.ErrNotFound
 		}
 		detail.Family = string(prod.Family())
-		detail.Settable = d.Scope == gbp.ScopeVersion && d.Derived == nil
-		detail.InForce = d.Published
+		detail.Settable = d.Scope == gbp.ScopeVersion && !d.IsDerived()
+		resolve = func() (gbp.Param, error) { return b.products.ProductParameter(ctx, nil, prod, key, now, now) }
 	} else if src, ok := market.ByCurrency(owner); ok && key == gbp.RiskFreeRateKey {
 		d = gbp.Declaration{Key: key, Scope: gbp.ScopeMarket, Kind: gbp.KindBps, Description: src.Rate + ", as " + src.Name + " publishes it"}
+		resolve = func() (gbp.Param, error) {
+			text, found, err := b.settings.Resolve(ctx, nil, d.Scope, owner, key, now, now)
+			if err != nil || !found {
+				return gbp.Param{}, err
+			}
+			return d.Parse(text)
+		}
+	} else if pol := b.products.Policy(); owner == core.BankOwner && pol != nil {
+		if d, ok = policyDeclaration(pol, key); !ok || d.Scope != gbp.ScopeBank {
+			return core.ParameterDetail{}, core.ErrNotFound
+		}
+		detail.Settable = d.Published != "" && !d.IsDerived()
+		resolve = func() (gbp.Param, error) { return b.products.BankParameter(ctx, nil, key, now, now) }
 	} else {
 		return core.ParameterDetail{}, core.ErrNotFound
 	}
 	detail.Scope, detail.Kind, detail.Description = string(d.Scope), string(d.Kind), d.Description
-	if d.Derived != nil {
-		detail.Derived, detail.Derivation = true, describeDerivation(*d.Derived)
-	} else {
-		if value, ok, err := b.settings.Resolve(ctx, nil, d.Scope, owner, key, now, now); err != nil {
-			return core.ParameterDetail{}, err
-		} else if ok {
-			detail.InForce = value
+	detail.Derived, detail.Derivation = d.IsDerived(), describeDeclaration(d)
+	if d.Scope != gbp.ScopeAccount {
+		p, err := resolve()
+		if err != nil {
+			log.Printf("bank: parameter %s/%s in force: %v", owner, key, err)
 		}
+		detail.InForce = p.Text
 	}
 	upcoming, err := b.settings.Upcoming(ctx, nil, now)
 	if err != nil {
@@ -545,29 +561,79 @@ func (b *Bank) Parameter(ctx context.Context, owner, key string) (core.Parameter
 	return detail, nil
 }
 
+// policyDeclaration finds the policy's declaration of key.
+func policyDeclaration(pol gbp.Policy, key string) (gbp.Declaration, bool) {
+	for _, d := range pol.Parameters() {
+		if d.Key == key {
+			return d, true
+		}
+	}
+	return gbp.Declaration{}, false
+}
+
+// Policy implements core.PolicyQueries: the bank's policy and its
+// bank-scoped parameters, each with the value in force at the clock's
+// instant.
+func (b *Bank) Policy(ctx context.Context) (core.Policy, error) {
+	b.open.RLock()
+	defer b.open.RUnlock()
+	pol := b.products.Policy()
+	if pol == nil {
+		return core.Policy{}, core.ErrNotFound
+	}
+	now := b.clock.Now()
+	out := core.Policy{Name: pol.Name(), Version: pol.Version()}
+	for _, d := range pol.Parameters() {
+		if d.Scope != gbp.ScopeBank {
+			continue
+		}
+		p := core.PolicyParameter{Parameter: core.Parameter{Key: d.Key, Scope: string(d.Scope), Kind: string(d.Kind), Value: publishedOrDerived(d), Derived: d.IsDerived()}}
+		if v, err := b.products.BankParameter(ctx, nil, d.Key, now, now); err == nil {
+			p.InForce = v.Text
+		}
+		out.Parameters = append(out.Parameters, p)
+	}
+	return out, nil
+}
+
 // SetParameter implements core.ProductCommands: a staff member's setting
-// of one of a product's own parameters, decided at the clock's instant
-// and effective from the instant given, not before now, written under a
-// root event raised at that instant (ADR-0011): the decision is on the
-// setting, the event is the bank's work when the clock gets there.
+// of one of a product's own parameters, or one the bank's policy
+// publishes, decided at the clock's instant and effective from the
+// instant given, not before now, written under a root event raised at
+// that instant (ADR-0011): the decision is on the setting, the event is
+// the bank's work when the clock gets there.
 func (b *Bank) SetParameter(ctx context.Context, s core.ParameterSetting) error {
 	b.open.RLock()
 	defer b.open.RUnlock()
-	prod, ok := b.products.ByID(s.ProductID)
-	if !ok {
+	var d gbp.Declaration
+	var scope gbp.Scope
+	if prod, ok := b.products.ByID(s.Owner); ok {
+		if !prod.Carried() {
+			return fmt.Errorf("%w: %s: this build does not carry its rules", core.ErrInvalidSetting, s.Owner)
+		}
+		d, ok = gbp.Declared(prod.Rules, s.Key)
+		switch {
+		case !ok:
+			return fmt.Errorf("%w: %s v%d declares no %s", core.ErrInvalidSetting, prod.RulesID, prod.RulesVersion, s.Key)
+		case d.IsDerived():
+			return fmt.Errorf("%w: %s is derived, not set", core.ErrInvalidSetting, s.Key)
+		case d.Scope != gbp.ScopeVersion:
+			return fmt.Errorf("%w: %s is at the %s scope, not the product's", core.ErrInvalidSetting, s.Key, d.Scope)
+		}
+		scope = gbp.ScopeVersion
+	} else if pol := b.products.Policy(); s.Owner == core.BankOwner && pol != nil {
+		d, ok = policyDeclaration(pol, s.Key)
+		switch {
+		case !ok || d.Scope != gbp.ScopeBank:
+			return fmt.Errorf("%w: %s v%d declares no %s at the bank scope", core.ErrInvalidSetting, pol.Name(), pol.Version(), s.Key)
+		case d.IsDerived():
+			return fmt.Errorf("%w: %s is derived by the policy, not set", core.ErrInvalidSetting, s.Key)
+		case d.Published == "":
+			return fmt.Errorf("%w: %s is not the bank's to set", core.ErrInvalidSetting, s.Key)
+		}
+		scope = gbp.ScopeBank
+	} else {
 		return core.ErrNotFound
-	}
-	if !prod.Carried() {
-		return fmt.Errorf("%w: %s: this build does not carry its rules", core.ErrInvalidSetting, s.ProductID)
-	}
-	d, ok := gbp.Declared(prod.Rules, s.Key)
-	switch {
-	case !ok:
-		return fmt.Errorf("%w: %s v%d declares no %s", core.ErrInvalidSetting, prod.RulesID, prod.RulesVersion, s.Key)
-	case d.Derived != nil:
-		return fmt.Errorf("%w: %s is derived, not set", core.ErrInvalidSetting, s.Key)
-	case d.Scope != gbp.ScopeVersion:
-		return fmt.Errorf("%w: %s is at the %s scope, not the product's", core.ErrInvalidSetting, s.Key, d.Scope)
 	}
 	param, err := d.Parse(s.Value)
 	if err != nil {
@@ -589,7 +655,7 @@ func (b *Bank) SetParameter(ctx context.Context, s core.ParameterSetting) error 
 		_ = tx.Rollback()
 		return err
 	}
-	if err := b.settings.Set(ctx, tx, parameters.Setting{Scope: gbp.ScopeVersion, Owner: prod.ID, Key: d.Key, Value: param.Text, Effective: s.Effective, Decided: now, By: s.By, Cause: root.ID}); err != nil {
+	if err := b.settings.Set(ctx, tx, parameters.Setting{Scope: scope, Owner: s.Owner, Key: d.Key, Value: param.Text, Effective: s.Effective, Decided: now, By: s.By, Cause: root.ID}); err != nil {
 		_ = tx.Rollback()
 		return err
 	}
@@ -598,6 +664,27 @@ func (b *Bank) SetParameter(ctx context.Context, s core.ParameterSetting) error 
 		return fmt.Errorf("bank: set parameter: commit: %w", err)
 	}
 	return nil
+}
+
+// publishedOrDerived is a declaration's value for a listing: what it
+// publishes, or its derivation in words.
+func publishedOrDerived(d gbp.Declaration) string {
+	if d.IsDerived() {
+		return describeDeclaration(d)
+	}
+	return d.Published
+}
+
+// describeDeclaration is a derived parameter's derivation in words: a
+// formula from its parts, an algorithm as its declarer describes it.
+func describeDeclaration(d gbp.Declaration) string {
+	switch {
+	case d.Derived != nil:
+		return describeDerivation(*d.Derived)
+	case d.Algorithm != nil:
+		return d.Description
+	}
+	return ""
 }
 
 // describeDerivation is a derived parameter in words: "boe.base_rate_bps − 15 bps, floor 0".

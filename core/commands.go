@@ -109,11 +109,11 @@ type MarketCommands interface {
 }
 
 // ParameterSetting is a staff member setting one of a product's declared
-// parameters, effective from an instant (ADR-0006): decided now, in
-// force from then, and an event on the simulation's timeline until it is
-// (ADR-0010).
+// parameters, or one the bank's policy publishes, effective from an
+// instant (ADR-0006): decided now, in force from then, and an event on
+// the simulation's timeline until it is (ADR-0010).
 type ParameterSetting struct {
-	ProductID string
+	Owner     string // the product's ID, or "bank" for the policy's
 	Key       string
 	Value     string
 	Effective time.Time
@@ -123,8 +123,9 @@ type ParameterSetting struct {
 // ProductCommands is the products component's write side. SetParameter
 // refuses, with ErrInvalidSetting, a product the bank does not carry, a
 // key the product's rules do not declare at the product's scope or
-// derive, a value that is not the parameter's kind, and an effective
-// instant before the bank's clock; an unknown product is ErrNotFound.
+// derive, a key the policy does not publish, a value that is not the
+// parameter's kind, and an effective instant before the bank's clock; an
+// unknown owner is ErrNotFound.
 type ProductCommands interface {
 	SetParameter(ctx context.Context, s ParameterSetting) error
 }

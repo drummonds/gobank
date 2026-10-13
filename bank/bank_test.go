@@ -18,6 +18,7 @@ import (
 	"git.bytestone.uk/hum3/gobank/bank/schema"
 	"git.bytestone.uk/hum3/gobank/core"
 	"git.bytestone.uk/hum3/gobank/modelbank"
+	policy "git.bytestone.uk/hum3/gobank/modelbank/policy/v1"
 )
 
 // A bank in a test: over an in-memory database with every component's
@@ -509,7 +510,7 @@ func TestProfitAndLossAndBookFollowTheLedger(t *testing.T) {
 	if bs.Deposits != savings || bs.Loans != lending || bs.RetainedEarnings != pl.NetProfit() {
 		t.Errorf("balance sheet %+v", bs)
 	}
-	if books, _ := f.bank.Products(f.ctx); len(books) != 6 {
+	if books, _ := f.bank.Products(f.ctx); len(books) != 7 {
 		t.Errorf("%d products", len(books))
 	}
 }
@@ -734,8 +735,8 @@ func TestProductsAreTheBookPerProduct(t *testing.T) {
 		t.Fatal(err)
 	}
 	products, err := f.bank.Products(f.ctx)
-	if err != nil || len(products) != 6 {
-		t.Fatalf("Products = %d, %v; want the 6 of the catalogue", len(products), err)
+	if err != nil || len(products) != 7 {
+		t.Fatalf("Products = %d, %v; want the 7 of the catalogue", len(products), err)
 	}
 	pos := f.position() // the loan is what the headroom allowed
 	want := map[string]struct {
@@ -949,7 +950,7 @@ func TestSetParameterIsUpcomingThenInForce(t *testing.T) {
 		t.Fatal(err)
 	}
 	later := opening.Add(36 * time.Hour)
-	if err := f.bank.SetParameter(f.ctx, core.ParameterSetting{ProductID: "easy-access", Key: "rate_bps", Value: "175", Effective: later, By: "alice"}); err != nil {
+	if err := f.bank.SetParameter(f.ctx, core.ParameterSetting{Owner: "easy-access", Key: "rate_bps", Value: "175", Effective: later, By: "alice"}); err != nil {
 		t.Fatal(err)
 	}
 	up, err := f.bank.UpcomingSettings(f.ctx)
@@ -973,16 +974,16 @@ func TestSetParameterIsUpcomingThenInForce(t *testing.T) {
 		t.Errorf("in force but still upcoming: %+v", up)
 	}
 	for _, bad := range []core.ParameterSetting{
-		{ProductID: "easy-access", Key: "no-such", Value: "1", Effective: later.Add(time.Hour), By: "alice"},
-		{ProductID: "easy-access", Key: "rate_bps", Value: "x", Effective: later.Add(time.Hour), By: "alice"},
-		{ProductID: "easy-access", Key: "rate_bps", Value: "1", Effective: later.Add(-time.Hour), By: "alice"},
-		{ProductID: "easy-access", Key: "rate_bps", Value: "1", Effective: later.Add(time.Hour)},
+		{Owner: "easy-access", Key: "no-such", Value: "1", Effective: later.Add(time.Hour), By: "alice"},
+		{Owner: "easy-access", Key: "rate_bps", Value: "x", Effective: later.Add(time.Hour), By: "alice"},
+		{Owner: "easy-access", Key: "rate_bps", Value: "1", Effective: later.Add(-time.Hour), By: "alice"},
+		{Owner: "easy-access", Key: "rate_bps", Value: "1", Effective: later.Add(time.Hour)},
 	} {
 		if err := f.bank.SetParameter(f.ctx, bad); !errors.Is(err, core.ErrInvalidSetting) {
 			t.Errorf("SetParameter(%+v) = %v, want ErrInvalidSetting", bad, err)
 		}
 	}
-	if err := f.bank.SetParameter(f.ctx, core.ParameterSetting{ProductID: "nope", Key: "rate_bps", Value: "1", Effective: later.Add(time.Hour), By: "alice"}); !errors.Is(err, core.ErrNotFound) {
+	if err := f.bank.SetParameter(f.ctx, core.ParameterSetting{Owner: "nope", Key: "rate_bps", Value: "1", Effective: later.Add(time.Hour), By: "alice"}); !errors.Is(err, core.ErrNotFound) {
 		t.Errorf("unknown product: %v, want ErrNotFound", err)
 	}
 }
@@ -1028,7 +1029,7 @@ func TestCommandsWriteRootsAndTheirEffectsCarryTheCause(t *testing.T) {
 		t.Fatal(err)
 	}
 	later := opening.Add(36 * time.Hour)
-	if err := f.bank.SetParameter(f.ctx, core.ParameterSetting{ProductID: "easy-access", Key: "rate_bps", Value: "175", Effective: later, By: "alice"}); err != nil {
+	if err := f.bank.SetParameter(f.ctx, core.ParameterSetting{Owner: "easy-access", Key: "rate_bps", Value: "175", Effective: later, By: "alice"}); err != nil {
 		t.Fatal(err)
 	}
 	byKind := func() map[string][]core.Cascade {
@@ -1192,7 +1193,7 @@ func TestKillAfterAnyEffectAndReplayLeavesTheSameFacts(t *testing.T) {
 			}
 			return nil
 		})
-		if err := f.bank.SetParameter(f.ctx, core.ParameterSetting{ProductID: "easy-access", Key: "rate_bps", Value: "175", Effective: feb1.Add(9 * time.Hour), By: "alice"}); err != nil {
+		if err := f.bank.SetParameter(f.ctx, core.ParameterSetting{Owner: "easy-access", Key: "rate_bps", Value: "175", Effective: feb1.Add(9 * time.Hour), By: "alice"}); err != nil {
 			t.Fatal(err)
 		}
 		for day := jan25.AddDate(0, 0, 1); !day.After(feb1.AddDate(0, 0, 1)); day = day.AddDate(0, 0, 1) {
@@ -1309,7 +1310,7 @@ func TestParameterDetail(t *testing.T) {
 		t.Errorf("Parameter(easy-access, rate_bps) = %+v, %v; want the published 150 in force, settable, nothing upcoming", d, err)
 	}
 	later := opening.Add(36 * time.Hour)
-	if err := f.bank.SetParameter(f.ctx, core.ParameterSetting{ProductID: "easy-access", Key: "rate_bps", Value: "175", Effective: later, By: "alice"}); err != nil {
+	if err := f.bank.SetParameter(f.ctx, core.ParameterSetting{Owner: "easy-access", Key: "rate_bps", Value: "175", Effective: later, By: "alice"}); err != nil {
 		t.Fatal(err)
 	}
 	d, _ = f.bank.Parameter(f.ctx, "easy-access", "rate_bps")
@@ -1332,9 +1333,135 @@ func TestParameterDetail(t *testing.T) {
 	if err != nil || m.Owner != "GBP" || m.Scope != "market" || m.Kind != "bps" || m.Settable || m.InForce == "" || !strings.Contains(m.Description, "Bank of England") {
 		t.Errorf("Parameter(GBP, risk_free_rate_bps) = %+v, %v; want the market's rate, in force, not settable", m, err)
 	}
-	for _, unknown := range [][2]string{{"easy-access", "no-such"}, {"nope", "rate_bps"}, {"USD", gbp.RiskFreeRateKey}, {"GBP", "rate_bps"}, {"bank", "spread_bps"}} {
+	for _, unknown := range [][2]string{{"easy-access", "no-such"}, {"nope", "rate_bps"}, {"USD", gbp.RiskFreeRateKey}, {"GBP", "rate_bps"}, {"bank", "spread_bps"}, {"bank", gbp.RiskFreeRateKey}} {
 		if _, err := f.bank.Parameter(f.ctx, unknown[0], unknown[1]); !errors.Is(err, core.ErrNotFound) {
 			t.Errorf("Parameter(%s, %s) = %v, want ErrNotFound", unknown[0], unknown[1], err)
 		}
+	}
+}
+
+// The bank's own parameters are its policy's (story 1.8.9): a spread the
+// policy publishes is in force at the published value until the bank
+// sets it, from an instant, like a product's; a rate the policy derives
+// is read, described in words, and refused when set.
+func TestTheBanksParametersAreItsPolicys(t *testing.T) {
+	f := open(t)
+	spread, err := f.bank.Parameter(f.ctx, "bank", policy.SavingsSpreadKey)
+	if err != nil || spread.Owner != "bank" || spread.Scope != "bank" || spread.Kind != "bps" || spread.Derived || spread.InForce != "-50" || !spread.Settable || spread.Family != "" {
+		t.Errorf("Parameter(bank, savings_spread_bps) = %+v, %v; want the published −50 in force, settable", spread, err)
+	}
+	rate, err := f.bank.Parameter(f.ctx, "bank", gbp.SavingsRateKey)
+	if err != nil || !rate.Derived || rate.Settable || rate.InForce != "450" || !strings.Contains(rate.Derivation, "savings_lag_days") {
+		t.Errorf("Parameter(bank, savings_rate_bps) = %+v, %v; want 450 (5%% − 50 bps) in force, derived, the algorithm in words", rate, err)
+	}
+	pol, err := f.bank.Policy(f.ctx)
+	if err != nil || pol.Name == "" || pol.Version != 1 || len(pol.Parameters) != 6 {
+		t.Fatalf("Policy() = %+v, %v; want the policy's six bank-scoped parameters", pol, err)
+	}
+	for _, p := range pol.Parameters {
+		if p.Scope != "bank" || p.InForce == "" || (p.Derived && p.Value == "") {
+			t.Errorf("policy parameter %+v: bank-scoped, in force, derived ones described", p)
+		}
+	}
+	later := opening.Add(36 * time.Hour)
+	if err := f.bank.SetParameter(f.ctx, core.ParameterSetting{Owner: "bank", Key: policy.SavingsSpreadKey, Value: "-100", Effective: later, By: "alice"}); err != nil {
+		t.Fatal(err)
+	}
+	spread, _ = f.bank.Parameter(f.ctx, "bank", policy.SavingsSpreadKey)
+	if spread.InForce != "-50" || len(spread.Upcoming) != 1 || spread.Upcoming[0].Scope != "bank" || spread.Upcoming[0].Owner != "bank" || spread.Upcoming[0].Value != "-100" {
+		t.Errorf("after the setting %+v; want −50 still in force and −100 upcoming at the bank scope", spread)
+	}
+	f.now = later
+	if _, err := f.bank.StartDay(f.ctx); err != nil {
+		t.Fatal(err)
+	}
+	if spread, _ = f.bank.Parameter(f.ctx, "bank", policy.SavingsSpreadKey); spread.InForce != "-100" || len(spread.Upcoming) != 0 {
+		t.Errorf("at the instant %+v; want −100 in force", spread)
+	}
+	if rate, _ = f.bank.Parameter(f.ctx, "bank", gbp.SavingsRateKey); rate.InForce != "400" {
+		t.Errorf("the savings rate after the spread widened = %q, want 400", rate.InForce)
+	}
+	for _, bad := range []core.ParameterSetting{
+		{Owner: "bank", Key: gbp.SavingsRateKey, Value: "1", Effective: later.Add(time.Hour), By: "alice"},  // derived
+		{Owner: "bank", Key: gbp.RiskFreeRateKey, Value: "1", Effective: later.Add(time.Hour), By: "alice"}, // the market's
+		{Owner: "bank", Key: "no-such", Value: "1", Effective: later.Add(time.Hour), By: "alice"},
+		{Owner: "bank", Key: policy.SavingsLagKey, Value: "x", Effective: later.Add(time.Hour), By: "alice"},
+	} {
+		if err := f.bank.SetParameter(f.ctx, bad); !errors.Is(err, core.ErrInvalidSetting) {
+			t.Errorf("SetParameter(%+v) = %v, want ErrInvalidSetting", bad, err)
+		}
+	}
+}
+
+// A product that tracks the bank's rate (easy-access-tracker on
+// easyaccess/v2) pays the policy's savings rate less 15 bps: its rate
+// moves on the day the market's publication moves the bank's, a cut at
+// once, with nothing set on the product; the day's accrual follows; and
+// the day's snapshot carries the bank's rates for the chart.
+func TestATrackerFollowsTheBanksRate(t *testing.T) {
+	f := open(t)
+	tracker := core.NewCustomer{PII: core.PII{Name: "Tess"}, Accounts: []core.NewAccount{{ProductID: "easy-access-tracker", Opening: 100_000_00}}}
+	if _, err := f.bank.OpenCustomer(f.ctx, tracker); err != nil {
+		t.Fatal(err)
+	}
+	products, _ := f.bank.Products(f.ctx)
+	var listed core.Product
+	for _, p := range products {
+		if p.ID == "easy-access-tracker" {
+			listed = p
+		}
+	}
+	if listed.RateBps != 435 || listed.Accounts != 1 || listed.Rules != "easy-access" || listed.RulesVersion != 2 {
+		t.Errorf("the tracker as listed = %+v; want 435 bps (5%% − 50 − 15), one account, easy-access v2", listed)
+	}
+	if d, _ := f.bank.Parameter(f.ctx, "easy-access-tracker", "rate_bps"); d.InForce != "435" || !d.Derived || d.Settable {
+		t.Errorf("Parameter(easy-access-tracker, rate_bps) = %+v; want 435 in force, derived, not settable", d)
+	}
+	tess, err := f.bank.OpenCustomer(f.ctx, core.NewCustomer{PII: core.PII{Name: "Tess Two"}, Accounts: []core.NewAccount{{ProductID: "easy-access-tracker", Opening: 100_000_00}}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	account := func() core.Account {
+		t.Helper()
+		accounts, err := f.bank.Accounts(f.ctx, tess.ID)
+		if err != nil || len(accounts) != 1 {
+			t.Fatalf("Accounts = %+v, %v", accounts, err)
+		}
+		return accounts[0]
+	}
+	if a := account(); a.RateBps != 435 {
+		t.Errorf("the account's rate = %d, want 435: the tracker's resolved rate, not a published one", a.RateBps)
+	}
+	day0 := account().AccruedE7 // the opening day's accrual, projected at the open
+	f.nextDay()
+	day1 := account().AccruedE7 - day0
+	f.nextDay()
+	day2 := account().AccruedE7 - day0 - day1
+	// A cut of a point at noon reaches the tracker that day.
+	cut := f.now.Add(12 * time.Hour)
+	if err := f.bank.Publish(f.ctx, core.Publication{Currency: "GBP", Bps: 400, At: cut}); err != nil {
+		t.Fatal(err)
+	}
+	if d, _ := f.bank.Parameter(f.ctx, "easy-access-tracker", "rate_bps"); d.InForce != "435" {
+		t.Errorf("before the cut's instant the rate is %q, want 435", d.InForce)
+	}
+	f.now = cut.Add(time.Hour)
+	f.nextDay()
+	if d, _ := f.bank.Parameter(f.ctx, "easy-access-tracker", "rate_bps"); d.InForce != "335" {
+		t.Errorf("after the cut the rate is %q, want 335", d.InForce)
+	}
+	day3 := account().AccruedE7 - day0 - day1 - day2
+	if day1-day2 > 1 || day2-day1 > 1 || day1 >= 0 { // a savings balance accrues negative (ADR-0008); the E7 view rounds
+		t.Errorf("accrual on the first two days %d and %d; want equal", day1, day2)
+	}
+	if want := day2 * 335 / 435; day3 < want-1 || day3 > want+1 { // negative: the cut's day accrues less
+		t.Errorf("accrual on the cut's day %d, want %d × 335/435 ≈ %d", day3, day2, want)
+	}
+	if a := account(); a.RateBps != 335 {
+		t.Errorf("the account's rate after the cut = %d, want 335", a.RateBps)
+	}
+	hist, _ := f.bank.History(f.ctx)
+	if n := len(hist.SavingsRate); n == 0 || hist.SavingsRate[n-1].Bps != 350 || hist.LendingRate[n-1].Bps != 800 {
+		t.Errorf("the snapshot's bank rates %+v %+v; want savings 350 and lending 800 (the cut reaches borrowers after the lag) on the latest day", hist.SavingsRate, hist.LendingRate)
 	}
 }

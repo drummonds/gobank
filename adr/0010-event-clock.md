@@ -157,8 +157,11 @@ them.
   from before the record is adopted silently at the first cascade.
 - The changes for an account are found before any rule fires, so what a
   rule writes in answer (an account setting) is not a change of its own.
-- The feed catches up only to the clock's instant when the bank opens:
-  the opening day's rate arrives with the noon publication, an event.
+- The feed catches up only to the clock's instant when the bank opens.
+  The series opens with the publication in force before the opening day
+  (0.75%, decided 2 August 2018; story 1.8.9, so a product that tracks
+  the bank's rate can open on the first morning), and the first
+  publication the run meets as an event is the cut of 11 March 2020.
 - A staff setting's instant is UTC and not before the clock; empty means
   the bank's day, in force at once. The set is a core command,
   `SetParameter`, refusing a derived or undeclared key, a value not of

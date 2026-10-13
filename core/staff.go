@@ -113,10 +113,12 @@ type RatePoint struct {
 
 // History is the bank's daily series since it opened, oldest first.
 type History struct {
-	Balances  []BalancePoint
-	Customers []CustomerPoint
-	NIM       []NIMPoint
-	RiskFree  []RatePoint
+	Balances    []BalancePoint
+	Customers   []CustomerPoint
+	NIM         []NIMPoint
+	RiskFree    []RatePoint
+	SavingsRate []RatePoint // the bank's savings rate from its policy, on the days it had one (story 1.8.9)
+	LendingRate []RatePoint
 }
 
 // Owed is what the bank has still to do for the instant its clock is at
@@ -381,6 +383,10 @@ type Setting struct {
 	By        string
 }
 
+// BankOwner is the owner of the bank's own parameters, its policy's, as
+// the pages address them: products/bank/parameters/{key}.
+const BankOwner = "bank"
+
 // ParameterDetail is one parameter as its own page shows it (ADR-0006):
 // whose it is, what its declaration says, the value in force at the
 // clock's instant as known now, and the settings decided for it and not
@@ -395,7 +401,7 @@ type ParameterDetail struct {
 	Derived     bool   // derived by code from another parameter: not set, only read
 	Derivation  string // the derivation in words, for a derived one
 	InForce     string // the value effective now as the bank knows it; "" when there is none yet
-	Settable    bool   // staff may set it: a carried product's own, not derived
+	Settable    bool   // staff may set it: a carried product's own or the policy's published, not derived
 	Upcoming    []Setting
 }
 
@@ -407,8 +413,8 @@ type ProductQueries interface {
 	// force, each an event the simulation's timeline carries (ADR-0010).
 	UpcomingSettings(ctx context.Context) ([]Setting, error)
 	// Parameter is one parameter by its owner (a product's ID, a
-	// currency with a market, or "bank") and key; one the bank does not
-	// know is ErrNotFound.
+	// currency with a market, or "bank" for the policy's) and key; one
+	// the bank does not know is ErrNotFound.
 	Parameter(ctx context.Context, owner, key string) (ParameterDetail, error)
 }
 
@@ -428,6 +434,27 @@ type Market struct {
 // MarketQueries is the market component as staff read it.
 type MarketQueries interface {
 	Markets(ctx context.Context) ([]Market, error)
+}
+
+// Policy is the bank's policy as the bank tab shows it (ADR-0006,
+// ADR-0007): its name and version, and the parameters it declares at the
+// bank scope, each with its published value or its derivation in words
+// and the value in force at the clock's instant.
+type Policy struct {
+	Name       string
+	Version    int
+	Parameters []PolicyParameter
+}
+
+// PolicyParameter is one of the policy's bank-scoped parameters.
+type PolicyParameter struct {
+	Parameter
+	InForce string // the value in force at the clock's instant as the bank knows it; "" when it cannot be resolved
+}
+
+// PolicyQueries is the bank's policy as staff read it.
+type PolicyQueries interface {
+	Policy(ctx context.Context) (Policy, error)
 }
 
 // GiltYield is the current yield on gilts of one tenor.
@@ -460,6 +487,7 @@ type StaffQueries interface {
 	PaymentQueries
 	ProductQueries
 	MarketQueries
+	PolicyQueries
 	TreasuryQueries
 	LedgerQueries
 	EventQueries

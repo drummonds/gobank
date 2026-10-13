@@ -127,6 +127,9 @@ func Open(db *sql.DB, opts Options) (*Bank, error) {
 	if len(opts.Definition.Products) == 0 {
 		return nil, fmt.Errorf("bank: a definition with products is needed")
 	}
+	if opts.Definition.Policy == nil {
+		return nil, fmt.Errorf("bank: a definition with a policy is needed: the bank cannot run without its rates (ADR-0006)")
+	}
 	b := &Bank{definition: opts.Definition, clock: opts.Clock, key: opts.PIIKey, seed: opts.Seed, passHook: opts.PassHook, adminPassword: opts.AdminPassword}
 	b.book = newReading(b.readBook, bookTTL)
 	b.interest = newReading(b.readInterest, bookTTL)
@@ -178,7 +181,7 @@ func (b *Bank) openOn(db *sql.DB) error {
 	settings := parameters.Open(db)
 	record := events.Open(db)
 	b.market = market.New(settings)
-	catalogue := products.New(db, settings, b.definition.Products)
+	catalogue := products.New(db, settings, b.definition.Products, b.definition.Policy)
 	if err := catalogue.Adopt(ctx, day); err != nil {
 		return err
 	}
@@ -192,7 +195,7 @@ func (b *Bank) openOn(db *sql.DB) error {
 	if err != nil {
 		return err
 	}
-	custs, err := customers.Open(db, b.key, books, catalogue, b.seed+int64(dayCount))
+	custs, err := customers.Open(db, b.key, books, catalogue, b.clock.Now, b.seed+int64(dayCount))
 	if err != nil {
 		return err
 	}
@@ -644,6 +647,9 @@ func (b *Bank) startDay(ctx context.Context) (time.Time, events.Event, error) {
 	snapshot := b.snapshotLocked(savings, lending, count)
 	b.dayAccrualSavings, b.dayAccrualLending = 0, 0
 	b.mu.Unlock()
+	// The bank's own rates in force by the end of the closing day, as the
+	// risk-free rate is: the record the rates chart draws.
+	snapshot.SavingsRateBps, snapshot.LendingRateBps = b.bankRates(ctx, parameters.EndOfDay(closing))
 
 	b.progress.phase("closing yesterday", 0)
 	for _, m := range movements {
@@ -668,7 +674,9 @@ func (b *Bank) startDay(ctx context.Context) (time.Time, events.Event, error) {
 // market's publication, recorded as a setting at the market scope under
 // a root event of its own, raised at the instant published (ADR-0011);
 // its cascade, the parameter changes it fires, runs when the clock is
-// there (StartDay). A publication that changes nothing raises nothing.
+// there: now, for a publication the clock has passed (the feed catching
+// up at the opening with the rate in force before it), else at StartDay.
+// A publication that changes nothing raises nothing.
 // The bank's own figure for the rate follows at once when the
 // publication is in force by the end of the day the bank is on; the next
 // day's start accrues at it.
@@ -708,6 +716,9 @@ func (b *Bank) Publish(ctx context.Context, p core.Publication) error {
 	b.mu.Lock()
 	b.riskFreeBps = bps
 	b.mu.Unlock()
+	if !p.At.After(b.clock.Now()) {
+		return b.settle(ctx)
+	}
 	return nil
 }
 
@@ -786,6 +797,22 @@ func (b *Bank) snapshotLocked(savings, lending luca.Amount, count int) history.S
 
 // saveSnapshot stores a day's snapshot on the bank's record and logs a
 // refusal.
+// bankRates is the policy's savings and lending rate at an instant, as
+// known now; nil for one the policy cannot resolve (logged).
+func (b *Bank) bankRates(ctx context.Context, at time.Time) (savings, lending *int64) {
+	now := b.clock.Now()
+	rate := func(key string) *int64 {
+		p, err := b.products.BankParameter(ctx, nil, key, at, now)
+		if err != nil {
+			log.Printf("bank: %s at %s: %v", key, at.Format(time.RFC3339), err)
+			return nil
+		}
+		bps := p.Bps()
+		return &bps
+	}
+	return rate(gbp.SavingsRateKey), rate(gbp.LendingRateKey)
+}
+
 func (b *Bank) saveSnapshot(s history.Snapshot) {
 	if err := b.history.Save(context.Background(), s); err != nil {
 		log.Print(err)

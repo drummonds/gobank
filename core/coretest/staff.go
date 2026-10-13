@@ -625,7 +625,7 @@ func runCommands(t *testing.T, f Fixture) {
 		}
 		now := f.Clock.Now()
 		effective := now.Add(2 * time.Hour)
-		if err := c.SetParameter(ctx, core.ParameterSetting{ProductID: prod.ID, Key: param.Key, Value: "999", Effective: effective, By: "test"}); err != nil {
+		if err := c.SetParameter(ctx, core.ParameterSetting{Owner: prod.ID, Key: param.Key, Value: "999", Effective: effective, By: "test"}); err != nil {
 			t.Fatal(err)
 		}
 		upcoming, _ := s.UpcomingSettings(ctx)
@@ -654,15 +654,15 @@ func runCommands(t *testing.T, f Fixture) {
 		}
 
 		for _, bad := range []core.ParameterSetting{
-			{ProductID: prod.ID, Key: "no-such-key", Value: "1", Effective: effective.Add(time.Hour), By: "test"},
-			{ProductID: prod.ID, Key: param.Key, Value: "not-a-number", Effective: effective.Add(time.Hour), By: "test"},
-			{ProductID: prod.ID, Key: param.Key, Value: "1", Effective: effective.Add(-time.Hour), By: "test"},
+			{Owner: prod.ID, Key: "no-such-key", Value: "1", Effective: effective.Add(time.Hour), By: "test"},
+			{Owner: prod.ID, Key: param.Key, Value: "not-a-number", Effective: effective.Add(time.Hour), By: "test"},
+			{Owner: prod.ID, Key: param.Key, Value: "1", Effective: effective.Add(-time.Hour), By: "test"},
 		} {
 			if err := c.SetParameter(ctx, bad); !errors.Is(err, core.ErrInvalidSetting) {
 				t.Errorf("SetParameter(%+v) err = %v, want ErrInvalidSetting", bad, err)
 			}
 		}
-		if err := c.SetParameter(ctx, core.ParameterSetting{ProductID: "no-such-product", Key: param.Key, Value: "1", Effective: effective.Add(time.Hour), By: "test"}); !errors.Is(err, core.ErrNotFound) {
+		if err := c.SetParameter(ctx, core.ParameterSetting{Owner: "no-such-product", Key: param.Key, Value: "1", Effective: effective.Add(time.Hour), By: "test"}); !errors.Is(err, core.ErrNotFound) {
 			t.Errorf("SetParameter on an unknown product err = %v, want ErrNotFound", err)
 		}
 	})

@@ -17,16 +17,18 @@ import (
 
 // The simulation moves by events (ADR-0010): the clock stands at an
 // event's instant while the bank processes it, and a console step raises
-// every event up to and including the next start of day. On the opening
-// day the first event is the market's noon publication, which the bank
-// takes as the day's rate and whose cascade reaches every account; the
-// step ends at the next midnight with the bank at rest.
+// every event up to and including the next start of day. The market's
+// rate in force at the opening reached the bank when the feed caught up
+// (the series opens before the opening day), so the opening day's one
+// event is the next start of day, and the step ends there with the bank
+// at rest; a cut on the way (the first the run meets is 11 March 2020)
+// is an event whose cascade reaches every account.
 func TestTheClockMovesByEvents(t *testing.T) {
 	ds := NewDemoState()
 	twoFundedCustomers(ds)
 	ctx := context.Background()
-	if pos := ds.position(); pos.RiskFreeBps != 0 || !ds.clock.Now().Equal(sim.OpeningDay) {
-		t.Fatalf("a fresh bank at %v has rate %d; want the opening instant, no rate until the market publishes", ds.clock.Now(), pos.RiskFreeBps)
+	if pos := ds.position(); pos.RiskFreeBps != sim.BoERates[0].Bps || !ds.clock.Now().Equal(sim.OpeningDay) {
+		t.Fatalf("a fresh bank at %v has rate %d; want the opening instant and the series' rate in force", ds.clock.Now(), pos.RiskFreeBps)
 	}
 	if owed, _ := ds.Owed(ctx); !owed.AtRest() {
 		t.Fatalf("a fresh bank owes %+v", owed)
@@ -38,16 +40,34 @@ func TestTheClockMovesByEvents(t *testing.T) {
 	}
 	pos := ds.position()
 	if want := sim.BoERates[0].Bps; pos.DayCount != 1 || pos.RiskFreeBps != want {
-		t.Errorf("after the step: day %d at %d bps, want day 1 at the series' %d (published at noon on the way)", pos.DayCount, pos.RiskFreeBps, want)
+		t.Errorf("after the step: day %d at %d bps, want day 1 at the series' %d", pos.DayCount, pos.RiskFreeBps, want)
 	}
 	if owed, _ := ds.Owed(ctx); !owed.AtRest() {
 		t.Errorf("after the step the bank owes %+v", owed)
 	}
-	// The cascade stamped every account at the publication's instant.
-	var n int
-	noon := sim.BoERates[0].At.UTC()
-	if err := ds.db.QueryRow(`SELECT COUNT(*) FROM product_account_parameters WHERE applied_to = $1`, noon).Scan(&n); err != nil || n == 0 {
-		t.Errorf("%d accounts had their parameters applied at the publication's instant %v (%v); want all", n, noon, err)
+	// Every account's parameters count as applied from its opening: no
+	// setting became effective on the way.
+	var n, all int
+	if err := ds.db.QueryRow(`SELECT COUNT(*) FROM product_account_parameters WHERE applied_to = $1`, sim.OpeningDay).Scan(&n); err != nil || n == 0 {
+		t.Errorf("%d accounts had their parameters applied at the opening instant (%v); want all", n, err)
+	}
+	if err := ds.db.QueryRow(`SELECT COUNT(*) FROM product_account_parameters`).Scan(&all); err != nil || all != n {
+		t.Errorf("%d accounts on record, %d applied at the opening (%v)", all, n, err)
+	}
+	// The first cut the run meets is an event whose cascade stamps every
+	// account at the publication's instant.
+	cut := sim.BoERates[1]
+	for ds.clock.Now().Before(cut.At) {
+		ds.AdvanceDay()
+	}
+	if pos := ds.position(); pos.RiskFreeBps != cut.Bps {
+		t.Errorf("after the cut of %v the rate is %d, want %d", cut.At, pos.RiskFreeBps, cut.Bps)
+	}
+	if err := ds.db.QueryRow(`SELECT COUNT(*) FROM product_account_parameters`).Scan(&all); err != nil {
+		t.Fatal(err)
+	}
+	if err := ds.db.QueryRow(`SELECT COUNT(*) FROM product_account_parameters WHERE applied_to = $1`, cut.At.UTC()).Scan(&n); err != nil || n == 0 || n != all {
+		t.Errorf("%d accounts had their parameters applied at the cut's instant %v (%v); want all %d", n, cut.At, err, all)
 	}
 	if run, _ := loadRun(ds.db); !run.At.Equal(ds.clock.Now()) {
 		t.Errorf("the run row holds %v, want the clock's instant %v", run.At, ds.clock.Now())
@@ -109,7 +129,7 @@ func TestAStaffSettingIsAnEvent(t *testing.T) {
 	ctx := context.Background()
 	ds.AdvanceDay()
 	effective := ds.clock.Now().Add(10 * time.Hour)
-	if err := ds.SetParameter(ctx, core.ParameterSetting{ProductID: "easy-access", Key: "rate_bps", Value: "175", Effective: effective, By: "admin"}); err != nil {
+	if err := ds.SetParameter(ctx, core.ParameterSetting{Owner: "easy-access", Key: "rate_bps", Value: "175", Effective: effective, By: "admin"}); err != nil {
 		t.Fatal(err)
 	}
 	page := staff.BuildProductsHTML(ds.Bank, "Savings", view.Bank, false)

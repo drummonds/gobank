@@ -286,6 +286,22 @@ parameters resolved at the contract's "version" scope with the product
 as owner, defaulting to what its rules publish. The contract's scope
 name stays "version" until gobank-products renames it additively.
 
+## Amendment, 2026-10-13 (story 1.8.9)
+
+A derivation is a formula or an algorithm. The formula (`Derived`:
+source, spread, floor, cap) is data the bank can describe; the algorithm
+(`Algorithm`: a function of the parameters it reads on a day) is code,
+described in words by its declarer, and is what the policy's lag and
+take become, since ADR-0009 kept them out of the contract as data. The
+policy is a `Policy` of the contract, carried by the bank's definition
+(ADR-0007) rather than a package in gobank-products: `modelbank/policy/v1`
+declares the market's rate, the spreads and lags it publishes, and the
+bank's rates by algorithm. A bank-scoped read a product's rules make is
+answered by the policy when it declares the key, and the algorithm's
+reads go on the posting's record with the rule's own. The series before
+its first publication is taken as its first value inside the lag, so a
+change soon after the bank opens is lagged as any other.
+
 ## Consequences
 
 Easier: a product change is a package with a golden, reviewed as code;

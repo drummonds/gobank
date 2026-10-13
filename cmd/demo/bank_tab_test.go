@@ -8,23 +8,32 @@ import (
 
 	"git.bytestone.uk/hum3/gobank/bff/staff"
 	"git.bytestone.uk/hum3/gobank/internal/view"
+	"git.bytestone.uk/hum3/gobank/modelbank"
 )
 
 // The bank tab under Products carries what is the bank's and not a
 // product's: the pound's market with the rate in force and its next
-// decision day, the reserve ratio, and the parameters at the market and
-// bank scopes, each a row that loads the parameter's own page into the
-// detail. Nothing of the bank's is yet settable.
-func TestBankTabShowsTheMarketAndTheReserveRatio(t *testing.T) {
+// decision day; the bank's policy (story 1.8.9) with its name and
+// version, the chart of the risk-free rate against the bank's savings and
+// lending rates over the run, and its parameters at the bank scope, each
+// a row that loads the parameter's own page into the detail; and the
+// reserve ratio.
+func TestBankTabShowsTheMarketThePolicyAndTheReserveRatio(t *testing.T) {
 	ds := NewDemoState()
 	addFundedCustomer(ds)
 	ds.AdvanceDay()
 	page := staff.BuildBankHTML(ds.Bank, false)
+	pol := modelbank.Definition().Policy
 	for _, want := range []string{"Bank of England", "Bank Rate", "Next decision day: 30 Jan 2020 12:00 UTC", "Reserve ratio", "15%",
-		`hx-get="products/GBP/parameters/risk_free_rate_bps"`, "<svg", `id="parameter-detail"`, "policy as code"} {
+		`hx-get="products/GBP/parameters/risk_free_rate_bps"`, `id="parameter-detail"`,
+		pol.Name() + " v1", "<svg", "risk-free", ">savings<", ">lending<",
+		`hx-get="products/bank/parameters/savings_spread_bps"`, `hx-get="products/bank/parameters/savings_rate_bps"`, "<td>-50</td>", "<td>25</td>"} {
 		if !strings.Contains(page, want) {
 			t.Errorf("bank tab lacks %q:\n%s", want, page)
 		}
+	}
+	if strings.Contains(page, "policy as code") {
+		t.Error("the bank tab still promises the policy")
 	}
 	if strings.Contains(page, "hx-trigger") {
 		t.Error("a bank tab that is not polling polls")

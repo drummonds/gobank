@@ -91,6 +91,21 @@ The definition therefore carries the bank's *initial* catalogue and the
 rules versions it is allowed to instantiate; what the bank has done with
 them since is in the database, as every other setting is.
 
+## Amendment, 2026-10-13 (story 1.8.9)
+
+The definition carries the policy: `definition.Bank.Policy`, a
+`gbp.Policy`, which the bank refuses to open without. The Model Bank's
+is `modelbank/policy/v1`, and the bank is named the Isle of Alba Bank.
+The package `modelbank` is still in gobank at this story. The direction
+for its move, decided 2026-10-13: a bank is a top-level module that
+imports gobank (the capabilities: `bank`, `bff`, `core`) and
+gobank-products (the contract) and adds its definition and its wiring,
+so that most of this code is taken as a library and wrapped to make a
+bank. gobank-products stays the contract and the support for writing
+rules and policies, not the home of a definition. gobank's own tests
+build against test definitions of gobank's own, not the Model Bank's,
+so no module depends back on a bank.
+
 ## Consequences
 
 Easier: a white label is a module; a product change is a diff in one

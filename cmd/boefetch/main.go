@@ -55,9 +55,11 @@ func main() {
 		entries = parseFallback()
 	}
 
-	// Prepend the initial rate at 2020-01-01 (0.75%)
+	// Prepend the rate in force when the fetched range begins: 0.75%,
+	// decided on 2 August 2018, so the series opens with a publication
+	// before the demo's opening day and the bank has a rate from the start.
 	start := rateEntry{
-		date: time.Date(2020, 1, 1, 0, 0, 0, 0, time.UTC),
+		date: time.Date(2018, 8, 2, 0, 0, 0, 0, time.UTC),
 		rate: 0.75,
 	}
 	entries = append([]rateEntry{start}, entries...)

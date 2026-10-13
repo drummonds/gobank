@@ -27,9 +27,15 @@ func TestInterestAccruesDaily(t *testing.T) {
 
 	ds.mu.Lock()
 	defer ds.mu.Unlock()
+	// In the bank's view (ADR-0008) a savings account accrues negative
+	// and a loan positive, so each is checked on its own side.
 	var accrued, applied luca.Amount
 	for _, a := range firstCustomerAccounts(t, ds) {
-		accrued += a.Accrued
+		if a.Family == gbp.FamilySavings {
+			accrued -= a.Accrued
+		} else {
+			accrued += a.Accrued
+		}
 		applied += a.Interest
 	}
 	if accrued <= 0 {
@@ -112,8 +118,12 @@ func TestInterestAppliedMonthly(t *testing.T) {
 	defer ds.mu.Unlock()
 	var applied luca.Amount
 	for _, a := range firstCustomerAccounts(t, ds) {
-		applied += a.Interest
-		if a.RateBps > 0 && a.Balance > 0 && a.Interest == 0 {
+		if a.Family == gbp.FamilySavings { // negative in the bank's view (ADR-0008)
+			applied -= a.Interest
+		} else {
+			applied += a.Interest
+		}
+		if a.RateBps > 0 && a.Balance != 0 && a.Interest == 0 {
 			t.Errorf("%s: no interest applied after month end (balance %d, rate %d bps)", a.ProductName, a.Balance, a.RateBps)
 		}
 		bal, err := ds.Ledger().Balance(a.LedgerAccountID)

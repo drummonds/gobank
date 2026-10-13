@@ -62,11 +62,11 @@ func reopen(t *testing.T, db *sql.DB) fixture {
 	if err != nil {
 		t.Fatal(err)
 	}
-	catalogue := products.New(db, parameters.Open(db), modelbank.Definition().Products)
+	catalogue := products.New(db, parameters.Open(db), modelbank.Definition().Products, modelbank.Definition().Policy)
 	if err := catalogue.Adopt(context.Background(), jan2); err != nil {
 		t.Fatal(err)
 	}
-	c, err := Open(db, key, books, catalogue, 42)
+	c, err := Open(db, key, books, catalogue, func() time.Time { return jan2 }, 42)
 	if err != nil {
 		t.Fatal(err)
 	}

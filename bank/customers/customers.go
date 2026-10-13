@@ -122,6 +122,7 @@ type Customers struct {
 	store    *store.SQLCustomerStore
 	books    *ledger.Ledger
 	products *products.Products
+	now      func() time.Time // the bank's clock: the instant an account's rate is resolved at
 	seq      *refs.Sequence
 	mu       sync.Mutex
 	rng      *rand.Rand // account numbers (mu)
@@ -130,7 +131,7 @@ type Customers struct {
 // Open is the component on db, with the register's view in place and
 // the customer numbering resumed after the newest customer on record.
 // seed is the account numbers' randomness.
-func Open(db *sql.DB, key store.KeyProvider, books *ledger.Ledger, catalogue *products.Products, seed int64) (*Customers, error) {
+func Open(db *sql.DB, key store.KeyProvider, books *ledger.Ledger, catalogue *products.Products, now func() time.Time, seed int64) (*Customers, error) {
 	if err := CreateView(db); err != nil {
 		return nil, err
 	}
@@ -138,13 +139,28 @@ func Open(db *sql.DB, key store.KeyProvider, books *ledger.Ledger, catalogue *pr
 	if err != nil {
 		return nil, fmt.Errorf("customers: store: %w", err)
 	}
-	c := &Customers{db: db, store: s, books: books, products: catalogue, rng: rand.New(rand.NewSource(seed))}
+	if now == nil {
+		now = time.Now
+	}
+	c := &Customers{db: db, store: s, books: books, products: catalogue, now: now, rng: rand.New(rand.NewSource(seed))}
 	last, err := c.lastSeq(context.Background())
 	if err != nil {
 		return nil, err
 	}
 	c.seq = refs.Resume(last)
 	return c, nil
+}
+
+// rateNow is the rate a product pays at the clock's instant, resolved
+// (a tracker's follows the bank's rate); zero for a product this build
+// does not carry or whose rate does not resolve.
+func (c *Customers) rateNow(ctx context.Context, p products.Product) int64 {
+	now := c.now()
+	rate, err := c.products.ProductParameter(ctx, nil, p, "rate_bps", now, now)
+	if err != nil {
+		return 0
+	}
+	return rate.Bps()
 }
 
 // Store is the customer store itself, for the wiring and for tests.
@@ -264,14 +280,21 @@ func (c *Customers) accountsOf(ctx context.Context, customerID string) ([]Accoun
 			return nil, fmt.Errorf("customers: accounts of %s: %w", customerID, err)
 		}
 		if p, ok := c.products.ByID(a.ProductID); ok {
-			a.ProductName, a.Family, a.RateBps, a.Currency = p.Name, p.Family(), p.RateBps(), p.Currency
+			a.ProductName, a.Family, a.Currency = p.Name, p.Family(), p.Currency
 		}
 		accounts = append(accounts, a)
 	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("customers: accounts of %s: %w", customerID, err)
+	}
+	rows.Close() // the figures and the rates query the database again: not while the rows hold its connection
 	for i := range accounts {
 		c.fillFigures(ctx, &accounts[i])
+		if p, ok := c.products.ByID(accounts[i].ProductID); ok {
+			accounts[i].RateBps = c.rateNow(ctx, p)
+		}
 	}
-	return accounts, rows.Err()
+	return accounts, nil
 }
 
 // fillFigures sets an account's balance and accrual from the ledger's
@@ -379,7 +402,7 @@ func (c *Customers) Plan(day time.Time, n core.NewCustomer) (Plan, error) {
 	for _, a := range n.Accounts {
 		product, _ := c.products.ByID(a.ProductID)
 		rec.Accounts = append(rec.Accounts, Account{
-			ProductID: product.ID, ProductName: product.Name, Family: product.Family(), Currency: product.Currency, RateBps: product.RateBps(),
+			ProductID: product.ID, ProductName: product.Name, Family: product.Family(), Currency: product.Currency, RateBps: c.rateNow(context.Background(), product),
 			OpenDate: day, SortCode: SortCode, AccountNum: fmt.Sprintf("%08d", c.rng.Intn(100000000)),
 		})
 	}

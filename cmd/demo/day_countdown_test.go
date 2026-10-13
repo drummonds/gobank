@@ -22,8 +22,8 @@ func TestDayEndsInCountsDownWhileRunning(t *testing.T) {
 		t.Fatalf("stopped: DayEndsIn = %v; want 0", got)
 	}
 
-	// The first event of the opening day is the market's noon publication:
-	// a start just raises it, and half a 2h day is left.
+	// The opening day's one event is the next start of day: a start just
+	// raises it, and a whole 2h day is left to the one after.
 	ds.SetDayLength(2 * time.Hour)
 	ds.Start()
 	defer ds.Stop()
@@ -33,12 +33,12 @@ func TestDayEndsInCountsDownWhileRunning(t *testing.T) {
 			break
 		}
 	}
-	if got != time.Hour || !ds.clock.Now().Equal(time.Date(2020, 1, 1, 12, 0, 0, 0, time.UTC)) {
-		t.Fatalf("running with a 2h day from the opening day's noon: DayEndsIn = %v at %v; want 1h (the wall is frozen)", got, ds.clock.Now())
+	if got != 2*time.Hour || !ds.clock.Now().Equal(time.Date(2020, 1, 2, 0, 0, 0, 0, time.UTC)) {
+		t.Fatalf("running with a 2h day from the second day's start: DayEndsIn = %v at %v; want 2h (the wall is frozen)", got, ds.clock.Now())
 	}
 	advance(45 * time.Minute)
-	if got := ds.SimStatus().DayEndsIn; got != 15*time.Minute {
-		t.Errorf("forty-five minutes on: DayEndsIn = %v; want 15m", got)
+	if got := ds.SimStatus().DayEndsIn; got != 75*time.Minute {
+		t.Errorf("forty-five minutes on: DayEndsIn = %v; want 1h15m", got)
 	}
 	ds.Stop()
 	if got := ds.SimStatus().DayEndsIn; got != 0 {

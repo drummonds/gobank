@@ -35,6 +35,7 @@ func TestBankPackagesKnowOnlyTheCoreAndEachOther(t *testing.T) {
 	}
 	testOnly := []string{
 		"git.bytestone.uk/hum3/gobank/modelbank",
+		"git.bytestone.uk/hum3/gobank/modelbank/", // its policy, products of its own
 		"git.bytestone.uk/hum3/gobank-products/",
 	}
 	fset := token.NewFileSet()

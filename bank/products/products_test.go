@@ -42,6 +42,12 @@ func root(id string) Cause { return Cause{ID: id, At: jan2} }
 // customers' business; the pass needs only the view.
 func open(t *testing.T) (*Products, *ledger.Ledger) {
 	t.Helper()
+	return openWith(t, nil, listings())
+}
+
+// openWith is open with the bank's policy and products given.
+func openWith(t *testing.T, policy gbp.Policy, listed []Listing) (*Products, *ledger.Ledger) {
+	t.Helper()
 	db, err := sql.Open("pglike", ":memory:")
 	if err != nil {
 		t.Fatal(err)
@@ -69,7 +75,7 @@ func open(t *testing.T) (*Products, *ledger.Ledger) {
 			t.Fatal(err)
 		}
 	}
-	p := New(db, parameters.Open(db), listings())
+	p := New(db, parameters.Open(db), listed, policy)
 	// A clock that steps a second per reading: settings decided in one
 	// test are told apart by when they were decided.
 	tick := 0
@@ -167,7 +173,7 @@ func TestProductOnRulesTheBuildLacksIsNotCarried(t *testing.T) {
 	if _, err := p.db.Exec(`INSERT INTO products (product_id, name, rules, rules_version, adopted, module_version) VALUES ('fixed-5y', 'Fixed 5 Year', 'fixed-term', 3, $1, 'v9.9.9')`, jan2); err != nil {
 		t.Fatal(err)
 	}
-	q := New(p.db, p.params, listings())
+	q := New(p.db, p.params, listings(), nil)
 	if err := q.Adopt(context.Background(), jan2); err != nil {
 		t.Fatal(err)
 	}
@@ -443,7 +449,7 @@ func TestWithdrawnProductIsOffSale(t *testing.T) {
 		}
 	}
 	later := jan2.AddDate(0, 1, 0)
-	q := New(p.db, p.params, listings)
+	q := New(p.db, p.params, listings, nil)
 	if err := q.Adopt(context.Background(), later); err != nil {
 		t.Fatal(err)
 	}
@@ -812,5 +818,32 @@ func TestThePassWritesEachAccountInATransaction(t *testing.T) {
 	}
 	if n, _ := p.CountPostingsByCause(ctx, "day-1"); n != 3 {
 		t.Errorf("CountPostingsByCause = %d, want 3", n)
+	}
+}
+
+// What a rule writes in answer to an event (an account setting: the
+// ISA's running total of deposits) is not a change owed to the account
+// that wrote it (ADR-0010): the account applied it by writing it. Left
+// counted, a reopened bank raised an adoption root for it and a console
+// step went on settling instead of starting the day.
+func TestARulesOwnSettingIsNotAChangeOwed(t *testing.T) {
+	p, books := open(t)
+	ctx := context.Background()
+	nine := jan2.Add(9 * time.Hour)
+	isa := register(t, p, books, "isa", "cust-001", 0, jan2)
+	if err := p.Open(books, isa, jan2, Cause{ID: "open-isa", At: nine}); err != nil {
+		t.Fatal(err)
+	}
+	jan3 := jan2.AddDate(0, 0, 1)
+	deposit := jan3.Add(9 * time.Hour)
+	if _, err := p.PostEvent(books, jan3, Cause{ID: "deposit", At: deposit}, books.Chart.EquityCapital, isa.ID, -500_00, "DEP", "deposit", isa); err != nil {
+		t.Fatal(err)
+	}
+	var n int
+	if err := p.db.QueryRow(`SELECT COUNT(*) FROM parameter_settings WHERE scope = 'account' AND owner = $1 AND key = 'deposited' AND effective_from > $2`, isa.ID, nine).Scan(&n); err != nil || n != 1 {
+		t.Fatalf("the ISA's rule wrote %d settings after the open instant (%v); want its running total", n, err)
+	}
+	if n, err := p.CountParameterChangesOwed(ctx, deposit); err != nil || n != 0 {
+		t.Errorf("owed after the rule's own setting = %d, %v; want 0", n, err)
 	}
 }

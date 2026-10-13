@@ -322,7 +322,7 @@ func (s *Site) routes() {
 				return
 			}
 			sess, _ := signedIn(r)
-			setting := core.ParameterSetting{ProductID: owner, Key: key, Value: r.FormValue("value"), By: sess.user.Login}
+			setting := core.ParameterSetting{Owner: owner, Key: key, Value: r.FormValue("value"), By: sess.user.Login}
 			if setting.Effective, _ = time.Parse("2006-01-02T15:04", r.FormValue("effective")); setting.Effective.IsZero() {
 				if pos, err := bank.Position(r.Context()); err == nil {
 					setting.Effective = pos.Day // an empty instant is the bank's day: in force from now

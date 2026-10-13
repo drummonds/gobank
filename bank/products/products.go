@@ -145,8 +145,9 @@ var Schema = schema.Component{Name: "products", Migrations: []schema.Migration{
 type Products struct {
 	db        *sql.DB
 	params    *parameters.Parameters
-	listings  []Listing // what the bank's definition lists, catalogue order
-	catalogue []Product // every product on record, the listed ones first
+	listings  []Listing  // what the bank's definition lists, catalogue order
+	policy    gbp.Policy // the bank's own rules (ADR-0007): the bank-scoped parameters; nil for a bank with none
+	catalogue []Product  // every product on record, the listed ones first
 	now       func() time.Time
 	// effectHook, when set, is called after each effect the runner writes
 	// (a setting, a posting, a position), with the account and the
@@ -168,10 +169,15 @@ func (p *Products) effect(account, kind string) error {
 }
 
 // New is the catalogue on db for the products the bank's definition
-// lists, with nothing on record until Adopt runs.
-func New(db *sql.DB, params *parameters.Parameters, listings []Listing) *Products {
-	return &Products{db: db, params: params, listings: listings, now: time.Now}
+// lists and the bank's policy, with nothing on record until Adopt runs.
+// A nil policy is a bank with no parameters of its own: a bank-scoped
+// read then has only the settings.
+func New(db *sql.DB, params *parameters.Parameters, listings []Listing, policy gbp.Policy) *Products {
+	return &Products{db: db, params: params, listings: listings, policy: policy, now: time.Now}
 }
+
+// Policy is the bank's policy; nil when it has none.
+func (p *Products) Policy() gbp.Policy { return p.policy }
 
 // rulesKey names a rules version: its name and number.
 type rulesKey struct {

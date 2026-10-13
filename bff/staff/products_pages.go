@@ -13,6 +13,7 @@ import (
 	gbp "git.bytestone.uk/hum3/gobank-products"
 	"git.bytestone.uk/hum3/gobank/core"
 	"git.bytestone.uk/hum3/gobank/internal/view"
+	"git.bytestone.uk/hum3/gogal"
 )
 
 // The products pages are a master-detail (lofigui's HTMX multipage
@@ -68,15 +69,18 @@ func BuildProductsHTML(q core.StaffQueries, family gbp.ProductFamily, v view.Vie
 
 // BuildBankHTML renders the bank tab: what is the bank's and not a
 // product's. Each market the bank knows (ADR-0009), with the rate in
-// force, the next decision day on its calendar, the rate's history and
-// its parameter at the market scope; then the bank's own: its reserve
-// ratio, and the parameters at the bank scope, which policy as code
-// brings.
+// force, the next decision day on its calendar and its parameter at the
+// market scope; the bank's policy (ADR-0006, ADR-0007: its rates as
+// versioned code) with the chart of the risk-free rate against the
+// bank's savings and lending rates over the run and its parameters at
+// the bank scope, the spreads and lags set here and the rates derived;
+// then the bank's own reserve ratio.
 func BuildBankHTML(q core.StaffQueries, polling bool) string {
 	ctx := context.Background()
 	pos, _ := q.Position(ctx)
 	hist, _ := q.History(ctx)
 	markets, _ := q.Markets(ctx)
+	pol, polErr := q.Policy(ctx)
 
 	var s strings.Builder
 	s.WriteString(`<h2 class="title is-4">The Bank</h2>`)
@@ -89,17 +93,64 @@ func BuildBankHTML(q core.StaffQueries, polling bool) string {
   <h3 class="title is-5">%s (%s)</h3>
   <p class="subtitle is-6 has-text-grey">In force: %s &middot; Next decision day: %s &middot; <a href="%s">%s</a></p>`,
 			html.EscapeString(m.Rate), html.EscapeString(m.Name), FormatRateBps(m.RateBps), next, html.EscapeString(m.Page), html.EscapeString(m.Name)))
-		if m.Currency == "GBP" {
-			s.WriteString(buildBoERateGraph(hist.RiskFree))
-		}
 		s.WriteString(parameterTable([]string{parameterRow(m.Currency, gbp.RiskFreeRateKey, string(gbp.KindBps), strconv.FormatInt(m.RateBps, 10))}, "In force"))
+		s.WriteString(`</div>`)
+	}
+	if polErr == nil {
+		s.WriteString(fmt.Sprintf(`<div class="box"><h3 class="title is-5">Policy <span class="tag is-info is-light">%s v%d</span></h3>
+  <p class="subtitle is-6 has-text-grey">How the bank's own rates follow the market: a cut reaches savers at once and a rise after a lag, borrowers the other way about; the spreads and lags are set here, the rates derived</p>`,
+			html.EscapeString(pol.Name), pol.Version))
+		s.WriteString(buildRatesChart(hist))
+		var rows []string
+		for _, p := range pol.Parameters {
+			rows = append(rows, parameterRow(core.BankOwner, p.Key, p.Kind, p.InForce))
+		}
+		s.WriteString(parameterTable(rows, "In force"))
 		s.WriteString(`</div>`)
 	}
 	s.WriteString(`<div class="box"><h3 class="title is-5">The bank's own</h3>`)
 	s.WriteString(fmt.Sprintf(`<p><strong>Reserve ratio:</strong> %.0f%% <span class="has-text-grey is-size-7">the fraction of deposits held as reserves at the Bank of England; a constant of the bank, not a parameter</span></p>`, pos.ReserveRatio*100))
-	s.WriteString(`<p class="has-text-grey mt-3">No parameters at the bank scope yet: policy as code brings the policy's spread and lag here.</p>`)
 	s.WriteString(`</div>`)
 	return masterDetail(s.String(), "products/bank", polling)
+}
+
+// buildRatesChart draws the risk-free rate against the bank's savings and
+// lending rates over the run, as percentages: the policy's effect, a lag
+// visible as the bank's line moving after the market's.
+func buildRatesChart(hist core.History) string {
+	if len(hist.RiskFree) == 0 {
+		return `<p class="has-text-grey">No rate history yet.</p>`
+	}
+	chart := gogal.NewLineChart(
+		gogal.WithSize(660, 200),
+		gogal.WithMargins(10, 40, 24, 60),
+		gogal.WithLegend(true),
+		gogal.WithPoints(false),
+		gogal.WithTooltips(false),
+		gogal.WithAccessibility(false),
+		gogal.WithTimeFormat(ChartDateFormat),
+		gogal.WithYFormat("%.2f%%"),
+		gogal.WithEndLabels(true),
+	)
+	for _, series := range []struct {
+		name   string
+		points []core.RatePoint
+	}{{"risk-free", hist.RiskFree}, {"savings", hist.SavingsRate}, {"lending", hist.LendingRate}} {
+		if len(series.points) == 0 {
+			continue
+		}
+		times := make([]time.Time, len(series.points))
+		values := make([]float64, len(series.points))
+		for i, p := range series.points {
+			times[i], values[i] = p.Date, float64(p.Bps)/100
+		}
+		chart.AddTimeSeries(series.name, times, values)
+	}
+	svg, err := chart.RenderString()
+	if err != nil {
+		return fmt.Sprintf(`<p class="has-text-danger">Chart error: %v</p>`, err)
+	}
+	return svg
 }
 
 // masterDetail lays the master out beside an empty detail. While the

@@ -536,7 +536,20 @@ The browser-based model proved the banking core works end-to-end. Done:
   ignores the session's view (`FormatMoney(p.Balance)` where every
   other page goes through `view.Money`). Out of scope: setting a market
   value (it is a feed), setting a derived parameter, bulk set, history
-  (1.8.12)
+  (1.8.12). Drill 2026-10-13 preprod: v0.35.0 → v0.36.0, upgraded 15 s,
+  handover intact; the drill failed at the upgrade hop's gate, "the run
+  went on before the stop: day 8273 when last observed, day 8277 at the
+  stop", and rollback and forward did not run. Cause: gobank-deploy's
+  console client sets the 2 h day length by posting the settings form
+  with no session; since v0.28.0 (story 1.7.1) the staff web is behind
+  the login, answers the post with a redirect to it, and the client
+  reads anything under 400 as success, so the day length stayed at zero
+  and the run went on flat out (12 s a day) between the observation and
+  the stop. The v0.34.0 → v0.35.0 drill failed the same way (3984 →
+  3991); the drills before it passed on an empty bank at day 0, which
+  cannot move. Fix in gobank-deploy: the console client logs in as
+  `admin` with the environment's admin password (story 1n holds it)
+  before posting, and treats a redirect to the login as a refusal
 - **1.8.9** (was 1.8.8, before that 1.8.7, 1.8.6 and 1.8.4) policy as code — the contract gains a parameter
   derived by code, the hook ADR-0006's lag and take become, and
   `modelbank` is extracted into a module of its own (ADR-0007) carrying

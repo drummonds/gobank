@@ -162,3 +162,32 @@ func TestRiskFreeRateIsBasisPoints(t *testing.T) {
 		t.Errorf("latest %+v, %v, %v", latest, ok, err)
 	}
 }
+
+// The bank's own rates ride on the snapshot beside the risk-free rate
+// (story 1.8.9): a day the bank had none leaves the series without it.
+func TestSeriesCarriesTheBanksRatesWhereItHadThem(t *testing.T) {
+	h := open(t)
+	ctx := context.Background()
+	savings, lending := int64(450), int64(800)
+	for _, s := range []Snapshot{
+		{Day: day(0), RiskFreeBps: 500},
+		{Day: day(1), RiskFreeBps: 500, SavingsRateBps: &savings, LendingRateBps: &lending},
+	} {
+		if err := h.Save(ctx, s); err != nil {
+			t.Fatal(err)
+		}
+	}
+	series, err := h.Series(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(series.RiskFree) != 2 || len(series.SavingsRate) != 1 || len(series.LendingRate) != 1 {
+		t.Fatalf("series: risk-free %d, savings %d, lending %d points; want 2, 1, 1", len(series.RiskFree), len(series.SavingsRate), len(series.LendingRate))
+	}
+	if p := series.SavingsRate[0]; !p.Date.Equal(day(1)) || p.Bps != 450 {
+		t.Errorf("savings rate point %+v, want 450 on day 1", p)
+	}
+	if p := series.LendingRate[0]; !p.Date.Equal(day(1)) || p.Bps != 800 {
+		t.Errorf("lending rate point %+v, want 800 on day 1", p)
+	}
+}

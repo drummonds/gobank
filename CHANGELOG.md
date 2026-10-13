@@ -2,6 +2,45 @@
 
 ## [Unreleased]
 
+### Added
+- Story 1.8.9: policy as code. The contract (gobank-products) gains a
+  parameter derived by code, `Declaration.Algorithm`, the hook ADR-0006's
+  lag and take become, and `Policy`, a bank's own rules as versioned
+  code. The Model Bank's policy, `modelbank/policy/v1`, derives the
+  bank's savings and lending rates from the pound's risk-free rate with
+  a spread and an asymmetric lag (a cut reaches savers at once and a
+  rise after fourteen days, borrowers the other way about; the series
+  before its first publication is taken as its first value); the spreads
+  and lags are published values the bank sets from the parameter page,
+  the rates derived and read. The definition carries the policy
+  (`definition.Bank.Policy`); the bank refuses to open without one. The
+  runner resolves a bank-scoped read through the policy, logging the
+  algorithm's reads on the posting's record; `Products.BankParameter`
+  and `ProductParameter` resolve for the pages, so a product's and an
+  account's rate is the one in force, not the published figure. The
+  Bank tab gains the policy: its name and version, the chart of the
+  risk-free rate against the bank's savings and lending rates over the
+  run (the daily snapshot now carries both), and its parameters at the
+  bank scope, each with its page and, for a published value, the set
+  form; `SetParameter` takes an owner, a product or the bank. The
+  Model Bank lists `easy-access-tracker` on `easyaccess/v2`, tracking
+  the bank's savings rate at 15 bps under it, floor 0, so a new account
+  may open on it and its accrual moves when the risk-free rate does.
+  The core gains `PolicyQueries`, `core.Policy` and `BankOwner`.
+
+### Changed
+- The market's series opens with the publication in force before the
+  opening day (0.75%, decided 2 August 2018) rather than a seed dated
+  the opening day's noon, so a bank has its market's rate from the
+  start and a tracker may open on the first morning; the first
+  publication the run meets as an event is the cut of 11 March 2020
+  (ADR-0010 amended). A publication the clock has already passed has
+  its cascade settled by `Publish` itself.
+- What a rule writes in answer to an event (an account setting, the
+  ISA's running total) is no longer counted as a parameter change owed
+  to the account that wrote it: a reopened bank raised an adoption root
+  for it and a console step settled instead of starting the day.
+
 ## [0.36.0] - 2026-10-13
 
  - Story 1.8.8: the Bank tab and parameter pages in HTMX master-detail; ADRs served whole with their diagrams

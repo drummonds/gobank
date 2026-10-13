@@ -29,6 +29,10 @@ type Snapshot struct {
 	Customers   int
 	NIMBps      float64 // annualised net interest margin, basis points (a rate, not money)
 	RiskFreeBps int64   // the risk-free rate in force at the end of the day, basis points (ADR-0009)
+	// The bank's own rates in force at the end of the day, from its
+	// policy (ADR-0006, story 1.8.9); nil on a day the bank had none.
+	SavingsRateBps *int64
+	LendingRateBps *int64
 }
 
 // History is the daily record over the bank's database.
@@ -46,9 +50,9 @@ func New(db *sql.DB) *History {
 func (h *History) Save(ctx context.Context, s Snapshot) error {
 	// boe_rate is still written, as the decimal the older build of the
 	// drill's rollback reads; it goes a release after risk_free_bps came.
-	_, err := h.db.ExecContext(ctx, `INSERT INTO daily_snapshots (day, savings, lending, customers, nim_bps, boe_rate, risk_free_bps)
-		VALUES ($1, $2, $3, $4, $5, $6, $7) ON CONFLICT (day) DO NOTHING`,
-		s.Day, int64(s.Savings), int64(s.Lending), s.Customers, s.NIMBps, float64(s.RiskFreeBps)/10000, s.RiskFreeBps)
+	_, err := h.db.ExecContext(ctx, `INSERT INTO daily_snapshots (day, savings, lending, customers, nim_bps, boe_rate, risk_free_bps, savings_rate_bps, lending_rate_bps)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9) ON CONFLICT (day) DO NOTHING`,
+		s.Day, int64(s.Savings), int64(s.Lending), s.Customers, s.NIMBps, float64(s.RiskFreeBps)/10000, s.RiskFreeBps, nullInt(s.SavingsRateBps), nullInt(s.LendingRateBps))
 	if err != nil {
 		return fmt.Errorf("history: save %s: %w", s.Day.Format(time.DateOnly), err)
 	}
@@ -87,8 +91,8 @@ func (h *History) Span(ctx context.Context) (first, latest time.Time, ok bool, e
 // Series is the daily series the charts draw (core.History): the newest
 // MaxPoints days on record, oldest first.
 func (h *History) Series(ctx context.Context) (core.History, error) {
-	rows, err := h.db.QueryContext(ctx, fmt.Sprintf(`SELECT day, savings, lending, customers, nim_bps, `+riskFreeColumn+` FROM (
-			SELECT day, savings, lending, customers, nim_bps, boe_rate, risk_free_bps FROM daily_snapshots ORDER BY day DESC LIMIT %d
+	rows, err := h.db.QueryContext(ctx, fmt.Sprintf(`SELECT day, savings, lending, customers, nim_bps, `+riskFreeColumn+`, savings_rate_bps, lending_rate_bps FROM (
+			SELECT day, savings, lending, customers, nim_bps, boe_rate, risk_free_bps, savings_rate_bps, lending_rate_bps FROM daily_snapshots ORDER BY day DESC LIMIT %d
 		) newest ORDER BY day`, MaxPoints))
 	if err != nil {
 		return core.History{}, fmt.Errorf("history: series: %w", err)
@@ -98,7 +102,8 @@ func (h *History) Series(ctx context.Context) (core.History, error) {
 	for rows.Next() {
 		var s Snapshot
 		var savings, lending int64
-		if err := rows.Scan(&s.Day, &savings, &lending, &s.Customers, &s.NIMBps, &s.RiskFreeBps); err != nil {
+		var savingsRate, lendingRate sql.NullInt64
+		if err := rows.Scan(&s.Day, &savings, &lending, &s.Customers, &s.NIMBps, &s.RiskFreeBps, &savingsRate, &lendingRate); err != nil {
 			return core.History{}, fmt.Errorf("history: series: %w", err)
 		}
 		s.Day = s.Day.UTC()
@@ -107,8 +112,21 @@ func (h *History) Series(ctx context.Context) (core.History, error) {
 		out.Customers = append(out.Customers, core.CustomerPoint{Date: s.Day, Count: s.Customers})
 		out.NIM = append(out.NIM, core.NIMPoint{Date: s.Day, NIM: s.NIMBps})
 		out.RiskFree = append(out.RiskFree, core.RatePoint{Date: s.Day, Bps: s.RiskFreeBps})
+		if savingsRate.Valid {
+			out.SavingsRate = append(out.SavingsRate, core.RatePoint{Date: s.Day, Bps: savingsRate.Int64})
+		}
+		if lendingRate.Valid {
+			out.LendingRate = append(out.LendingRate, core.RatePoint{Date: s.Day, Bps: lendingRate.Int64})
+		}
 	}
 	return out, rows.Err()
+}
+
+func nullInt(n *int64) sql.NullInt64 {
+	if n == nil {
+		return sql.NullInt64{}
+	}
+	return sql.NullInt64{Int64: *n, Valid: true}
 }
 
 // riskFreeColumn reads the rate in basis points: rows from before v2 carry
@@ -127,4 +145,10 @@ var Schema = schema.Component{Name: "history", Migrations: []schema.Migration{
 		boe_rate DOUBLE PRECISION NOT NULL
 	)`}},
 	{Version: 2, Statements: []string{`ALTER TABLE daily_snapshots ADD COLUMN risk_free_bps BIGINT NULL`}},
+	// v3 adds the bank's own rates from its policy (story 1.8.9), null
+	// on days from before it.
+	{Version: 3, Statements: []string{
+		`ALTER TABLE daily_snapshots ADD COLUMN savings_rate_bps BIGINT NULL`,
+		`ALTER TABLE daily_snapshots ADD COLUMN lending_rate_bps BIGINT NULL`,
+	}},
 }}

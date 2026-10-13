@@ -57,6 +57,30 @@ func TestBuildParameterHTML(t *testing.T) {
 	if page := BuildParameterHTML(derived, day, true, false, ""); strings.Contains(page, "<form") || !strings.Contains(page, "savings_rate_bps − 15 bps, floor 0") {
 		t.Errorf("a derived parameter: no form, the derivation in words:\n%s", page)
 	}
+	spread := core.ParameterDetail{Owner: "bank", Scope: "bank", Key: "savings_spread_bps", Kind: "bps", Description: "the savings rate's spread", InForce: "-50", Settable: true}
+	if page := BuildParameterHTML(spread, day, true, false, ""); !strings.Contains(page, `hx-post="products/bank/parameters/savings_spread_bps"`) || !strings.Contains(page, `href="products/bank"`) {
+		t.Errorf("the policy's spread: a form posting to the bank's own page, a way back to the bank tab:\n%s", page)
+	}
+}
+
+// The policy's chart draws the risk-free rate against the bank's savings
+// and lending rates over the run, as percentages, each series named.
+func TestRatesChart(t *testing.T) {
+	d := func(n int) time.Time { return time.Date(2020, 1, 1+n, 0, 0, 0, 0, time.UTC) }
+	hist := core.History{
+		RiskFree:    []core.RatePoint{{Date: d(0), Bps: 75}, {Date: d(1), Bps: 75}, {Date: d(2), Bps: 25}},
+		SavingsRate: []core.RatePoint{{Date: d(1), Bps: 25}, {Date: d(2), Bps: 0}},
+		LendingRate: []core.RatePoint{{Date: d(1), Bps: 375}, {Date: d(2), Bps: 375}},
+	}
+	svg := buildRatesChart(hist)
+	for _, want := range []string{"<svg", "risk-free", "savings", "lending", "0.50%"} {
+		if !strings.Contains(svg, want) {
+			t.Errorf("chart lacks %q:\n%s", want, svg)
+		}
+	}
+	if empty := buildRatesChart(core.History{}); strings.Contains(empty, "<svg") {
+		t.Errorf("an empty history draws a chart: %s", empty)
+	}
 }
 
 // A row link loads the parameter's detail whether or not the master it

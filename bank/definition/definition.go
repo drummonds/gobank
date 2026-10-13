@@ -4,10 +4,14 @@
 // is another definition.
 package definition
 
-import "git.bytestone.uk/hum3/gobank/bank/products"
+import (
+	gbp "git.bytestone.uk/hum3/gobank-products"
+	"git.bytestone.uk/hum3/gobank/bank/products"
+)
 
 // Bank is one bank's definition.
 type Bank struct {
 	Name     string             // the bank's name, as its pages show it
 	Products []products.Listing // its products, each on a rules version the build then carries, in catalogue order
+	Policy   gbp.Policy         // its policy: the bank's own rates and how they follow the market, as versioned code (ADR-0006, ADR-0007)
 }

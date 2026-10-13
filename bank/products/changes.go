@@ -28,8 +28,10 @@ import (
 // no record, and those a setting reaching them became effective for
 // after their applied-to instant and by now. A market setting reaches
 // every account of its currency, a bank setting every account, a
-// product's its accounts, an account's itself. The settings are read
-// through the parameters component's contract view (ADR-0001).
+// product's its accounts, an account's itself, unless the account's own
+// rules wrote it: what a rule writes in answer to an event is applied by
+// the writing and is no change of its own. The settings are read through
+// the parameters component's contract view (ADR-0001).
 const owedChanges = `FROM contract_customer_accounts ca
 	LEFT JOIN product_account_parameters ap ON ap.account_id = ca.ledger_account_id
 	WHERE ca.ledger_account_id > $3 AND (ap.account_id IS NULL OR EXISTS (
@@ -37,7 +39,7 @@ const owedChanges = `FROM contract_customer_accounts ca
 		WHERE s.effective_from > ap.applied_to AND s.effective_from <= $1
 		  AND ((s.scope = 'market' AND s.owner = $2) OR s.scope = 'bank'
 		    OR (s.scope = 'version' AND s.owner = ca.product_id)
-		    OR (s.scope = 'account' AND s.owner = ca.ledger_account_id))))`
+		    OR (s.scope = 'account' AND s.owner = ca.ledger_account_id AND s.decided_by <> 'rule'))))`
 
 // CountParameterChangesOwed is how many accounts are owed a
 // ParameterChange at now.
