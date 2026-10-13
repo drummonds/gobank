@@ -2,6 +2,15 @@
 
 ## [Unreleased]
 
+### Changed
+- One `tp release` on the story branch now opens the pull request, waits
+  up to ten minutes for the merge (`merge_wait`), tags, publishes, has
+  the gobank-deploy appliance fetch the binaries and starts the upgrade
+  drill on preprod (`task cloud:drill`); promoting prod stays a button
+  once the drill has passed.
+- The roadmap gains full API documentation (#133) under the transition
+  epic; #108 narrows to the performance gate in the pipeline.
+
 ## [0.38.0] - 2026-10-13
 
 ## [0.37.0] - 2026-10-13
@@ -43,14 +52,9 @@
   v0.35.0 and v0.36.0 drills failed at the upgrade hop.
 
 ### Changed
-- One `tp release` on the story branch now opens the pull request, waits
-  up to ten minutes for the merge (`merge_wait`), tags, publishes, has
-  the gobank-deploy appliance fetch the binaries and starts the upgrade
-  drill on preprod (`task cloud:drill`); promoting prod stays a button
-  once the drill has passed.
 - The roadmap is in task-plus's `tp roadmap` format: twenty named epics
   of items, each an open issue labelled `roadmap` on the Forgejo (#66 to
-  #133), the forge the truth about what is done. The shipped stories
+  #130), the forge the truth about what is done. The shipped stories
   of the old numbered roadmap are archived in this changelog under the
   versions that finished them, as `### Roadmap` lists; the stages with
   open stories (products as versioned code, users and access, speed)
