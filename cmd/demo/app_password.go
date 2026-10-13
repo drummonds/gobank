@@ -21,3 +21,8 @@ func adminPassword() string { return os.Getenv("GOBANK_ADMIN_PASSWORD") }
 // staffLoginNote is the note under the staff login form; a server says
 // nothing.
 func staffLoginNote() string { return "" }
+
+// apiToken lets another program drive the simulation console as the
+// operator (story 9.4: gobank-deploy's drill sets the day length): the
+// deployment sets it, per environment. Empty admits no operator.
+func apiToken() string { return os.Getenv("GOBANK_API_TOKEN") }

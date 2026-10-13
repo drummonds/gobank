@@ -18,3 +18,6 @@ func adminPassword() string { return demoPassword }
 func staffLoginNote() string {
 	return "Model bank in your tab: log in as admin, the password is " + demoPassword + "."
 }
+
+// apiToken: nothing drives the tab's console from outside.
+func apiToken() string { return "" }

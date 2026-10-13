@@ -3,6 +3,7 @@ package staff
 import (
 	"context"
 	"crypto/sha256"
+	"crypto/subtle"
 	"encoding/hex"
 	"errors"
 	"log"
@@ -61,6 +62,17 @@ func (s *Site) requireLogin(next http.Handler) http.Handler {
 			next.ServeHTTP(w, r)
 			return
 		}
+		if auth := r.Header.Get("Authorization"); auth != "" {
+			// An API request: approved by the token or refused outright,
+			// never sent to the login page.
+			if !s.operator(auth) {
+				http.Error(w, "invalid API token", http.StatusUnauthorized)
+				return
+			}
+			sess := staffSession{user: core.User{Login: "operator"}, role: RoleOperator}
+			next.ServeHTTP(w, r.WithContext(context.WithValue(r.Context(), sessionKey{}, sess)))
+			return
+		}
 		if sess, ok := s.lookup(r); ok {
 			next.ServeHTTP(w, r.WithContext(context.WithValue(r.Context(), sessionKey{}, sess)))
 			return
@@ -78,6 +90,16 @@ func (s *Site) requireLogin(next http.Handler) http.Handler {
 		}
 		http.Redirect(w, r, target, http.StatusSeeOther)
 	})
+}
+
+// operator says whether an Authorization header carries the site's API
+// token as a bearer token; a site with no token has no operator.
+func (s *Site) operator(auth string) bool {
+	token, ok := strings.CutPrefix(auth, "Bearer ")
+	if !ok || s.cfg.APIToken == "" {
+		return false
+	}
+	return subtle.ConstantTimeCompare([]byte(token), []byte(s.cfg.APIToken)) == 1
 }
 
 // lookup is the session the request's cookie names, when the store knows

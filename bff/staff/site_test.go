@@ -394,3 +394,50 @@ func TestNoConsoleNoConsolePages(t *testing.T) {
 		}
 	}
 }
+
+// The simulation console may be driven by another program, gobank-deploy
+// running the upgrade drill (story 9.4): a request carrying the API
+// token as a bearer token is served as the operator, who may drive the
+// console and set its settings and nothing else. A wrong token is refused
+// outright, never sent to the login page, and a site given no token has
+// no operator. A request with no token is sent to the login as before.
+func TestAPITokenDrivesTheConsoleAsTheOperator(t *testing.T) {
+	console := &fakeConsole{settings: Settings{MaxCustomers: 10}}
+	site := New(Config{Scope: "/demo/", Version: "v9", Console: console, Users: testUsers, APIToken: "t0k3n"})
+	bearer := func(method, path, form, token string) *httptest.ResponseRecorder {
+		rr := httptest.NewRecorder()
+		req := httptest.NewRequest(method, path, strings.NewReader(form))
+		req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+		if token != "" {
+			req.Header.Set("Authorization", "Bearer "+token)
+		}
+		site.ServeHTTP(rr, req)
+		return rr
+	}
+	rr := bearer("POST", "/settings", "max_customers=50&day_length=2h", "t0k3n")
+	if rr.Code != http.StatusSeeOther || !strings.HasPrefix(rr.Header().Get("Location"), "/demo/") || strings.Contains(rr.Header().Get("Location"), "login") || console.settings.DayLength != 2*time.Hour {
+		t.Errorf("settings with the token: %d %s %+v; want 303 in scope and the day length set", rr.Code, rr.Header().Get("Location"), console.settings)
+	}
+	console.calls = nil
+	if rr := bearer("POST", "/start", "", "t0k3n"); rr.Code != http.StatusSeeOther || len(console.calls) != 1 || console.calls[0] != "start" {
+		t.Errorf("start with the token: %d %v", rr.Code, console.calls)
+	}
+	if rr := bearer("GET", "/export.goluca", "", "t0k3n"); rr.Code != http.StatusForbidden {
+		t.Errorf("the operator exporting the book: %d, want 403: the console and its settings alone", rr.Code)
+	}
+	console.settings.DayLength = 0
+	if rr := bearer("POST", "/settings", "max_customers=50&day_length=2h", "wr0ng"); rr.Code != http.StatusUnauthorized || rr.Header().Get("Location") != "" || console.settings.DayLength != 0 {
+		t.Errorf("a wrong token: %d %q %+v; want 401, no redirect, nothing set", rr.Code, rr.Header().Get("Location"), console.settings)
+	}
+	if rr := bearer("POST", "/settings", "max_customers=50&day_length=2h", ""); rr.Code != http.StatusSeeOther || !strings.Contains(rr.Header().Get("Location"), "login") || console.settings.DayLength != 0 {
+		t.Errorf("no token and no session: %d %s; want the login page and nothing set", rr.Code, rr.Header().Get("Location"))
+	}
+	closed := New(Config{Scope: "/demo/", Version: "v9", Console: console, Users: testUsers})
+	rr = httptest.NewRecorder()
+	req := httptest.NewRequest("POST", "/start", nil)
+	req.Header.Set("Authorization", "Bearer t0k3n")
+	closed.ServeHTTP(rr, req)
+	if rr.Code != http.StatusUnauthorized {
+		t.Errorf("a site with no API token served a bearer request: %d", rr.Code)
+	}
+}

@@ -18,6 +18,10 @@ const (
 	RoleAuditor         Role = "auditor"
 	RoleCustomerService Role = "cs"
 	RoleReadOnly        Role = "readonly"
+	// RoleOperator is another program driving the simulation console with
+	// the API token (story 9.4: gobank-deploy's drill), never a user who
+	// signs in: the console's controls and its settings, nothing else.
+	RoleOperator Role = "operator"
 )
 
 // staffRoles is every staff role, in order of precedence: a user holding
@@ -46,6 +50,8 @@ func (r Role) Label() string {
 		return "Customer Service"
 	case RoleReadOnly:
 		return "Read Only"
+	case RoleOperator:
+		return "Operator"
 	default:
 		return "Admin"
 	}
@@ -55,9 +61,9 @@ func (r Role) Label() string {
 func (r Role) Can(action string) bool {
 	switch action {
 	case "sim_controls":
-		return r == RoleAdmin
+		return r == RoleAdmin || r == RoleOperator
 	case "settings":
-		return r == RoleAdmin
+		return r == RoleAdmin || r == RoleOperator
 	case "export":
 		return r == RoleAdmin
 	case "send_payment":

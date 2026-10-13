@@ -45,6 +45,11 @@ type Config struct {
 	SecureCookies bool
 	LoginNote     string
 
+	// APIToken lets another program drive the console (story 9.4): a
+	// request carrying it as a bearer token is served as the operator.
+	// Empty admits no operator.
+	APIToken string
+
 	// Scope is the path the site is mounted under: "/" on a server, the
 	// service worker's scope in the tab. Every page carries it as its
 	// <base>, links and form actions are relative to it, and every

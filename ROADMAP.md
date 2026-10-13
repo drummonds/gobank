@@ -953,6 +953,19 @@ deployment.
   the static site renders `adr/*.md` to `docs/adr/` with the same
   index, so docs.bytestone.uk carries them. Ships with 1.8.8. Out of
   scope: ADR templates, a status workflow
+- **9.4 API token for the console** — gobank-deploy drives the demo's
+  console as a third party (the drill's day length, the performance
+  run's batch add, Run and Stop), and since 1.7.1 the console sits
+  behind the staff login, so its posts were redirected to the login
+  page and read as success (the v0.35.0 and v0.36.0 drills failed on
+  it, see 1.8.8). A request carrying `GOBANK_API_TOKEN` as a bearer
+  token is served as the operator, a role that may drive the console
+  and set its settings and nothing else; a wrong token is refused
+  outright, never sent to the login. gobank-deploy generates the token
+  per environment as it does the passwords, keeps it on the server's
+  labels, writes it to the deploy env, sends it on every console post
+  and treats a redirect to the login as a refusal. Ships with 1.8.9.
+  Out of scope: tokens for users, scopes beyond the console
 
 ## 10 Blue-green deployment
 

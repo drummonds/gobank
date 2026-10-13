@@ -27,6 +27,14 @@
   the bank's savings rate at 15 bps under it, floor 0, so a new account
   may open on it and its accrual moves when the risk-free rate does.
   The core gains `PolicyQueries`, `core.Policy` and `BankOwner`.
+- Story 9.4: an API token for the console. A request carrying
+  `GOBANK_API_TOKEN` as a bearer token is served as the operator, who
+  may drive the simulation console and set its settings and nothing
+  else; a wrong token is refused with 401, never sent to the login
+  page. gobank-deploy's drill, which sets the day length through the
+  console, had been redirected to the login since the staff web went
+  behind it (1.7.1) and read the redirect as success, which is why the
+  v0.35.0 and v0.36.0 drills failed at the upgrade hop.
 
 ### Changed
 - The market's series opens with the publication in force before the

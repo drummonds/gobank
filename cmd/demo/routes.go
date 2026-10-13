@@ -25,6 +25,9 @@ func newHandler(state *DemoState, version, scope string) http.Handler {
 	if adminPassword() == "" {
 		log.Printf("staff web mounted with GOBANK_ADMIN_PASSWORD unset: staff login is off")
 	}
+	if apiToken() == "" {
+		log.Printf("staff web mounted with GOBANK_API_TOKEN unset: nothing drives the console from outside")
+	}
 
 	// The customer BFF under /v1/: the app's screens and the customer
 	// web, which is the BFF's own HTML (story 1.6.2). The password is the
@@ -53,7 +56,7 @@ func newHandler(state *DemoState, version, scope string) http.Handler {
 func siteConfig(state *DemoState, version, scope string, sessions bff.Sessions) staff.Config {
 	return staff.Config{
 		Bank: state.Bank, Commands: state.Bank, Users: state.Bank, Console: state,
-		Sessions: sessions, LoginNote: staffLoginNote(),
+		Sessions: sessions, LoginNote: staffLoginNote(), APIToken: apiToken(),
 		Scope: scope, Version: version,
 		Components: components, Debt: contractDebt,
 	}
