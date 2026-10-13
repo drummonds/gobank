@@ -199,7 +199,7 @@ func writeAPI(pagePath, docPath string) error {
 		return err
 	}
 	defer f.Close()
-	if err := t.Execute(f, api.HTML(s)); err != nil {
+	if err := t.Execute(f, api.Page(s, api.Options{SourceRef: "branch/main"})); err != nil {
 		return err
 	}
 	if err := os.WriteFile(docPath, api.Document, 0o644); err != nil {

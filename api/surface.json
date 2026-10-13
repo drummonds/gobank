@@ -1,4 +1,5 @@
 {
+  "Module": "git.bytestone.uk/hum3/gobank",
   "Packages": [
     {
       "Path": "git.bytestone.uk/hum3/gobank/bff",
@@ -11,6 +12,38 @@
       "Doc": "Package staff is the staff web of the Model Bank: the login (story\n1.7.1), the pages a member of staff reads the bank through (accounting,\nproducts, customers, payments, treasury, reports, about and the\ndocumentation), the role the signed-in user holds and the PII\nauthorisation that gate what they see, the layout every page is\nrendered in, and the simulation console when there is one (ADR-0002\nstage 6, stories 1.6.3 and 1.6.4).\n\nIt reads the bank through core.StaffQueries, acts on it through\ncore.Commands, checks logins through core.Users and drives the\nsimulation through Console, and knows nothing else of it. The BFF mounts\nit beside the customer routes (bff.Config.Staff) and its sessions are\nkept in the BFF's store."
     }
   ],
+  "Registrars": [
+    {
+      "Package": "git.bytestone.uk/hum3/gobank/bff",
+      "Name": "NewServer",
+      "Doc": "Builds the handler. Every route except /v1/health, GET\n/v1/screen/login and POST /v1/login requires a valid session."
+    },
+    {
+      "Package": "git.bytestone.uk/hum3/gobank/bff/staff",
+      "Name": "(*Site).consoleRoutes",
+      "Doc": "Mounts the simulation console: the dashboard and its\ncontrols, the payments generator, the settings, the runtime, export and\nimport, the explorer and the status another program reads."
+    },
+    {
+      "Package": "git.bytestone.uk/hum3/gobank/bff/staff",
+      "Name": "(*Site).loginRoutes",
+      "Doc": "Mounts the login page and the logout."
+    },
+    {
+      "Package": "git.bytestone.uk/hum3/gobank/bff/staff",
+      "Name": "(*Site).movementRoutes",
+      "Doc": "Serves the movement page, its goluca text and JSON, and\nthe WASM assets."
+    },
+    {
+      "Package": "git.bytestone.uk/hum3/gobank/bff/staff",
+      "Name": "(*Site).routes",
+      "Doc": "Mounts the staff pages: accounting, products, customers,\npayments, treasury, reports and about, and the PII authorisation."
+    },
+    {
+      "Package": "git.bytestone.uk/hum3/gobank/bff/staff",
+      "Name": "(*Site).viewRoutes",
+      "Doc": "Mounts the view switch: GET view/{name}?back=\u003cpath\u003e sets\nthe cookie and returns to the page that offered it."
+    }
+  ],
   "Routes": [
     {
       "Package": "git.bytestone.uk/hum3/gobank/bff",
@@ -19,6 +52,7 @@
       "Pos": "bff/server.go:125",
       "Handler": "",
       "Wrappers": null,
+      "Registrar": "NewServer",
       "Via": "",
       "Args": null,
       "Doc": "Every other path under /v1/: not_found, as JSON.",
@@ -68,6 +102,7 @@
       "Pos": "bff/server.go:116",
       "Handler": "(*Server).health",
       "Wrappers": null,
+      "Registrar": "NewServer",
       "Via": "",
       "Args": null,
       "Doc": "Answers as soon as the process serves HTTP. No session.",
@@ -101,6 +136,7 @@
       "Pos": "bff/server.go:119",
       "Handler": "(*Server).login",
       "Wrappers": null,
+      "Registrar": "NewServer",
       "Via": "",
       "Args": null,
       "Doc": "Checks the customer ID and password, from a JSON body or a form,\nand opens a session: a JSON client gets the token and the home screen; a\nform post or a browser gets the mb_session cookie and is sent to the\nhome screen. Five failures for one customer ID or from one address in\nfifteen minutes lock that key for the rest of the window (429 with\nRetry-After).",
@@ -255,6 +291,7 @@
       "Wrappers": [
         "(*Server).authed"
       ],
+      "Registrar": "NewServer",
       "Via": "",
       "Args": null,
       "Doc": "Ends the session: a browser's cookie is cleared and it is sent\nto the login screen; a JSON client gets the login screen.",
@@ -321,6 +358,7 @@
       "Pos": "bff/server.go:117",
       "Handler": "(*Server).openapi",
       "Wrappers": null,
+      "Registrar": "NewServer",
       "Via": "",
       "Args": null,
       "Doc": "Serves the API document (package api): the surface this server\nand the staff web present, as built.",
@@ -356,6 +394,7 @@
       "Wrappers": [
         "(*Server).authed"
       ],
+      "Registrar": "NewServer",
       "Via": "",
       "Args": null,
       "Doc": "The home screen: the customer's net position and a row per\naccount, each opening its product screen.",
@@ -475,6 +514,7 @@
       "Wrappers": [
         "(*Server).authed"
       ],
+      "Registrar": "NewServer",
       "Via": "",
       "Args": null,
       "Doc": "The customer's transactions across every account, newest\nfirst, one page (?page=) at a time.",
@@ -597,6 +637,7 @@
       "Pos": "bff/server.go:118",
       "Handler": "(*Server).loginScreen",
       "Wrappers": null,
+      "Registrar": "NewServer",
       "Via": "",
       "Args": null,
       "Doc": "The front door: the login form, whose submit is POST\n/v1/login, with the deployment's note. No session.",
@@ -641,6 +682,7 @@
       "Wrappers": [
         "(*Server).authed"
       ],
+      "Registrar": "NewServer",
       "Via": "",
       "Args": null,
       "Doc": "One account, by its index in the customer's list: its\ndetails and its own transactions, one page (?page=) at a time; 404 for\nan index the customer has no account at.",
@@ -774,6 +816,7 @@
       "Pos": "bff/staff/console_routes.go:26",
       "Handler": "",
       "Wrappers": null,
+      "Registrar": "(*Site).consoleRoutes",
       "Via": "",
       "Args": null,
       "Doc": "The dashboard: the bank's position, the run's state and its controls;\nit polls its own sections.",
@@ -828,6 +871,7 @@
       "Pos": "bff/staff/site.go:481",
       "Handler": "",
       "Wrappers": null,
+      "Registrar": "(*Site).routes",
       "Via": "",
       "Args": null,
       "Doc": "The project: what the Model Bank is, its aims and its non-goals.",
@@ -882,6 +926,7 @@
       "Pos": "bff/staff/console_routes.go:246",
       "Handler": "",
       "Wrappers": null,
+      "Registrar": "(*Site).consoleRoutes",
       "Via": "",
       "Args": null,
       "Doc": "The demo's state for another program (GET, no session): version,\nschema, settings, the run and its rates, the position and the restart\nrecord. gobank-deploy's upgrade drill reads it before and after each\nredeploy; a performance run reads the rates.",
@@ -921,9 +966,10 @@
       "Package": "git.bytestone.uk/hum3/gobank/bff/staff",
       "Method": "",
       "Path": "/about/adr",
-      "Pos": "bff/staff/site.go:504",
+      "Pos": "bff/staff/site.go:525",
       "Handler": "",
       "Wrappers": null,
+      "Registrar": "(*Site).routes",
       "Via": "",
       "Args": null,
       "Doc": "The architecture decision records compiled into this build.",
@@ -968,12 +1014,51 @@
       "Package": "git.bytestone.uk/hum3/gobank/bff/staff",
       "Method": "",
       "Path": "/about/api",
-      "Pos": "bff/staff/site.go:500",
+      "Pos": "bff/staff/site.go:502",
       "Handler": "",
       "Wrappers": null,
+      "Registrar": "(*Site).routes",
       "Via": "",
       "Args": null,
-      "Doc": "The API: every route the BFF and the staff web serve, read off the\ncode at build time (package api), with the types the bodies are\nmade of; the OpenAPI document is at v1/openapi.json.",
+      "Doc": "The API: every route the BFF and the staff web serve, read off the\ncode at build time (package api), in sections by where each is\nregistered, each linking to its own page; the types the bodies\nare made of follow. The OpenAPI document is at v1/openapi.json.\nA static page: the surface does not change while the run goes.",
+      "Request": null,
+      "Responses": [
+        {
+          "Status": 405,
+          "Media": "text/plain; charset=utf-8",
+          "Type": "",
+          "Note": "Method not allowed",
+          "Redirect": ""
+        }
+      ],
+      "Params": null,
+      "Reads": {
+        "Headers": null,
+        "Cookies": [
+          "staff_view"
+        ]
+      },
+      "Guards": {
+        "Headers": null,
+        "Cookies": null
+      },
+      "Action": "",
+      "Methods": [
+        "GET"
+      ],
+      "Unknowns": null
+    },
+    {
+      "Package": "git.bytestone.uk/hum3/gobank/bff/staff",
+      "Method": "",
+      "Path": "/about/api/{method}/{path...}",
+      "Pos": "bff/staff/site.go:512",
+      "Handler": "",
+      "Wrappers": null,
+      "Registrar": "(*Site).routes",
+      "Via": "",
+      "Args": null,
+      "Doc": "One route of the API: what its handler needs, reads and answers,\nwith a link to the registration in the source at this build's tag.\nThe method is the pattern's or \"any\", the path the pattern's.",
       "Request": null,
       "Responses": [
         {
@@ -984,19 +1069,25 @@
           "Redirect": ""
         },
         {
-          "Status": 200,
-          "Media": "text/html; charset=utf-8",
+          "Status": 404,
+          "Media": "text/plain; charset=utf-8",
           "Type": "",
           "Note": "",
           "Redirect": ""
         }
       ],
-      "Params": null,
+      "Params": [
+        {
+          "Name": "method",
+          "In": "path"
+        },
+        {
+          "Name": "path",
+          "In": "path"
+        }
+      ],
       "Reads": {
-        "Headers": [
-          "HX-Request",
-          "HX-Boosted"
-        ],
+        "Headers": null,
         "Cookies": [
           "staff_view"
         ]
@@ -1018,6 +1109,7 @@
       "Pos": "bff/staff/site.go:494",
       "Handler": "",
       "Wrappers": null,
+      "Registrar": "(*Site).routes",
       "Via": "",
       "Args": null,
       "Doc": "The system documentation: the component registry, who may read what,\nthe pre-rule debt and the ADR list.",
@@ -1062,9 +1154,10 @@
       "Package": "git.bytestone.uk/hum3/gobank/bff/staff",
       "Method": "",
       "Path": "/about/docs/adr/",
-      "Pos": "bff/staff/site.go:509",
+      "Pos": "bff/staff/site.go:530",
       "Handler": "",
       "Wrappers": null,
+      "Registrar": "(*Site).routes",
       "Via": "",
       "Args": null,
       "Doc": "An ADR whole: its page, or one of the diagrams and sources its\nmarkdown names beside it.",
@@ -1126,6 +1219,7 @@
       "Pos": "bff/staff/site.go:489",
       "Handler": "",
       "Wrappers": null,
+      "Registrar": "(*Site).routes",
       "Via": "",
       "Args": null,
       "Doc": "The architecture models: the C4 system context and container diagrams.",
@@ -1173,6 +1267,7 @@
       "Pos": "bff/staff/console_routes.go:239",
       "Handler": "",
       "Wrappers": null,
+      "Registrar": "(*Site).consoleRoutes",
       "Via": "",
       "Args": null,
       "Doc": "Runtime: the process, its memory against the limit, the schema\nversions and the restart record.",
@@ -1220,6 +1315,7 @@
       "Pos": "bff/staff/site.go:293",
       "Handler": "",
       "Wrappers": null,
+      "Registrar": "(*Site).routes",
       "Via": "",
       "Args": null,
       "Doc": "The balance sheet on the current business day, with the CET1 position.",
@@ -1267,6 +1363,7 @@
       "Pos": "bff/staff/site.go:289",
       "Handler": "",
       "Wrappers": null,
+      "Registrar": "(*Site).routes",
       "Via": "",
       "Args": null,
       "Doc": "The profit and loss statement since the bank opened, on an accrual\nbasis.",
@@ -1314,6 +1411,7 @@
       "Pos": "bff/staff/console_routes.go:83",
       "Handler": "",
       "Wrappers": null,
+      "Registrar": "(*Site).consoleRoutes",
       "Via": "control",
       "Args": [
         "sim_controls"
@@ -1363,6 +1461,7 @@
       "Pos": "bff/staff/console_routes.go:77",
       "Handler": "",
       "Wrappers": null,
+      "Registrar": "(*Site).consoleRoutes",
       "Via": "control",
       "Args": [
         "sim_controls"
@@ -1407,6 +1506,7 @@
       "Pos": "bff/staff/site.go:264",
       "Handler": "",
       "Wrappers": null,
+      "Registrar": "(*Site).routes",
       "Via": "",
       "Args": null,
       "Doc": "PII (POST): an admin authorises themselves to see personal data for a\nwhile, then returns to redirect=.",
@@ -1454,6 +1554,7 @@
       "Pos": "bff/staff/site.go:276",
       "Handler": "",
       "Wrappers": null,
+      "Registrar": "(*Site).routes",
       "Via": "",
       "Args": null,
       "Doc": "PII (POST): the admin gives the authorisation up and returns to\nredirect=.",
@@ -1501,6 +1602,7 @@
       "Pos": "bff/staff/site.go:375",
       "Handler": "",
       "Wrappers": null,
+      "Registrar": "(*Site).routes",
       "Via": "",
       "Args": null,
       "Doc": "The customers, one page (?page=) at a time; personal data only for an\nauthorised admin.",
@@ -1553,6 +1655,7 @@
       "Pos": "bff/staff/site.go:381",
       "Handler": "",
       "Wrappers": null,
+      "Registrar": "(*Site).routes",
       "Via": "",
       "Args": null,
       "Doc": "Under /customers/: a customer's detail at /customers/{id}, or one of\ntheir accounts at /customers/{id}/account/{index}, each with its\ntransactions one page (?txpage=) at a time.",
@@ -1640,6 +1743,7 @@
       "Pos": "bff/staff/console_routes.go:46",
       "Handler": "",
       "Wrappers": null,
+      "Registrar": "(*Site).consoleRoutes",
       "Via": "",
       "Args": null,
       "Doc": "The dashboard's polled sections, as an HTML fragment.",
@@ -1682,6 +1786,7 @@
       "Pos": "bff/staff/site.go:418",
       "Handler": "",
       "Wrappers": null,
+      "Registrar": "(*Site).routes",
       "Via": "",
       "Args": null,
       "Doc": "Events: the record of what happened and what it caused (ADR-0011)",
@@ -1743,6 +1848,7 @@
       "Pos": "bff/staff/console_routes.go:94",
       "Handler": "",
       "Wrappers": null,
+      "Registrar": "(*Site).consoleRoutes",
       "Via": "",
       "Args": null,
       "Doc": "The whole book as a .goluca file (GET): admin only.",
@@ -1796,9 +1902,10 @@
       "Package": "git.bytestone.uk/hum3/gobank/bff/staff",
       "Method": "",
       "Path": "/favicon.ico",
-      "Pos": "bff/staff/site.go:525",
+      "Pos": "bff/staff/site.go:546",
       "Handler": "lofigui.ServeFavicon",
       "Wrappers": null,
+      "Registrar": "(*Site).routes",
       "Via": "",
       "Args": null,
       "Doc": "The tab icon as .ico, from lofigui.",
@@ -1824,9 +1931,10 @@
       "Package": "git.bytestone.uk/hum3/gobank/bff/staff",
       "Method": "",
       "Path": "/favicon.svg",
-      "Pos": "bff/staff/site.go:527",
+      "Pos": "bff/staff/site.go:548",
       "Handler": "",
       "Wrappers": null,
+      "Registrar": "(*Site).routes",
       "Via": "",
       "Args": null,
       "Doc": "The tab icon as SVG.",
@@ -1860,6 +1968,7 @@
       "Pos": "bff/staff/console_routes.go:113",
       "Handler": "",
       "Wrappers": null,
+      "Registrar": "(*Site).consoleRoutes",
       "Via": "",
       "Args": null,
       "Doc": "Replaces the book with an uploaded .goluca file (POST, multipart\nfile=): admin only.",
@@ -1935,6 +2044,7 @@
       "Pos": "bff/staff/console_routes.go:230",
       "Handler": "",
       "Wrappers": null,
+      "Registrar": "(*Site).consoleRoutes",
       "Via": "",
       "Args": null,
       "Doc": "The DB explorer: every component's tables, read-only; a role sees only\nthe components it may (customers needs view_pii).",
@@ -1996,6 +2106,7 @@
       "Pos": "bff/staff/console_routes.go:232",
       "Handler": "",
       "Wrappers": null,
+      "Registrar": "(*Site).consoleRoutes",
       "Via": "",
       "Args": null,
       "Doc": "The DB explorer's tables and rows, under its prefix.",
@@ -2057,6 +2168,7 @@
       "Pos": "bff/staff/login.go:25",
       "Handler": "",
       "Wrappers": null,
+      "Registrar": "(*Site).loginRoutes",
       "Via": "",
       "Args": null,
       "Doc": "The staff login: the form (GET) and its check (POST login, password)\nagainst the users component. Five failures for one login or from one\naddress lock it for fifteen minutes; 503 on a deployment with no users.",
@@ -2169,6 +2281,7 @@
       "Pos": "bff/staff/login.go:41",
       "Handler": "",
       "Wrappers": null,
+      "Registrar": "(*Site).loginRoutes",
       "Via": "",
       "Args": null,
       "Doc": "Ends the staff session (POST): the cookie is cleared and the browser\nsent to the login page.",
@@ -2211,6 +2324,7 @@
       "Pos": "bff/staff/movement.go:45",
       "Handler": "",
       "Wrappers": null,
+      "Registrar": "(*Site).movementRoutes",
       "Via": "",
       "Args": null,
       "Doc": "One movement of the ledger (ADR-0008): its page; with the suffix\n.goluca its plain-text-accounting text, with .json the movement itself.",
@@ -2417,6 +2531,7 @@
       "Pos": "bff/staff/console_routes.go:143",
       "Handler": "",
       "Wrappers": null,
+      "Registrar": "(*Site).consoleRoutes",
       "Via": "",
       "Args": null,
       "Doc": "Payments: the list, newest first, one page (?page=) at a time, with\nthe generator's controls.",
@@ -2476,6 +2591,7 @@
       "Pos": "bff/staff/console_routes.go:164",
       "Handler": "",
       "Wrappers": null,
+      "Registrar": "(*Site).consoleRoutes",
       "Via": "payments",
       "Args": null,
       "Doc": "Starts the payment generator (POST): the settings' payments a day.",
@@ -2518,6 +2634,7 @@
       "Pos": "bff/staff/console_routes.go:162",
       "Handler": "",
       "Wrappers": null,
+      "Registrar": "(*Site).consoleRoutes",
       "Via": "payments",
       "Args": null,
       "Doc": "Sends one generated payment now (POST).",
@@ -2560,6 +2677,7 @@
       "Pos": "bff/staff/console_routes.go:166",
       "Handler": "",
       "Wrappers": null,
+      "Registrar": "(*Site).consoleRoutes",
       "Via": "payments",
       "Args": null,
       "Doc": "Stops the payment generator (POST).",
@@ -2602,6 +2720,7 @@
       "Pos": "bff/staff/site.go:408",
       "Handler": "",
       "Wrappers": null,
+      "Registrar": "(*Site).routes",
       "Via": "",
       "Args": null,
       "Doc": "One payment: its detail and the movements it made.",
@@ -2661,6 +2780,7 @@
       "Pos": "bff/staff/site.go:313",
       "Handler": "",
       "Wrappers": null,
+      "Registrar": "(*Site).routes",
       "Via": "",
       "Args": null,
       "Doc": "The bank's own parameters (Bank Rate, the reserve ratio and the rest),\nas the Bank tab shows them.",
@@ -2708,6 +2828,7 @@
       "Pos": "bff/staff/site.go:308",
       "Handler": "",
       "Wrappers": null,
+      "Registrar": "(*Site).routes",
       "Via": "",
       "Args": null,
       "Doc": "The lending products: the family's catalogue, each product with its\nbook.",
@@ -2755,6 +2876,7 @@
       "Pos": "bff/staff/site.go:303",
       "Handler": "",
       "Wrappers": null,
+      "Registrar": "(*Site).routes",
       "Via": "",
       "Args": null,
       "Doc": "The savings products: the family's catalogue, each product with its\nbook.",
@@ -2802,6 +2924,7 @@
       "Pos": "bff/staff/site.go:319",
       "Handler": "",
       "Wrappers": null,
+      "Registrar": "(*Site).routes",
       "Via": "",
       "Args": null,
       "Doc": "One parameter of a product or of the bank: its history and, for a\nsigned-in user who may, the form that sets it (POST value, effective);\n?refused= carries a refusal back to the page.",
@@ -2906,6 +3029,7 @@
       "Pos": "bff/staff/site.go:428",
       "Handler": "",
       "Wrappers": null,
+      "Registrar": "(*Site).routes",
       "Via": "",
       "Args": null,
       "Doc": "The BBSI return (Bank and Building Society Interest): each customer's\ninterest for the year; personal data only for an authorised admin.",
@@ -2953,6 +3077,7 @@
       "Pos": "bff/staff/site.go:423",
       "Handler": "",
       "Wrappers": null,
+      "Registrar": "(*Site).routes",
       "Via": "",
       "Args": null,
       "Doc": "The charts: the book, the customer count and the rates over the run.",
@@ -3000,6 +3125,7 @@
       "Pos": "bff/staff/site.go:433",
       "Handler": "",
       "Wrappers": null,
+      "Registrar": "(*Site).routes",
       "Via": "",
       "Args": null,
       "Doc": "A customer as the app shows them (?id=); without an id, the customer\nlist.",
@@ -3059,6 +3185,7 @@
       "Pos": "bff/staff/console_routes.go:80",
       "Handler": "",
       "Wrappers": null,
+      "Registrar": "(*Site).consoleRoutes",
       "Via": "control",
       "Args": [
         "sim_controls"
@@ -3103,6 +3230,7 @@
       "Pos": "bff/staff/console_routes.go:174",
       "Handler": "",
       "Wrappers": null,
+      "Registrar": "(*Site).consoleRoutes",
       "Via": "",
       "Args": null,
       "Doc": "The console settings: the page (GET), and the change (POST\nmax_customers, payments_per_day, day_length; 0s runs flat out, a day\nlength that does not parse leaves the current one). The day length set\nhere is the run's and outlives the process.",
@@ -3178,6 +3306,7 @@
       "Pos": "bff/staff/console_routes.go:202",
       "Handler": "",
       "Wrappers": null,
+      "Registrar": "(*Site).consoleRoutes",
       "Via": "",
       "Args": null,
       "Doc": "The settings page's status line, polled on its own so the form is\nnever re-rendered under the operator.",
@@ -3220,6 +3349,7 @@
       "Pos": "bff/staff/console_routes.go:73",
       "Handler": "",
       "Wrappers": null,
+      "Registrar": "(*Site).consoleRoutes",
       "Via": "control",
       "Args": [
         "sim_controls"
@@ -3264,6 +3394,7 @@
       "Pos": "bff/staff/console_routes.go:75",
       "Handler": "",
       "Wrappers": null,
+      "Registrar": "(*Site).consoleRoutes",
       "Via": "control",
       "Args": [
         "sim_controls"
@@ -3308,6 +3439,7 @@
       "Pos": "bff/staff/site.go:448",
       "Handler": "",
       "Wrappers": null,
+      "Registrar": "(*Site).routes",
       "Via": "",
       "Args": null,
       "Doc": "The reserve ratio against its requirement, and the lending headroom.",
@@ -3355,6 +3487,7 @@
       "Pos": "bff/staff/site.go:444",
       "Handler": "",
       "Wrappers": null,
+      "Registrar": "(*Site).routes",
       "Via": "",
       "Args": null,
       "Doc": "The cash position: deposits, loans, cash at the BoE against the\nrequired reserves, and the Bank Rate.",
@@ -3402,6 +3535,7 @@
       "Pos": "bff/staff/site.go:452",
       "Handler": "",
       "Wrappers": null,
+      "Registrar": "(*Site).routes",
       "Via": "",
       "Args": null,
       "Doc": "The gilt holdings and the purchase form.",
@@ -3449,6 +3583,7 @@
       "Pos": "bff/staff/site.go:457",
       "Handler": "",
       "Wrappers": null,
+      "Registrar": "(*Site).routes",
       "Via": "",
       "Args": null,
       "Doc": "Buys a gilt (POST tenor, face_value in pounds): admin only; returns to\nthe gilts page.",
@@ -3507,6 +3642,7 @@
       "Pos": "bff/staff/view.go:30",
       "Handler": "",
       "Wrappers": null,
+      "Registrar": "(*Site).viewRoutes",
       "Via": "",
       "Args": null,
       "Doc": "Switches this browser between the bank's view and the customer's:\nsets the staff_view cookie for a year and returns to ?back=.",
@@ -3551,6 +3687,7 @@
       "Wrappers": [
         "http.StripPrefix"
       ],
+      "Registrar": "(*Site).movementRoutes",
       "Via": "",
       "Args": null,
       "Doc": "pta2svg's browser renderer and its loader, embedded (ADR-0008), so the\nmovement page draws in the tab.",

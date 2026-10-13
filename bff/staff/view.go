@@ -22,8 +22,8 @@ func (s *Site) view(r *http.Request) view.View {
 	return view.Parse(c.Value)
 }
 
-// viewRoutes serves the switch: GET view/{name}?back=<path> sets the
-// cookie and returns to the page that offered it.
+// viewRoutes mounts the view switch: GET view/{name}?back=<path> sets
+// the cookie and returns to the page that offered it.
 func (s *Site) viewRoutes() {
 	// Switches this browser between the bank's view and the customer's:
 	// sets the staff_view cookie for a year and returns to ?back=.

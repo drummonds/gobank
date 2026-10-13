@@ -68,6 +68,12 @@ transition's own leftovers.
   a hand-written spec checked against the router by the test
   (recommended: no new machinery) versus one generated from the Go types
   (swag or ogen)
+- #141 API detail pages carry a worked example per route — a
+  request and the response it got, recorded from the running system
+  (the BFF over the stub bank, the console over an in-memory demo) by
+  the same generation that walks the code, so an example can no more
+  drift than the route can; shown on the route's detail page under
+  About → API and on the docs site. Out of scope: hand-written samples
 
 ## Products as versioned code
 
@@ -466,6 +472,12 @@ fails before it ships.
   blobs, the lofigui ceiling). Open: the weight it adds to the WASM
   download, and whether it replaces the server-rendered page or sits
   beside it
+- #142 Per-route performance on the API detail page — the running
+  process keeps, per route, the count and the latency since it started
+  (p50, p95, max) and the detail page shows them beside the route's
+  facts, so the performance gate in the pipeline (#108) and a person
+  read the same numbers. Open: whether the figures are kept in the
+  process alone or recorded on the day's record for the history
 
 ## Resilience
 

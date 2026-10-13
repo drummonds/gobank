@@ -28,11 +28,32 @@ func TestServedRoutesAreTheWalkedRoutes(t *testing.T) {
 	}
 }
 
-// About → API renders the generated surface for a signed-in user.
-func TestAPIPage(t *testing.T) {
-	site := newSite(t, "/")
-	rec := get(site, "/about/api", signIn(t, site, "ro"))
-	if rec.Code != 200 || !strings.Contains(rec.Body.String(), "<code>/v1/openapi.json</code>") || !strings.Contains(rec.Body.String(), "<code>/about/api</code>") {
-		t.Errorf("GET /about/api: %d, page lacks the routes", rec.Code)
+// About → API is a static index (no poll to close anything) whose rows
+// link to a page per route, with the source linked at the build's tag;
+// an unknown route is not found.
+func TestAPIPages(t *testing.T) {
+	site := New(Config{Scope: "/", Version: "v0.44.0", Users: testUsers, Console: &fakeConsole{}})
+	cookie := signIn(t, site, "ro")
+	rec := get(site, "/about/api", cookie)
+	body := rec.Body.String()
+	if rec.Code != 200 || !strings.Contains(body, `href="about/api/get/v1/health"`) || !strings.Contains(body, `href="about/api/any/settings"`) {
+		t.Errorf("GET /about/api: %d, index lacks the detail links", rec.Code)
+	}
+	if !strings.Contains(body, "The simulation console") {
+		t.Errorf("index lacks the console section")
+	}
+	if strings.Contains(body, "hx-trigger=\"every") && strings.Contains(body, `hx-get="about/api"`) {
+		t.Errorf("the index polls itself")
+	}
+	rec = get(site, "/about/api/any/settings", cookie)
+	body = rec.Body.String()
+	if rec.Code != 200 || !strings.Contains(body, "<code>/settings</code>") || !strings.Contains(body, "max_customers") {
+		t.Errorf("GET /about/api/any/settings: %d", rec.Code)
+	}
+	if !strings.Contains(body, `https://git.bytestone.uk/hum3/gobank/src/tag/v0.44.0/bff/staff/console_routes.go#L`) {
+		t.Errorf("detail lacks the source link at the tag")
+	}
+	if rec := get(site, "/about/api/get/no/such", cookie); rec.Code != 404 {
+		t.Errorf("unknown route: %d, want 404", rec.Code)
 	}
 }

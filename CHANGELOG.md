@@ -2,6 +2,19 @@
 
 ## [Unreleased]
 
+### Fixed
+- About → API no longer loses an opened route when the run's poll
+  re-renders the page: the index is a static page whose rows link to a
+  page per route (`about/api/{method}/{path}`), and the routes fall into
+  sections by the function they are registered in, titled from its doc
+  comment — the simulation console is one. Each route's page links its
+  registration in the source at the build's tag. The docs site page
+  carries the same, anchored on one page.
+
+### Roadmap
+- API detail pages carry a worked example per route (#141); per-route
+  performance on the API detail page (#142).
+
 ## [0.42.0] - 2026-10-13
 
 ## [0.41.0] - 2026-10-13

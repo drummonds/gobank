@@ -35,7 +35,9 @@ func Walk(patterns ...string) (api.Surface, error) {
 		return api.Surface{}, fmt.Errorf("walk: %w", err)
 	}
 	var s api.Surface
-	sch := newSchemas(newLoader(pkgs))
+	ld := newLoader(pkgs)
+	s.Module = ld.module
+	sch := newSchemas(ld)
 	for _, p := range pkgs {
 		if len(p.Errors) > 0 {
 			return api.Surface{}, fmt.Errorf("walk: %s: %v", p.PkgPath, p.Errors[0])
@@ -43,6 +45,7 @@ func Walk(patterns ...string) (api.Surface, error) {
 		w := newWalker(p, sch)
 		s.Packages = append(s.Packages, api.Package{Path: p.PkgPath, Name: p.Name, Doc: w.packageDoc()})
 		s.Routes = append(s.Routes, w.routes()...)
+		s.Registrars = append(s.Registrars, w.registrars(s.Routes)...)
 		s.Gates = append(s.Gates, w.gates()...)
 	}
 	s.Types = sch.build()
@@ -283,7 +286,7 @@ func (w *walker) routes() []api.Route {
 			if !ok {
 				return true // inside a helper: found at the helper's callers
 			}
-			r := api.Route{Package: w.pkg.PkgPath, Pos: w.pos(call.Pos())}
+			r := api.Route{Package: w.pkg.PkgPath, Pos: w.pos(call.Pos()), Registrar: w.enclosingFunc(file, call)}
 			r.Method, r.Path = splitPattern(pattern)
 			var helper *fn
 			if handlerExpr != nil {
@@ -476,4 +479,47 @@ func (w *walker) packageDoc() string {
 		}
 	}
 	return ""
+}
+
+// enclosingFunc names the declared function a call is in.
+func (w *walker) enclosingFunc(file *ast.File, call *ast.CallExpr) string {
+	path, _ := astutil.PathEnclosingInterval(file, call.Pos(), call.End())
+	for _, n := range path {
+		if decl, ok := n.(*ast.FuncDecl); ok {
+			if f := w.fns[decl]; f != nil {
+				return f.name
+			}
+		}
+	}
+	return ""
+}
+
+// registrars are this package's functions the routes name as theirs,
+// with their doc comments, in source order.
+func (w *walker) registrars(routes []api.Route) []api.Registrar {
+	named := map[string]bool{}
+	for _, r := range routes {
+		if r.Package == w.pkg.PkgPath && r.Registrar != "" {
+			named[r.Registrar] = true
+		}
+	}
+	var out []api.Registrar
+	for _, file := range w.pkg.Syntax {
+		for _, decl := range file.Decls {
+			fd, ok := decl.(*ast.FuncDecl)
+			if !ok {
+				continue
+			}
+			f := w.fns[fd]
+			if f == nil || !named[f.name] {
+				continue
+			}
+			doc := ""
+			if fd.Doc != nil {
+				doc = withoutLeadingName(strings.TrimSpace(fd.Doc.Text()), fd.Name.Name)
+			}
+			out = append(out, api.Registrar{Package: w.pkg.PkgPath, Name: f.name, Doc: doc})
+		}
+	}
+	return out
 }

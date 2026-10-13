@@ -112,3 +112,27 @@ func TestEveryRouteIsPlaced(t *testing.T) {
 		t.Errorf("found %d bff and %d staff routes; want at least 8 and 50", bff, staff)
 	}
 }
+
+// Each route names the function it is registered in, and the walk lists
+// those functions with their doc comments: a package's sections.
+func TestRegistrars(t *testing.T) {
+	s := walkBoth(t)
+	if r := mustFind(t, s, staffPkg, "", "/start"); r.Registrar != "(*Site).consoleRoutes" {
+		t.Errorf("/start registered in %q", r.Registrar)
+	}
+	if r := mustFind(t, s, bffPkg, "GET", "/v1/health"); r.Registrar != "NewServer" {
+		t.Errorf("/v1/health registered in %q", r.Registrar)
+	}
+	found := false
+	for _, reg := range s.Registrars {
+		if reg.Name == "(*Site).consoleRoutes" {
+			found = true
+			if !strings.Contains(reg.Doc, "simulation console") {
+				t.Errorf("doc %q", reg.Doc)
+			}
+		}
+	}
+	if !found || s.Module != "git.bytestone.uk/hum3/gobank" {
+		t.Errorf("registrars %v, module %q", s.Registrars, s.Module)
+	}
+}

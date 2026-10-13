@@ -8,10 +8,18 @@ package api
 // Surface is every route of the packages walked, and the gates in front
 // of their muxes.
 type Surface struct {
-	Packages []Package // the packages walked, with their doc comments
-	Routes   []Route
-	Gates    []Gate
-	Types    []Schema // every type the routes' bodies are made of, by name
+	Module     string      // the module walked, as "git.bytestone.uk/hum3/gobank": where the source is
+	Packages   []Package   // the packages walked, with their doc comments
+	Registrars []Registrar // the functions routes are registered in: the sections of a package
+	Routes     []Route
+	Gates      []Gate
+	Types      []Schema // every type the routes' bodies are made of, by name
+}
+
+// Registrar is a function that registers routes, with its doc comment:
+// a package's routes fall into sections by it.
+type Registrar struct {
+	Package, Name, Doc string
 }
 
 // Package is one package walked: a server, described by its own doc.
@@ -32,6 +40,10 @@ type Route struct {
 	// way, outermost first, as "(*Server).authed".
 	Handler  string
 	Wrappers []string
+
+	// Registrar is the function the registration is in, as
+	// "(*Site).consoleRoutes": the section the route belongs to.
+	Registrar string
 
 	// Via is the helper the route was registered through when it was not
 	// the mux directly ("control", "(*Site).handle"), and Args the

@@ -921,23 +921,72 @@
         "tags": [
           "staff"
         ],
-        "x-source": "bff/staff/site.go:504"
+        "x-source": "bff/staff/site.go:525"
       }
     },
     "/about/api": {
       "get": {
-        "description": "The API: every route the BFF and the staff web serve, read off the\ncode at build time (package api), with the types the bodies are\nmade of; the OpenAPI document is at v1/openapi.json.",
+        "description": "The API: every route the BFF and the staff web serve, read off the\ncode at build time (package api), in sections by where each is\nregistered, each linking to its own page; the types the bodies\nare made of follow. The OpenAPI document is at v1/openapi.json.\nA static page: the surface does not change while the run goes.",
         "operationId": "get-about-api",
         "responses": {
-          "200": {
+          "405": {
             "content": {
-              "text/html": {
+              "text/plain": {
                 "schema": {
                   "type": "string"
                 }
               }
             },
-            "description": "OK"
+            "description": "Method not allowed"
+          }
+        },
+        "security": [
+          {
+            "staff_session": []
+          },
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "The API: every route the BFF and the staff web serve, read off the code at build time (package api), in sections by where each is registered, each linking to its own page; the types the bodies are made of follow",
+        "tags": [
+          "staff"
+        ],
+        "x-source": "bff/staff/site.go:502"
+      }
+    },
+    "/about/api/{method}/{path...}": {
+      "get": {
+        "description": "One route of the API: what its handler needs, reads and answers,\nwith a link to the registration in the source at this build's tag.\nThe method is the pattern's or \"any\", the path the pattern's.",
+        "operationId": "get-about-api-method-path",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "method",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "404": {
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "description": "Not found"
           },
           "405": {
             "content": {
@@ -958,11 +1007,11 @@
             "bearer": []
           }
         ],
-        "summary": "The API: every route the BFF and the staff web serve, read off the code at build time (package api), with the types the bodies are made of; the OpenAPI document is at v1/openapi.json",
+        "summary": "One route of the API: what its handler needs, reads and answers, with a link to the registration in the source at this build's tag",
         "tags": [
           "staff"
         ],
-        "x-source": "bff/staff/site.go:500"
+        "x-source": "bff/staff/site.go:512"
       }
     },
     "/about/docs": {
@@ -1055,7 +1104,7 @@
           "staff"
         ],
         "x-prefix": "serves every path under it",
-        "x-source": "bff/staff/site.go:509"
+        "x-source": "bff/staff/site.go:530"
       }
     },
     "/about/models": {
@@ -1695,7 +1744,7 @@
           "function": "lofigui.ServeFavicon"
         },
         "x-methods": "any",
-        "x-source": "bff/staff/site.go:525",
+        "x-source": "bff/staff/site.go:546",
         "x-unknowns": [
           "handler lofigui.ServeFavicon: body outside the walk",
           "no response found"
@@ -1724,7 +1773,7 @@
           "staff"
         ],
         "x-methods": "any",
-        "x-source": "bff/staff/site.go:527"
+        "x-source": "bff/staff/site.go:548"
       }
     },
     "/import": {

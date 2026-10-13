@@ -253,8 +253,8 @@ func (s *Site) masterPage(w http.ResponseWriter, r *http.Request, build func() s
 	s.staticPage(w, r, content)
 }
 
-// --- routes ---
-
+// routes mounts the staff pages: accounting, products, customers,
+// payments, treasury, reports and about, and the PII authorisation.
 func (s *Site) routes() {
 	bank := s.cfg.Bank
 	mux := s.mux
@@ -495,10 +495,31 @@ func (s *Site) routes() {
 		s.page(w, r, func() string { return BuildDocsHTML(s.cfg.Components, s.cfg.Debt) })
 	})
 	// The API: every route the BFF and the staff web serve, read off the
-	// code at build time (package api), with the types the bodies are
-	// made of; the OpenAPI document is at v1/openapi.json.
+	// code at build time (package api), in sections by where each is
+	// registered, each linking to its own page; the types the bodies
+	// are made of follow. The OpenAPI document is at v1/openapi.json.
+	// A static page: the surface does not change while the run goes.
 	mux.HandleFunc("/about/api", func(w http.ResponseWriter, r *http.Request) {
-		s.page(w, r, BuildAPIHTML)
+		if r.Method != "GET" {
+			http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+			return
+		}
+		s.staticPage(w, r, BuildAPIIndexHTML(s.cfg.Version))
+	})
+	// One route of the API: what its handler needs, reads and answers,
+	// with a link to the registration in the source at this build's tag.
+	// The method is the pattern's or "any", the path the pattern's.
+	mux.HandleFunc("/about/api/{method}/{path...}", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != "GET" {
+			http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+			return
+		}
+		content, ok := BuildAPIDetailHTML(r.PathValue("method"), "/"+r.PathValue("path"), s.cfg.Version)
+		if !ok {
+			http.NotFound(w, r)
+			return
+		}
+		s.staticPage(w, r, content)
 	})
 	// The architecture decision records compiled into this build.
 	mux.HandleFunc("/about/adr", func(w http.ResponseWriter, r *http.Request) {
@@ -539,11 +560,41 @@ func pageParam(r *http.Request, name string) int {
 	return page
 }
 
-// BuildAPIHTML renders the API page from the generated surface.
-func BuildAPIHTML() string {
+// apiOptions link the API pages: a route's detail under about/api, and
+// its source at this build's tag in the forge, or on main for a build
+// that is not a tag.
+func apiOptions(version string) api.Options {
+	ref := "branch/main"
+	if strings.HasPrefix(version, "v") && !strings.Contains(version, "-") {
+		ref = "tag/" + version
+	}
+	return api.Options{
+		DetailURL: func(r api.Route) string { return "about/api/" + api.Key(r) },
+		IndexURL:  "about/api",
+		SourceRef: ref,
+	}
+}
+
+// BuildAPIIndexHTML renders the API index and the types from the
+// generated surface.
+func BuildAPIIndexHTML(version string) string {
 	s, err := api.Load()
 	if err != nil {
 		return "<p>The API surface did not load: " + template.HTMLEscapeString(err.Error()) + "</p>"
 	}
-	return string(api.HTML(s))
+	return string(api.Index(s, apiOptions(version))) + string(api.Types(s))
+}
+
+// BuildAPIDetailHTML renders one route's page; false when no route has
+// the method and path.
+func BuildAPIDetailHTML(method, path, version string) (string, bool) {
+	s, err := api.Load()
+	if err != nil {
+		return "", false
+	}
+	r, ok := api.Find(s, method, path)
+	if !ok {
+		return "", false
+	}
+	return string(api.Detail(s, r, apiOptions(version))) + string(api.Types(s)), true
 }
