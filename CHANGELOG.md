@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+## [0.39.0] - 2026-10-13
+
+ - One tp release per story with the drill started from post_release; roadmap item #133 full API documentation
+
 ### Changed
 - One `tp release` on the story branch now opens the pull request, waits
   up to ten minutes for the merge (`merge_wait`), tags, publishes, has
