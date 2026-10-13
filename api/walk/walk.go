@@ -35,14 +35,16 @@ func Walk(patterns ...string) (api.Surface, error) {
 		return api.Surface{}, fmt.Errorf("walk: %w", err)
 	}
 	var s api.Surface
+	sch := newSchemas(newLoader(pkgs))
 	for _, p := range pkgs {
 		if len(p.Errors) > 0 {
 			return api.Surface{}, fmt.Errorf("walk: %s: %v", p.PkgPath, p.Errors[0])
 		}
-		w := newWalker(p)
+		w := newWalker(p, sch)
 		s.Routes = append(s.Routes, w.routes()...)
 		s.Gates = append(s.Gates, w.gates()...)
 	}
+	s.Types = sch.build()
 	sort.Slice(s.Routes, func(i, j int) bool {
 		a, b := s.Routes[i], s.Routes[j]
 		if a.Package != b.Package {
@@ -74,10 +76,11 @@ type walker struct {
 	byObj    map[types.Object]*fn // a declared function or method, or a variable holding a literal
 	helpers  map[*fn]int          // registration helpers → the index of the pattern parameter
 	modDir   string
+	schemas  *schemas
 }
 
-func newWalker(p *packages.Package) *walker {
-	w := &walker{pkg: p, fset: p.Fset, info: p.TypesInfo,
+func newWalker(p *packages.Package, sch *schemas) *walker {
+	w := &walker{pkg: p, fset: p.Fset, info: p.TypesInfo, schemas: sch,
 		comments: map[*ast.File]ast.CommentMap{}, fns: map[ast.Node]*fn{}, byObj: map[types.Object]*fn{}, helpers: map[*fn]int{}}
 	if p.Module != nil {
 		w.modDir = p.Module.Dir

@@ -164,6 +164,24 @@ func (s *scanner) body(body *ast.BlockStmt, en env, depth int, name string) {
 	var cur api.Response // the response being built up: Content-Type set, then the status
 	var last *api.Response
 	ast.Inspect(body, func(n ast.Node) bool {
+		switch n := n.(type) {
+		case *ast.BinaryExpr:
+			if isRequestMethod(s.w, n.X) {
+				s.method(n.Y)
+			} else if isRequestMethod(s.w, n.Y) {
+				s.method(n.X)
+			}
+			return true
+		case *ast.SwitchStmt:
+			if n.Tag != nil && isRequestMethod(s.w, n.Tag) {
+				for _, c := range n.Body.List {
+					for _, e := range c.(*ast.CaseClause).List {
+						s.method(e)
+					}
+				}
+			}
+			return true
+		}
 		call, ok := n.(*ast.CallExpr)
 		if !ok {
 			return true
@@ -306,8 +324,8 @@ func (s *scanner) unknown(what string) {
 	}
 }
 
-// typeName names the type of an encoded or decoded value, the pointer
-// taken off and this package's types unqualified.
+// typeName names the type of an encoded or decoded value as its schema
+// is named, the pointer taken off.
 func (s *scanner) typeName(e ast.Expr) string {
 	if u, ok := e.(*ast.UnaryExpr); ok {
 		e = u.X
@@ -316,16 +334,29 @@ func (s *scanner) typeName(e ast.Expr) string {
 	if !ok {
 		return ""
 	}
-	t := tv.Type
-	if p, ok := t.(*types.Pointer); ok {
-		t = p.Elem()
-	}
-	return types.TypeString(t, func(p *types.Package) string {
-		if p == s.w.pkg.Types {
-			return ""
+	return s.w.schemas.name(tv.Type)
+}
+
+// method records a method the handler tells apart: a comparison of
+// r.Method with a constant, or a switch on it.
+func (s *scanner) method(e ast.Expr) {
+	if tv, ok := s.w.info.Types[e]; ok && tv.Value != nil && tv.Value.Kind() == constant.String {
+		m := constant.StringVal(tv.Value)
+		if m != "" && !slices.Contains(s.facts.Methods, m) {
+			s.facts.Methods = append(s.facts.Methods, m)
+			slices.Sort(s.facts.Methods)
 		}
-		return p.Name()
-	})
+	}
+}
+
+// isRequestMethod says whether an expression is r.Method.
+func isRequestMethod(w *walker, e ast.Expr) bool {
+	sel, ok := e.(*ast.SelectorExpr)
+	if !ok || sel.Sel.Name != "Method" {
+		return false
+	}
+	tv, ok := w.info.Types[sel.X]
+	return ok && types.TypeString(tv.Type, nil) == "*net/http.Request"
 }
 
 // pathIn is the constant path an expression names: the constant itself,

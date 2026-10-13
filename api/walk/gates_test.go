@@ -63,7 +63,7 @@ func TestStaticMount(t *testing.T) {
 // The BFF's bodies are typed, so they have schemas.
 func TestTypedBodies(t *testing.T) {
 	r := mustFind(t, walkBoth(t), bffPkg, "POST", "/v1/login")
-	if !hasResponse(r, 200, "application/json", "loginResponse", "") || !hasResponse(r, 400, "application/json", "errorBody", "bad_request") {
+	if !hasResponse(r, 200, "application/json", "bff.loginResponse", "") || !hasResponse(r, 400, "application/json", "bff.errorBody", "bad_request") {
 		t.Errorf("login %+v", r.Responses)
 	}
 }

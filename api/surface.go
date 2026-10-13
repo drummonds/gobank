@@ -10,6 +10,7 @@ package api
 type Surface struct {
 	Routes []Route
 	Gates  []Gate
+	Types  []Schema // every type the routes' bodies are made of, by name
 }
 
 // Route is one registration on a ServeMux.
@@ -76,6 +77,7 @@ type RouteFacts struct {
 	Params    []Param
 	Reads     Reads
 	Action    string   // the role action the handler requires (staff's require), "" when none
+	Methods   []string // the methods the handler tells apart ("GET", "POST"); none when it serves them all alike
 	Unknowns  []string // what the walker could not follow: a handler whose body is outside the walk, a route with no response found
 }
 
@@ -87,4 +89,26 @@ type Gate struct {
 	Doc     string   // the wrapper's doc comment
 	Reads   Reads    // what it looks at
 	Open    []string // paths served without it
+}
+
+// Schema is one type a body is made of, read off go/types with the doc
+// comments of its declaration and fields.
+type Schema struct {
+	Name    string  // qualified by package name: "screen.Screen", "bff.errorBody", "[]screen.Component"
+	Package string  // import path of a named type's package, "" for a composite
+	Kind    string  // object, array, map, string, integer, number, boolean, any
+	Doc     string  // the type's doc comment
+	Fields  []Field // object: in declaration order
+	Elem    string  // array or map: the element's schema name or scalar kind
+	Enum    []string
+	Format  string // "date-time" for time.Time
+}
+
+// Field is one JSON property of an object schema.
+type Field struct {
+	Name     string // the JSON name
+	Type     string // a schema name, or a scalar kind
+	Doc      string // the field's doc or line comment
+	Optional bool   // omitempty
+	Nullable bool   // a pointer
 }

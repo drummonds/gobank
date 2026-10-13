@@ -39,7 +39,7 @@ func hasParam(r api.Route, name, in string) bool {
 // code can write, named by its code, or a redirect to the home screen.
 func TestLoginFacts(t *testing.T) {
 	r := mustFind(t, walkBoth(t), bffPkg, "POST", "/v1/login")
-	if r.Request == nil || r.Request.Type != "loginRequest" {
+	if r.Request == nil || r.Request.Type != "bff.loginRequest" {
 		t.Errorf("request %+v", r.Request)
 	}
 	for _, want := range []struct {
@@ -103,7 +103,7 @@ func TestConsoleFacts(t *testing.T) {
 		}
 	}
 	about := mustFind(t, s, staffPkg, "", "/about.json")
-	if !hasResponse(about, 200, "application/json", "AboutStatus", "") || !hasResponse(about, 405, "", "", "Method not allowed") {
+	if !hasResponse(about, 200, "application/json", "staff.AboutStatus", "") || !hasResponse(about, 405, "", "", "Method not allowed") {
 		t.Errorf("about %+v", about.Responses)
 	}
 	product := mustFind(t, s, bffPkg, "GET", "/v1/screen/product/{index}")
