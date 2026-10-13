@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+## [0.43.0] - 2026-10-13
+
+ - The balance sheet balances: both statements read from the ledger, operating costs and gilts posted, dated with the 31 March year end
+
 ### Fixed
 - The balance sheet balances. It is read from the ledger (ADR-0008):
   operating costs are posted daily from `Asset:Cash` to the new
