@@ -27,6 +27,7 @@ import (
 	gbp "git.bytestone.uk/hum3/gobank-products"
 	"git.bytestone.uk/hum3/gobank/adr"
 	"git.bytestone.uk/hum3/gobank/core"
+	"git.bytestone.uk/hum3/gobank/internal/servemux"
 	"git.bytestone.uk/hum3/gobank/internal/session"
 	"git.bytestone.uk/hum3/lofigui"
 )
@@ -73,7 +74,7 @@ type Config struct {
 // Site is the staff web as one http.Handler.
 type Site struct {
 	cfg      Config
-	mux      *http.ServeMux
+	mux      *servemux.Recording
 	handler  http.Handler // the mux behind the login
 	sessions session.Store
 	limiter  *session.Limiter
@@ -99,7 +100,7 @@ func New(cfg Config) *Site {
 		sessions = session.NewMemory(8*time.Hour, 15*time.Minute, nil)
 	}
 	s := &Site{
-		cfg: cfg, mux: http.NewServeMux(), sessions: sessions,
+		cfg: cfg, mux: servemux.New(), sessions: sessions,
 		limiter: session.NewLimiter(5, 15*time.Minute, time.Now),
 		pii:     newPIIStore(cfg.PIITTL), ctrl: ctrl, catalog: explorerCatalog(cfg.Components),
 	}

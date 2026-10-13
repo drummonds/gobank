@@ -12,9 +12,10 @@ import (
 // built on the core alone: it reads the bank through core.StaffQueries
 // and acts on it through core.Commands, and knows nothing else of it. It
 // may use the UI libraries it renders with, the domain libraries the
-// core's types come from, the embedded ADRs and the root module's internal
-// helpers; never a bank package or the demo, whose console it drives
-// through the Console interface.
+// core's types come from, the embedded ADRs, the API document that
+// describes its console routes and the root module's internal helpers;
+// never a bank package or the demo, whose console it drives through the
+// Console interface.
 func TestStaffWebKnowsOnlyTheCore(t *testing.T) {
 	files, err := filepath.Glob("*.go")
 	if err != nil || len(files) == 0 {
@@ -23,7 +24,9 @@ func TestStaffWebKnowsOnlyTheCore(t *testing.T) {
 	allowed := []string{
 		"git.bytestone.uk/hum3/gobank/core",
 		"git.bytestone.uk/hum3/gobank/adr",
+		"git.bytestone.uk/hum3/gobank/api/walk",
 		"git.bytestone.uk/hum3/gobank/internal/daylength",
+		"git.bytestone.uk/hum3/gobank/internal/servemux",
 		"git.bytestone.uk/hum3/gobank/internal/session",
 		"git.bytestone.uk/hum3/gobank/internal/view",
 		"git.bytestone.uk/hum3/pta2svg",

@@ -24,6 +24,8 @@ import (
 	"strings"
 	"time"
 
+	"git.bytestone.uk/hum3/gobank/api"
+	"git.bytestone.uk/hum3/gobank/internal/servemux"
 	"git.bytestone.uk/hum3/gobank/screen"
 )
 
@@ -65,7 +67,7 @@ type Config struct {
 // Server is the BFF HTTP handler.
 type Server struct {
 	cfg      Config
-	mux      *http.ServeMux
+	mux      *servemux.Recording
 	sessions Sessions
 	limiter  *FailureLimiter
 	log      *slog.Logger
@@ -106,12 +108,13 @@ func NewServer(cfg Config) *Server {
 	}
 	s := &Server{
 		cfg:      cfg,
-		mux:      http.NewServeMux(),
+		mux:      servemux.New(),
 		sessions: sessions,
 		limiter:  NewFailureLimiter(cfg.MaxLoginFailures, cfg.LoginWindow, cfg.Now),
 		log:      cfg.Logger,
 	}
 	s.mux.HandleFunc("GET /v1/health", s.health)
+	s.mux.HandleFunc("GET /v1/openapi.json", s.openapi)
 	s.mux.HandleFunc("GET "+PathScreenLogin, s.loginScreen)
 	s.mux.HandleFunc("POST "+PathLogin, s.login)
 	s.mux.HandleFunc("POST "+PathLogout, s.authed(s.logout))
@@ -218,9 +221,17 @@ func wantsHTML(r *http.Request) bool {
 
 // --- handlers ---
 
+// health answers as soon as the process serves HTTP. No session.
 func (s *Server) health(w http.ResponseWriter, _ *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	_, _ = w.Write([]byte(`{"status":"ok"}` + "\n"))
+}
+
+// openapi serves the API document (package api): the surface this server
+// and the staff web present, as built.
+func (s *Server) openapi(w http.ResponseWriter, _ *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+	_, _ = w.Write(api.Document)
 }
 
 func (s *Server) loginScreen(w http.ResponseWriter, r *http.Request) {
