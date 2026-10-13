@@ -3,6 +3,7 @@ package api
 import (
 	"encoding/json"
 	"fmt"
+	"maps"
 	"regexp"
 	"slices"
 	"sort"
@@ -366,9 +367,7 @@ func withDescription(p map[string]any, doc string) map[string]any {
 		return map[string]any{"allOf": []any{p}, "description": doc}
 	}
 	out := map[string]any{}
-	for k, v := range p {
-		out[k] = v
-	}
+	maps.Copy(out, p)
 	out["description"] = doc
 	return out
 }

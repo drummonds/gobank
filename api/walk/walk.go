@@ -240,8 +240,8 @@ func embedsServeMux(t types.Type, depth int) bool {
 	if !ok {
 		return false
 	}
-	for i := range st.NumFields() {
-		if f := st.Field(i); f.Embedded() && embedsServeMux(f.Type(), depth+1) {
+	for f := range st.Fields() {
+		if f := f; f.Embedded() && embedsServeMux(f.Type(), depth+1) {
 			return true
 		}
 	}
