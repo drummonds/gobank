@@ -241,7 +241,7 @@ func embedsServeMux(t types.Type, depth int) bool {
 		return false
 	}
 	for f := range st.Fields() {
-		if f := f; f.Embedded() && embedsServeMux(f.Type(), depth+1) {
+		if f.Embedded() && embedsServeMux(f.Type(), depth+1) {
 			return true
 		}
 	}
