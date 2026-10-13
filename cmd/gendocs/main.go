@@ -5,11 +5,15 @@ package main
 
 import (
 	"encoding/json"
+	"fmt"
 	"html/template"
 	"log"
 	"os"
+	"os/exec"
+	"strings"
 
 	"git.bytestone.uk/hum3/gobank/adr"
+	"git.bytestone.uk/hum3/gobank/internal/family"
 )
 
 type scopeItem struct {
@@ -67,7 +71,6 @@ const tmpl = `<!DOCTYPE html>
               <li><a href="https://gobank-db.docs.bytestone.uk/contract-views.html">Contract Views (gobank-db)</a></li>
               <li><a href="https://gobank-db.docs.bytestone.uk/blue-green-schemas.html">Blue-Green Schemas (gobank-db)</a></li>
               <li><a href="https://gobank-db.docs.bytestone.uk/expand-contract.html">Expand/Contract Migrations (gobank-db)</a></li>
-              <li><a href="research/project-hierarchy.html">Project Hierarchy</a></li>
               <li><a href="research/scaling-benchmarks.html">Scaling Benchmarks</a></li>
               <li><a href="research/bff-api.html">BFF API Reference</a></li>
               <li><a href="research/development-notes.html">Development Notes</a></li>
@@ -79,6 +82,7 @@ const tmpl = `<!DOCTYPE html>
               <li><a href="benchmark.html">Performance</a></li>
               <li><a href="upgrade-drill.html">Upgrade drill</a></li>
               <li><a href="app.html">Customer app</a></li>
+              <li><a href="family.html">The family</a></li>
               <li><a href="README.html">README</a></li>
               <li><a href="CHANGELOG.html">CHANGELOG</a></li>
             </ul>
@@ -170,6 +174,40 @@ func main() {
 	if err := writeADRIndex("docs/adr/index.html"); err != nil {
 		log.Fatal(err)
 	}
+	if err := writeFamily("docs/family.d2", "cmd/demo"); err != nil {
+		log.Fatal(err)
+	}
+}
+
+// writeFamily writes the family map (internal/family) as d2, read from
+// the module at dir: the demo, which is the build that ships.
+func writeFamily(outPath, dir string) error {
+	run := func(args ...string) (string, error) {
+		cmd := exec.Command("go", args...)
+		cmd.Dir = dir
+		out, err := cmd.Output()
+		if err != nil {
+			return "", fmt.Errorf("go %s in %s: %w", strings.Join(args, " "), dir, err)
+		}
+		return string(out), nil
+	}
+	graph, err := run("mod", "graph")
+	if err != nil {
+		return err
+	}
+	buildList, err := run("list", "-m", "all")
+	if err != nil {
+		return err
+	}
+	m, err := family.Parse(graph, buildList)
+	if err != nil {
+		return err
+	}
+	if err := os.WriteFile(outPath, []byte(m.D2()), 0o644); err != nil {
+		return err
+	}
+	log.Printf("generated %s from go mod graph in %s", outPath, dir)
+	return nil
 }
 
 const adrTmpl = `<!DOCTYPE html>
