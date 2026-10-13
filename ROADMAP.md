@@ -162,6 +162,12 @@ table they are today.
   `core`; staff pages, PII gating and the DB explorer's `Authoriser`
   ask it, closing the gap where every role browses every table.
   Done-when of the stage
+- #136 Staff web icon: a staff held up by a web — one SVG, no text,
+  a vertical walnut staff as the heavier element with a silver web spun
+  between it and the frame's corner (straight radials, circular arcs),
+  served through the staff web's own `/favicon.svg` handler so it tells
+  the staff tab from the customer app's at a glance; the brief with
+  the three directions and the palette is on the issue
 
 ## Speed
 
@@ -450,6 +456,16 @@ fails before it ships.
   BFF, the generator at the small scale) run per release on the Hetzner
   perf box, its row in `benchmark.md`. Out of scope: a load test per
   commit
+- #135 RapiDoc viewer for the API in the staff web — the one
+  web component (go:embed, about 0.8 MB, no CDN so it works in the tab)
+  under About beside the server-rendered API page, over the served
+  `/v1/openapi.json`, Bulma colours passed as attributes; gives try-it
+  with bearer auth for the customer routes and the operator token for
+  the console, which the server-rendered page cannot. Out of scope:
+  Swagger UI, Redoc and Scalar (framework applications shipped as
+  blobs, the lofigui ceiling). Open: the weight it adds to the WASM
+  download, and whether it replaces the server-rendered page or sits
+  beside it
 
 ## Resilience
 
