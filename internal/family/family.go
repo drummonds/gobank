@@ -49,7 +49,7 @@ func repoOf(module string) string {
 func Parse(graph, buildList string) (Map, error) {
 	selected := map[string]string{}
 	var main string
-	for _, line := range strings.Split(strings.TrimSpace(buildList), "\n") {
+	for line := range strings.SplitSeq(strings.TrimSpace(buildList), "\n") {
 		f := strings.Fields(line)
 		if len(f) == 0 {
 			continue
@@ -74,7 +74,7 @@ func Parse(graph, buildList string) (Map, error) {
 	}
 	seen := map[Requirement]bool{}
 	var m Map
-	for _, line := range strings.Split(strings.TrimSpace(graph), "\n") {
+	for line := range strings.SplitSeq(strings.TrimSpace(graph), "\n") {
 		f := strings.Fields(line)
 		if len(f) != 2 {
 			continue
