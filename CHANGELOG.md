@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+## [0.41.0] - 2026-10-13
+
+ - API documentation read off the code (#133): the walker, /v1/openapi.json, About → API and api.html on the docs site
+
 ### Added
 - Full API documentation (#133), read off the code: `api/walk` loads the
   BFF and staff packages with go/packages and finds every route they
