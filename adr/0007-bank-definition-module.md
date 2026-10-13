@@ -106,6 +106,12 @@ rules and policies, not the home of a definition. gobank's own tests
 build against test definitions of gobank's own, not the Model Bank's,
 so no module depends back on a bank.
 
+The interface rules above ("a change is additive … never a removal or a
+change of meaning in a minor release") apply from version 1. While the
+code is pre-1.0 the interface may be restructured as the stories need;
+once it is stable and 1.0 is released, normal Go module rules apply and
+the contract stays stable until a major version change.
+
 ## Consequences
 
 Easier: a white label is a module; a product change is a diff in one
