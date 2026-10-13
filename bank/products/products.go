@@ -139,6 +139,13 @@ var Schema = schema.Component{Name: "products", Migrations: []schema.Migration{
 		`ALTER TABLE product_postings ADD COLUMN step VARCHAR(30) NULL`,
 		`CREATE UNIQUE INDEX IF NOT EXISTS product_postings_effect ON product_postings (cause_id, account_id, step)`,
 	}},
+	// The ledger ids the component records are UUID columns, as the
+	// ledger's own are (#66): a posting's movement and account, and the
+	// account whose parameters are applied.
+	{Version: 6, Statements: []string{
+		`ALTER TABLE product_postings ALTER COLUMN movement_id TYPE UUID USING movement_id::uuid, ALTER COLUMN account_id TYPE UUID USING account_id::uuid`,
+		`ALTER TABLE product_account_parameters ALTER COLUMN account_id TYPE UUID USING account_id::uuid`,
+	}},
 }}
 
 // Products is the catalogue over the bank's database.

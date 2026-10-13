@@ -39,13 +39,13 @@ const owedChanges = `FROM contract_customer_accounts ca
 		WHERE s.effective_from > ap.applied_to AND s.effective_from <= $1
 		  AND ((s.scope = 'market' AND s.owner = $2) OR s.scope = 'bank'
 		    OR (s.scope = 'version' AND s.owner = ca.product_id)
-		    OR (s.scope = 'account' AND s.owner = ca.ledger_account_id AND s.decided_by <> 'rule'))))`
+		    OR (s.scope = 'account' AND s.owner = ca.ledger_account_id::text AND s.decided_by <> 'rule'))))`
 
 // CountParameterChangesOwed is how many accounts are owed a
 // ParameterChange at now.
 func (p *Products) CountParameterChangesOwed(ctx context.Context, now time.Time) (int, error) {
 	var n int
-	err := p.db.QueryRowContext(ctx, `SELECT COUNT(*) `+owedChanges, now.UTC(), Currency, "").Scan(&n)
+	err := p.db.QueryRowContext(ctx, `SELECT COUNT(*) `+owedChanges, now.UTC(), Currency, firstCursor).Scan(&n)
 	if err != nil {
 		return 0, fmt.Errorf("count parameter changes owed: %w", err)
 	}
@@ -102,7 +102,7 @@ func (p *Products) ApplyParameterChanges(ctx context.Context, books *ledger.Ledg
 		return res
 	}
 	progress.Phase("applying parameter changes", total)
-	cursor := ""
+	cursor := firstCursor
 	unknown := map[string]bool{}
 	for ctx.Err() == nil {
 		accounts, err := p.owed(ctx, cause.At, cursor, passChunk)

@@ -2,6 +2,23 @@
 
 ## [Unreleased]
 
+### Changed
+- UUID columns across the family (#66): every column that holds a ledger
+  id is `UUID`, not `VARCHAR`: `customer_accounts.ledger_account_id`,
+  `product_postings.movement_id` and `account_id`,
+  `product_account_parameters.account_id`, `gl_journal.movement_id`,
+  each by a migration that retypes the column in place with its rows,
+  and the ledger's own ids by go-luca v0.6.0, which retypes a text-id
+  ledger on open. On PostgreSQL that is 16 bytes against 37 in every id
+  and its indexes (the movements indexes are the cost at scale: the
+  go-postgres study measured TEXT keys at 1.7x the bytes and 2.8x the
+  join at 100k accounts), and the database rejects a non-UUID. The pass
+  cursors over accounts start from the nil UUID, since a uuid column
+  cannot be compared to an empty string there, and a setting's owner is
+  compared to an account id as text. Needs go-postgres v0.9.0, whose
+  pglike retypes by rebuilding the table and validates UUID columns:
+  tests that wrote a made-up cause such as `root-1` now write a UUID.
+
 ## [0.43.0] - 2026-10-13
 
  - The balance sheet balances: both statements read from the ledger, operating costs and gilts posted, dated with the 31 March year end

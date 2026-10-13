@@ -11,6 +11,7 @@ require (
 	git.bytestone.uk/hum3/gogal v0.2.0
 	git.bytestone.uk/hum3/lofigui v0.17.40
 	git.bytestone.uk/hum3/pta2svg v0.5.0
+	github.com/google/uuid v1.6.0
 	github.com/yuin/goldmark v1.8.6
 	golang.org/x/crypto v0.57.0
 	golang.org/x/tools v0.50.0
@@ -19,7 +20,6 @@ require (
 require (
 	git.bytestone.uk/hum3/gobank-db v0.3.0 // indirect
 	git.bytestone.uk/hum3/gotreesitter v0.7.0 // indirect
-	github.com/google/uuid v1.6.0 // indirect
 	github.com/hack-pad/safejs v0.1.1 // indirect
 	github.com/jackc/pgpassfile v1.0.0 // indirect
 	github.com/jackc/pgservicefile v0.0.0-20240606120523-5a60cdf6a761 // indirect
@@ -38,3 +38,8 @@ require (
 	golang.org/x/sys v0.49.0 // indirect
 	golang.org/x/text v0.42.0 // indirect
 )
+
+// Until go-postgres v0.9.0 and go-luca v0.6.0 are released (#66).
+replace git.bytestone.uk/hum3/go-postgres => ../go-postgres
+
+replace git.bytestone.uk/hum3/go-luca => ../go-luca

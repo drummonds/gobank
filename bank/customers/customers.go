@@ -40,6 +40,10 @@ var Schema = schema.Component{Name: "customers", Migrations: []schema.Migration{
 		opened TIMESTAMP NOT NULL,
 		PRIMARY KEY (customer_id, idx)
 	)`}},
+	// The ledger account id is a UUID column, as the ledger's own id is
+	// (#66): 16 bytes against 36 in the row and the unique index, and a
+	// join to the ledger's contract views compares uuid with uuid.
+	{Version: 2, Statements: []string{`ALTER TABLE customer_accounts ALTER COLUMN ledger_account_id TYPE UUID USING ledger_account_id::uuid`}},
 }}
 
 // CreateView (re)creates the contract view: the register as other

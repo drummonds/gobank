@@ -42,3 +42,8 @@ require (
 )
 
 replace git.bytestone.uk/hum3/gobank => ../..
+
+// Until go-postgres v0.9.0 and go-luca v0.6.0 are released (#66).
+replace git.bytestone.uk/hum3/go-postgres => ../../../go-postgres
+
+replace git.bytestone.uk/hum3/go-luca => ../../../go-luca

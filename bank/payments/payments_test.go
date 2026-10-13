@@ -2,8 +2,10 @@ package payments
 
 import (
 	"context"
+	"crypto/sha1"
 	"database/sql"
 	"errors"
+	"fmt"
 	"testing"
 	"time"
 
@@ -159,7 +161,7 @@ func TestAPaymentCarriesItsCause(t *testing.T) {
 	p, _ := open(t)
 	ctx := context.Background()
 	pay := p.New(Transfer, "cust-001", "cust-002", 50_00, Completed, now)
-	pay.Cause = "root-1"
+	pay.Cause = causeID("root-1")
 	if err := p.Insert(p.db, pay); err != nil {
 		t.Fatal(err)
 	}
@@ -168,13 +170,21 @@ func TestAPaymentCarriesItsCause(t *testing.T) {
 		t.Fatal(err)
 	}
 	got, err := p.ByID(ctx, pay.ID)
-	if err != nil || got.Cause != "root-1" {
+	if err != nil || got.Cause != causeID("root-1") {
 		t.Errorf("ByID = %+v, %v; want cause root-1", got, err)
 	}
 	if got, _ := p.ByID(ctx, orphan.ID); got.Cause != "" {
 		t.Errorf("a payment written without a cause reads back %q", got.Cause)
 	}
-	if n, err := p.CountByCause(ctx, "root-1"); err != nil || n != 1 {
+	if n, err := p.CountByCause(ctx, causeID("root-1")); err != nil || n != 1 {
 		t.Errorf("CountByCause = %d, %v; want 1", n, err)
 	}
+}
+
+// causeID is a root event id for a test, a UUID made from a name so the
+// test can read as the name while the column holds a UUID (#66).
+func causeID(name string) string {
+	h := sha1.Sum([]byte(name))
+	h[6], h[8] = h[6]&0x0f|0x50, h[8]&0x3f|0x80
+	return fmt.Sprintf("%x-%x-%x-%x-%x", h[0:4], h[4:6], h[6:8], h[8:10], h[10:16])
 }

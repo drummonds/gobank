@@ -241,4 +241,7 @@ var Schema = schema.Component{Name: "gl", Migrations: []schema.Migration{
 			PRIMARY KEY (day, product_id)
 		)`,
 	}},
+	// A journal line's movement id is a UUID column, as the ledger's own
+	// id is (#66).
+	{Version: 2, Statements: []string{`ALTER TABLE gl_journal ALTER COLUMN movement_id TYPE UUID USING movement_id::uuid`}},
 }}
