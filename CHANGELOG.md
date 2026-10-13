@@ -37,6 +37,15 @@
   v0.35.0 and v0.36.0 drills failed at the upgrade hop.
 
 ### Changed
+- The roadmap is in task-plus's `tp roadmap` format: twenty named epics
+  of items, each an open issue labelled `roadmap` on the Forgejo (#66 to
+  #130), the forge the truth about what is done. The shipped stories
+  of the old numbered roadmap are archived in this changelog under the
+  versions that finished them, as `### Roadmap` lists; the stages with
+  open stories (products as versioned code, users and access, speed)
+  are epics of their own; `roadmap.d2` is drawn from the open items.
+  ADRs and `upgrade-drill.md` still cite the old story numbers as
+  history.
 - The market's series opens with the publication in force before the
   opening day (0.75%, decided 2 August 2018) rather than a seed dated
   the opening day's noon, so a bank has its market's rate from the
@@ -48,6 +57,34 @@
   ISA's running total) is no longer counted as a parameter change owed
   to the account that wrote it: a reopened bank raised an adoption root
   for it and a console step settled instead of starting the day.
+
+### Roadmap
+- Story 1.8.9: policy as code — the contract gains a parameter derived
+  by code, the hook ADR-0006's lag and take become, and the Model Bank's
+  policy is code (the extraction of `modelbank` into a module of its own
+  is a roadmap item of its own): its savings and lending base rates from
+  the GBP risk-free rate with a spread and an asymmetric lag (a cut
+  reaches savers at once and a rise after a lag, borrowers the other way
+  about), the decision an algorithm the bank's module owns, spread and
+  lag published and changeable by setting; and a documentation structure
+  for a bank definition with the graphs that show it: the risk-free rate
+  against the bank's savings and lending rates over the run.
+  `easyaccess/v2` tracking the bank savings rate at − 15 bps, floor 0,
+  new accounts opening on it, its accrual moving when the risk-free rate
+  does
+- Story 9.4 API token for the console — gobank-deploy drives the demo's
+  console as a third party (the drill's day length, the performance
+  run's batch add, Run and Stop), and since 1.7.1 the console sits
+  behind the staff login, so its posts were redirected to the login
+  page and read as success (the v0.35.0 and v0.36.0 drills failed on
+  it, see 1.8.8). A request carrying `GOBANK_API_TOKEN` as a bearer
+  token is served as the operator, a role that may drive the console
+  and set its settings and nothing else; a wrong token is refused
+  outright, never sent to the login. gobank-deploy generates the token
+  per environment as it does the passwords, keeps it on the server's
+  labels, writes it to the deploy env, sends it on every console post
+  and treats a redirect to the login as a refusal. Ships with 1.8.9.
+  Out of scope: tokens for users, scopes beyond the console
 
 ## [0.36.0] - 2026-10-13
 
@@ -120,6 +157,48 @@
   ADR-0008 (v0.35.0) a savings balance is negative in the bank's view,
   and the test went red on main.
 
+### Roadmap
+- Story 1.8.8: the bank's parameters and their editing — a third tab
+  under Products, `products/bank`, for what is the bank's and not a
+  product's: the pound's market (rate in force, next decision day,
+  history — moved off the savings page), the reserve ratio (moved off
+  the console), and from policy as code the policy's spread and lag. The
+  tab shows the contract's `bank` and `market` scopes, a product page
+  its `version` scope alone, the console keeping the simulation's
+  controls. A parameter row links to the parameter's own page,
+  `products/{owner}/parameters/{key}`: its declaration (scope, kind,
+  derivation), the value in force, the settings upcoming, and the set
+  form. HTMX (lofigui's multipage pattern): the detail loads into the
+  master as a fragment, the form posts and swaps the detail and the
+  upcoming list, and the lists re-poll as the clock moves, so a page
+  open while an event fires does not go stale; the same route renders
+  the full page without `HX-Request`, so a parameter deep-links. Found
+  on the way and fixed here: the product total on the products page
+  ignores the session's view (`FormatMoney(p.Balance)` where every other
+  page goes through `view.Money`). Out of scope: setting a market value
+  (it is a feed), setting a derived parameter, bulk set, history
+  (1.8.12). Drill 2026-10-13 preprod: v0.35.0 → v0.36.0, upgraded 15 s,
+  handover intact; the drill failed at the upgrade hop's gate, "the run
+  went on before the stop: day 8273 when last observed, day 8277 at the
+  stop", and rollback and forward did not run. Cause: gobank-deploy's
+  console client sets the 2 h day length by posting the settings form
+  with no session; since v0.28.0 (story 1.7.1) the staff web is behind
+  the login, answers the post with a redirect to it, and the client
+  reads anything under 400 as success, so the day length stayed at zero
+  and the run went on flat out (12 s a day) between the observation and
+  the stop. The v0.34.0 → v0.35.0 drill failed the same way (3984 →
+  3991); the drills before it passed on an empty bank at day 0, which
+  cannot move. Fixed by the API token (story 9.4)
+- Story 9.3 ADRs published whole, with a root of their own — the running
+  system serves an ADR's diagrams beside its text (`adr` embeds the
+  SVGs and goluca sources with the markdown, served at
+  `about/docs/adr/`; found on ADR-0008, every ADR with a d2 is
+  affected); `about/adr` lists the records (number, title, status,
+  date) and is linked from the nav, the docs page keeping its summary;
+  the static site renders `adr/*.md` to `docs/adr/` with the same
+  index, so docs.bytestone.uk carries them. Ships with 1.8.8. Out of
+  scope: ADR templates, a status workflow
+
 ## [0.35.0] - 2026-10-12
 
  - Story 1.8.7: a movement keeps its sign (ADR-0008 amended); reset release
@@ -149,6 +228,19 @@
   24 MB parser build (`task wasm:pta2svg` needs `tinygo`). The goluca
   text is still shown and served. Running banks: preprod and prod are
   reset on this release, the drill a fresh deploy as in 1.8.2
+
+### Roadmap
+- Story 1.8.7: a movement keeps its sign (ADR-0008 amended) — the ledger
+  records a contract posting as written, a signed amount from the
+  counterparty to the account, and the bank writes its own events the
+  same way (a deposit negative from cash, a transfer negative from payer
+  to payee); the runner's and the wrapper's turning-about of a negative
+  amount goes, the wrapper's parameters are `from`, `to` and `amount`,
+  the GL's funding, transfer, opening and journal follow, the statement
+  reads a line's type from the account's signed change, and the
+  movement page shows savings interest as −£1.27 from `Expense:Interest`
+  to the account. Credit and debit leave the vocabulary. Preprod and
+  prod reset on the release, the drill a fresh deploy as in 1.8.2
 
 ## [0.34.0] - 2026-10-12
 
@@ -192,6 +284,23 @@
 - Schema: `events` v1; `products` v5 (`cause_id`, `step`, unique index
   on the effect); `parameters` v2 and `payments` v2 (`cause_id`, and
   `contract_payments` carries it). Additive; an older build ignores them.
+
+### Roadmap
+- Story 1.8.6: events and their cascades are recorded (ADR-0011) — every
+  command is a root event in `bank/events` (`events`: roots and, later,
+  continuations, with a status), written by the command and carried
+  down as the cause of what it writes: `cause_id` on postings, settings
+  and payments, `step` on postings with a unique key on (cause, account,
+  step), recorded with the movement in its transaction; each account's
+  pass work in a transaction of its own; `Owed` read from the record plus the pass's
+  unprojected count; the console showing cascades by root and a
+  posting's cause; gobank-products gains `Posting.Step` (v1 names its
+  one posting `apply`). Restart replays the root, never the effects: a
+  kill-and-replay test fails the transaction after each effect in turn
+  and asserts the facts identical. One root per day for accruals, the
+  position each account's fact. Out of scope: continuations (sleep,
+  maturity, 1.8.11), human steps (the first workflow), any change to
+  `core.Commands`
 
 ## [0.33.0] - 2026-10-11
 
@@ -237,6 +346,23 @@
 - The opening day's rate arrives with the market's noon publication, an
   event, rather than being published at open.
 
+### Roadmap
+- Story 1.8.5: the event clock (ADR-0010) — the simulation moves by events,
+  not slots: a timeline of the start of day, the market's decision days
+  (its published calendar: an event at which the feed publishes a change
+  or nothing, the next one named on the products page), the payments the
+  generator raises and the settings staff make. The
+  clock stands at an event while the bank processes it and all it
+  causes — a market change reaching the policy, the policy the product
+  rates, the rates every account through the `ParameterChange` event,
+  fired here (moved up from the last story) — and moves to the next
+  event only when the bank reports itself at rest: the pass complete, no
+  account unprojected, no parameter change unfired, no payment in
+  flight. The day-length knob paces the wall clock between events. A
+  staff page sets a product's declared parameter effective at a future
+  instant, one more event on the timeline, with upcoming settings shown
+  on the products page
+
 ## [0.31.0] - 2026-10-11
 
  - Story 1.8.4: the risk-free rate is market data (ADR-0009) — bank/market, settings effective at an instant, Publish command, float rates retired
@@ -262,6 +388,28 @@
   basis points, and `daily_snapshots` gains `risk_free_bps` (the decimal
   column is still written for one release, for the drill's rollback).
 - gobank-products pinned at v0.7.0 (the `market` scope).
+
+### Roadmap
+- Story 1.8.4: the risk-free rate (ADR-0009; the first half of what was
+  1.8.3) — a currency's official risk-free rate is market data, not the
+  bank's: `bank/market` names each currency's source (GBP: the Bank of
+  England Bank Rate, its page and the IADB feed `cmd/boefetch` already
+  reads, published 12:00 London on decision days; EUR and USD later,
+  each with its own process) and writes each publication as a setting at
+  the contract's new `market` scope, owner the currency, key
+  `risk_free_rate_bps`, effective at the instant published and decided
+  then. Settings become effective at an instant rather than a day, and a
+  rule's parameter for a day is its value at the end of that day, so a
+  noon publication counts for the whole day, as the Bank intends. The
+  simulation replays the historical series through the component as the
+  feed would; a deployment polls. The treasury's reserve accrual reads
+  GBP's rate; `core.BaseRateSource` and the last `float64` rates go,
+  basis points in their place (`boe_rate` written beside them for one
+  release, for the drill's rollback); the products page shows the rate's
+  history and the rate in force; a day the market has published no rate
+  for is refused, the console showing why. Nothing cascades yet: the v1
+  rules ignore a parameter change and the day rule reads the rate for its
+  day. Drill: preprod accrues the same reserve interest as before
 
 ## [0.30.0] - 2026-10-11
 
@@ -291,6 +439,33 @@
 - The demo's bank-package import rule lets test files alone import the
   Model Bank's definition and the product versions, since a component's
   tests run it against the Model Bank (ADR-0007).
+
+### Roadmap
+- Story 1.8.1: (gobank-products v0.6.0) gobank-products: the contract
+  and v1 of every product —
+  `Version`, `Facts`, events and intents, parameter declarations with
+  scope and derivation; six `<product>/v1` packages reproducing today's
+  behaviour exactly with the bank's rates moved in as published basis
+  points; goldens re-pinned per package; the feature framework,
+  `SimContext`, `Simulation` and `ParameterStore` retired. A library
+  release; gobank stayed on v0.3.0 until the catalogue
+- Story 1.8.3: the catalogue and the runner —
+  `products` as instances of rules versions (ADR-0006 as amended: each
+  with its own ID and name, the rules version it runs on, adoption and
+  withdrawal days; the six initial products adopted from the definition
+  at open) and `product_postings` recording the product, its rules, the
+  event, the parameters read and the position applied to; accounts name
+  the product alone; `bank/parameters` with its settings table (the
+  rules' account settings need it from the start; a product's parameters
+  are its own, defaulting to what its rules publish); `bank/products`
+  dispatching open, post-posting and day to the account's product's
+  rules and leaving accounts on products whose rules the build lacks
+  unprojected and counted; the bank opened with its definition
+  (`bank/definition`, package `modelbank`); the `float64` rate gone from
+  the bank, rates in basis points through the customer view; the
+  products page showing each product's rules, parameters and accounts.
+  Found and fixed on the way: the GL journal collision at month end
+  (v0.29.1)
 
 ## [0.29.1] - 2026-10-11
 
@@ -347,6 +522,22 @@
   converted: the first story whose drill is a fresh deploy, named as
   ADR-0003's exception (see upgrade-drill.md).
 
+### Roadmap
+- Story 1.8.2: the ledger is the bank's view
+  (ADR-0008; taken before the catalogue completed; preprod and prod
+  reset on it) — posting directions per the ADR's table, `Asset:Cash`
+  on both charts, the ledger wrapper's parameters named credit and debit,
+  every read's sign correction gone, the staff web's view switch (bank's
+  view by default) and the app's customer view with its position with the
+  bank; a movement page beneath every statement line, the journal entry
+  drawn as the directed graph of Accounting for Programmers by pta2svg,
+  as a WASM component on the staff and customer web, the movement served
+  as goluca text and as data (the core gains a movement-by-ID query;
+  pta2svg needs a public package, a WASM build and opening balances
+  first, raised there); no conversion
+  of running banks: preprod and prod are reset on this release, the
+  drill a fresh deploy named as ADR-0003's exception
+
 ## [0.28.0] - 2026-10-09
 
  - Stage 7 story 1.7.1: the users component and the staff login
@@ -384,6 +575,14 @@
 - The sessions and the login lockout live in `internal/session`, shared
   by the BFF and the staff web; package `bff` keeps their names.
 
+### Roadmap
+- Story 1.7.1: the component and staff login — the `users` table and
+  migration, password hashes, roles; a login page on the staff web; the
+  first admin's password a per-environment secret gobank-deploy sets and
+  shows, as it does the app password today; the session carries the
+  user and the role switch goes. Done when preprod is logged into with
+  a staff password after the drill
+
 ## [0.27.1] - 2026-10-09
 
  - Updating roadmap
@@ -417,6 +616,17 @@
 ### Known
 - An import through the console rebuilds the sub-ledger but not the GL,
   so the close after it reports a break per product.
+
+### Roadmap
+- Story 1.6a.1: (go-luca v0.4.0) go-luca enablers (go-luca #8, #9) — a second ledger in one database (a table
+  and view prefix on `NewSQLLedger`), and indexes for day-bounded reads
+  (movements by value time, positions by day) so the journal and the
+  reconciliation scan a day, not the table
+- Story 1.6a.2: the GL opened and posted in shadow — the chart, per-event
+  control movements in the event's transaction, the journal and the GL
+  close at pass completion (idempotent per day, product, code), the
+  posted-through day, the reconciliation reported on the dashboard;
+  reads unchanged. Done when preprod closes days with no break
 
 ## [0.25.0] - 2026-10-09
 
@@ -453,6 +663,27 @@
   console, and the app, the customer web and the staff web are all served
   by the BFF, in the tab as on a server. The JSON at `/about.json` is
   unchanged.
+
+### Roadmap
+- Story 1.6: One BFF — the staff UI and the customer web render through the
+  BFF, which becomes the demo's one handler, and the WASM build serves that
+  handler in the tab (ADR-0002 stage 6; absorbs item 5 and the HTML half of
+  item 8, passkeys excluded). The BFF keeps no state of its own: the console
+  it serves is an interface the demo implements. Out of scope: a staff
+  login (the role switch stays; 1.7 adds it), staff sessions in the
+  database (10.3 needs them), the audience split, and the screens app.md draws (its stories
+  1 to 4). Done-when of the stage: `cmd/demo` holds no HTML and no handler,
+  only wiring, the simulation and the console.
+- Story 1.6.4: the console through the BFF — the dashboard controls, settings,
+  runtime, restarts, export and import and the DB explorer move to
+  `bff/staff` over a `Console` interface (start, stop, advance, reset, add
+  customers, the payments generator's send, run and stop, settings,
+  restarts, export, import, explorer, the status `/about.json` reports)
+  that `DemoState` implements, replacing `Site.Handle`. Done-when of the
+  stage. Done: `staff.Config.Console`; the site serves the console's
+  pages only when given one; `internal/daylength` parses the day length
+  for the simulation and the settings page; `cmd/demo` holds no HTML and
+  no handler
 
 ## [0.23.0] - 2026-10-09
 
@@ -491,6 +722,19 @@
   dashboard does and are served from the same cached, background-refreshed
   reading. `products.Books` is gone; `Bank.Products` composes it.
 
+### Roadmap
+- Story 1.6.3: staff pages through the BFF — the layout, the role switch, PII
+  authorisation and the pages that read the core (dashboard data,
+  accounting, products, customers, payments, treasury, reports, about and
+  docs) move to `bff/staff`, mounted by `bff.Server`; the BFF is the
+  demo's handler. Pure move over `core.StaffQueries` and `core.Commands`.
+  Done: `staff.New(staff.Config)` is the staff web, served by the BFF for
+  every path outside `/v1/` (`bff.Config.Staff`); the console mounts its
+  own pages on it (`Site.Handle`) and renders them in the layout
+  (`Page`, `StaticPage`, `Fragment`, `Role`, `PII`, `Require`,
+  `Redirect`) until 1.6.4; `TestStaffWebKnowsOnlyTheCore` holds the
+  package to the core and its UI libraries
+
 ## [0.21.0] - 2026-10-08
 
  - Stage 6 story 1.6.2: the customer web is the BFF's HTML; the demo's phone frame and open customer API are retired
@@ -520,6 +764,19 @@
 
 ### Removed
 - `bff.TxIcon`, which served the phone frame alone.
+
+### Roadmap
+- Story 1.6.2: customer web through the BFF — the hand-rendered phone frame
+  (`/app/`, `bankapp_*.go`, `LayoutBankApp`) and the open `/api/customers`
+  and `/api/customer/` endpoints are retired; the demo's Bank App link
+  opens the BFF's HTML at `/v1/screen/login`, whose phone frame is the
+  demo's customer web; the WASM build logs in with a fixed demo password
+  the login screen states. Item 5, app.md story 5, the HTML half of item 8.
+  Done-when: no customer data is served without a session; app and browser
+  render from one screen tree. Done: the BFF takes the scope it is mounted
+  under (`bff.Config.Scope`) and its pages, redirects and cookie carry it;
+  the tab keeps the session cookie the service worker cannot set
+  (`keepCookiesInTab`); the login note is the deployment's
 
 ## [0.20.0] - 2026-10-08
 
@@ -565,9 +822,43 @@
   drive the binary over the same Request/Response protocol the worker
   uses (`wasm_harness.js`), under the `/demo/` scope.
 
+### Roadmap
+- Story 1.6.1: one handler, in the tab — the demo's routes become one
+  `http.Handler` built over the state (no default mux, no closures in
+  `main`); the server listens on it and the WASM build serves the same
+  handler in the tab through lofigui's service worker (`wasmhttp.Serve`,
+  lofigui examples 06 and 07), replacing the forty `goRender*` exports, the
+  page switch in `app.js` and the WASM-only `index.html` with the layout,
+  HTMX polling and links the server already has. A pure move for the
+  server. Settled: the staff session in the tab is a fixed ID (the
+  browser drops Set-Cookie on a service worker's response); pages are
+  scope-relative against a `<base>` so the demo runs at `/` on a server
+  and at `/demo/` on the docs site, with redirects carrying the scope.
+  Done: `main_wasm.go` registers the handler and nothing else; `test:wasm`
+  drives the binary over the worker's own Request/Response protocol under
+  `/demo/`; the docs demo serves the server's pages
+
 ## [0.18.0] - 2026-10-07
 
  - Stage 5 story 1.5.4: products, customers, payments and the bank itself are packages; the core is in packages and the demo is wiring, console and UI (ADR-0004 applied)
+
+### Roadmap
+- Story 1.5: Core into packages — one component at a time, into `bank/<component>`
+  packages of the root module, each owning its tables and migrations behind
+  its API, with `bank` the composition root that implements `core.Commands`
+  and `core.StaffQueries`. Smallest coupling first so the pattern (the
+  registry names a package, the contract-view test scans `bank/`, an
+  import test is the boundary) is proven before the entangled components
+  move. Every story is a pure move, no schema change. Done-when of the
+  stage: `cmd/demo` holds only wiring, the console and the UI.
+- Story 1.5.4: products, customers, payments and the bank, as one story:
+  `bank/products` (the catalogue, the pass and the accrual over the
+  ledger), `bank/customers` (the store, the register, opening and
+  transactions, over ledger and products), `bank/payments` over all of
+  the above, and `bank` the composite that replaces `DemoState` and
+  dissolves `coreAdapter`; book and about read through `core`. Stories
+  1.5.4 to 1.5.7 of the original breakdown, taken together and released
+  once; the stage's done-when
 
 ## [0.17.0] - 2026-10-06
 
@@ -629,6 +920,11 @@
 ### Added
 - ADR-0004: identity, references and shared state across topologies.
 
+### Roadmap
+- Story 1.5.2: history — `bank/history`: the daily snapshots
+- Story 1.5.3: ledger — `bank/ledger`: the go-luca wrapper, the chart of
+  accounts, the account locks and `postEvent`
+
 ## [0.16.0] - 2026-10-06
 
  - Stage 5 story 1.5.1: the treasury is the first bank component in a package of its own, bank/treasury
@@ -653,6 +949,10 @@
 - `bank/schema`: the shape of a component's migrations (`Migration`,
   `Component`), so a package can publish its own schema for the wiring to
   apply. The demo's `componentSchema` and `migration` are aliases of it.
+
+### Roadmap
+- Story 1.5.1: treasury — `bank/treasury`: gilt yields and holdings,
+  `Buy`; reads only the bank's business day
 
 ## [0.15.0] - 2026-10-06
 
@@ -701,6 +1001,19 @@
   checking). The storyboard is where a new screen is designed first; its
   builders become the served screens when their story is built.
 
+### Roadmap
+- Story 1.4: Events and clock — bank and simulation split; generators and an
+  injected clock. The simulation differs from the bank in where its
+  events come from and in the clock and market data it reads, nothing
+  else; the stage ends with the simulation a package of its own that
+  knows the bank only through `core`.
+- Story 1.4.3: the split — the simulation moves into `cmd/demo/sim`, built
+  on `core` alone: run loop, generators, settings, rate series and
+  console status; it drives the bank through `core.Commands` and
+  reads it through `core.StaffQueries`. Reset becomes wiring (a fresh
+  bank over a wiped database); separate locks replace the shared
+  `ds.mu`. Done-when of the stage: the compiler is the enforcement
+  and a test checks the package's imports
 
 ## [0.14.0] - 2026-10-06
 
@@ -740,6 +1053,21 @@
 - The contract suite's fixture may hand over a fake clock; with one,
   `StartDay` is checked to follow it.
 
+### Roadmap
+- Story 1.4.2: the clock — `core.Clock` injected into the bank, which takes
+  its business date and every banking timestamp (payments, value
+  times, join dates) from it; the simulation supplies a warped clock
+  (day D begins at slot start, the day length sets the warp, flat out
+  steps a day at a time) and the run row keeps day and slot start so
+  a resume rebuilds it. Operational records (restarts, schema
+  versions, session expiry) stay on the wall clock. The base-rate
+  series becomes a second injected source, market data the bank
+  reads and the simulation replays. `StartDay` follows the clock
+  (nothing to do while it stands still; catches up a day at a time)
+  and the position says whether the day's pass is complete, which is
+  what lets the simulation step its clock. The dashboard shows the
+  wall clock and the sim clock with the warp between them
+
 ## [0.13.0] - 2026-10-06
 
  - Stage 4 story (a): OpenCustomer and StartDay are core commands; the generators reach the bank through commands alone; accrual_state dropped
@@ -772,6 +1100,15 @@
   gobank-deploy's `perf` command into this checkout; `large` is a ccx33
   with dedicated cores.
 
+### Roadmap
+- Story 1.4.1: entry points — `core.CustomerCommands.OpenCustomer` (record,
+  PII, opening deposits and loan disbursements, with the lending
+  headroom a bank rule that trims or refuses the loan) and
+  `core.DayCommands.StartDay`; the generators and the console reach
+  the bank through these and `Transfer` only, and the daily
+  new-customer roll leaves `startDay` for the run loop. Drops
+  `accrual_state`, retired since v0.11.0. Drilled on preprod 2026-10-06
+
 ## [0.12.0] - 2026-10-06
 
  - about.json carries the two performance rates; benchmark.md is the published performance doc
@@ -797,6 +1134,23 @@
   `benchmark.md`, now the performance doc: a dated row per run and scale
   above the laptop pglike baseline, published by `docs:build` and linked
   from the docs landing page with the upgrade drill.
+
+### Roadmap
+- Story 7.1 **Performance run on Hetzner, small and large** — a gobank-deploy
+  `perf` workflow (beside the drill) creates an environment at a scale
+  (`small` cx23, `large` cx53), waits for the demo, sets the day length to
+  zero, batch-adds customers for a fixed wall-clock span, lets days run
+  for another, reads the two rates off `/about.json` — customers added per
+  second and account days per 12h (the pass's rate over the whole day) —
+  with the customers and days reached, then downs the box and keeps the
+  observations with the version and server type. gobank's share: the two
+  rates join `/about.json`, and `benchmark.md` becomes the performance
+  doc — published by `docs:build`, each run a dated row per scale,
+  the laptop pglike tables kept as the baseline. Out of scope: profiling
+  on the box, OpenTelemetry (7.2), cost per customer. Open: the spans
+  (10 minutes each?); whether a run should also report the day's
+  wall-clock at a fixed customer count, for comparison with the
+  2026-10-01 ten-minute days
 
 ## [0.11.0] - 2026-10-05
 
@@ -845,6 +1199,26 @@
   recorded with the run (`sim_run.day_length`, simulation schema version
   3) and a resumed run keeps it; `GOBANK_DAY_LENGTH` is where a run
   starts until the console sets one.
+
+### Roadmap
+- Story 1.3: Pipelined accruals — start-of-day workflow writes next-day
+  projections; interest application is product code inside it. A
+  projection is an account's position at the start of a day: its
+  balance and its accrued-but-unapplied interest. go-luca publishes
+  the position as contract views and decides how it is kept (stored
+  projections, sums over ranges); gobank-products holds the rules,
+  one account at a time, and stores nothing; the demo's products
+  component owns no table once `accrual_state` is retired. Numbers
+  cross the contract as NUMERIC, so how go-luca stores them
+  (integers, numerator and denominator) stays inside it.
+- Story 1.3.5: the start-of-day workflow — the date advances at the
+  start of the slot; the pass over every account runs at the start
+  of the day at the system's capacity (the day length is headroom,
+  the rest of the day idle) and resumes after a restart from the
+  projections already written; a transfer or funding rewrites
+  the touched account's next-day projection; the engine's account
+  map and the end-of-day sweep go. Done-when of the stage; drilled
+  with a restart mid-pass
 
 ## [0.10.2] - 2026-10-05
 
@@ -905,6 +1279,40 @@
    `accrual_state` is no longer read; it is still shadow-written so v0.10
    can be rolled back to with nothing lost, and story (e) drops it.
 
+### Roadmap
+- Story 1.3.1: (go-postgres v0.7.0) enabler, go-postgres: NUMERIC in pglike — a `::numeric`
+  cast and arithmetic, rounding and comparison on it give exact
+  decimals with PostgreSQL's scale rules, so a contract view can
+  publish a NUMERIC column computed from integers on both drivers
+- Story 1.3.2: (go-luca v0.3.0) go-luca: two contract views — `contract_ledger_eod_positions`
+  (account, day, balance, accrued; the cheap one, from stored
+  projections written for both accounts of a movement, incrementally)
+  and `contract_ledger_live_positions` (today's row plus today's
+  movements; dearer, and said so) — with `contract_ledger_movements`
+  moving in from the demo, a projection-only write for the daily
+  pass, and `knowledge_time` stored on every write path (cold review
+  go-luca #6). Done with the cost measured: rows per account per
+  day at the Hetzner scale, and the two views benchmarked. Measured
+  on pglike at 1,000 accounts: 0.55 ms per account for the daily
+  pass, 0.34 ms for a one-account live read, 11 ms for a day of
+  every account from the end-of-day view; one row per account per
+  day. Found and filed go-postgres #21 (INTERVAL arithmetic on a
+  qualified column)
+- Story 1.3.3: (gobank-products v0.2.0, gobank v0.10.0) gobank-products: `Product.NextDay` — a pure function from
+  an account's projection and the day's balance to the next day's
+  projection and the ledger postings it calls for, with the
+  application cycle (daily, monthly, annual) a product parameter
+  and month-end application gone as a separate pass; the existing
+  sweep loops over it so the goldens hold
+- Story 1.3.4: projections are the truth — the demo writes each day's
+  pass as go-luca projections and posts customer movements with
+  projections; balance and accrued reads come from the views;
+  `accrual_state` goes (the BoE reserve's accrual becomes a
+  projection on its account). Shipped with `accrual_state` still
+  shadow-written so the drill's rollback loses nothing; (e) drops
+  it. Needed go-luca v0.3.1 (`Positions`, constant-cost movement
+  projection, accrual carried forward on a movement's new day)
+
 ## [0.9.0] - 2026-10-04
 
  - Stage 2 complete: stored daily snapshots and database sessions; customer page PII and layout fixes, UTC payment times, product currency
@@ -942,6 +1350,21 @@
    `bff.TxIcon`, so the dollar sign is gone and the icon tables exist once
    (#26).
 
+### Roadmap
+- Story 1.2: Stored truth — transactions as a ledger projection, stored chart
+  snapshots, sessions in the database. From here every story is an
+  upgrade of the running Hetzner demo, downtime accepted and recorded
+  until stage 8 ([ADR-0003](adr/0003-upgrade-in-place-until-stage-8.md);
+  deployment level 2 on the manual's
+  [maturity ladder](https://man.bytestone.uk/maturity.html)), and
+  development moves to a branch per story merged by pull request on
+  the Forgejo (code level 1).
+- Story 1.2.6: chart histories as stored daily snapshots —
+  the `history` component, one row a day in `daily_snapshots`
+- Story 1.2.7: sessions in the database — `bff.Sessions`,
+  with a SQL store over the demo's database (the `sessions`
+  component)
+
 ## [0.8.0] - 2026-10-04
 
  - Stage 2 story (d): transactions as a ledger projection
@@ -967,6 +1390,11 @@
  - The about/runtime page's Data Store box shows the schema version each
    component's tables are at, as `/about.json` does.
 
+### Roadmap
+- Story 1.2.4: about/runtime shows the schema version per
+  component, as `/about.json` already does
+- Story 1.2.5: transactions as a ledger projection replacing `txLog`
+
 ## [0.7.0] - 2026-10-04
 
  - Adding restart component
@@ -988,6 +1416,21 @@
  - `task-plus.yml` declares maturity code 1 (branch per story, pull
    request) and deploy 2 (upgrade in place, downtime recorded, rollback
    rehearsed).
+
+### Roadmap
+- Story 1.2.3: upgrade drill — the demo keeps a restart
+  record (`restarts`, an expand-only migration of the simulation
+  component): each process start against the stop before it, with
+  the downtime and the run's day and customers on both sides, shown
+  on the settings page; `upgrade-drill.md` is the drill — redeploy
+  N to N+1 on Hetzner mid-day, read the downtime off the record,
+  roll back to N from the release store and forward again, confirm
+  nothing is lost — and every later story's acceptance. Needs
+  gobank-deploy story 1i (stop timeout, fetch a named tag)
+- Story 9.1 Release from the story branch — `tp release` on the branch
+  runs the checks, writes the changelog and opens the pull request; on
+  main it tags the merged heading (task-plus story 006). gobank's share:
+  the branch-per-story habit and `task-plus.yml`
 
 ## [0.6.0] - 2026-10-04
 
@@ -1020,6 +1463,16 @@
  - gobank-products: `Simulation.AdoptAccount` (pinned at a pre-release
    commit until v0.1.11 is tagged).
 
+### Roadmap
+- Story 1.2.2: resume — the demo stops dropping its tables at start and
+  rebuilds its state from the database, with a schema version table
+  and versioned migrations replacing the ad hoc `ALTER TABLE`. Also,
+  from (a)'s sense-check: the settings form is static under the page
+  poll (an HTMX status section polls, the form does not, as the
+  dashboard already does) so a value being typed is not wiped before
+  Save; and the dashboard's day tile counts down the seconds to the
+  end of the day
+
 ## [0.5.0] - 2026-10-03
 
  - Stage 2 story (a): simulated day length (GOBANK_DAY_LENGTH); ADR-0003 upgrade-in-place; feature flags and payment rails on the roadmap
@@ -1038,6 +1491,11 @@
    running demo with recorded downtime, blue-green at stage 8; roadmap
    ticks stage 1 (v0.4.0), breaks stage 2 into stories, adds feature
    flags and multiple payment rails
+
+### Roadmap
+- Story 1.2.1: simulated day length — a setting (`GOBANK_DAY_LENGTH`,
+  zero means flat out; shown and set on the simulation page) so a
+  day can take two hours and an upgrade lands mid-day
 
 ## [0.4.0] - 2026-10-03
 
@@ -1076,6 +1534,24 @@
   Android Studio AVD and waits for boot, `app:emulator:stop` kills it,
   `app:run` runs the app on it (`BFF_URL=` to point it at a demo).
 
+### Roadmap
+- Story 1.1: Seams — core commands/queries as interfaces; `DemoState` adapts to
+  them; the BFF runs in the demo process and the app shows real data.
+ 
+- Story 1.1.2: (gobank-deploy v0.3.0) gobank-deploy sets `GOBANK_APP_PASSWORD` per environment
+  and shows it (its story 1g, gobank-deploy v0.3.0)
+- Story 1.1.3: Android debug build — `app/android` and `app/ios`
+  generated and committed, cleartext traffic allowed in the debug
+  manifest only — then (a) sense-checked from a phone against
+  Hetzner (2026-10-03)
+- Story 1.1.4: staff queries — `core.StaffQueries`, one
+  interface per component (book, customer register, payments,
+  products, treasury), every staff page rendering from them
+- Story 1.1.5: commands — `core.Commands`: `Transfer` (the
+  payments generator calls it) and `BuyGilt` (the treasury page
+  calls it). Opening a customer stays inside the generator until
+  stage 4 splits generators from the bank
+
 ## [0.3.54] - 2026-10-02
 
  - Core contracts package; the app logs in to the running demo
@@ -1095,6 +1571,10 @@
 - `bff/stubbank` returned transactions grouped by account, oldest first,
   although `TransactionPage` promises newest first; caught by the new
   contract suite.
+
+### Roadmap
+- Story 1.1.1: customer contracts in `core`, contract suite,
+  demo adapter, BFF at `/v1/`
 
 ## [0.3.53] - 2026-10-01
 
