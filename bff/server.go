@@ -243,6 +243,30 @@ type loginRequest struct {
 	Password   string `json:"password"`
 }
 
+// loginResponse is what a JSON client gets for a login: the session token
+// to send back as a bearer, when the session ends whatever happens (it
+// also ends after fifteen idle minutes), and the home screen, so the
+// client has nothing more to fetch.
+type loginResponse struct {
+	Token     string        `json:"token"`
+	ExpiresAt string        `json:"expires_at"` // RFC 3339, UTC
+	Screen    screen.Screen `json:"screen"`
+}
+
+// screenBody is a screen on its own, as the logout answers a JSON client.
+type screenBody struct {
+	Screen screen.Screen `json:"screen"`
+}
+
+// errorBody is every error as a JSON client gets it: a stable code to
+// switch on, what to tell the customer, and the screen to show with it
+// when there is one (the login screen with its notice).
+type errorBody struct {
+	Error   string         `json:"error"` // bad_request, unauthenticated, bad_credentials, rate_limited, not_found or internal
+	Message string         `json:"message"`
+	Screen  *screen.Screen `json:"screen,omitempty"`
+}
+
 func (s *Server) login(w http.ResponseWriter, r *http.Request) {
 	var req loginRequest
 	isForm := false
@@ -315,11 +339,7 @@ func (s *Server) login(w http.ResponseWriter, r *http.Request) {
 	}
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusOK)
-	_ = json.NewEncoder(w).Encode(map[string]any{
-		"token":      token,
-		"expires_at": expires.UTC().Format(time.RFC3339),
-		"screen":     home,
-	})
+	_ = json.NewEncoder(w).Encode(loginResponse{Token: token, ExpiresAt: expires.UTC().Format(time.RFC3339), Screen: home})
 }
 
 func (s *Server) logout(w http.ResponseWriter, r *http.Request) {
@@ -332,7 +352,7 @@ func (s *Server) logout(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	w.Header().Set("Content-Type", "application/json")
-	_ = json.NewEncoder(w).Encode(map[string]any{"screen": s.frontDoor("")})
+	_ = json.NewEncoder(w).Encode(screenBody{Screen: s.frontDoor("")})
 }
 
 func (s *Server) buildAccounts(ctx context.Context, custID string) (screen.Screen, error) {
@@ -432,11 +452,7 @@ func (s *Server) writeError(w http.ResponseWriter, r *http.Request, status int, 
 	}
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(status)
-	body := map[string]any{"error": code, "message": message}
-	if sc != nil {
-		body["screen"] = sc
-	}
-	_ = json.NewEncoder(w).Encode(body)
+	_ = json.NewEncoder(w).Encode(errorBody{Error: code, Message: message, Screen: sc})
 }
 
 func (s *Server) bankError(w http.ResponseWriter, r *http.Request, err error) {

@@ -41,6 +41,7 @@ func Walk(patterns ...string) (api.Surface, error) {
 		}
 		w := newWalker(p)
 		s.Routes = append(s.Routes, w.routes()...)
+		s.Gates = append(s.Gates, w.gates()...)
 	}
 	sort.Slice(s.Routes, func(i, j int) bool {
 		a, b := s.Routes[i], s.Routes[j]
@@ -280,15 +281,16 @@ func (w *walker) routes() []api.Route {
 			}
 			r := api.Route{Package: w.pkg.PkgPath, Pos: w.pos(call.Pos())}
 			r.Method, r.Path = splitPattern(pattern)
+			var helper *fn
 			if handlerExpr != nil {
 				var lit *ast.FuncLit
 				r.Handler, r.Wrappers, lit = w.handler(handlerExpr)
 				r.Doc = w.docOf(r.Handler, lit)
 			} else {
-				f := w.callee(call)
-				r.Via = f.name
+				helper = w.callee(call)
+				r.Via = helper.name
 				for i, a := range call.Args {
-					if i == w.helpers[f] {
+					if i == w.helpers[helper] {
 						continue
 					}
 					if s, ok := w.constString(a); ok {
@@ -296,6 +298,7 @@ func (w *walker) routes() []api.Route {
 					}
 				}
 			}
+			r.RouteFacts = w.facts(call, handlerExpr, helper)
 			if r.Doc == "" {
 				r.Doc = w.commentAbove(file, call)
 			}
@@ -440,3 +443,7 @@ func splitPattern(pattern string) (method, path string) {
 	}
 	return method, strings.TrimSpace(path)
 }
+
+// Packages are the packages that serve HTTP: what the API document is
+// walked from.
+var Packages = []string{"git.bytestone.uk/hum3/gobank/bff", "git.bytestone.uk/hum3/gobank/bff/staff"}

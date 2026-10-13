@@ -1,0 +1,491 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "Model Bank API",
+    "version": "1",
+    "summary": "The Model Bank's HTTP surface: the customer BFF, the console routes an operator drives, and the health check.",
+    "description": "Two servers share one process and one host. The customer BFF under `/v1/` serves the banking app: every response is a **screen tree** (`Screen`), rendered by the Flutter shell or as HTML for a browser, so a client interprets screens, not endpoints. Everything outside `/v1/` is the staff web; its HTML pages are not in this document, only the console routes another program drives (gobank-deploy's upgrade drill and performance runs) and `/about.json`, which it reads.\n\n**Content negotiation.** A `/v1/` screen is JSON unless the request's `Accept` lists `text/html` and not `application/json`, when it is the same screen rendered as an HTML document. Errors follow the same rule: a browser gets the accompanying screen rendered, a JSON client gets `Error` with the screen under `screen`.\n\n**Sessions.** `POST /v1/login` answers a JSON client with a bearer token and a browser with the `mb_session` cookie. The customer's identity always comes from the session, never from the request. A console route is reached with the operator token (`GOBANK_API_TOKEN`) as a bearer, or by a signed-in admin's `staff_session` cookie."
+  },
+  "tags": [
+    {"name": "customer", "description": "The customer app's screens and session, under /v1/."},
+    {"name": "console", "description": "The simulation console as another program drives it; HTML pages of the staff web are not documented."},
+    {"name": "meta", "description": "The process about itself."}
+  ],
+  "paths": {
+    "/v1/health": {
+      "get": {
+        "tags": ["meta"],
+        "summary": "Health check",
+        "description": "Answers as soon as the process serves HTTP. No session.",
+        "security": [],
+        "responses": {
+          "200": {"description": "Serving.", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/Health"}}}}
+        }
+      }
+    },
+    "/v1/openapi.json": {
+      "get": {
+        "tags": ["meta"],
+        "summary": "This document",
+        "description": "The OpenAPI document the running process was built with. No session.",
+        "security": [],
+        "responses": {
+          "200": {"description": "The document.", "content": {"application/json": {"schema": {"type": "object"}}}}
+        }
+      }
+    },
+    "/v1/screen/login": {
+      "get": {
+        "tags": ["customer"],
+        "summary": "The login screen",
+        "description": "The front door: a form whose `submit` is `POST /v1/login`. No session. The deployment's login note is the screen's text.",
+        "security": [],
+        "responses": {
+          "200": {"$ref": "#/components/responses/Screen"}
+        }
+      }
+    },
+    "/v1/login": {
+      "post": {
+        "tags": ["customer"],
+        "summary": "Log in",
+        "description": "Checks the customer ID and password and opens a session. A JSON client gets the token and the home screen; a form post or a browser gets the `mb_session` cookie and is sent to the home screen. Five failures for one customer ID or from one address in fifteen minutes lock that key for the rest of the window.",
+        "security": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {"schema": {"$ref": "#/components/schemas/LoginRequest"}},
+            "application/x-www-form-urlencoded": {"schema": {"$ref": "#/components/schemas/LoginRequest"}}
+          }
+        },
+        "responses": {
+          "200": {"description": "Logged in (JSON client).", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/LoginResponse"}}}},
+          "303": {"description": "Logged in (form or browser): the `mb_session` cookie is set and the browser is sent to `/v1/screen/accounts`.", "headers": {"Location": {"schema": {"type": "string"}}, "Set-Cookie": {"schema": {"type": "string"}}}},
+          "400": {"$ref": "#/components/responses/BadRequest"},
+          "401": {"description": "Unknown customer ID or wrong password (`bad_credentials`), with the login screen carrying the notice.", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/Error"}}, "text/html": {"schema": {"type": "string"}}}},
+          "429": {"description": "Too many attempts for this customer ID or from this address (`rate_limited`); `Retry-After` says how long.", "headers": {"Retry-After": {"schema": {"type": "integer"}, "description": "Seconds until the next attempt is accepted."}}, "content": {"application/json": {"schema": {"$ref": "#/components/schemas/Error"}}, "text/html": {"schema": {"type": "string"}}}}
+        }
+      }
+    },
+    "/v1/logout": {
+      "post": {
+        "tags": ["customer"],
+        "summary": "Log out",
+        "description": "Ends the session. A browser's cookie is cleared and it is sent to the login screen; a JSON client gets the login screen.",
+        "security": [{"customerBearer": []}, {"customerCookie": []}],
+        "responses": {
+          "200": {"description": "Logged out (JSON client).", "content": {"application/json": {"schema": {"type": "object", "required": ["screen"], "properties": {"screen": {"$ref": "#/components/schemas/Screen"}}}}}},
+          "303": {"description": "Logged out (browser): sent to `/v1/screen/login`.", "headers": {"Location": {"schema": {"type": "string"}}}},
+          "401": {"$ref": "#/components/responses/Unauthenticated"}
+        }
+      }
+    },
+    "/v1/screen/accounts": {
+      "get": {
+        "tags": ["customer"],
+        "summary": "Home: the customer's accounts",
+        "description": "The screen the app lands on: a hero with the net position and a row per account, each opening its product screen.",
+        "security": [{"customerBearer": []}, {"customerCookie": []}],
+        "responses": {
+          "200": {"$ref": "#/components/responses/Screen"},
+          "401": {"$ref": "#/components/responses/Unauthenticated"},
+          "500": {"$ref": "#/components/responses/Internal"}
+        }
+      }
+    },
+    "/v1/screen/activity": {
+      "get": {
+        "tags": ["customer"],
+        "summary": "Activity across every account",
+        "description": "The customer's transactions, newest first, one page at a time.",
+        "security": [{"customerBearer": []}, {"customerCookie": []}],
+        "parameters": [{"$ref": "#/components/parameters/page"}],
+        "responses": {
+          "200": {"$ref": "#/components/responses/Screen"},
+          "401": {"$ref": "#/components/responses/Unauthenticated"},
+          "500": {"$ref": "#/components/responses/Internal"}
+        }
+      }
+    },
+    "/v1/screen/product/{index}": {
+      "get": {
+        "tags": ["customer"],
+        "summary": "One account",
+        "description": "The account's details (sort code, number, rate, balance) and its own transactions, one page at a time. `index` is the account's position in the customer's list on the home screen.",
+        "security": [{"customerBearer": []}, {"customerCookie": []}],
+        "parameters": [
+          {"name": "index", "in": "path", "required": true, "schema": {"type": "integer", "minimum": 0}, "description": "The account's index in the customer's accounts."},
+          {"$ref": "#/components/parameters/page"}
+        ],
+        "responses": {
+          "200": {"$ref": "#/components/responses/Screen"},
+          "401": {"$ref": "#/components/responses/Unauthenticated"},
+          "404": {"$ref": "#/components/responses/NotFound"},
+          "500": {"$ref": "#/components/responses/Internal"}
+        }
+      }
+    },
+    "/about.json": {
+      "get": {
+        "tags": ["meta"],
+        "summary": "The process about itself",
+        "description": "The version and schema this process runs, the console settings, the run's position and the restart record. gobank-deploy's upgrade drill reads it before and after each redeploy to compare the position and read the downtime off the newest restart row; a performance run reads the two rates under `sim`. No session.",
+        "security": [],
+        "responses": {
+          "200": {"description": "The status.", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/AboutStatus"}}}},
+          "405": {"$ref": "#/components/responses/MethodNotAllowed"}
+        }
+      }
+    },
+    "/start": {
+      "post": {
+        "tags": ["console"],
+        "summary": "Start the run",
+        "description": "The simulation runs day after day at the settings' day length until stopped.",
+        "security": [{"operatorToken": []}, {"staffSession": []}],
+        "responses": {
+          "303": {"$ref": "#/components/responses/BackToDashboard"},
+          "401": {"$ref": "#/components/responses/InvalidToken"},
+          "403": {"$ref": "#/components/responses/Forbidden"}
+        }
+      }
+    },
+    "/stop": {
+      "post": {
+        "tags": ["console"],
+        "summary": "Stop the run",
+        "description": "The run stops after the day in progress.",
+        "security": [{"operatorToken": []}, {"staffSession": []}],
+        "responses": {
+          "303": {"$ref": "#/components/responses/BackToDashboard"},
+          "401": {"$ref": "#/components/responses/InvalidToken"},
+          "403": {"$ref": "#/components/responses/Forbidden"}
+        }
+      }
+    },
+    "/advance": {
+      "post": {
+        "tags": ["console"],
+        "summary": "Advance one day",
+        "description": "Runs one business day while the run is stopped.",
+        "security": [{"operatorToken": []}, {"staffSession": []}],
+        "responses": {
+          "303": {"$ref": "#/components/responses/BackToDashboard"},
+          "401": {"$ref": "#/components/responses/InvalidToken"},
+          "403": {"$ref": "#/components/responses/Forbidden"}
+        }
+      }
+    },
+    "/reset": {
+      "post": {
+        "tags": ["console"],
+        "summary": "Reset the bank",
+        "description": "Empties the bank and starts again on its opening day. Settings are kept.",
+        "security": [{"operatorToken": []}, {"staffSession": []}],
+        "responses": {
+          "303": {"$ref": "#/components/responses/BackToDashboard"},
+          "401": {"$ref": "#/components/responses/InvalidToken"},
+          "403": {"$ref": "#/components/responses/Forbidden"}
+        }
+      }
+    },
+    "/add-customers": {
+      "post": {
+        "tags": ["console"],
+        "summary": "Add customers",
+        "description": "Opens `n` customers with the product mix the simulation uses, in the background; `sim.adding_customers` and `sim.customers_per_sec` on `/about.json` follow the batch. `n` is read from the form or the query.",
+        "security": [{"operatorToken": []}, {"staffSession": []}],
+        "parameters": [{"name": "n", "in": "query", "schema": {"type": "integer", "minimum": 1}, "description": "How many customers to add; zero or absent adds none."}],
+        "requestBody": {"required": false, "content": {"application/x-www-form-urlencoded": {"schema": {"type": "object", "properties": {"n": {"type": "integer", "minimum": 1}}}}}},
+        "responses": {
+          "303": {"$ref": "#/components/responses/BackToDashboard"},
+          "401": {"$ref": "#/components/responses/InvalidToken"},
+          "403": {"$ref": "#/components/responses/Forbidden"}
+        }
+      }
+    },
+    "/settings": {
+      "post": {
+        "tags": ["console"],
+        "summary": "Change the console settings",
+        "description": "The customer ceiling, the payments the generator sends a day, and the day length. Each is read from the form or the query; a day length that does not parse leaves the current one. The day length set here is the run's and outlives the process.",
+        "security": [{"operatorToken": []}, {"staffSession": []}],
+        "parameters": [
+          {"name": "max_customers", "in": "query", "schema": {"type": "integer", "minimum": 0}, "description": "The customer count the run stops adding at."},
+          {"name": "payments_per_day", "in": "query", "schema": {"type": "integer", "minimum": 0}, "description": "Payments the generator sends each simulated day."},
+          {"name": "day_length", "in": "query", "schema": {"$ref": "#/components/schemas/Duration"}, "description": "Wall-clock length of a simulated day; `0s` runs flat out."}
+        ],
+        "requestBody": {"required": false, "content": {"application/x-www-form-urlencoded": {"schema": {"$ref": "#/components/schemas/Settings"}}}},
+        "responses": {
+          "303": {"description": "Applied; the browser is sent to the settings page.", "headers": {"Location": {"schema": {"type": "string"}}}},
+          "401": {"$ref": "#/components/responses/InvalidToken"},
+          "403": {"$ref": "#/components/responses/Forbidden"}
+        }
+      }
+    }
+  },
+  "components": {
+    "securitySchemes": {
+      "customerBearer": {"type": "http", "scheme": "bearer", "description": "The token `POST /v1/login` returned to a JSON client. Sessions last eight hours and expire after fifteen idle minutes."},
+      "customerCookie": {"type": "apiKey", "in": "cookie", "name": "mb_session", "description": "The session cookie `POST /v1/login` set for a browser, scoped to `/v1`."},
+      "operatorToken": {"type": "http", "scheme": "bearer", "description": "The deployment's operator token (`GOBANK_API_TOKEN`): another program driving the console. A wrong token is refused outright (401), never sent to the login page."},
+      "staffSession": {"type": "apiKey", "in": "cookie", "name": "staff_session", "description": "A signed-in staff user's session, from the staff web's login page. The console routes need the admin or operator role."}
+    },
+    "parameters": {
+      "page": {"name": "page", "in": "query", "schema": {"type": "integer", "minimum": 1, "default": 1}, "description": "The page of transactions, from 1; anything else is page 1."}
+    },
+    "responses": {
+      "Screen": {
+        "description": "The screen, as JSON or, for a browser, as an HTML document.",
+        "content": {
+          "application/json": {"schema": {"$ref": "#/components/schemas/Screen"}},
+          "text/html": {"schema": {"type": "string"}}
+        }
+      },
+      "BadRequest": {
+        "description": "The request could not be read, or the login fields were empty or too long (`bad_request`).",
+        "content": {"application/json": {"schema": {"$ref": "#/components/schemas/Error"}}, "text/html": {"schema": {"type": "string"}}}
+      },
+      "Unauthenticated": {
+        "description": "No session, or one that has expired (`unauthenticated`): the login screen comes with the error. A browser is sent to `/v1/screen/login` instead (303).",
+        "content": {"application/json": {"schema": {"$ref": "#/components/schemas/Error"}}}
+      },
+      "NotFound": {
+        "description": "No such account or endpoint (`not_found`).",
+        "content": {"application/json": {"schema": {"$ref": "#/components/schemas/Error"}}}
+      },
+      "Internal": {
+        "description": "The bank could not answer (`internal`); the cause is in the server log, never in the response.",
+        "content": {"application/json": {"schema": {"$ref": "#/components/schemas/Error"}}}
+      },
+      "BackToDashboard": {
+        "description": "Done; the browser is sent to the dashboard.",
+        "headers": {"Location": {"schema": {"type": "string"}}}
+      },
+      "InvalidToken": {
+        "description": "The bearer token is not the operator token. Without any credential a browser is sent to the staff login page (303) instead.",
+        "content": {"text/plain": {"schema": {"type": "string", "const": "invalid API token"}}}
+      },
+      "Forbidden": {
+        "description": "The signed-in user's role may not do this.",
+        "content": {"text/plain": {"schema": {"type": "string", "const": "Forbidden"}}}
+      },
+      "MethodNotAllowed": {
+        "description": "Only GET is served here.",
+        "content": {"text/plain": {"schema": {"type": "string"}}}
+      }
+    },
+    "schemas": {
+      "Health": {
+        "type": "object",
+        "required": ["status"],
+        "properties": {"status": {"type": "string", "const": "ok"}}
+      },
+      "Error": {
+        "type": "object",
+        "required": ["error", "message"],
+        "properties": {
+          "error": {"type": "string", "enum": ["bad_request", "unauthenticated", "bad_credentials", "rate_limited", "not_found", "internal"], "description": "A stable code a client can switch on."},
+          "message": {"type": "string", "description": "What to tell the customer."},
+          "screen": {"$ref": "#/components/schemas/Screen", "description": "The screen to show with the error, when there is one: the login screen with its notice."}
+        }
+      },
+      "LoginRequest": {
+        "type": "object",
+        "required": ["customer_id", "password"],
+        "properties": {
+          "customer_id": {"type": "string", "maxLength": 64, "examples": ["cust-000001"]},
+          "password": {"type": "string", "maxLength": 256}
+        }
+      },
+      "LoginResponse": {
+        "type": "object",
+        "required": ["token", "expires_at", "screen"],
+        "properties": {
+          "token": {"type": "string", "description": "The session token, sent back as a bearer."},
+          "expires_at": {"type": "string", "format": "date-time", "description": "When the session ends whatever happens; it also ends after fifteen idle minutes."},
+          "screen": {"$ref": "#/components/schemas/Screen", "description": "The home screen, so the client has nothing more to fetch."}
+        }
+      },
+      "Screen": {
+        "type": "object",
+        "description": "One screen of the app as a tree the client renders: a title, a body of components top to bottom, and the tab bar when the screen has one. `schema` is the tree's version; a client refuses a version it does not know.",
+        "required": ["schema", "id", "path", "title", "body"],
+        "properties": {
+          "schema": {"type": "integer", "const": 1},
+          "id": {"type": "string", "description": "The screen's name: `login`, `accounts`, `activity`, `product`.", "examples": ["accounts"]},
+          "path": {"type": "string", "description": "The GET path that returns this screen."},
+          "title": {"type": "string"},
+          "subtitle": {"type": "string"},
+          "back": {"$ref": "#/components/schemas/Action", "description": "Where the back control goes, when the screen has one."},
+          "body": {"type": "array", "items": {"$ref": "#/components/schemas/Component"}},
+          "nav": {"$ref": "#/components/schemas/Nav"}
+        }
+      },
+      "Component": {
+        "type": "object",
+        "description": "One element of a screen's body. `type` says which fields carry meaning: hero (title as label, value, pairs, tone); row (icon, title, subtitle, value, note, tone, action); tx (as row, no action); heading (text); text (text, tone); details (title, pairs); form (fields, title as the submit label, action.submit); button (title, tone, action).",
+        "required": ["type"],
+        "properties": {
+          "type": {"type": "string", "enum": ["hero", "row", "tx", "heading", "text", "details", "form", "button"]},
+          "tone": {"$ref": "#/components/schemas/Tone"},
+          "icon": {"$ref": "#/components/schemas/Icon"},
+          "title": {"type": "string"},
+          "subtitle": {"type": "string"},
+          "value": {"type": "string", "description": "Money already formatted for display, e.g. `£1,234.56`; the client never does arithmetic on it."},
+          "note": {"type": "string"},
+          "currency": {"type": "string", "description": "ISO 4217 code of the money a row or tx shows; the renderer picks the glyph by it.", "examples": ["GBP"]},
+          "text": {"type": "string"},
+          "pairs": {"type": "array", "items": {"$ref": "#/components/schemas/Pair"}},
+          "fields": {"type": "array", "items": {"$ref": "#/components/schemas/Field"}},
+          "action": {"$ref": "#/components/schemas/Action"}
+        }
+      },
+      "Action": {
+        "type": "object",
+        "description": "What a tap does: exactly one of the three.",
+        "properties": {
+          "screen": {"type": "string", "description": "GET this path and show the screen it returns."},
+          "submit": {"type": "string", "description": "POST the form's values to this path."},
+          "logout": {"type": "boolean", "description": "End the session (POST /v1/logout)."}
+        }
+      },
+      "Nav": {
+        "type": "object",
+        "required": ["active", "tabs"],
+        "properties": {
+          "active": {"type": "string", "description": "The key of the tab this screen belongs to."},
+          "tabs": {"type": "array", "items": {"$ref": "#/components/schemas/Tab"}}
+        }
+      },
+      "Tab": {
+        "type": "object",
+        "required": ["key", "label", "icon", "screen"],
+        "properties": {
+          "key": {"type": "string"},
+          "label": {"type": "string"},
+          "icon": {"$ref": "#/components/schemas/Icon"},
+          "screen": {"type": "string", "description": "The GET path the tab opens."}
+        }
+      },
+      "Pair": {
+        "type": "object",
+        "required": ["label", "value"],
+        "properties": {"label": {"type": "string"}, "value": {"type": "string"}}
+      },
+      "Field": {
+        "type": "object",
+        "required": ["name", "label", "kind"],
+        "properties": {
+          "name": {"type": "string", "description": "The form value's name when submitted."},
+          "label": {"type": "string"},
+          "kind": {"type": "string", "enum": ["text", "password", "number"]},
+          "placeholder": {"type": "string"},
+          "required": {"type": "boolean"}
+        }
+      },
+      "Tone": {
+        "type": "string",
+        "description": "How the client colours the component; empty is neutral.",
+        "enum": ["", "savings", "lending", "positive", "negative", "danger", "muted"]
+      },
+      "Icon": {
+        "type": "string",
+        "description": "The glyph the client draws; empty is none.",
+        "enum": ["", "home", "accounts", "activity", "savings", "lending", "in", "out", "interest", "loan", "bank"]
+      },
+      "Duration": {
+        "type": "string",
+        "description": "A Go duration: `2h`, `90s`, `0s`.",
+        "pattern": "^-?([0-9]+(\\.[0-9]*)?(ns|us|µs|ms|s|m|h))+$|^0$",
+        "examples": ["2h", "0s"]
+      },
+      "Settings": {
+        "type": "object",
+        "properties": {
+          "max_customers": {"type": "integer", "minimum": 0},
+          "payments_per_day": {"type": "integer", "minimum": 0},
+          "day_length": {"$ref": "#/components/schemas/Duration"}
+        }
+      },
+      "AboutStatus": {
+        "type": "object",
+        "required": ["version", "schema", "settings", "sim", "position", "restarts"],
+        "properties": {
+          "version": {"type": "string", "description": "The release this process runs.", "examples": ["v0.39.0"]},
+          "schema": {"type": "array", "description": "Each component's schema version in the database this process opened.", "items": {"$ref": "#/components/schemas/SchemaVersion"}},
+          "settings": {"type": "object", "required": ["day_length", "max_customers"], "properties": {"day_length": {"$ref": "#/components/schemas/Duration"}, "max_customers": {"type": "integer"}}},
+          "sim": {"$ref": "#/components/schemas/AboutSim"},
+          "position": {"$ref": "#/components/schemas/AboutPosition"},
+          "restarts": {"type": "array", "description": "The restart record, newest first, ten rows at most.", "items": {"$ref": "#/components/schemas/AboutRestart"}}
+        }
+      },
+      "SchemaVersion": {
+        "type": "object",
+        "required": ["component", "version"],
+        "properties": {"component": {"type": "string"}, "version": {"type": "integer"}}
+      },
+      "AboutSim": {
+        "type": "object",
+        "description": "The run as it is now, with the two rates a performance run reads.",
+        "required": ["running", "wall", "clock", "warp", "day_ends_in", "adding_customers", "customers_per_sec", "account_days_per_12h", "last_day_duration", "last_day_accounts", "owed"],
+        "properties": {
+          "running": {"type": "boolean"},
+          "wall": {"type": "string", "format": "date-time", "description": "The wall clock now, UTC."},
+          "clock": {"type": "string", "format": "date-time", "description": "The bank's clock now (simulated time), UTC."},
+          "warp": {"type": "number", "description": "Simulated seconds per wall second; 0 when flat out."},
+          "day_ends_in": {"$ref": "#/components/schemas/Duration", "description": "`0s` when flat out or stopped."},
+          "adding_customers": {"type": "boolean", "description": "A batch add is running."},
+          "customers_per_sec": {"type": "number", "description": "The live rate while a batch add runs, else the last batch's."},
+          "account_days_per_12h": {"type": "integer", "description": "Account days per 12h at the pass's measured whole-day rate."},
+          "last_day_duration": {"type": "string", "description": "A Go duration; empty before the first day."},
+          "last_day_accounts": {"type": "integer", "description": "The accounts the last whole day ran over."},
+          "day_refused": {"type": "string", "description": "Why the bank would not follow the clock when last asked; absent when it did."},
+          "owed": {"$ref": "#/components/schemas/AboutOwed"},
+          "next_event": {"type": "string", "description": "The event the run loop waits for, e.g. `payment at 2020-03-04T10:32:00Z`; absent when stopped."}
+        }
+      },
+      "AboutOwed": {
+        "type": "object",
+        "description": "What the bank owed when last asked; a drill waits for `at_rest`.",
+        "required": ["at_rest", "days", "unprojected", "events"],
+        "properties": {
+          "at_rest": {"type": "boolean"},
+          "days": {"type": "integer", "description": "Business days the clock has passed that the bank has not run."},
+          "unprojected": {"type": "integer", "description": "Accounts whose position is behind the ledger."},
+          "events": {"type": "integer", "description": "Root events due and not done: cascades in progress."}
+        }
+      },
+      "AboutPosition": {
+        "type": "object",
+        "description": "The bank's position: what the dashboard leads with.",
+        "required": ["day", "day_count", "customers", "savings", "lending"],
+        "properties": {
+          "day": {"type": "string", "format": "date", "description": "The bank's business day."},
+          "day_count": {"type": "integer", "description": "Business days run since the bank opened."},
+          "customers": {"type": "integer"},
+          "savings": {"type": "string", "description": "Formatted as the dashboard shows it.", "examples": ["£135,459.28"]},
+          "lending": {"type": "string", "description": "Formatted as the dashboard shows it."}
+        }
+      },
+      "AboutRestart": {
+        "type": "object",
+        "description": "One row of the restart record, read with the row before it.",
+        "required": ["version", "started_at", "day_count", "customers", "previous_version", "previous_stopped_at", "downtime", "intact", "stopped_at", "stop_day_count", "stop_customers"],
+        "properties": {
+          "version": {"type": "string"},
+          "started_at": {"type": "string", "format": "date-time"},
+          "day_count": {"type": "integer", "description": "The position found on starting."},
+          "customers": {"type": "integer"},
+          "previous_version": {"type": "string", "description": "Empty for unrecorded or none."},
+          "previous_stopped_at": {"type": ["string", "null"], "format": "date-time"},
+          "downtime": {"type": "string", "description": "A Go duration; empty when unknown."},
+          "intact": {"type": ["boolean", "null"], "description": "Day and customers equal across the stop; null when the previous row cannot say."},
+          "stopped_at": {"type": ["string", "null"], "format": "date-time", "description": "Null while this process runs."},
+          "stop_day_count": {"type": "integer"},
+          "stop_customers": {"type": "integer"}
+        }
+      }
+    }
+  }
+}
