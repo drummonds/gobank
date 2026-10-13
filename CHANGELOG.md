@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+## [0.37.0] - 2026-10-13
+
+ - Story 1.8.9 policy as code (#68 the bank module deferred), story 9.4 API token for the console, roadmap migrated to tp roadmap
+
 ### Added
 - Story 1.8.9: policy as code. The contract (gobank-products) gains a
   parameter derived by code, `Declaration.Algorithm`, the hook ADR-0006's
