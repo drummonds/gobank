@@ -151,8 +151,16 @@ func runStaff(t *testing.T, f Fixture) {
 		if bs.Deposits != pos.Savings || bs.Loans != pos.Lending || bs.RetainedEarnings != pl.NetProfit() {
 			t.Errorf("BalanceSheet = %+v disagrees with position %+v and P&L %+v", bs, pos, pl)
 		}
-		if bs.CashAtBoE > 0 && bs.TotalAssets() != bs.Deposits+bs.RetainedEarnings {
-			t.Errorf("assets %d != liabilities %d + equity %d", bs.TotalAssets(), bs.Deposits, bs.RetainedEarnings)
+		if !bs.Balances() {
+			t.Errorf("assets %d != liabilities %d + equity %d: %+v", bs.TotalAssets(), bs.TotalLiabilities(), bs.Equity(), bs)
+		}
+		// Both statements are dated: the sheet as at the business day, the
+		// P&L for the period ending on it, in a financial year named by its end.
+		if !bs.AsAt.Equal(pos.Day) || !pl.To.Equal(pos.Day) || pl.From.After(pl.To) {
+			t.Errorf("balance sheet as at %s, P&L %s to %s; want the business day %s", bs.AsAt, pl.From, pl.To, pos.Day)
+		}
+		if !pl.YearEnd.IsZero() && pl.YearEnd.Before(pl.To) {
+			t.Errorf("year end %s is before the period's end %s", pl.YearEnd, pl.To)
 		}
 	})
 

@@ -30,15 +30,17 @@ import (
 // counterparty to the account the event is about: the amount is that
 // account's change.
 const (
-	Cash            = "Asset:Cash"                // the bank's cash from customer flows: a deposit raises it, a drawdown lowers it
-	EquityCapital   = "Equity:Capital"            // the bank's capital; no counterparty of customer flows
-	ExpenseInterest = "Expense:Interest"          // interest applied to savings
-	IncomeInterest  = "Income:Interest"           // interest applied to loans
-	IncomeBoE       = "Income:Interest:BoE"       // BoE reserve interest, recognised as it accrues
-	AccruedBoE      = "Asset:AccruedInterest:BoE" // the receivable it builds up in
-	BoEReserves     = "Asset:BoEReserves"         // the reserves it is received into
-	SavingsRoot     = "Liability:Savings"         // SavingsRoot:<customer>:<product>
-	LoansRoot       = "Asset:Loans"               // LoansRoot:<customer>:<product>
+	Cash             = "Asset:Cash"                // the bank's cash from customer flows: a deposit raises it, a drawdown lowers it
+	EquityCapital    = "Equity:Capital"            // the bank's capital; no counterparty of customer flows
+	ExpenseInterest  = "Expense:Interest"          // interest applied to savings
+	IncomeInterest   = "Income:Interest"           // interest applied to loans
+	IncomeBoE        = "Income:Interest:BoE"       // BoE reserve interest, recognised as it accrues
+	AccruedBoE       = "Asset:AccruedInterest:BoE" // the receivable it builds up in
+	BoEReserves      = "Asset:BoEReserves"         // the reserves it is received into
+	ExpenseOperating = "Expense:Operating"         // the bank's running costs, paid from cash daily
+	Gilts            = "Asset:Gilts"               // gilts held, at face value, bought from cash
+	SavingsRoot      = "Liability:Savings"         // SavingsRoot:<customer>:<product>
+	LoansRoot        = "Asset:Loans"               // LoansRoot:<customer>:<product>
 )
 
 // Every account the bank opens is GBP in pence: Unit minor units to the
@@ -55,7 +57,7 @@ const positionScale = 7
 // Chart is the bank's own accounts, resolved to ledger account IDs when
 // the ledger opens.
 type Chart struct {
-	Cash, EquityCapital, ExpenseInterest, IncomeInterest, IncomeBoE, AccruedBoE, BoEReserves string
+	Cash, EquityCapital, ExpenseInterest, IncomeInterest, IncomeBoE, AccruedBoE, BoEReserves, ExpenseOperating, Gilts string
 }
 
 // id is the chart's ID for a path, "" if the path is not on the chart.
@@ -75,6 +77,10 @@ func (c Chart) id(path string) string {
 		return c.AccruedBoE
 	case BoEReserves:
 		return c.BoEReserves
+	case ExpenseOperating:
+		return c.ExpenseOperating
+	case Gilts:
+		return c.Gilts
 	}
 	return ""
 }
@@ -88,6 +94,9 @@ type Ledger struct {
 	db    *sql.DB
 	tx    *sql.Tx // set when bound to a transaction
 	locks *locks
+	// Created is the chart accounts this open had to create: those the
+	// database did not have before this version.
+	Created []string
 }
 
 // Querier is *sql.DB or *sql.Tx.
@@ -127,10 +136,15 @@ func Open(db *sql.DB) (*Ledger, error) {
 		{IncomeBoE, &l.Chart.IncomeBoE},
 		{AccruedBoE, &l.Chart.AccruedBoE},
 		{BoEReserves, &l.Chart.BoEReserves},
+		{ExpenseOperating, &l.Chart.ExpenseOperating},
+		{Gilts, &l.Chart.Gilts},
 	} {
-		id, err := l.Account(c.path)
+		id, created, err := l.open(c.path)
 		if err != nil {
 			return nil, err
+		}
+		if created {
+			l.Created = append(l.Created, c.path)
 		}
 		*c.dst = id
 	}
@@ -145,19 +159,28 @@ func (l *Ledger) WithTx(tx *sql.Tx) *Ledger {
 
 // Account is the ID of the account at path, opened if it is not there.
 func (l *Ledger) Account(path string) (string, error) {
+	id, _, err := l.open(path)
+	return id, err
+}
+
+// open is Account, saying whether it had to open the account: a chart
+// account the database did not have is one this version added, which
+// the bank adopts with the balance the days before owe it.
+func (l *Ledger) open(path string) (id string, created bool, err error) {
 	if id := l.Chart.id(path); id != "" {
-		return id, nil
+		return id, false, nil
 	}
 	acct, err := l.GetAccount(path)
 	if err != nil {
-		return "", fmt.Errorf("ledger: account %s: %w", path, err)
+		return "", false, fmt.Errorf("ledger: account %s: %w", path, err)
 	}
 	if acct == nil {
 		if acct, err = l.CreateAccount(path, Currency, Exponent, 0); err != nil {
-			return "", fmt.Errorf("ledger: open %s: %w", path, err)
+			return "", false, fmt.Errorf("ledger: open %s: %w", path, err)
 		}
+		created = true
 	}
-	return acct.ID, nil
+	return acct.ID, created, nil
 }
 
 // OpenCustomerAccount opens a customer's account for a product on the

@@ -121,9 +121,13 @@ func (b *Bank) interestTotals(ctx context.Context) (loanIncome, depositExpense l
 	return f.loanIncome, f.depositExpense, nil
 }
 
-// interestFigures is one reading of the interest to date.
+// interestFigures is one reading of the interest to date: the two P&L
+// figures, and the accrued-but-unapplied part of each in whole pence,
+// which the balance sheet shows as receivable and payable. One reading
+// serves both statements, so they agree whatever its age.
 type interestFigures struct {
-	loanIncome, depositExpense luca.Amount
+	loanIncome, depositExpense     luca.Amount
+	accruedLending, accruedSavings luca.Amount // magnitudes, pence
 }
 
 // readInterest is the read behind interestTotals.
@@ -147,6 +151,8 @@ func (b *Bank) readInterest(ctx context.Context) (interestFigures, error) {
 	return interestFigures{
 		loanIncome:     -income + accruedLending/poundsE7PerPenny,
 		depositExpense: expense - accruedSavings/poundsE7PerPenny,
+		accruedLending: accruedLending / poundsE7PerPenny,
+		accruedSavings: -accruedSavings / poundsE7PerPenny,
 	}, nil
 }
 
@@ -222,23 +228,38 @@ func (b *Bank) ProfitAndLoss(ctx context.Context) (core.ProfitAndLoss, error) {
 
 func (b *Bank) profitAndLoss(ctx context.Context) (core.ProfitAndLoss, error) {
 	b.mu.Lock()
-	dayCount := b.dayCount
-	boeInterest := b.boeInterestTotalLocked()
+	dayCount, from, to := b.dayCount, b.opened, b.day
 	b.mu.Unlock()
 	loanIncome, depositExpense, err := b.interestTotals(ctx)
 	if err != nil {
 		return core.ProfitAndLoss{}, err
 	}
+	chart := b.ledger.Chart
+	boeIncome, err := b.ledger.Balance(chart.IncomeBoE)
+	if err != nil {
+		return core.ProfitAndLoss{}, fmt.Errorf("bank: BoE interest income: %w", err)
+	}
+	operating, err := b.ledger.Balance(chart.ExpenseOperating)
+	if err != nil {
+		return core.ProfitAndLoss{}, fmt.Errorf("bank: operating costs: %w", err)
+	}
+	// Income runs negative in the bank's view (ADR-0008); the statement
+	// shows magnitudes.
 	return core.ProfitAndLoss{
+		From: from, To: to, YearEnd: b.definition.YearEnd.Next(to),
 		DayCount:               dayCount,
 		LoanInterestIncome:     loanIncome,
-		BoEInterestIncome:      boeInterest,
+		BoEInterestIncome:      -boeIncome,
 		DepositInterestExpense: depositExpense,
-		OperatingCosts:         opCostPerDay * luca.Amount(dayCount),
+		OperatingCosts:         operating,
 	}, nil
 }
 
-// BalanceSheet implements core.BookQueries.
+// BalanceSheet implements core.BookQueries: every line is read from the
+// ledger — the bank's own accounts by balance, the two books through the
+// position — and the customers' accrued interest, which the P&L counts,
+// is shown on both sides. The P&L is the same reading, so the sheet
+// balances by construction.
 func (b *Bank) BalanceSheet(ctx context.Context) (core.BalanceSheet, error) {
 	b.open.RLock()
 	defer b.open.RUnlock()
@@ -247,23 +268,43 @@ func (b *Bank) BalanceSheet(ctx context.Context) (core.BalanceSheet, error) {
 	if err != nil {
 		return core.BalanceSheet{}, err
 	}
-	holdings, err := b.treasury.Holdings(ctx)
+	chart := b.ledger.Chart
+	balance := func(id, what string) (luca.Amount, error) {
+		v, err := b.ledger.Balance(id)
+		if err != nil {
+			return 0, fmt.Errorf("bank: %s: %w", what, err)
+		}
+		return v, nil
+	}
+	reserves, err := balance(chart.BoEReserves, "BoE reserves")
 	if err != nil {
 		return core.BalanceSheet{}, err
 	}
-	var gilts luca.Amount
-	for _, h := range holdings {
-		gilts += h.FaceValue
+	accruedBoE, err := balance(chart.AccruedBoE, "BoE receivable")
+	if err != nil {
+		return core.BalanceSheet{}, err
 	}
-	retained := pl.NetProfit()
+	gilts, err := balance(chart.Gilts, "gilts")
+	if err != nil {
+		return core.BalanceSheet{}, err
+	}
+	capital, err := balance(chart.EquityCapital, "capital")
+	if err != nil {
+		return core.BalanceSheet{}, err
+	}
+	accrued := b.interest.get(ctx) // the reading the P&L above was made from
 	return core.BalanceSheet{
-		DayCount:           pos.DayCount,
-		Loans:              pos.Lending,
-		Gilts:              gilts,
-		CashAtBoE:          max(pos.Cash+pos.BoEInterest-gilts, 0), // the cash account plus the BoE interest received, less the gilts bought from it
-		Deposits:           pos.Savings,
-		RetainedEarnings:   retained,
-		RiskWeightedAssets: pos.Lending,
+		AsAt:                      pos.Day,
+		DayCount:                  pos.DayCount,
+		Loans:                     pos.Lending,
+		AccruedInterestReceivable: accrued.accruedLending + accruedBoE,
+		Gilts:                     gilts,
+		CashAtBoE:                 pos.Cash + reserves,
+		Deposits:                  pos.Savings,
+		AccruedInterestPayable:    accrued.accruedSavings,
+		Capital:                   -capital, // equity runs negative in the bank's view
+		RetainedEarnings:          pl.NetProfit(),
+		RiskWeightedAssets:        pos.Lending,
 	}, nil
 }
 

@@ -2,6 +2,28 @@
 
 ## [Unreleased]
 
+### Fixed
+- The balance sheet balances. It is read from the ledger (ADR-0008):
+  operating costs are posted daily from `Asset:Cash` to the new
+  `Expense:Operating` instead of being a counter, a gilt purchase moves
+  its face value from cash to the new `Asset:Gilts` in the same
+  transaction as the holding, BoE interest is the ledger's income and
+  reserves, and the customers' accrued interest — which the products
+  hold as positions until applied — is shown on both sides as the P&L
+  counts it (accrued interest receivable and payable). Equity is share
+  capital plus retained earnings, and so the CET1 capital; the cash
+  line no longer hides a negative behind a clamp. A bank from before
+  this version adopts the two accounts on open: the costs of the days
+  already run and the gilts already held are posted once, so the
+  statements go on from where the counters left them.
+
+### Added
+- The statements are dated: the balance sheet as at the business day,
+  the P&L for the period from the opening day to it, in the financial
+  year named by its end — 31 March, kept in the bank's definition
+  (`definition.Bank.YearEnd`). The year-to-date cut and the year-end
+  close are roadmap #96.
+
 ## [0.42.0] - 2026-10-13
 
 ## [0.41.0] - 2026-10-13

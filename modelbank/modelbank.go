@@ -7,6 +7,8 @@
 package modelbank
 
 import (
+	"time"
+
 	easyaccess "git.bytestone.uk/hum3/gobank-products/easyaccess/v1"
 	easyaccessv2 "git.bytestone.uk/hum3/gobank-products/easyaccess/v2"
 	fixedterm "git.bytestone.uk/hum3/gobank-products/fixedterm/v1"
@@ -16,6 +18,7 @@ import (
 	personalloan "git.bytestone.uk/hum3/gobank-products/personalloan/v1"
 	"git.bytestone.uk/hum3/gobank/bank/definition"
 	"git.bytestone.uk/hum3/gobank/bank/products"
+	"git.bytestone.uk/hum3/gobank/core"
 	policy "git.bytestone.uk/hum3/gobank/modelbank/policy/v1"
 )
 
@@ -38,5 +41,7 @@ func Definition() definition.Bank {
 			{ID: "overdraft", Name: overdraft.Version.Name(), Rules: overdraft.Version, Description: "Arranged overdraft facility on current account"},
 		},
 		Policy: policy.Version,
+		// A 31 March year end, as UK banks commonly keep (Atom Bank's).
+		YearEnd: core.YearEnd{Month: time.March, Day: 31},
 	}
 }
