@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+## [0.40.0] - 2026-10-13
+
+ - The family map: the build's module graph on the docs site with lags drawn; roadmap #135 and #136; diagrams no longer 403 on the docs site
+
 ### Added
 - The family map (`family.html`): one node per repository of our own
   with the version the demo's build selected and one edge per
