@@ -53,6 +53,21 @@ transition's own leftovers.
 - #67 Simulation becomes tests (ADR-0002 stage 9) — the
   scenarios the simulation runs by hand become a test suite, each
   building a definition of its own (ADR-0007)
+- #133 Full API documentation (OpenAPI) — the running system describes
+  its whole HTTP surface in one OpenAPI 3 document, served at
+  `/v1/openapi.json` and rendered into the docs site by `docs:build`
+  (Swagger UI or Redoc over the same file) in place of the hand-written
+  `docs/research/bff-api.html`: every `/v1/` route with the screen
+  schema its responses carry, the console and settings routes the
+  operator token reaches, `/about.json` and the health check, each with
+  its auth (session, bearer, none) and its errors. A test walks the
+  router and fails when a route is missing from the document or the
+  document names a route that is not served, so the two cannot drift.
+  Out of scope: client generation from the spec (the Flutter shell
+  interprets screens, not endpoints), the staff web's HTML pages. Open:
+  a hand-written spec checked against the router by the test
+  (recommended: no new machinery) versus one generated from the Go types
+  (swag or ogen)
 
 ## Products as versioned code
 
@@ -476,22 +491,13 @@ prod without a hand on the keyboard, and the docs site follows.
   gobank-deploy or Woodpecker CI, so testing overlaps writing the next
   story. Open: gobank-deploy's own runner versus Woodpecker on the CI
   server
-- #108 Performance and API documentation in the pipeline —
-  the speed won by the speed epic is held by the pipeline, and the
-  BFF's contract is documented from the code rather than by hand.
-  Performance: `task check` (which `tp release` runs) runs `bench:reads`
-  at the small scale against the thresholds speed settled, so a slower
-  read fails the release; the Hetzner perf run stays a per-release
-  command (it costs a server) and its row joins the release notes. API
-  documentation: an OpenAPI document for `/v1/` and the screen schema,
-  served at `/v1/openapi.json`, rendered by `docs:build` into the docs
-  site in place of the hand-written `docs/research/bff-api.html`, with a
-  test that fails when a route is missing from it. Out of scope: client
-  generation from the spec (the Flutter shell interprets screens, not
-  endpoints), a perf run per commit, load tests in CI. Open: a
-  hand-written spec checked against the router by a test (recommended:
-  no new machinery) versus a spec generated from the Go types (swag or
-  ogen)
+- #108 Performance gate in the pipeline — the speed won by the speed
+  epic is held by the pipeline: `task check` (which `tp release` runs)
+  runs `bench:reads` at the small scale against the thresholds speed
+  settled, so a slower read fails the release; the Hetzner perf run
+  stays a per-release command (it costs a server) and its row joins the
+  release notes. Out of scope: a perf run per commit, load tests in CI
+  (performance and observability)
 
 ## Blue-green deployment
 

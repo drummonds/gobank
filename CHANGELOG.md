@@ -50,7 +50,7 @@
   once the drill has passed.
 - The roadmap is in task-plus's `tp roadmap` format: twenty named epics
   of items, each an open issue labelled `roadmap` on the Forgejo (#66 to
-  #130), the forge the truth about what is done. The shipped stories
+  #133), the forge the truth about what is done. The shipped stories
   of the old numbered roadmap are archived in this changelog under the
   versions that finished them, as `### Roadmap` lists; the stages with
   open stories (products as versioned code, users and access, speed)
