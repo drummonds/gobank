@@ -461,6 +461,15 @@ fails before it ships.
   facts, so the performance gate in the pipeline (#108) and a person
   read the same numbers. Open: whether the figures are kept in the
   process alone or recorded on the day's record for the history
+- #156 API routes in clusters by subject — About → API and the OpenAPI
+  tags group routes by the Go function that registered them, so the
+  simulation controls share a section with the payments generator, the
+  runtime page and the explorer; instead one section per cluster in the
+  staff tabs' vocabulary (Simulation, Payments, Treasury, About, …),
+  read off the code by splitting the registrars one per cluster, the
+  tag the cluster rather than the package. Out of scope: moving paths
+  (`/start` stays at the root; a re-homing under `/simulation/` breaks
+  gobank-deploy's console client and is its own story)
 
 ## Resilience
 
