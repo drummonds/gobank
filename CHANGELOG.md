@@ -16,6 +16,18 @@
   refusal (`GOBANK_PG_DSN`), and bank package tests may now import the
   pgx driver for that purpose.
 
+## [0.47.0] - 2026-10-14
+
+ - Escape from the automatic upgrade drill: SKIP_DRILL=1 tp release fetches but does not drill, and task cloud:drill:cancel stops a running one (#147)
+
+### Added
+- `SKIP_DRILL=1 tp release` runs the post-release fetch but skips the
+  upgrade drill on preprod, saying so; one release at a time, since the
+  variable lives only on that command line (#147).
+- `task cloud:drill:cancel` posts the appliance's cancel for preprod
+  (`ENV` overrides), stopping a drill already running; the environment is
+  left where the drill got to and the demo workflow resumes it.
+
 ## [0.46.0] - 2026-10-14
 
  - Pin go-postgres v0.10.0 and go-luca v0.6.0 in place of the local replaces v0.44.0 and v0.45.0 shipped with
