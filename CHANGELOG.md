@@ -2,6 +2,8 @@
 
 ## [Unreleased]
 
+## [0.45.0] - 2026-10-14
+
 ## [0.44.0] - 2026-10-14
 
  - UUID columns across the family (#66): ledger ids retyped in customers, products and gl; needs go-postgres v0.9.0 and go-luca v0.6.0
