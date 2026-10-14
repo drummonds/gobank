@@ -2,6 +2,12 @@
 
 ## [Unreleased]
 
+### Fixed
+- go.mod and cmd/demo/go.mod pin go-postgres v0.10.0 and go-luca v0.6.0;
+  v0.44.0 and v0.45.0 shipped with local `replace` directives to working
+  copies, so `go install` of the module failed and neither release could
+  be installed or deployed.
+
 ## [0.45.0] - 2026-10-14
 
 ## [0.44.0] - 2026-10-14

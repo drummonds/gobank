@@ -3,8 +3,8 @@ module git.bytestone.uk/hum3/gobank/cmd/demo
 go 1.26.0
 
 require (
-	git.bytestone.uk/hum3/go-luca v0.5.0
-	git.bytestone.uk/hum3/go-postgres v0.8.0
+	git.bytestone.uk/hum3/go-luca v0.6.0
+	git.bytestone.uk/hum3/go-postgres v0.10.0
 	git.bytestone.uk/hum3/gobank v0.3.44
 	git.bytestone.uk/hum3/gobank-products v0.9.0
 	git.bytestone.uk/hum3/gobanks-customers v0.2.1
@@ -42,8 +42,3 @@ require (
 )
 
 replace git.bytestone.uk/hum3/gobank => ../..
-
-// Until go-postgres v0.9.0 and go-luca v0.6.0 are released (#66).
-replace git.bytestone.uk/hum3/go-postgres => ../../../go-postgres
-
-replace git.bytestone.uk/hum3/go-luca => ../../../go-luca
