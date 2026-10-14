@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"html/template"
 	"regexp"
+	"slices"
 	"sort"
 	"strings"
 )
@@ -328,19 +329,14 @@ func anchorKey(r Route) string {
 }
 
 func contains(list []string, s string) bool {
-	for _, x := range list {
-		if x == s {
-			return true
-		}
-	}
-	return false
+	return slices.Contains(list, s)
 }
 
 // prose turns a Go comment into paragraphs: a blank line is a break, a
 // line wrap is not.
 func prose(doc string) template.HTML {
 	var b strings.Builder
-	for _, para := range strings.Split(strings.TrimSpace(doc), "\n\n") {
+	for para := range strings.SplitSeq(strings.TrimSpace(doc), "\n\n") {
 		b.WriteString("<p>" + template.HTMLEscapeString(strings.Join(strings.Fields(para), " ")) + "</p>")
 	}
 	return template.HTML(b.String())
@@ -432,15 +428,15 @@ var (
 // typeLink renders a type name with its named parts linked to their
 // sections: "[]screen.Component" links Component.
 func typeLink(name string) template.HTML {
-	prefix := ""
+	var prefix strings.Builder
 	for {
 		switch {
 		case strings.HasPrefix(name, "[]"):
-			prefix += "[]"
+			prefix.WriteString("[]")
 			name = name[2:]
 			continue
 		case strings.HasPrefix(name, "map[string]"):
-			prefix += "map[string]"
+			prefix.WriteString("map[string]")
 			name = strings.TrimPrefix(name, "map[string]")
 			continue
 		}
@@ -449,7 +445,7 @@ func typeLink(name string) template.HTML {
 	esc := template.HTMLEscapeString
 	if strings.Contains(name, ".") {
 		anchor := "type-" + strings.ReplaceAll(name, ".", "-")
-		return template.HTML(esc(prefix) + `<a href="#` + anchor + `"><code>` + esc(name) + `</code></a>`)
+		return template.HTML(esc(prefix.String()) + `<a href="#` + anchor + `"><code>` + esc(name) + `</code></a>`)
 	}
-	return template.HTML(`<code>` + esc(prefix+name) + `</code>`)
+	return template.HTML(`<code>` + esc(prefix.String()+name) + `</code>`)
 }
