@@ -2,6 +2,8 @@
 
 ## [Unreleased]
 
+## [0.47.0] - 2026-10-14
+
  - Escape from the automatic upgrade drill: SKIP_DRILL=1 tp release fetches but does not drill, and task cloud:drill:cancel stops a running one (#147)
 
 ### Added
