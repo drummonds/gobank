@@ -581,6 +581,7 @@ func apiOptions(version string, stats *routestats.Stats) api.Options {
 		DetailURL: func(r api.Route) string { return "about/api/" + api.Key(r) },
 		IndexURL:  "about/api",
 		SourceRef: ref,
+		Measured:  api.LoadMeasured(), // the last scan committed, if any
 	}
 	if stats != nil {
 		// One snapshot per page: a route is matched by the pattern it was

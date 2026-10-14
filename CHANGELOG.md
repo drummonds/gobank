@@ -11,6 +11,13 @@
   Performance block with the capacity it has shown — in flight at the
   peak over p95, as requests a second and as clients acting every ten
   seconds — and `/about.json` carries the rows for a program to read.
+- The measured document: `api/measured.json` is the last full
+  performance scan gobank-deploy made of a running environment
+  (`gobank-deploy scan`, gobank-deploy #21), embedded in the build;
+  About → API shows each route's p95 and throughput at the top rung of
+  the ladder and the route's page the whole ladder with where and when
+  it was scanned, or why the route was not. Empty until the first scan
+  is committed.
 
 ## [0.50.0] - 2026-10-14
 
