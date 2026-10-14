@@ -2,6 +2,11 @@
 
 ## [Unreleased]
 
+### Added
+- Research note `sizing.md`: data volume, placement and processing for
+  300k, 1M and 10M retail customers, worked from the ledger's row shapes
+  and the Hetzner pass rates; linked from the docs site.
+
 ## [0.49.0] - 2026-10-14
 
  - About → API: static index in sections, a page per route linking its source; roadmap #141 and #142 filed

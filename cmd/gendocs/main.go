@@ -73,6 +73,7 @@ const tmpl = `<!DOCTYPE html>
               <li><a href="https://gobank-db.docs.bytestone.uk/blue-green-schemas.html">Blue-Green Schemas (gobank-db)</a></li>
               <li><a href="https://gobank-db.docs.bytestone.uk/expand-contract.html">Expand/Contract Migrations (gobank-db)</a></li>
               <li><a href="research/scaling-benchmarks.html">Scaling Benchmarks</a></li>
+              <li><a href="sizing.html">Sizing: 300k, 1M, 10M customers</a></li>
               <li><a href="research/development-notes.html">Development Notes</a></li>
             </ul>
             <p class="menu-label">Docs</p>
