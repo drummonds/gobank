@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+## [0.46.0] - 2026-10-14
+
+ - Pin go-postgres v0.10.0 and go-luca v0.6.0 in place of the local replaces v0.44.0 and v0.45.0 shipped with
+
 ### Fixed
 - go.mod and cmd/demo/go.mod pin go-postgres v0.10.0 and go-luca v0.6.0;
   v0.44.0 and v0.45.0 shipped with local `replace` directives to working
