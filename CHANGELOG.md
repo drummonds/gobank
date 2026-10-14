@@ -2,6 +2,8 @@
 
 ## [Unreleased]
 
+## [0.48.0] - 2026-10-14
+
  - Customers retype migration drops its contract view first: the v0.43.0 → v0.45.0 drill failed on PostgreSQL's "cannot alter type of a column used by a view" (#66)
 
 ### Fixed
