@@ -2,6 +2,8 @@
 
 ## [Unreleased]
 
+## [0.51.0] - 2026-10-14
+
 ### Added
 - Per-route performance (roadmap #142): the running process counts and
   times every route it serves (the staff web and the customer BFF share
