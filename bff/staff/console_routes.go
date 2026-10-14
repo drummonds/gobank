@@ -249,6 +249,8 @@ func (s *Site) consoleRoutes() {
 			return
 		}
 		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(AboutStatusOf(bank, console, s.cfg.Version))
+		st := AboutStatusOf(bank, console, s.cfg.Version)
+		st.Routes = AboutRoutes(s.cfg.Stats)
+		json.NewEncoder(w).Encode(st)
 	})
 }

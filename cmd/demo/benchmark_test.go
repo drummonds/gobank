@@ -281,7 +281,7 @@ func benchBuildMux(ds *DemoState) *http.ServeMux {
 	mux := http.NewServeMux()
 
 	// The customer BFF — lightweight reads of one customer's screens
-	mux.Handle("/v1/", newAppBFF(ds.Bank, newAppLogin(ds.Bank, benchAppPassword), ds.DB, "/", "", nil, slog.New(slog.NewTextHandler(io.Discard, nil))))
+	mux.Handle("/v1/", newAppBFF(ds.Bank, newAppLogin(ds.Bank, benchAppPassword), ds.DB, "/", "", nil, slog.New(slog.NewTextHandler(io.Discard, nil)), nil))
 
 	// HTML renders — heavier, hold renderMu
 	mux.HandleFunc("GET /dashboard", func(w http.ResponseWriter, r *http.Request) {

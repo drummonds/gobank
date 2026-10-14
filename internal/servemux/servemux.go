@@ -10,10 +10,28 @@ import "net/http"
 type Recording struct {
 	*http.ServeMux
 	Patterns []string
+
+	// Observe, when set, is called with the pattern a request matched
+	// before its handler runs, and what it returns after: how a server's
+	// route figures are kept (internal/routestats) without a wrapper
+	// between the mux and what serves it. A request no pattern matches
+	// is served unobserved.
+	Observe func(pattern string) (done func())
 }
 
 // New is an empty recording mux.
 func New() *Recording { return &Recording{ServeMux: http.NewServeMux()} }
+
+// ServeHTTP serves the request as the ServeMux does, observed when
+// Observe is set.
+func (m *Recording) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	if m.Observe != nil {
+		if _, pattern := m.Handler(r); pattern != "" {
+			defer m.Observe(pattern)()
+		}
+	}
+	m.ServeMux.ServeHTTP(w, r)
+}
 
 // Handle registers the handler for the pattern and records the pattern.
 func (m *Recording) Handle(pattern string, handler http.Handler) {

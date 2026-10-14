@@ -5,6 +5,7 @@ import (
 	"time"
 
 	"git.bytestone.uk/hum3/gobank/core"
+	"git.bytestone.uk/hum3/gobank/internal/routestats"
 )
 
 // AboutStatus is the demo's state as another program reads it, at
@@ -19,6 +20,39 @@ type AboutStatus struct {
 	Sim      AboutSim        `json:"sim"`
 	Position AboutPosition   `json:"position"`
 	Restarts []AboutRestart  `json:"restarts"`
+	Routes   []AboutRoute    `json:"routes,omitempty"` // what the process has measured of each route it served
+}
+
+// AboutRoute is one route's figures since the process started, as
+// internal/routestats keeps them: the count, the latency (last, p50 and
+// p95 of the latest requests, the maximum ever), the most in flight at
+// once and the rate over the last minute.
+type AboutRoute struct {
+	Pattern      string  `json:"pattern"` // as registered: "GET /v1/health"
+	Method       string  `json:"method,omitempty"`
+	Path         string  `json:"path"`
+	Count        int64   `json:"count"`
+	InFlight     int     `json:"in_flight"`
+	PeakInFlight int     `json:"peak_in_flight"`
+	Last         string  `json:"last"` // Go durations
+	P50          string  `json:"p50"`
+	P95          string  `json:"p95"`
+	Max          string  `json:"max"`
+	PerSecond    float64 `json:"per_second"` // completed in the last minute, a second
+}
+
+// AboutRoutes is every route's figures for about.json; nil without stats.
+func AboutRoutes(stats *routestats.Stats) []AboutRoute {
+	if stats == nil {
+		return nil
+	}
+	var out []AboutRoute
+	for _, st := range stats.Snapshot() {
+		out = append(out, AboutRoute{Pattern: st.Pattern, Method: st.Method, Path: st.Path, Count: st.Count,
+			InFlight: st.InFlight, PeakInFlight: st.PeakInFlight,
+			Last: st.Last.String(), P50: st.P50.String(), P95: st.P95.String(), Max: st.Max.String(), PerSecond: st.PerSecond})
+	}
+	return out
 }
 
 // AboutSettings are the console settings.

@@ -575,6 +575,60 @@
         ],
         "type": "object"
       },
+      "staff.AboutRoute": {
+        "description": "AboutRoute is one route's figures since the process started, as\ninternal/routestats keeps them: the count, the latency (last, p50 and\np95 of the latest requests, the maximum ever), the most in flight at\nonce and the rate over the last minute.",
+        "properties": {
+          "count": {
+            "type": "integer"
+          },
+          "in_flight": {
+            "type": "integer"
+          },
+          "last": {
+            "description": "Go durations",
+            "type": "string"
+          },
+          "max": {
+            "type": "string"
+          },
+          "method": {
+            "type": "string"
+          },
+          "p50": {
+            "type": "string"
+          },
+          "p95": {
+            "type": "string"
+          },
+          "path": {
+            "type": "string"
+          },
+          "pattern": {
+            "description": "as registered: \"GET /v1/health\"",
+            "type": "string"
+          },
+          "peak_in_flight": {
+            "type": "integer"
+          },
+          "per_second": {
+            "description": "completed in the last minute, a second",
+            "type": "number"
+          }
+        },
+        "required": [
+          "pattern",
+          "path",
+          "count",
+          "in_flight",
+          "peak_in_flight",
+          "last",
+          "p50",
+          "p95",
+          "max",
+          "per_second"
+        ],
+        "type": "object"
+      },
       "staff.AboutSettings": {
         "description": "AboutSettings are the console settings.",
         "properties": {
@@ -671,6 +725,13 @@
           "restarts": {
             "items": {
               "$ref": "#/components/schemas/staff.AboutRestart"
+            },
+            "type": "array"
+          },
+          "routes": {
+            "description": "what the process has measured of each route it served",
+            "items": {
+              "$ref": "#/components/schemas/staff.AboutRoute"
             },
             "type": "array"
           },
@@ -846,7 +907,7 @@
         "tags": [
           "staff"
         ],
-        "x-source": "bff/staff/site.go:481"
+        "x-source": "bff/staff/site.go:490"
       }
     },
     "/about.json": {
@@ -921,7 +982,7 @@
         "tags": [
           "staff"
         ],
-        "x-source": "bff/staff/site.go:525"
+        "x-source": "bff/staff/site.go:534"
       }
     },
     "/about/api": {
@@ -952,7 +1013,7 @@
         "tags": [
           "staff"
         ],
-        "x-source": "bff/staff/site.go:502"
+        "x-source": "bff/staff/site.go:511"
       }
     },
     "/about/api/{method}/{path...}": {
@@ -1011,7 +1072,7 @@
         "tags": [
           "staff"
         ],
-        "x-source": "bff/staff/site.go:512"
+        "x-source": "bff/staff/site.go:521"
       }
     },
     "/about/docs": {
@@ -1052,7 +1113,7 @@
         "tags": [
           "staff"
         ],
-        "x-source": "bff/staff/site.go:494"
+        "x-source": "bff/staff/site.go:503"
       }
     },
     "/about/docs/adr/": {
@@ -1104,7 +1165,7 @@
           "staff"
         ],
         "x-prefix": "serves every path under it",
-        "x-source": "bff/staff/site.go:530"
+        "x-source": "bff/staff/site.go:539"
       }
     },
     "/about/models": {
@@ -1145,7 +1206,7 @@
         "tags": [
           "staff"
         ],
-        "x-source": "bff/staff/site.go:489"
+        "x-source": "bff/staff/site.go:498"
       }
     },
     "/about/runtime": {
@@ -1227,7 +1288,7 @@
         "tags": [
           "staff"
         ],
-        "x-source": "bff/staff/site.go:293"
+        "x-source": "bff/staff/site.go:302"
       }
     },
     "/accounting/pnl": {
@@ -1268,7 +1329,7 @@
         "tags": [
           "staff"
         ],
-        "x-source": "bff/staff/site.go:289"
+        "x-source": "bff/staff/site.go:298"
       }
     },
     "/add-customers": {
@@ -1417,7 +1478,7 @@
         "tags": [
           "staff"
         ],
-        "x-source": "bff/staff/site.go:264"
+        "x-source": "bff/staff/site.go:273"
       }
     },
     "/auth/revoke": {
@@ -1462,7 +1523,7 @@
         "tags": [
           "staff"
         ],
-        "x-source": "bff/staff/site.go:276"
+        "x-source": "bff/staff/site.go:285"
       }
     },
     "/customers": {
@@ -1512,7 +1573,7 @@
         "tags": [
           "staff"
         ],
-        "x-source": "bff/staff/site.go:375"
+        "x-source": "bff/staff/site.go:384"
       }
     },
     "/customers/": {
@@ -1583,7 +1644,7 @@
           "staff"
         ],
         "x-prefix": "serves every path under it",
-        "x-source": "bff/staff/site.go:381"
+        "x-source": "bff/staff/site.go:390"
       }
     },
     "/dashboard/update": {
@@ -1665,7 +1726,7 @@
         "tags": [
           "staff"
         ],
-        "x-source": "bff/staff/site.go:418"
+        "x-source": "bff/staff/site.go:427"
       }
     },
     "/export.goluca": {
@@ -1744,7 +1805,7 @@
           "function": "lofigui.ServeFavicon"
         },
         "x-methods": "any",
-        "x-source": "bff/staff/site.go:546",
+        "x-source": "bff/staff/site.go:555",
         "x-unknowns": [
           "handler lofigui.ServeFavicon: body outside the walk",
           "no response found"
@@ -1773,7 +1834,7 @@
           "staff"
         ],
         "x-methods": "any",
-        "x-source": "bff/staff/site.go:548"
+        "x-source": "bff/staff/site.go:557"
       }
     },
     "/import": {
@@ -2489,7 +2550,7 @@
         "tags": [
           "staff"
         ],
-        "x-source": "bff/staff/site.go:408"
+        "x-source": "bff/staff/site.go:417"
       }
     },
     "/products/bank": {
@@ -2530,7 +2591,7 @@
         "tags": [
           "staff"
         ],
-        "x-source": "bff/staff/site.go:313"
+        "x-source": "bff/staff/site.go:322"
       }
     },
     "/products/lending": {
@@ -2571,7 +2632,7 @@
         "tags": [
           "staff"
         ],
-        "x-source": "bff/staff/site.go:308"
+        "x-source": "bff/staff/site.go:317"
       }
     },
     "/products/savings": {
@@ -2612,7 +2673,7 @@
         "tags": [
           "staff"
         ],
-        "x-source": "bff/staff/site.go:303"
+        "x-source": "bff/staff/site.go:312"
       }
     },
     "/products/{owner}/parameters/{key}": {
@@ -2726,7 +2787,7 @@
           "staff"
         ],
         "x-role-action": "settings",
-        "x-source": "bff/staff/site.go:319"
+        "x-source": "bff/staff/site.go:328"
       },
       "post": {
         "description": "One parameter of a product or of the bank: its history and, for a\nsigned-in user who may, the form that sets it (POST value, effective);\n?refused= carries a refusal back to the page.",
@@ -2838,7 +2899,7 @@
           "staff"
         ],
         "x-role-action": "settings",
-        "x-source": "bff/staff/site.go:319"
+        "x-source": "bff/staff/site.go:328"
       }
     },
     "/reports/bbsi": {
@@ -2879,7 +2940,7 @@
         "tags": [
           "staff"
         ],
-        "x-source": "bff/staff/site.go:428"
+        "x-source": "bff/staff/site.go:437"
       }
     },
     "/reports/charts": {
@@ -2920,7 +2981,7 @@
         "tags": [
           "staff"
         ],
-        "x-source": "bff/staff/site.go:423"
+        "x-source": "bff/staff/site.go:432"
       }
     },
     "/reports/customer-view": {
@@ -2980,7 +3041,7 @@
         "tags": [
           "staff"
         ],
-        "x-source": "bff/staff/site.go:433"
+        "x-source": "bff/staff/site.go:442"
       }
     },
     "/reset": {
@@ -3359,7 +3420,7 @@
         "tags": [
           "staff"
         ],
-        "x-source": "bff/staff/site.go:448"
+        "x-source": "bff/staff/site.go:457"
       }
     },
     "/treasury/cash": {
@@ -3400,7 +3461,7 @@
         "tags": [
           "staff"
         ],
-        "x-source": "bff/staff/site.go:444"
+        "x-source": "bff/staff/site.go:453"
       }
     },
     "/treasury/gilts": {
@@ -3441,7 +3502,7 @@
         "tags": [
           "staff"
         ],
-        "x-source": "bff/staff/site.go:452"
+        "x-source": "bff/staff/site.go:461"
       }
     },
     "/treasury/gilts/buy": {
@@ -3500,7 +3561,7 @@
           "staff"
         ],
         "x-role-action": "buy_gilt",
-        "x-source": "bff/staff/site.go:457"
+        "x-source": "bff/staff/site.go:466"
       }
     },
     "/v1/health": {
@@ -3527,7 +3588,7 @@
         "x-handler": {
           "function": "(*Server).health"
         },
-        "x-source": "bff/server.go:116"
+        "x-source": "bff/server.go:124"
       }
     },
     "/v1/login": {
@@ -3674,7 +3735,7 @@
         "x-handler": {
           "function": "(*Server).login"
         },
-        "x-source": "bff/server.go:119"
+        "x-source": "bff/server.go:127"
       }
     },
     "/v1/logout": {
@@ -3743,7 +3804,7 @@
             "(*Server).authed"
           ]
         },
-        "x-source": "bff/server.go:120"
+        "x-source": "bff/server.go:128"
       }
     },
     "/v1/openapi.json": {
@@ -3770,7 +3831,7 @@
         "x-handler": {
           "function": "(*Server).openapi"
         },
-        "x-source": "bff/server.go:117"
+        "x-source": "bff/server.go:125"
       }
     },
     "/v1/screen/accounts": {
@@ -3888,7 +3949,7 @@
             "(*Server).authed"
           ]
         },
-        "x-source": "bff/server.go:121"
+        "x-source": "bff/server.go:129"
       }
     },
     "/v1/screen/activity": {
@@ -4015,7 +4076,7 @@
             "(*Server).authed"
           ]
         },
-        "x-source": "bff/server.go:122"
+        "x-source": "bff/server.go:130"
       }
     },
     "/v1/screen/login": {
@@ -4047,7 +4108,7 @@
         "x-handler": {
           "function": "(*Server).loginScreen"
         },
-        "x-source": "bff/server.go:118"
+        "x-source": "bff/server.go:126"
       }
     },
     "/v1/screen/product/{index}": {
@@ -4182,7 +4243,7 @@
             "(*Server).authed"
           ]
         },
-        "x-source": "bff/server.go:123"
+        "x-source": "bff/server.go:131"
       }
     },
     "/view/{name}": {

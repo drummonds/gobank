@@ -2,6 +2,16 @@
 
 ## [Unreleased]
 
+### Added
+- Per-route performance (roadmap #142): the running process counts and
+  times every route it serves (the staff web and the customer BFF share
+  one set of figures): requests, p50 and p95 of the last 1,024, the
+  maximum, the most in flight at once and the rate over the last minute.
+  About → API shows requests and p95 per route and the route's page a
+  Performance block with the capacity it has shown — in flight at the
+  peak over p95, as requests a second and as clients acting every ten
+  seconds — and `/about.json` carries the rows for a program to read.
+
 ## [0.50.0] - 2026-10-14
 
 ### Added

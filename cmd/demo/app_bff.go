@@ -7,6 +7,7 @@ import (
 
 	"git.bytestone.uk/hum3/gobank/bff"
 	"git.bytestone.uk/hum3/gobank/core"
+	"git.bytestone.uk/hum3/gobank/internal/routestats"
 )
 
 // newAppBFF builds the customer BFF over the bank (ADR-0002 stage 1). It
@@ -18,6 +19,6 @@ import (
 // sessions component), so a restart keeps customers logged in; db gives
 // the database as it stands, since a reset or an import replaces it. The
 // staff web is served for every path outside /v1/ (story 1.6.3).
-func newAppBFF(bank core.StaffQueries, auth core.Authenticator, db func() *sql.DB, scope, loginNote string, staff http.Handler, log *slog.Logger) *bff.Server {
-	return bff.NewServer(bff.Config{Bank: bank, Auth: auth, SessionDB: db, Scope: scope, LoginNote: loginNote, Staff: staff, Logger: log})
+func newAppBFF(bank core.StaffQueries, auth core.Authenticator, db func() *sql.DB, scope, loginNote string, staff http.Handler, log *slog.Logger, stats *routestats.Stats) *bff.Server {
+	return bff.NewServer(bff.Config{Bank: bank, Auth: auth, SessionDB: db, Scope: scope, LoginNote: loginNote, Staff: staff, Logger: log, Stats: stats})
 }

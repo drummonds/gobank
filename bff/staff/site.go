@@ -28,6 +28,7 @@ import (
 	"git.bytestone.uk/hum3/gobank/adr"
 	"git.bytestone.uk/hum3/gobank/api"
 	"git.bytestone.uk/hum3/gobank/core"
+	"git.bytestone.uk/hum3/gobank/internal/routestats"
 	"git.bytestone.uk/hum3/gobank/internal/servemux"
 	"git.bytestone.uk/hum3/gobank/internal/session"
 	"git.bytestone.uk/hum3/lofigui"
@@ -38,6 +39,11 @@ type Config struct {
 	Bank     core.StaffQueries // what the pages read; nil serves only the pages that read nothing
 	Commands core.Commands     // what the pages act on (buying a gilt); nil refuses
 	Users    core.Users        // who may sign in; nil lets nobody in
+
+	// Stats counts and times every route served, for the API pages and
+	// about.json to show; nil keeps no figures. The demo shares one with
+	// the customer BFF so the pages cover both.
+	Stats *routestats.Stats
 
 	// Sessions is where the signed-in users are kept; nil keeps them in
 	// memory for the process. SecureCookies marks the session cookie
@@ -111,6 +117,9 @@ func New(cfg Config) *Site {
 	s.movementRoutes()
 	if cfg.Console != nil {
 		s.consoleRoutes()
+	}
+	if cfg.Stats != nil {
+		s.mux.Observe = cfg.Stats.Observe
 	}
 	s.handler = s.requireLogin(s.mux)
 	return s
@@ -504,7 +513,7 @@ func (s *Site) routes() {
 			http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 			return
 		}
-		s.staticPage(w, r, BuildAPIIndexHTML(s.cfg.Version))
+		s.staticPage(w, r, BuildAPIIndexHTML(s.cfg.Version, s.cfg.Stats))
 	})
 	// One route of the API: what its handler needs, reads and answers,
 	// with a link to the registration in the source at this build's tag.
@@ -514,7 +523,7 @@ func (s *Site) routes() {
 			http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 			return
 		}
-		content, ok := BuildAPIDetailHTML(r.PathValue("method"), "/"+r.PathValue("path"), s.cfg.Version)
+		content, ok := BuildAPIDetailHTML(r.PathValue("method"), "/"+r.PathValue("path"), s.cfg.Version, s.cfg.Stats)
 		if !ok {
 			http.NotFound(w, r)
 			return
@@ -563,31 +572,52 @@ func pageParam(r *http.Request, name string) int {
 // apiOptions link the API pages: a route's detail under about/api, and
 // its source at this build's tag in the forge, or on main for a build
 // that is not a tag.
-func apiOptions(version string) api.Options {
+func apiOptions(version string, stats *routestats.Stats) api.Options {
 	ref := "branch/main"
 	if strings.HasPrefix(version, "v") && !strings.Contains(version, "-") {
 		ref = "tag/" + version
 	}
-	return api.Options{
+	o := api.Options{
 		DetailURL: func(r api.Route) string { return "about/api/" + api.Key(r) },
 		IndexURL:  "about/api",
 		SourceRef: ref,
 	}
+	if stats != nil {
+		// One snapshot per page: a route is matched by the pattern it was
+		// registered with, which is what the stats are kept by.
+		byPattern := map[string]routestats.RouteStat{}
+		for _, st := range stats.Snapshot() {
+			byPattern[st.Pattern] = st
+		}
+		o.Perf = func(r api.Route) (api.Perf, bool) {
+			pattern := r.Path
+			if r.Method != "" {
+				pattern = r.Method + " " + r.Path
+			}
+			st, ok := byPattern[pattern]
+			if !ok {
+				return api.Perf{}, false
+			}
+			return api.Perf{Count: st.Count, PeakInFlight: st.PeakInFlight, P50: st.P50, P95: st.P95, Max: st.Max, PerSecond: st.PerSecond}, true
+		}
+	}
+	return o
 }
 
 // BuildAPIIndexHTML renders the API index and the types from the
-// generated surface.
-func BuildAPIIndexHTML(version string) string {
+// generated surface, with what the process has measured of each route
+// when stats are given.
+func BuildAPIIndexHTML(version string, stats *routestats.Stats) string {
 	s, err := api.Load()
 	if err != nil {
 		return "<p>The API surface did not load: " + template.HTMLEscapeString(err.Error()) + "</p>"
 	}
-	return string(api.Index(s, apiOptions(version))) + string(api.Types(s))
+	return string(api.Index(s, apiOptions(version, stats))) + string(api.Types(s))
 }
 
 // BuildAPIDetailHTML renders one route's page; false when no route has
 // the method and path.
-func BuildAPIDetailHTML(method, path, version string) (string, bool) {
+func BuildAPIDetailHTML(method, path, version string, stats *routestats.Stats) (string, bool) {
 	s, err := api.Load()
 	if err != nil {
 		return "", false
@@ -596,5 +626,5 @@ func BuildAPIDetailHTML(method, path, version string) (string, bool) {
 	if !ok {
 		return "", false
 	}
-	return string(api.Detail(s, r, apiOptions(version))) + string(api.Types(s)), true
+	return string(api.Detail(s, r, apiOptions(version, stats))) + string(api.Types(s)), true
 }
