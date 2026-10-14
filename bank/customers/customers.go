@@ -42,8 +42,14 @@ var Schema = schema.Component{Name: "customers", Migrations: []schema.Migration{
 	)`}},
 	// The ledger account id is a UUID column, as the ledger's own id is
 	// (#66): 16 bytes against 36 in the row and the unique index, and a
-	// join to the ledger's contract views compares uuid with uuid.
-	{Version: 2, Statements: []string{`ALTER TABLE customer_accounts ALTER COLUMN ledger_account_id TYPE UUID USING ledger_account_id::uuid`}},
+	// join to the ledger's contract views compares uuid with uuid. The
+	// contract view comes down first: PostgreSQL will not retype a column
+	// a view reads, and the previous release left its view in place.
+	// CreateView puts it back when the bank opens.
+	{Version: 2, Statements: []string{
+		`DROP VIEW IF EXISTS contract_customer_accounts`,
+		`ALTER TABLE customer_accounts ALTER COLUMN ledger_account_id TYPE UUID USING ledger_account_id::uuid`,
+	}},
 }}
 
 // CreateView (re)creates the contract view: the register as other

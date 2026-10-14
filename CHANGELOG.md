@@ -2,6 +2,18 @@
 
 ## [Unreleased]
 
+ - Customers retype migration drops its contract view first: the v0.43.0 → v0.45.0 drill failed on PostgreSQL's "cannot alter type of a column used by a view" (#66)
+
+### Fixed
+- The customers v2 migration (`ledger_account_id` to `UUID`, #66) drops
+  `contract_customer_accounts` before the retype. The previous release
+  leaves its view in place and PostgreSQL will not retype a column a view
+  reads, so the preprod upgrade from v0.43.0 died in `migrate` after the
+  products retype had committed; the bank recreates the view at open, as
+  it always did. A Postgres-gated test in `bank/customers` reproduces the
+  refusal (`GOBANK_PG_DSN`), and bank package tests may now import the
+  pgx driver for that purpose.
+
 ## [0.46.0] - 2026-10-14
 
  - Pin go-postgres v0.10.0 and go-luca v0.6.0 in place of the local replaces v0.44.0 and v0.45.0 shipped with
