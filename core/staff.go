@@ -40,9 +40,34 @@ type GeneralLedger struct {
 // ExcessCash is what the bank holds above its required reserves.
 func (p Position) ExcessCash() luca.Amount { return p.Cash - p.RequiredReserves }
 
-// ProfitAndLoss is the bank's income statement since it opened, on an
-// accrual basis: interest counts as it accrues, not only when applied.
+// YearEnd is the day the bank's financial year closes: a month and a
+// day, as 31 March.
+type YearEnd struct {
+	Month time.Month
+	Day   int
+}
+
+// Next is the end of the financial year a day falls in: the first year
+// end on or after it. Zero when no year end is set.
+func (y YearEnd) Next(day time.Time) time.Time {
+	if y.Month == 0 {
+		return time.Time{}
+	}
+	end := time.Date(day.Year(), y.Month, y.Day, 0, 0, 0, 0, day.Location())
+	if end.Before(BusinessDay(day)) {
+		end = end.AddDate(1, 0, 0)
+	}
+	return end
+}
+
+// ProfitAndLoss is the bank's income statement for the period from its
+// opening to its business day, on an accrual basis: interest counts as it
+// accrues, not only when applied. The period is dated, and the financial
+// year it falls in named by its end; the year-end close that would start
+// a new period is not yet made (the roadmap's period close).
 type ProfitAndLoss struct {
+	From, To               time.Time // the period: the opening day to the business day
+	YearEnd                time.Time // the end of the financial year To falls in; zero when the bank has none
 	DayCount               int
 	LoanInterestIncome     luca.Amount
 	BoEInterestIncome      luca.Amount
@@ -58,28 +83,51 @@ func (p ProfitAndLoss) NetInterest() luca.Amount {
 // NetProfit is retained after operating costs.
 func (p ProfitAndLoss) NetProfit() luca.Amount { return p.NetInterest() - p.OperatingCosts }
 
-// BalanceSheet is the bank's balance sheet on its current business day.
-// Retained earnings are its only equity and so its CET1 capital; loans are
+// BalanceSheet is the bank's balance sheet on its current business day,
+// read from the ledger (ADR-0008): every line is an account's balance or
+// a sum of them, and the customers' accrued interest, which the products
+// hold as positions, is the one line not yet posted — shown on both sides
+// as the P&L counts it, so assets equal liabilities plus equity. Capital
+// and retained earnings are the equity and so the CET1 capital; loans are
 // the only risk-weighted assets (100%), gilts and cash at the BoE weigh 0%.
 type BalanceSheet struct {
-	DayCount           int
-	Loans              luca.Amount
-	Gilts              luca.Amount
-	CashAtBoE          luca.Amount
-	Deposits           luca.Amount
-	RetainedEarnings   luca.Amount
+	AsAt     time.Time // the business day
+	DayCount int
+
+	Loans                     luca.Amount // Asset:Loans:* — the lending book
+	AccruedInterestReceivable luca.Amount // loan interest accrued and not yet applied, plus the BoE receivable
+	Gilts                     luca.Amount // Asset:Gilts, at face value
+	CashAtBoE                 luca.Amount // Asset:Cash plus Asset:BoEReserves; negative when costs have outrun the funding
+
+	Deposits               luca.Amount // Liability:Savings:* — the deposit book
+	AccruedInterestPayable luca.Amount // deposit interest accrued and not yet applied
+
+	Capital            luca.Amount // Equity:Capital
+	RetainedEarnings   luca.Amount // the P&L to date
 	RiskWeightedAssets luca.Amount
 }
 
-// TotalAssets is loans plus gilts plus cash.
-func (b BalanceSheet) TotalAssets() luca.Amount { return b.Loans + b.Gilts + b.CashAtBoE }
+// TotalAssets is loans, accrued interest receivable, gilts and cash.
+func (b BalanceSheet) TotalAssets() luca.Amount {
+	return b.Loans + b.AccruedInterestReceivable + b.Gilts + b.CashAtBoE
+}
+
+// TotalLiabilities is deposits and accrued interest payable.
+func (b BalanceSheet) TotalLiabilities() luca.Amount { return b.Deposits + b.AccruedInterestPayable }
+
+// Equity is capital and retained earnings: the CET1 capital.
+func (b BalanceSheet) Equity() luca.Amount { return b.Capital + b.RetainedEarnings }
+
+// Balances says whether assets equal liabilities plus equity: what a
+// balance sheet read from one ledger always does.
+func (b BalanceSheet) Balances() bool { return b.TotalAssets() == b.TotalLiabilities()+b.Equity() }
 
 // CET1Ratio is CET1 capital over risk-weighted assets, 0 when there are none.
 func (b BalanceSheet) CET1Ratio() float64 {
 	if b.RiskWeightedAssets <= 0 {
 		return 0
 	}
-	return float64(b.RetainedEarnings) / float64(b.RiskWeightedAssets)
+	return float64(b.Equity()) / float64(b.RiskWeightedAssets)
 }
 
 // MinCET1Ratio is the Basel III minimum.

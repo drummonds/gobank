@@ -17,14 +17,26 @@ import (
 
 // Treasury is the gilt desk over the bank's database.
 type Treasury struct {
-	db  *sql.DB
+	db  querier
 	day func() time.Time // the bank's business day, the date a purchase is booked on
 }
 
 // New opens the desk on db; day gives the bank's business day.
+// querier is the database or the transaction the holdings are read and
+// written through.
+type querier interface {
+	ExecContext(ctx context.Context, query string, args ...any) (sql.Result, error)
+	QueryContext(ctx context.Context, query string, args ...any) (*sql.Rows, error)
+	QueryRowContext(ctx context.Context, query string, args ...any) *sql.Row
+}
+
 func New(db *sql.DB, day func() time.Time) *Treasury {
 	return &Treasury{db: db, day: day}
 }
+
+// WithTx is the same treasury writing in tx: a purchase and the ledger
+// movement that pays for it commit together.
+func (t *Treasury) WithTx(tx *sql.Tx) *Treasury { return &Treasury{db: tx, day: t.day} }
 
 // Yields is the current yield curve, by tenor.
 func (t *Treasury) Yields(ctx context.Context) ([]core.GiltYield, error) {

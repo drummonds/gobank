@@ -2,7 +2,9 @@ package parameters
 
 import (
 	"context"
+	"crypto/sha1"
 	"database/sql"
+	"fmt"
 	"testing"
 	"time"
 
@@ -191,7 +193,7 @@ func TestASettingCarriesItsCause(t *testing.T) {
 	p := open(t)
 	ctx := context.Background()
 	decided := d(2026, 1, 10)
-	caused := Setting{gbp.ScopeVersion, "easy-access", "rate_bps", "175", d(2026, 3, 1), decided, "alice", "root-1"}
+	caused := Setting{gbp.ScopeVersion, "easy-access", "rate_bps", "175", d(2026, 3, 1), decided, "alice", causeID("root-1")}
 	orphan := Setting{gbp.ScopeBank, OwnerBank, "spread_bps", "50", d(2026, 2, 15), decided, "bob", ""}
 	for _, s := range []Setting{caused, orphan} {
 		if err := p.Set(ctx, nil, s); err != nil {
@@ -199,20 +201,28 @@ func TestASettingCarriesItsCause(t *testing.T) {
 		}
 	}
 	up, err := p.Upcoming(ctx, nil, decided)
-	if err != nil || len(up) != 2 || up[0].Cause != "" || up[1].Cause != "root-1" {
+	if err != nil || len(up) != 2 || up[0].Cause != "" || up[1].Cause != causeID("root-1") {
 		t.Errorf("Upcoming = %+v, %v; want the orphan first with no cause, then alice's under root-1", up, err)
 	}
-	if n, err := p.CountByCause(ctx, "root-1"); err != nil || n != 1 {
+	if n, err := p.CountByCause(ctx, causeID("root-1")); err != nil || n != 1 {
 		t.Errorf("CountByCause(root-1) = %d, %v; want 1", n, err)
 	}
-	if err := p.SetCause(ctx, nil, orphan, "root-2"); err != nil {
+	if err := p.SetCause(ctx, nil, orphan, causeID("root-2")); err != nil {
 		t.Fatal(err)
 	}
 	up, _ = p.Upcoming(ctx, nil, decided)
-	if len(up) != 2 || up[0].Cause != "root-2" {
+	if len(up) != 2 || up[0].Cause != causeID("root-2") {
 		t.Errorf("after stamping: %+v; want the orphan under root-2", up)
 	}
-	if n, _ := p.CountByCause(ctx, "root-2"); n != 1 {
+	if n, _ := p.CountByCause(ctx, causeID("root-2")); n != 1 {
 		t.Errorf("CountByCause(root-2) = %d, want 1", n)
 	}
+}
+
+// causeID is a root event id for a test, a UUID made from a name so the
+// test can read as the name while the column holds a UUID (#66).
+func causeID(name string) string {
+	h := sha1.Sum([]byte(name))
+	h[6], h[8] = h[6]&0x0f|0x50, h[8]&0x3f|0x80
+	return fmt.Sprintf("%x-%x-%x-%x-%x", h[0:4], h[4:6], h[6:8], h[8:10], h[10:16])
 }

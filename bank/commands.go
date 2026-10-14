@@ -261,11 +261,29 @@ func (b *Bank) Transfer(ctx context.Context, t core.Transfer) (core.Payment, err
 
 // --- Treasury ---
 
-// BuyGilt implements core.TreasuryCommands.
+// BuyGilt implements core.TreasuryCommands: the holding is recorded and
+// its face value moves from Asset:Cash to Asset:Gilts in one transaction.
 func (b *Bank) BuyGilt(ctx context.Context, tenor string, faceValue luca.Amount) error {
 	b.open.RLock()
 	defer b.open.RUnlock()
-	return b.treasury.Buy(ctx, tenor, faceValue)
+	tx, err := b.db.BeginTx(ctx, nil)
+	if err != nil {
+		return fmt.Errorf("bank: buy gilt: %w", err)
+	}
+	defer tx.Rollback()
+	if err := b.treasury.WithTx(tx).Buy(ctx, tenor, faceValue); err != nil {
+		return err
+	}
+	books := b.ledger.WithTx(tx)
+	desc := fmt.Sprintf("Gilt purchase, %s tenor", tenor)
+	if _, err := books.RecordMovement(books.Chart.Cash, books.Chart.Gilts, faceValue, luca.CodeBookTransfer, b.clock.Now(), desc); err != nil {
+		return fmt.Errorf("bank: buy gilt: %w", err)
+	}
+	if err := tx.Commit(); err != nil {
+		return fmt.Errorf("bank: buy gilt: commit: %w", err)
+	}
+	b.book.invalidate() // cash moved
+	return nil
 }
 
 // GiltYields implements core.TreasuryQueries.

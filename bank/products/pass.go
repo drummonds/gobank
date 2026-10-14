@@ -27,6 +27,11 @@ import (
 // passChunk is how many unprojected accounts are fetched at a time.
 const passChunk = 256
 
+// firstCursor starts a pass over accounts in ledger-account-id order: a
+// UUID that sorts before every other, since the column is a UUID and
+// PostgreSQL will not compare one to an empty string.
+const firstCursor = "00000000-0000-0000-0000-000000000000"
+
 // unprojected lists up to limit registered accounts, after cursor in
 // ledger-account-ID order, that have no position for day.
 func (p *Products) unprojected(ctx context.Context, day time.Time, cursor string, limit int) ([]Account, error) {
@@ -53,7 +58,7 @@ func (p *Products) unprojected(ctx context.Context, day time.Time, cursor string
 // AnyUnprojected reports whether any registered account still has no
 // position for day: the day's pass has not finished.
 func (p *Products) AnyUnprojected(ctx context.Context, day time.Time) (bool, error) {
-	accounts, err := p.unprojected(ctx, day, "", 1)
+	accounts, err := p.unprojected(ctx, day, firstCursor, 1)
 	return len(accounts) > 0, err
 }
 
@@ -117,7 +122,7 @@ func (p *Products) RunPass(ctx context.Context, books *ledger.Ledger, day time.T
 		return res
 	}
 	progress.Phase("projecting positions", total)
-	cursor := ""
+	cursor := firstCursor
 	unknown := map[string]bool{}
 	for ctx.Err() == nil {
 		accounts, err := p.unprojected(ctx, day, cursor, passChunk)

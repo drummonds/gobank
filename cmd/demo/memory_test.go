@@ -67,7 +67,7 @@ func TestRuntimeShowsSchemaVersionPerComponent(t *testing.T) {
 	html := staff.BuildRuntimeHTML(ds.Bank, ds.Runtime(), version)
 	for _, want := range []string{
 		`<tr><th>Schema: simulation</th><td>5</td></tr>`,
-		`<tr><th>Schema: products</th><td>5</td></tr>`,
+		`<tr><th>Schema: products</th><td>6</td></tr>`,
 		`<tr><th>Schema: parameters</th><td>2</td></tr>`,
 		`<tr><th>Schema: events</th><td>1</td></tr>`,
 	} {

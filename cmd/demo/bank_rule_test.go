@@ -37,6 +37,7 @@ func TestBankPackagesKnowOnlyTheCoreAndEachOther(t *testing.T) {
 		"git.bytestone.uk/hum3/gobank/modelbank",
 		"git.bytestone.uk/hum3/gobank/modelbank/", // its policy, products of its own
 		"git.bytestone.uk/hum3/gobank-products/",
+		"github.com/jackc/pgx/v5/stdlib", // a component's migration tests run against PostgreSQL too: pglike does not refuse what it refuses
 	}
 	fset := token.NewFileSet()
 	for _, name := range files {

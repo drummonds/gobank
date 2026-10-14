@@ -241,9 +241,17 @@ tasks:
       - curl -fsS --max-time 300 -X POST {{.DEPLOY_URL | default "https://gobank-deploy.lan.drummonds.net"}}/fetch
 
   cloud:drill:
-    desc: Start the upgrade drill on preprod from the gobank-deploy appliance (tp release runs it after cloud:fetch; the drill upgrades, rolls back and goes forward, its record on the Drills page; prod is promoted by hand once it passes)
+    desc: Start the upgrade drill on preprod from the gobank-deploy appliance (tp release runs it after cloud:fetch; the drill upgrades, rolls back and goes forward, its record on the Drills page; prod is promoted by hand once it passes). SKIP_DRILL=1 is the escape for a release that should not drill — the fetch still happens
+    silent: true
     cmds:
-      - curl -fsS --max-time 60 -o /dev/null -w "drill started on {{.ENV | default "preprod"}} (HTTP %{http_code})\n" -X POST -d confirm=yes {{.DEPLOY_URL | default "https://gobank-deploy.lan.drummonds.net"}}/env/{{.ENV | default "preprod"}}/drill
+      - |
+        if [ -n "$SKIP_DRILL" ]; then echo "drill skipped on {{.ENV | default "preprod"}} (SKIP_DRILL set)"; exit 0; fi
+        curl -fsS --max-time 60 -o /dev/null -w "drill started on {{.ENV | default "preprod"}} (HTTP %{http_code})\n" -X POST -d confirm=yes {{.DEPLOY_URL | default "https://gobank-deploy.lan.drummonds.net"}}/env/{{.ENV | default "preprod"}}/drill
+
+  cloud:drill:cancel:
+    desc: Stop the drill (or any job) running on preprod in the gobank-deploy appliance; the environment is left where the drill got to and the demo workflow takes it over again (ENV overrides)
+    cmds:
+      - curl -fsS --max-time 60 -o /dev/null -w "cancel sent to {{.ENV | default "preprod"}} (HTTP %{http_code})\n" -X POST {{.DEPLOY_URL | default "https://gobank-deploy.lan.drummonds.net"}}/env/{{.ENV | default "preprod"}}/cancel
 
   clean:
     desc: Remove build artifacts (preserves docs/research/)

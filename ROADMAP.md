@@ -391,11 +391,18 @@ views read the same ledger.
   at tax year end) are produced from the ledger as at that knowledge
   time and stored as records, so what was reported stays what was
   reported if a late posting changes the books; real time is a live view
-  of the open period, never stored. The reports page lists periods and
-  their stored reports; BBSI moves from a live build to the stored
-  year-end report. Needs go-luca `knowledge_time` (shipped, go-luca
-  v0.3.0). Open: a posting after close — restate, or carry into the next
-  period with a note
+  of the open period, never stored. The financial year ends 31 March
+  (`definition.Bank.YearEnd`, set in v0.43.0; the statements already
+  name the year and carry their dates), and month ends are the other
+  accepted dates: the live P&L becomes the financial year to date and
+  the month to date rather than everything since opening, which needs
+  the ledger's balances as at a date; the year-end close moves the
+  year's income and expense to retained earnings, so the balance sheet
+  shows retained earnings brought forward and the profit for the year
+  to date. The reports page lists periods and their stored reports; BBSI
+  moves from a live build to the stored year-end report. Needs go-luca
+  `knowledge_time` (shipped, go-luca v0.3.0). Open: a posting after
+  close — restate, or carry into the next period with a note
 - #97 AEOI return prototype — the bank produces the Automatic
   Exchange of Information return (CRS, and FATCA for US persons) that a
   UK reporting financial institution files with HMRC each year: for

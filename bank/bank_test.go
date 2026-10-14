@@ -1465,3 +1465,97 @@ func TestATrackerFollowsTheBanksRate(t *testing.T) {
 		t.Errorf("the snapshot's bank rates %+v %+v; want savings 350 and lending 800 (the cut reaches borrowers after the lag) on the latest day", hist.SavingsRate, hist.LendingRate)
 	}
 }
+
+// The balance sheet is read from the ledger and balances: operating costs
+// leave cash daily, a gilt is bought out of cash, BoE interest is earned
+// into reserves, and the customers' accrued interest sits on both sides
+// as the P&L counts it. Nothing is assembled from counters.
+func TestBalanceSheetBalances(t *testing.T) {
+	f := open(t)
+	for _, n := range []core.NewCustomer{saver("S", 50_000_00), saver("T", 20_000_00), ada} {
+		if _, err := f.bank.OpenCustomer(f.ctx, n); err != nil {
+			t.Fatal(err)
+		}
+	}
+	cashBefore := f.position().Cash
+	if err := f.bank.BuyGilt(f.ctx, "5Y", 10_000_00); err != nil {
+		t.Fatal(err)
+	}
+	if cash := f.position().Cash; cash != cashBefore-10_000_00 {
+		t.Errorf("cash %d after buying a gilt, want %d less by its face value", cash, cashBefore)
+	}
+	for range 35 { // crosses a month end: interest applied, BoE interest received
+		f.nextDay()
+	}
+	bs, err := f.bank.BalanceSheet(f.ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	pl, _ := f.bank.ProfitAndLoss(f.ctx)
+	if !bs.Balances() {
+		t.Errorf("assets %d != liabilities %d + equity %d\n%+v\n%+v", bs.TotalAssets(), bs.TotalLiabilities(), bs.Equity(), bs, pl)
+	}
+	if bs.Gilts != 10_000_00 || bs.AccruedInterestReceivable <= 0 || bs.AccruedInterestPayable <= 0 || bs.RetainedEarnings != pl.NetProfit() {
+		t.Errorf("balance sheet %+v", bs)
+	}
+	// Dated: the sheet as at the business day, the P&L from the opening
+	// day to it, in the financial year ending 31 March 2020.
+	if day := opening.AddDate(0, 0, 35); !bs.AsAt.Equal(day) || !pl.From.Equal(opening) || !pl.To.Equal(day) || !pl.YearEnd.Equal(time.Date(2020, 3, 31, 0, 0, 0, 0, time.UTC)) {
+		t.Errorf("as at %s; P&L %s to %s, year ending %s", bs.AsAt, pl.From, pl.To, pl.YearEnd)
+	}
+	// Operating costs are the ledger's Expense:Operating, one day's worth
+	// per day closed, and they left Asset:Cash.
+	bal := func(path string) luca.Amount {
+		id, err := f.bank.ledger.Account(path)
+		if err != nil {
+			t.Fatal(err)
+		}
+		v, err := f.bank.ledger.Balance(id)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return v
+	}
+	if want := opCostPerDay * 35; pl.OperatingCosts != want || bal(ledger.ExpenseOperating) != want {
+		t.Errorf("operating costs %d in the P&L, %d on the ledger; want %d", pl.OperatingCosts, bal(ledger.ExpenseOperating), want)
+	}
+	if bs.CashAtBoE != bal(ledger.Cash)+bal(ledger.BoEReserves) {
+		t.Errorf("cash at BoE %d, want the two cash accounts %d + %d", bs.CashAtBoE, bal(ledger.Cash), bal(ledger.BoEReserves))
+	}
+	if bs.Capital != -bal(ledger.EquityCapital) {
+		t.Errorf("capital %d, want the equity account's %d", bs.Capital, -bal(ledger.EquityCapital))
+	}
+}
+
+// A bank that ran before the operating-cost and gilt accounts existed
+// adopts them on open: the costs of the days before are posted once, and
+// the gilts already held are taken out of cash, so the statements go on
+// from where the counters left them.
+func TestOperatingCostsAndGiltsAdoptedOnUpgrade(t *testing.T) {
+	f := open(t)
+	if _, err := f.bank.OpenCustomer(f.ctx, saver("S", 50_000_00)); err != nil {
+		t.Fatal(err)
+	}
+	for range 3 {
+		f.nextDay()
+	}
+	// Erase what this version posted, as a database from before it has
+	// neither the accounts nor their movements.
+	for _, path := range []string{ledger.ExpenseOperating, ledger.Gilts} {
+		if _, err := f.db.ExecContext(f.ctx, `DELETE FROM movements WHERE from_account_id IN (SELECT id FROM accounts WHERE full_path = $1) OR to_account_id IN (SELECT id FROM accounts WHERE full_path = $1)`, path); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := f.db.ExecContext(f.ctx, `DELETE FROM accounts WHERE full_path = $1`, path); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if _, err := f.db.ExecContext(f.ctx, `INSERT INTO gilt_holdings (tenor, face_value, purchase_date, yield) VALUES ('1Y', 500000, $1, 0.04)`, f.now); err != nil {
+		t.Fatal(err)
+	}
+	g := reopen(t, f.db, f.now)
+	pl, _ := g.bank.ProfitAndLoss(g.ctx)
+	bs, _ := g.bank.BalanceSheet(g.ctx)
+	if pl.OperatingCosts != opCostPerDay*3 || bs.Gilts != 5000_00 || !bs.Balances() {
+		t.Errorf("after adoption: P&L %+v, balance sheet %+v", pl, bs)
+	}
+}

@@ -2,8 +2,10 @@ package products
 
 import (
 	"context"
+	"crypto/sha1"
 	"database/sql"
 	"errors"
+	"fmt"
 	"strings"
 	"testing"
 	"time"
@@ -34,7 +36,15 @@ func listings() []Listing {
 var jan2 = time.Date(2024, 1, 2, 0, 0, 0, 0, time.UTC)
 
 // root is a cause at jan2 for a test's work.
-func root(id string) Cause { return Cause{ID: id, At: jan2} }
+func root(id string) Cause { return Cause{ID: causeID(id), At: jan2} }
+
+// causeID is a root event id for a test, a UUID made from a name so the
+// test can read as the name while the column holds a UUID (#66).
+func causeID(name string) string {
+	h := sha1.Sum([]byte(name))
+	h[6], h[8] = h[6]&0x0f|0x50, h[8]&0x3f|0x80
+	return fmt.Sprintf("%x-%x-%x-%x-%x", h[0:4], h[4:6], h[6:8], h[8:10], h[10:16])
+}
 
 // open is the catalogue, adopted on jan2, over a database with the ledger
 // and the settings open and a register of accounts: the contract view the
@@ -268,13 +278,13 @@ func TestAccountDayAppliesAtTheCycleEndAndRecordsWhy(t *testing.T) {
 	if !strings.Contains(r.Parameters, "cycle=monthly") || !strings.Contains(r.Parameters, "rate_bps=150") {
 		t.Errorf("record parameters %q; want the cycle and the rate the rule read", r.Parameters)
 	}
-	if r.Cause != "day-1" || r.Step != "apply" {
+	if r.Cause != causeID("day-1") || r.Step != "apply" {
 		t.Errorf("record cause %q step %q; want the day's root and the apply step (ADR-0011)", r.Cause, r.Step)
 	}
 	if byMovement, ok, err := p.PostingByMovement(context.Background(), r.MovementID); err != nil || !ok || byMovement != r {
 		t.Errorf("PostingByMovement = %+v, %v, %v; want the record", byMovement, ok, err)
 	}
-	if n, _ := p.CountPostingsByCause(context.Background(), "day-1"); n != 1 {
+	if n, _ := p.CountPostingsByCause(context.Background(), causeID("day-1")); n != 1 {
 		t.Errorf("CountPostingsByCause = %d, want 1", n)
 	}
 	var movementID string
@@ -578,7 +588,7 @@ func TestParameterChangeFiresWhenASettingBecomesEffective(t *testing.T) {
 	rec := register(t, p, books, "recorder", "cust-001", 1000_00, jan2)
 	easy := register(t, p, books, "easy-access", "cust-002", 1000_00, jan2)
 	for _, a := range []Account{rec, easy} {
-		if err := p.Open(books, a, jan2, Cause{ID: "open-" + a.ID, At: nine}); err != nil {
+		if err := p.Open(books, a, jan2, Cause{ID: causeID("open-" + a.ID), At: nine}); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -604,7 +614,7 @@ func TestParameterChangeFiresWhenASettingBecomesEffective(t *testing.T) {
 		t.Errorf("owed at the publication's instant = %d, want both accounts (every product reads the market, or may)", n)
 	}
 	var prog progress
-	res := p.ApplyParameterChanges(ctx, books, Cause{ID: "pub-1", At: noon}, noon, &prog)
+	res := p.ApplyParameterChanges(ctx, books, Cause{ID: causeID("pub-1"), At: noon}, noon, &prog)
 	if res.Visited != 2 || res.Fired != 1 || prog.phase != "applying parameter changes" || prog.total != 2 {
 		t.Errorf("cascade: %+v, progress %+v; want 2 visited, 1 fired (easy-access reads no market parameter)", res, prog)
 	}
@@ -614,7 +624,7 @@ func TestParameterChangeFiresWhenASettingBecomesEffective(t *testing.T) {
 	if n, _ := p.CountParameterChangesOwed(ctx, noon); n != 0 {
 		t.Errorf("still owed after the cascade: %d", n)
 	}
-	if again := p.ApplyParameterChanges(ctx, books, Cause{ID: "pub-2", At: noon.Add(time.Hour)}, noon.Add(time.Hour), &prog); again.Visited != 0 {
+	if again := p.ApplyParameterChanges(ctx, books, Cause{ID: causeID("pub-2"), At: noon.Add(time.Hour)}, noon.Add(time.Hour), &prog); again.Visited != 0 {
 		t.Errorf("a second cascade visited %d", again.Visited)
 	}
 
@@ -630,7 +640,7 @@ func TestParameterChangeFiresWhenASettingBecomesEffective(t *testing.T) {
 	if n, _ := p.CountParameterChangesOwed(ctx, later); n != 1 {
 		t.Errorf("owed at the setting's instant = %d, want the one easy-access account", n)
 	}
-	res = p.ApplyParameterChanges(ctx, books, Cause{ID: "set-1", At: later}, later, &prog)
+	res = p.ApplyParameterChanges(ctx, books, Cause{ID: causeID("set-1"), At: later}, later, &prog)
 	if res.Visited != 1 || res.Fired != 1 {
 		t.Errorf("cascade for the product setting: %+v; want the one account visited and fired", res)
 	}
@@ -661,7 +671,7 @@ func TestAccountsWithoutARecordAreAdoptedAndNotCarriedSkipped(t *testing.T) {
 		t.Fatalf("an account without a record is owed: %d, want 1", n)
 	}
 	var prog progress
-	if res := p.ApplyParameterChanges(ctx, books, Cause{ID: "pub-1", At: noon}, noon, &prog); res.Visited != 1 || res.Fired != 0 {
+	if res := p.ApplyParameterChanges(ctx, books, Cause{ID: causeID("pub-1"), At: noon}, noon, &prog); res.Visited != 1 || res.Fired != 0 {
 		t.Errorf("cascade over an unrecorded account: %+v; want it adopted, nothing fired", res)
 	}
 	if got := lastChange(t, p, rec, noon); got != "" {
@@ -681,7 +691,7 @@ func TestAccountsWithoutARecordAreAdoptedAndNotCarriedSkipped(t *testing.T) {
 	if n, _ := p.CountParameterChangesOwed(ctx, noon); n != 1 {
 		t.Fatalf("the uncarried account is owed: %d, want 1", n)
 	}
-	if res := p.ApplyParameterChanges(ctx, books, Cause{ID: "pub-1", At: noon}, noon, &prog); res.Visited != 0 || res.Skipped != 1 {
+	if res := p.ApplyParameterChanges(ctx, books, Cause{ID: causeID("pub-1"), At: noon}, noon, &prog); res.Visited != 0 || res.Skipped != 1 {
 		t.Errorf("cascade with a product not carried: %+v; want nothing visited, one skipped", res)
 	}
 	if n, _ := p.CountParameterChangesOwed(ctx, noon); n != 1 {
@@ -809,14 +819,14 @@ func TestThePassWritesEachAccountInATransaction(t *testing.T) {
 		t.Errorf("the replay: %+v; want the one account, 123p applied", again)
 	}
 	for _, a := range accounts {
-		if n := count(`SELECT COUNT(*) FROM product_postings WHERE account_id = $1 AND cause_id = 'day-1' AND step = 'apply'`, a.ID); n != 1 {
+		if n := count(`SELECT COUNT(*) FROM product_postings WHERE account_id = $1 AND cause_id = $2 AND step = 'apply'`, a.ID, causeID("day-1")); n != 1 {
 			t.Errorf("%s has %d apply records under the day, want 1", a.ID, n)
 		}
 		if pos, _ := books.PositionAt(a.ID, feb1); pos == nil || pos.Balance != 1000_00+123 {
 			t.Errorf("%s position for the day %+v, want 1001.23", a.ID, pos)
 		}
 	}
-	if n, _ := p.CountPostingsByCause(ctx, "day-1"); n != 3 {
+	if n, _ := p.CountPostingsByCause(ctx, causeID("day-1")); n != 3 {
 		t.Errorf("CountPostingsByCause = %d, want 3", n)
 	}
 }
@@ -831,12 +841,12 @@ func TestARulesOwnSettingIsNotAChangeOwed(t *testing.T) {
 	ctx := context.Background()
 	nine := jan2.Add(9 * time.Hour)
 	isa := register(t, p, books, "isa", "cust-001", 0, jan2)
-	if err := p.Open(books, isa, jan2, Cause{ID: "open-isa", At: nine}); err != nil {
+	if err := p.Open(books, isa, jan2, Cause{ID: causeID("open-isa"), At: nine}); err != nil {
 		t.Fatal(err)
 	}
 	jan3 := jan2.AddDate(0, 0, 1)
 	deposit := jan3.Add(9 * time.Hour)
-	if _, err := p.PostEvent(books, jan3, Cause{ID: "deposit", At: deposit}, books.Chart.EquityCapital, isa.ID, -500_00, "DEP", "deposit", isa); err != nil {
+	if _, err := p.PostEvent(books, jan3, Cause{ID: causeID("deposit"), At: deposit}, books.Chart.EquityCapital, isa.ID, -500_00, "DEP", "deposit", isa); err != nil {
 		t.Fatal(err)
 	}
 	var n int

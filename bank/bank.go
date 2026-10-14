@@ -56,6 +56,10 @@ const opCostPerDay luca.Amount = 50_00
 // their accrual on their positions and post nothing daily.
 const CodeDailyAccrual = "LDAS:FTDP:ACRU"
 
+// CodeOperatingCost is the bank transaction code of a day's running
+// costs: ISO 20022 account management, miscellaneous debit, charges.
+const CodeOperatingCost = "ACMT:MDOP:CHRG"
+
 // Options wire a Bank.
 type Options struct {
 	Definition definition.Bank   // what makes this bank this bank (ADR-0007): its name and the product versions it carries
@@ -100,6 +104,7 @@ type Bank struct {
 	// accrual for the NIM, and the pass's state.
 	mu                  sync.Mutex
 	day                 time.Time
+	opened              time.Time // the bank's first business day: the statements' period starts there
 	dayCount            int
 	riskFreeBps         int64              // GBP's risk-free rate in basis points as last known: the market's latest publication by the end of the day the bank closed
 	reserveRatio        float64            // fraction of deposits held as BoE reserves, e.g. 0.15
@@ -172,8 +177,10 @@ func (b *Bank) openOn(db *sql.DB) error {
 		return err
 	}
 	day, dayCount := core.BusinessDay(b.clock.Now()), 0
+	opened := day
 	if resumed {
 		day, dayCount = latest, int(latest.Sub(first).Hours()/24)
+		opened = first
 	}
 	if err := parameters.CreateView(db); err != nil {
 		return err
@@ -209,13 +216,17 @@ func (b *Bank) openOn(db *sql.DB) error {
 			return err
 		}
 	}
+	holdings := treasury.New(db, b.businessDay)
+	if err := b.adoptLedgerAccounts(ctx, books, holdings, day, dayCount); err != nil {
+		return err
+	}
 	b.mu.Lock()
 	b.db = db
 	b.settings, b.events = settings, record
 	b.ledger, b.gl, b.products, b.customers, b.payments, b.history, b.users = books, general, catalogue, custs, pays, hist, people
 	b.glStatus = glReport(glStatus)
-	b.treasury = treasury.New(db, b.businessDay)
-	b.day, b.dayCount = day, dayCount
+	b.treasury = holdings
+	b.day, b.dayCount, b.opened = day, dayCount, opened
 	b.riskFreeBps, _, _ = b.market.Rate(ctx, nil, products.Currency, parameters.EndOfDay(day))
 	b.reserveRatio = DefaultReserveRatio
 	b.dayComplete = true
@@ -634,6 +645,7 @@ func (b *Bank) startDay(ctx context.Context) (time.Time, events.Event, error) {
 		b.boeAccruedNumerator += int64(excess) * bps
 	}
 	movements := b.collectBoEInterestLocked(closed)
+	movements = append(movements, b.operatingCostMovement(closed))
 	numerator := b.boeAccruedNumerator
 
 	b.day = closed.AddDate(0, 0, 1)
@@ -764,6 +776,51 @@ func (b *Bank) collectBoEInterestLocked(day time.Time) []ledgerMovement {
 		b.boePostedPence = 0
 	}
 	return out
+}
+
+// operatingCostMovement is the closing day's running costs, paid from
+// cash into Expense:Operating (ADR-0008: the ledger is the bank's view,
+// so the cost is a posting, not a counter).
+func (b *Bank) operatingCostMovement(day time.Time) ledgerMovement {
+	chart := b.ledger.Chart
+	at := time.Date(day.Year(), day.Month(), day.Day(), 23, 59, 58, 0, day.Location())
+	return ledgerMovement{chart.Cash, chart.ExpenseOperating, opCostPerDay, CodeOperatingCost, at, "Daily operating costs"}
+}
+
+// adoptLedgerAccounts posts, once, what the chart accounts this version
+// added are owed by the days before them: the operating costs of every
+// day run so far, and the gilts already held, out of cash. A database
+// from before has neither account; a fresh bank has nothing to adopt.
+func (b *Bank) adoptLedgerAccounts(ctx context.Context, books *ledger.Ledger, holdings *treasury.Treasury, day time.Time, dayCount int) error {
+	at := time.Date(day.Year(), day.Month(), day.Day(), 0, 0, 0, 0, day.Location())
+	for _, path := range books.Created {
+		switch path {
+		case ledger.ExpenseOperating:
+			if dayCount == 0 {
+				continue
+			}
+			desc := fmt.Sprintf("Operating costs for the %d days before the account was opened", dayCount)
+			if _, err := books.RecordMovement(books.Chart.Cash, books.Chart.ExpenseOperating, opCostPerDay*luca.Amount(dayCount), luca.CodeOpeningBalance, at, desc); err != nil {
+				return fmt.Errorf("bank: adopt operating costs: %w", err)
+			}
+		case ledger.Gilts:
+			held, err := holdings.Holdings(ctx)
+			if err != nil {
+				return err
+			}
+			var face luca.Amount
+			for _, h := range held {
+				face += h.FaceValue
+			}
+			if face == 0 {
+				continue
+			}
+			if _, err := books.RecordMovement(books.Chart.Cash, books.Chart.Gilts, face, luca.CodeOpeningBalance, at, "Gilts held before the account was opened"); err != nil {
+				return fmt.Errorf("bank: adopt gilts: %w", err)
+			}
+		}
+	}
+	return nil
 }
 
 // boeInterestTotalLocked is the cumulative BoE reserve interest earned:

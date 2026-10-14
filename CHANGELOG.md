@@ -15,6 +15,108 @@
 - API detail pages carry a worked example per route (#141); per-route
   performance on the API detail page (#142).
 
+## [0.48.0] - 2026-10-14
+
+ - Customers retype migration drops its contract view first: the v0.43.0 → v0.45.0 drill failed on PostgreSQL's "cannot alter type of a column used by a view" (#66)
+
+### Fixed
+- The customers v2 migration (`ledger_account_id` to `UUID`, #66) drops
+  `contract_customer_accounts` before the retype. The previous release
+  leaves its view in place and PostgreSQL will not retype a column a view
+  reads, so the preprod upgrade from v0.43.0 died in `migrate` after the
+  products retype had committed; the bank recreates the view at open, as
+  it always did. A Postgres-gated test in `bank/customers` reproduces the
+  refusal (`GOBANK_PG_DSN`), and bank package tests may now import the
+  pgx driver for that purpose.
+
+## [0.47.0] - 2026-10-14
+
+ - Escape from the automatic upgrade drill: SKIP_DRILL=1 tp release fetches but does not drill, and task cloud:drill:cancel stops a running one (#147)
+
+### Added
+- `SKIP_DRILL=1 tp release` runs the post-release fetch but skips the
+  upgrade drill on preprod, saying so; one release at a time, since the
+  variable lives only on that command line (#147).
+- `task cloud:drill:cancel` posts the appliance's cancel for preprod
+  (`ENV` overrides), stopping a drill already running; the environment is
+  left where the drill got to and the demo workflow resumes it.
+
+## [0.46.0] - 2026-10-14
+
+ - Pin go-postgres v0.10.0 and go-luca v0.6.0 in place of the local replaces v0.44.0 and v0.45.0 shipped with
+
+### Fixed
+- go.mod and cmd/demo/go.mod pin go-postgres v0.10.0 and go-luca v0.6.0;
+  v0.44.0 and v0.45.0 shipped with local `replace` directives to working
+  copies, so `go install` of the module failed and neither release could
+  be installed or deployed.
+
+## [0.45.0] - 2026-10-14
+
+## [0.44.0] - 2026-10-14
+
+ - UUID columns across the family (#66): ledger ids retyped in customers, products and gl; needs go-postgres v0.9.0 and go-luca v0.6.0
+
+### Changed
+- UUID columns across the family (#66): every column that holds a ledger
+  id is `UUID`, not `VARCHAR`: `customer_accounts.ledger_account_id`,
+  `product_postings.movement_id` and `account_id`,
+  `product_account_parameters.account_id`, `gl_journal.movement_id`,
+  each by a migration that retypes the column in place with its rows,
+  and the ledger's own ids by go-luca v0.6.0, which retypes a text-id
+  ledger on open. On PostgreSQL that is 16 bytes against 37 in every id
+  and its indexes (the movements indexes are the cost at scale: the
+  go-postgres study measured TEXT keys at 1.7x the bytes and 2.8x the
+  join at 100k accounts), and the database rejects a non-UUID. The pass
+  cursors over accounts start from the nil UUID, since a uuid column
+  cannot be compared to an empty string there, and a setting's owner is
+  compared to an account id as text. Needs go-postgres v0.9.0, whose
+  pglike retypes by rebuilding the table and validates UUID columns:
+  tests that wrote a made-up cause such as `root-1` now write a UUID.
+
+### Roadmap
+- #133 Full API documentation (OpenAPI) — the running system describes
+  its whole HTTP surface in one OpenAPI 3 document, served at
+  `/v1/openapi.json` and rendered into the docs site by `docs:build`
+  (Swagger UI or Redoc over the same file) in place of the hand-written
+  `docs/research/bff-api.html`: every `/v1/` route with the screen
+  schema its responses carry, the console and settings routes the
+  operator token reaches, `/about.json` and the health check, each with
+  its auth (session, bearer, none) and its errors. A test walks the
+  router and fails when a route is missing from the document or the
+  document names a route that is not served, so the two cannot drift.
+  Out of scope: client generation from the spec (the Flutter shell
+  interprets screens, not endpoints), the staff web's HTML pages. Open:
+  a hand-written spec checked against the router by the test
+  (recommended: no new machinery) versus one generated from the Go types
+  (swag or ogen)
+
+## [0.43.0] - 2026-10-13
+
+ - The balance sheet balances: both statements read from the ledger, operating costs and gilts posted, dated with the 31 March year end
+
+### Fixed
+- The balance sheet balances. It is read from the ledger (ADR-0008):
+  operating costs are posted daily from `Asset:Cash` to the new
+  `Expense:Operating` instead of being a counter, a gilt purchase moves
+  its face value from cash to the new `Asset:Gilts` in the same
+  transaction as the holding, BoE interest is the ledger's income and
+  reserves, and the customers' accrued interest — which the products
+  hold as positions until applied — is shown on both sides as the P&L
+  counts it (accrued interest receivable and payable). Equity is share
+  capital plus retained earnings, and so the CET1 capital; the cash
+  line no longer hides a negative behind a clamp. A bank from before
+  this version adopts the two accounts on open: the costs of the days
+  already run and the gilts already held are posted once, so the
+  statements go on from where the counters left them.
+
+### Added
+- The statements are dated: the balance sheet as at the business day,
+  the P&L for the period from the opening day to it, in the financial
+  year named by its end — 31 March, kept in the bank's definition
+  (`definition.Bank.YearEnd`). The year-to-date cut and the year-end
+  close are roadmap #96.
+
 ## [0.42.0] - 2026-10-13
 
 ## [0.41.0] - 2026-10-13
