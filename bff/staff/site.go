@@ -375,6 +375,26 @@ func (s *Site) routes() {
 	mux.HandleFunc("/customers", func(w http.ResponseWriter, r *http.Request) {
 		s.page(w, r, func() string { return BuildCustomersHTML(bank, pageParam(r, "page"), s.piiAuthorised(r)) })
 	})
+	// Customer search by name (POST name=): the customers whose name
+	// contains it, oldest first and at most core.CustomerSearchLimit, as the
+	// register's table — the matches alone for htmx, the Customers page
+	// with them for a browser. The name is personal data: it travels in the
+	// body and never in a URL, and only an authorised admin may search.
+	mux.HandleFunc("/customers/search", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != "POST" {
+			http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+			return
+		}
+		if !s.piiAuthorised(r) {
+			http.Error(w, "Forbidden", http.StatusForbidden)
+			return
+		}
+		results := BuildCustomerSearchHTML(bank, r.FormValue("name"))
+		if s.fragment(w, r, results) {
+			return
+		}
+		s.staticPage(w, r, customersPage(bank, 1, true, strings.Replace(searchForm, `<div id="customer-search-results"></div>`, results, 1)))
+	})
 	// Under /customers/: a customer's detail at /customers/{id}, or one of
 	// their accounts at /customers/{id}/account/{index}, each with its
 	// transactions one page (?txpage=) at a time.

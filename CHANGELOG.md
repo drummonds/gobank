@@ -2,6 +2,16 @@
 
 ## [Unreleased]
 
+### Added
+- Customer search by name on the staff web (#154, roadmap #151): a
+  search box on the Customers page for an admin with personal data
+  authorised, the name posted in the form and never in a URL, the
+  matches listed as the register's table (at most 50, oldest first).
+  Behind it `CustomersByName` on the customer register: names are
+  encrypted at rest, so the register is read and each name decrypted and
+  matched in turn — a cost proportional to the book, which milestone 1
+  measures before a name index is considered.
+
 ## [0.50.0] - 2026-10-14
 
 ### Added

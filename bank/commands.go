@@ -357,15 +357,7 @@ func (b *Bank) CustomerPage(ctx context.Context, page int) (core.CustomerPage, e
 	}
 	p := core.CustomerPage{Page: page, PerPage: CustomersPerPage, Total: total}
 	for _, c := range recs {
-		row := core.CustomerSummary{ID: c.ID, Accounts: len(c.Accounts)}
-		for _, acc := range c.Accounts {
-			if acc.Family == gbp.FamilySavings {
-				row.Savings += acc.Balance
-			} else {
-				row.Lending += acc.Balance
-			}
-		}
-		p.Customers = append(p.Customers, row)
+		p.Customers = append(p.Customers, summaryOf(c))
 	}
 	return p, nil
 }

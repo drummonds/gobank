@@ -36,6 +36,13 @@ func familyTag(family string) string {
 // BuildCustomersHTML renders the customer list table with pagination.
 // Names are shown only when piiAuth is true; otherwise only the customer ID is displayed.
 func BuildCustomersHTML(q core.StaffQueries, page int, piiAuth bool) string {
+	return customersPage(q, page, piiAuth, searchForm)
+}
+
+// customersPage is the Customers page with the search (form and the
+// matches, or nothing) above the register's table; only an authorised
+// admin is offered the search, since names are personal data.
+func customersPage(q core.StaffQueries, page int, piiAuth bool, search string) string {
 	ctx := context.Background()
 	pos, _ := q.Position(ctx)
 	aggSavings, aggLending := pos.Savings, pos.Lending
@@ -53,29 +60,10 @@ func BuildCustomersHTML(q core.StaffQueries, page int, piiAuth bool) string {
   <div class="control"><span class="tag is-success is-light">Savings: %s</span></div>
   <div class="control"><span class="tag is-link is-light">Lending: %s</span></div>
 </div>`, total, FormatMoney(aggSavings), FormatMoney(aggLending)))
-	s.WriteString(`<div class="table-container"><table class="table is-fullwidth is-striped is-hoverable">`)
 	if piiAuth {
-		s.WriteString(`<thead><tr><th>ID</th><th>Name</th><th>Accounts</th><th>Total Savings</th><th>Total Lending</th><th></th></tr></thead><tbody>`)
-	} else {
-		s.WriteString(`<thead><tr><th>ID</th><th>Accounts</th><th>Total Savings</th><th>Total Lending</th><th></th></tr></thead><tbody>`)
+		s.WriteString(search)
 	}
-
-	for _, c := range cp.Customers {
-		if piiAuth {
-			name, _ := q.CustomerName(ctx, c.ID)
-			s.WriteString(fmt.Sprintf(`<tr>
-  <td><code>%s</code></td><td>%s</td><td>%d</td><td>%s</td><td>%s</td>
-  <td><a href="customers/%s" class="button is-small is-link is-light">View</a></td>
-</tr>`, c.ID, name, c.Accounts, FormatMoney(c.Savings), FormatMoney(c.Lending), c.ID))
-		} else {
-			s.WriteString(fmt.Sprintf(`<tr>
-  <td><code>%s</code></td><td>%d</td><td>%s</td><td>%s</td>
-  <td><a href="customers/%s" class="button is-small is-link is-light">View</a></td>
-</tr>`, c.ID, c.Accounts, FormatMoney(c.Savings), FormatMoney(c.Lending), c.ID))
-		}
-	}
-
-	s.WriteString(`</tbody></table></div>`)
+	s.WriteString(customersTable(ctx, q, cp.Customers, piiAuth))
 
 	// Pagination
 	if totalPages > 1 {

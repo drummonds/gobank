@@ -287,6 +287,9 @@ type CustomerSummary struct {
 	Lending  luca.Amount
 }
 
+// CustomerSearchLimit is the most customers a search by name lists.
+const CustomerSearchLimit = 50
+
 // CustomerPage is one page of the register, oldest customer first.
 type CustomerPage struct {
 	Customers []CustomerSummary
@@ -329,6 +332,11 @@ type CustomerRegister interface {
 	CustomerRecord(ctx context.Context, customerID string) (CustomerRecord, error)
 	CustomerName(ctx context.Context, customerID string) (string, error)
 	CustomerPII(ctx context.Context, customerID string) (PII, error)
+	// CustomersByName finds the customers whose name contains name,
+	// whatever the case, oldest first and at most CustomerSearchLimit of
+	// them; an empty name finds nobody. The name is PII: a caller asks
+	// once it is authorised to see names.
+	CustomersByName(ctx context.Context, name string) ([]CustomerSummary, error)
 	// SavingsInterestByCustomer lists every customer with savings interest
 	// to date, oldest customer first, for the BBSI return.
 	SavingsInterestByCustomer(ctx context.Context) ([]CustomerInterest, error)

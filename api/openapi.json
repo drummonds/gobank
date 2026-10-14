@@ -846,7 +846,7 @@
         "tags": [
           "staff"
         ],
-        "x-source": "bff/staff/site.go:481"
+        "x-source": "bff/staff/site.go:501"
       }
     },
     "/about.json": {
@@ -921,7 +921,7 @@
         "tags": [
           "staff"
         ],
-        "x-source": "bff/staff/site.go:525"
+        "x-source": "bff/staff/site.go:545"
       }
     },
     "/about/api": {
@@ -952,7 +952,7 @@
         "tags": [
           "staff"
         ],
-        "x-source": "bff/staff/site.go:502"
+        "x-source": "bff/staff/site.go:522"
       }
     },
     "/about/api/{method}/{path...}": {
@@ -1011,7 +1011,7 @@
         "tags": [
           "staff"
         ],
-        "x-source": "bff/staff/site.go:512"
+        "x-source": "bff/staff/site.go:532"
       }
     },
     "/about/docs": {
@@ -1052,7 +1052,7 @@
         "tags": [
           "staff"
         ],
-        "x-source": "bff/staff/site.go:494"
+        "x-source": "bff/staff/site.go:514"
       }
     },
     "/about/docs/adr/": {
@@ -1104,7 +1104,7 @@
           "staff"
         ],
         "x-prefix": "serves every path under it",
-        "x-source": "bff/staff/site.go:530"
+        "x-source": "bff/staff/site.go:550"
       }
     },
     "/about/models": {
@@ -1145,7 +1145,7 @@
         "tags": [
           "staff"
         ],
-        "x-source": "bff/staff/site.go:489"
+        "x-source": "bff/staff/site.go:509"
       }
     },
     "/about/runtime": {
@@ -1583,7 +1583,72 @@
           "staff"
         ],
         "x-prefix": "serves every path under it",
-        "x-source": "bff/staff/site.go:381"
+        "x-source": "bff/staff/site.go:401"
+      }
+    },
+    "/customers/search": {
+      "post": {
+        "description": "Customer search by name (POST name=): the customers whose name\ncontains it, oldest first and at most core.CustomerSearchLimit, as the\nregister's table — the matches alone for htmx, the Customers page\nwith them for a browser. The name is personal data: it travels in the\nbody and never in a URL, and only an authorised admin may search.",
+        "operationId": "post-customers-search",
+        "requestBody": {
+          "content": {
+            "application/x-www-form-urlencoded": {
+              "schema": {
+                "properties": {
+                  "name": {
+                    "type": "string"
+                  }
+                },
+                "type": "object"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "text/html": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "403": {
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "405": {
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "description": "Method not allowed"
+          }
+        },
+        "security": [
+          {
+            "staff_session": []
+          },
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Customer search by name (POST name=): the customers whose name contains it, oldest first and at most core.CustomerSearchLimit, as the register's table — the matches alone for htmx, the Customers page with them for a browser",
+        "tags": [
+          "staff"
+        ],
+        "x-source": "bff/staff/site.go:383"
       }
     },
     "/dashboard/update": {
@@ -1665,7 +1730,7 @@
         "tags": [
           "staff"
         ],
-        "x-source": "bff/staff/site.go:418"
+        "x-source": "bff/staff/site.go:438"
       }
     },
     "/export.goluca": {
@@ -1744,7 +1809,7 @@
           "function": "lofigui.ServeFavicon"
         },
         "x-methods": "any",
-        "x-source": "bff/staff/site.go:546",
+        "x-source": "bff/staff/site.go:566",
         "x-unknowns": [
           "handler lofigui.ServeFavicon: body outside the walk",
           "no response found"
@@ -1773,7 +1838,7 @@
           "staff"
         ],
         "x-methods": "any",
-        "x-source": "bff/staff/site.go:548"
+        "x-source": "bff/staff/site.go:568"
       }
     },
     "/import": {
@@ -2489,7 +2554,7 @@
         "tags": [
           "staff"
         ],
-        "x-source": "bff/staff/site.go:408"
+        "x-source": "bff/staff/site.go:428"
       }
     },
     "/products/bank": {
@@ -2879,7 +2944,7 @@
         "tags": [
           "staff"
         ],
-        "x-source": "bff/staff/site.go:428"
+        "x-source": "bff/staff/site.go:448"
       }
     },
     "/reports/charts": {
@@ -2920,7 +2985,7 @@
         "tags": [
           "staff"
         ],
-        "x-source": "bff/staff/site.go:423"
+        "x-source": "bff/staff/site.go:443"
       }
     },
     "/reports/customer-view": {
@@ -2980,7 +3045,7 @@
         "tags": [
           "staff"
         ],
-        "x-source": "bff/staff/site.go:433"
+        "x-source": "bff/staff/site.go:453"
       }
     },
     "/reset": {
@@ -3359,7 +3424,7 @@
         "tags": [
           "staff"
         ],
-        "x-source": "bff/staff/site.go:448"
+        "x-source": "bff/staff/site.go:468"
       }
     },
     "/treasury/cash": {
@@ -3400,7 +3465,7 @@
         "tags": [
           "staff"
         ],
-        "x-source": "bff/staff/site.go:444"
+        "x-source": "bff/staff/site.go:464"
       }
     },
     "/treasury/gilts": {
@@ -3441,7 +3506,7 @@
         "tags": [
           "staff"
         ],
-        "x-source": "bff/staff/site.go:452"
+        "x-source": "bff/staff/site.go:472"
       }
     },
     "/treasury/gilts/buy": {
@@ -3500,7 +3565,7 @@
           "staff"
         ],
         "x-role-action": "buy_gilt",
-        "x-source": "bff/staff/site.go:457"
+        "x-source": "bff/staff/site.go:477"
       }
     },
     "/v1/health": {
