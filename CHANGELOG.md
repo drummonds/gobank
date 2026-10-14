@@ -2,6 +2,8 @@
 
 ## [Unreleased]
 
+## [0.50.0] - 2026-10-14
+
 ### Added
 - Research note `sizing.md`: data volume, placement and processing for
   300k, 1M and 10M retail customers, worked from the ledger's row shapes
