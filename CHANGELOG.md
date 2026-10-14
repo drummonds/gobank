@@ -6,6 +6,10 @@
 - Research note `sizing.md`: data volume, placement and processing for
   300k, 1M and 10M retail customers, worked from the ledger's row shapes
   and the Hetzner pass rates; linked from the docs site.
+- Roadmap: a Milestones epic at the end of the file, each milestone
+  with what sits before and after it; #151 (capacity of one synchronous
+  system over seven years, the 1M gate) and #152 (real money, separate
+  from game money) filed.
 
 ## [0.49.0] - 2026-10-14
 

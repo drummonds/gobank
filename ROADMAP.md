@@ -689,3 +689,71 @@ migrations.
 
 - #129 CockroachDB backend
 - #130 Multi-region deployment
+
+## Milestones
+
+A milestone is a measured claim about the whole system that cuts across
+the epics above: what it must do, the numbers that prove it, and what
+the answer decides. Each is an item here so the forge tracks it; the
+work that serves it lives in its own epic and cites it. Before a
+milestone sit the items it needs shipped; after it sits the work its
+answer opens, filed only once the answer is known. They are ordered:
+the first is as early as possible.
+
+**Before the first**: #74, whose loader and `bench:reads` are the
+instrument. #75, #76 and #77 may land first if the reads need them for
+the 2 s gate, but the milestone measures the design as it stands on the
+day, so nothing is held for it. **After it**: the answer is a number, N
+customers with seven years of data, and it decides the shape of growth.
+At 1M and above, one synchronous system is the unit and a bigger bank
+is more of them, a branch each: a customer belongs to one branch, a
+branch is one book with its own daily pass, and the bank is the sum of
+its branches' general ledgers; distributed scale becomes many branches
+on shared infrastructure rather than one asynchronous system. Below 1M,
+the asynchronous design (the pass as a stream of account work, reads
+decoupled from it, the write path no longer in step with the day) comes
+before any growth. Neither is on the roadmap until the number says
+which, and 100M is not a target at either answer.
+
+**Before the second**: #123 (the second definition module), #84 (the
+real rail) and a reconciliation of the real account against the ledger
+that is not yet an item. **After it**: the licence trajectory (#126)
+stops being a model and data lifetimes (#116) hold real records.
+
+- #151 Milestone 1: capacity of one synchronous system over seven
+  years — the largest book (customers and accounts) the design as it
+  stands carries with seven years of data held live, nothing archived
+  or deleted and no richer model than today's: the daily pass inside
+  6 h; a rate change published and every affected account accruing at
+  the new rate by the next pass, inside the same 6 h; customer search
+  by name and a customer's page each under 2 s at p95 at concurrency 4
+  on the seven-year database; and the number in `benchmark.md` with
+  which gate gives way first and the margin to it. The bar is 1M
+  customers: at or above it growth is by branches, below it the
+  asynchronous design comes first (the section above). The instrument
+  is #74's loader and `bench:reads`; `sizing.md` is the prediction to
+  check. Open: how to get a seven-year database without simulating
+  seven years day by day (bulk seed of movements and positions versus
+  the sim at its fastest — at 310 accounts/s, 300k accounts × 2,555
+  days is a month of wall clock); and whether a back-dated rate change,
+  which reprojects accruals, is inside the 6 h or only a forward-dated
+  one
+- #152 Milestone 2: real money, separate from game money — a second
+  bank (ADR-0007, #123) runs on its own deployment with no simulation
+  and no mock rail, and its reserve asset is a real account at Starling
+  (Barclays if Open Banking access proves reachable): the account's
+  balance over the bank API reconciles to the ledger's reserve balance
+  every day and a difference shows as a break on a staff page; one real
+  pound comes in (the operator funds the account and the ledger
+  recognises it from the statement) and one real pound goes out to an
+  external account over #84's rail; hard caps on balance, payment size
+  and payments per day hold the volume to a handful; and no table,
+  process or credential is shared with the game bank. The customers are
+  the operator's own household with the operator's own money: taking
+  anyone else's deposits is deposit-taking under FSMA s19 and out of
+  scope until the licence trajectory (#126) says otherwise. Out of
+  scope: cards, inbound from third parties, more than one real account.
+  Open: Starling sandbox then a live personal account versus a Starling
+  business account; whether reconciliation is its own item under
+  Finance and regulatory reporting or part of #84
+
