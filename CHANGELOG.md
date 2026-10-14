@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+## [0.49.0] - 2026-10-14
+
+ - About → API: static index in sections, a page per route linking its source; roadmap #141 and #142 filed
+
 ### Fixed
 - About → API no longer loses an opened route when the run's poll
   re-renders the page: the index is a static page whose rows link to a
@@ -14,6 +18,21 @@
 ### Roadmap
 - API detail pages carry a worked example per route (#141); per-route
   performance on the API detail page (#142).
+- #133 Full API documentation (OpenAPI) — the running system describes
+  its whole HTTP surface in one OpenAPI 3 document, served at
+  `/v1/openapi.json` and rendered into the docs site by `docs:build`
+  (Swagger UI or Redoc over the same file) in place of the hand-written
+  `docs/research/bff-api.html`: every `/v1/` route with the screen
+  schema its responses carry, the console and settings routes the
+  operator token reaches, `/about.json` and the health check, each with
+  its auth (session, bearer, none) and its errors. A test walks the
+  router and fails when a route is missing from the document or the
+  document names a route that is not served, so the two cannot drift.
+  Out of scope: client generation from the spec (the Flutter shell
+  interprets screens, not endpoints), the staff web's HTML pages. Open:
+  a hand-written spec checked against the router by the test
+  (recommended: no new machinery) versus one generated from the Go types
+  (swag or ogen)
 
 ## [0.48.0] - 2026-10-14
 
