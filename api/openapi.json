@@ -96,6 +96,14 @@
             "description": "\"start of day\", \"publication\", \"payment\", \"setting\", \"opening\"",
             "type": "string"
           },
+          "RaisedAt": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/time.Time"
+              }
+            ],
+            "description": "RaisedAt and DoneAt are wall time: in a simulation the bank's time\n(At) runs apart from the wall's, and the gap between them is how\nfast the bank works through its events."
+          },
           "Status": {
             "description": "\"pending\", \"done\"",
             "type": "string"
@@ -107,6 +115,7 @@
           "At",
           "Status",
           "By",
+          "RaisedAt",
           "DoneAt"
         ],
         "type": "object"

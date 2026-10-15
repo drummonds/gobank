@@ -4017,6 +4017,13 @@
           "Nullable": false
         },
         {
+          "Name": "RaisedAt",
+          "Type": "time.Time",
+          "Doc": "RaisedAt and DoneAt are wall time: in a simulation the bank's time\n(At) runs apart from the wall's, and the gap between them is how\nfast the bank works through its events.",
+          "Optional": false,
+          "Nullable": false
+        },
+        {
           "Name": "DoneAt",
           "Type": "time.Time",
           "Doc": "",

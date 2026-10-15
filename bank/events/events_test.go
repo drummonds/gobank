@@ -43,6 +43,13 @@ func TestARootIsDueFromItsInstantUntilDone(t *testing.T) {
 	if root.ID == "" || root.Kind != Publication || !root.At.Equal(noon) || root.Status != Pending || root.RaisedBy != "Bank of England" || root.ParentID != "" || root.RootID != root.ID || !root.DoneAt.IsZero() {
 		t.Errorf("raised %+v; want a pending root of its own at noon", root)
 	}
+	// The wall instant it was raised at is on the record and read back.
+	if !root.RaisedAt.Equal(noon.Add(time.Minute)) {
+		t.Errorf("raised at %s; want the wall's first tick", root.RaisedAt)
+	}
+	if got, _, _ := e.ByID(ctx, root.ID); !got.RaisedAt.Equal(root.RaisedAt) {
+		t.Errorf("ByID raised at %s; want %s", got.RaisedAt, root.RaisedAt)
+	}
 	if due, _ := e.Due(ctx, nil, noon.Add(-time.Second)); len(due) != 0 {
 		t.Errorf("due before its instant: %+v", due)
 	}

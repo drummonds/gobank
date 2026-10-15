@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"html"
 	"strings"
+	"time"
 
 	"git.bytestone.uk/hum3/gobank/core"
 )
@@ -18,7 +19,7 @@ func BuildEventsHTML(q core.EventQueries) string {
 	cascades, err := q.Cascades(context.Background())
 	var s strings.Builder
 	s.WriteString(`<h2 class="title is-4">Events</h2>`)
-	s.WriteString(`<p class="subtitle is-6 has-text-grey">What happened and what it caused: a root event is pending while the bank works through its cascade and done when the last effect is on record (ADR-0011).</p>`)
+	s.WriteString(`<p class="subtitle is-6 has-text-grey">What happened and what it caused: a root event is pending while the bank works through its cascade and done when the last effect is on record (ADR-0011). Bank time is the instant the work was due; wall time is when the bank raised it, and took is how long the cascade ran: in a simulation the two clocks run apart.</p>`)
 	if err != nil {
 		fmt.Fprintf(&s, `<div class="notification is-danger">%s</div>`, html.EscapeString(err.Error()))
 		return s.String()
@@ -27,13 +28,22 @@ func BuildEventsHTML(q core.EventQueries) string {
 		s.WriteString(`<p class="has-text-grey">Nothing has happened yet.</p>`)
 		return s.String()
 	}
-	s.WriteString(`<table class="table is-narrow is-fullwidth is-striped"><thead><tr><th>At (UTC)</th><th>Event</th><th>Raised by</th><th>Status</th><th class="has-text-right">Postings</th><th class="has-text-right">Settings</th><th class="has-text-right">Payments</th></tr></thead><tbody>`)
+	s.WriteString(`<table class="table is-narrow is-fullwidth is-striped"><thead><tr><th>Bank time (UTC)</th><th>Wall time (UTC)</th><th class="has-text-right">Took</th><th>Event</th><th>Raised by</th><th>Status</th><th class="has-text-right">Postings</th><th class="has-text-right">Settings</th><th class="has-text-right">Payments</th></tr></thead><tbody>`)
 	for _, c := range cascades {
-		fmt.Fprintf(&s, `<tr><td>%s</td><td>%s</td><td>%s</td><td>%s</td><td class="has-text-right">%d</td><td class="has-text-right">%d</td><td class="has-text-right">%d</td></tr>`,
-			FormatUTC(c.Event.At), html.EscapeString(c.Event.Kind), html.EscapeString(c.Event.By), eventStatusTag(c.Event), c.Postings, c.Settings, c.Payments)
+		fmt.Fprintf(&s, `<tr><td>%s</td><td>%s</td><td class="has-text-right">%s</td><td>%s</td><td>%s</td><td>%s</td><td class="has-text-right">%d</td><td class="has-text-right">%d</td><td class="has-text-right">%d</td></tr>`,
+			FormatUTC(c.Event.At), FormatUTC(c.Event.RaisedAt), eventTook(c.Event), html.EscapeString(c.Event.Kind), html.EscapeString(c.Event.By), eventStatusTag(c.Event), c.Postings, c.Settings, c.Payments)
 	}
 	s.WriteString(`</tbody></table>`)
 	return s.String()
+}
+
+// eventTook is how long a done event's cascade ran on the wall clock,
+// to the millisecond; blank while pending.
+func eventTook(e core.EventRecord) string {
+	if e.Status != "done" || e.DoneAt.IsZero() {
+		return ""
+	}
+	return e.DoneAt.Sub(e.RaisedAt).Round(time.Millisecond).String()
 }
 
 // eventStatusTag is an event's status as a tag: pending in warning, done

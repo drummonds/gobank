@@ -582,7 +582,7 @@ const CascadesShown = 50
 
 // eventRecord is an event as the core publishes it.
 func eventRecord(ev events.Event) core.EventRecord {
-	return core.EventRecord{ID: ev.ID, Kind: string(ev.Kind), At: ev.At, Status: string(ev.Status), By: ev.RaisedBy, DoneAt: ev.DoneAt}
+	return core.EventRecord{ID: ev.ID, Kind: string(ev.Kind), At: ev.At, Status: string(ev.Status), By: ev.RaisedBy, RaisedAt: ev.RaisedAt, DoneAt: ev.DoneAt}
 }
 
 // Markets implements core.MarketQueries: each market the bank knows, with

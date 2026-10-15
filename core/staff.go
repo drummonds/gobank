@@ -197,7 +197,11 @@ type EventRecord struct {
 	At     time.Time
 	Status string // "pending", "done"
 	By     string // who raised it: a user, a customer, a market's name, "clock"
-	DoneAt time.Time
+	// RaisedAt and DoneAt are wall time: in a simulation the bank's time
+	// (At) runs apart from the wall's, and the gap between them is how
+	// fast the bank works through its events.
+	RaisedAt time.Time
+	DoneAt   time.Time
 }
 
 // Cascade is a root event with what its cascade has written so far:

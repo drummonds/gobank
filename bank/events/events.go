@@ -45,11 +45,9 @@ type Event struct {
 	RootID   string    // the root of the cascade; a root's own ID
 	Status   Status
 	RaisedBy string    // who raised it: a user, a customer, a market's name, "clock"
+	RaisedAt time.Time // wall time the row was written, operational: orders what happened at one instant
 	DoneAt   time.Time // wall time, operational; zero while pending
 }
-
-// The record also keeps raised_at, the wall time a row was written:
-// operational, for ordering what happened at one instant.
 
 // Schema: the events table.
 var Schema = schema.Component{Name: "events", Migrations: []schema.Migration{
@@ -97,14 +95,15 @@ func (e *Events) q(q Querier) Querier {
 // transaction or the database, and returns it with its ID.
 func (e *Events) Raise(ctx context.Context, q Querier, kind Kind, at time.Time, by string) (Event, error) {
 	var id string
+	raised := e.now().UTC()
 	if err := e.q(q).QueryRowContext(ctx, `INSERT INTO events (kind, at, status, raised_by, raised_at) VALUES ($1, $2, $3, $4, $5) RETURNING id`,
-		string(kind), at.UTC(), string(Pending), by, e.now().UTC()).Scan(&id); err != nil {
+		string(kind), at.UTC(), string(Pending), by, raised).Scan(&id); err != nil {
 		return Event{}, fmt.Errorf("events: raise %s at %s: %w", kind, at.UTC().Format(time.RFC3339), err)
 	}
 	if _, err := e.q(q).ExecContext(ctx, `UPDATE events SET root_id = id WHERE id = $1`, id); err != nil {
 		return Event{}, fmt.Errorf("events: raise %s: root: %w", kind, err)
 	}
-	return Event{ID: id, Kind: kind, At: at.UTC(), RootID: id, Status: Pending, RaisedBy: by}, nil
+	return Event{ID: id, Kind: kind, At: at.UTC(), RootID: id, Status: Pending, RaisedBy: by, RaisedAt: raised}, nil
 }
 
 // RaiseOnce is the root of a kind at an instant: the one on record, done
@@ -177,7 +176,7 @@ func (e *Events) Recent(ctx context.Context, limit int) ([]Event, error) {
 	return scan(rows)
 }
 
-const columns = `id, kind, at, parent_id, root_id, status, raised_by, done_at`
+const columns = `id, kind, at, parent_id, root_id, status, raised_by, raised_at, done_at`
 
 func scan(rows *sql.Rows) ([]Event, error) {
 	defer rows.Close()
@@ -187,10 +186,10 @@ func scan(rows *sql.Rows) ([]Event, error) {
 		var kind, status string
 		var parent, root sql.NullString
 		var done sql.NullTime
-		if err := rows.Scan(&ev.ID, &kind, &ev.At, &parent, &root, &status, &ev.RaisedBy, &done); err != nil {
+		if err := rows.Scan(&ev.ID, &kind, &ev.At, &parent, &root, &status, &ev.RaisedBy, &ev.RaisedAt, &done); err != nil {
 			return nil, fmt.Errorf("events: scan: %w", err)
 		}
-		ev.Kind, ev.Status, ev.At = Kind(kind), Status(status), ev.At.UTC()
+		ev.Kind, ev.Status, ev.At, ev.RaisedAt = Kind(kind), Status(status), ev.At.UTC(), ev.RaisedAt.UTC()
 		ev.ParentID, ev.RootID = parent.String, root.String
 		if done.Valid {
 			ev.DoneAt = done.Time.UTC()

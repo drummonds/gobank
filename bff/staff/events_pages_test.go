@@ -27,9 +27,14 @@ func TestBuildEventsHTML(t *testing.T) {
 	noon := time.Date(2020, 3, 19, 12, 0, 0, 0, time.UTC)
 	page := BuildEventsHTML(cascades{
 		{Event: core.EventRecord{ID: "e2", Kind: "publication", At: noon, Status: "pending", By: "Bank of England"}, Settings: 1},
-		{Event: core.EventRecord{ID: "e1", Kind: "start of day", At: noon.Add(-12 * time.Hour), Status: "done", By: "clock", DoneAt: noon.Add(time.Hour)}, Postings: 12},
+		{Event: core.EventRecord{ID: "e1", Kind: "start of day", At: noon.Add(-12 * time.Hour), Status: "done", By: "clock", RaisedAt: noon.Add(time.Hour), DoneAt: noon.Add(time.Hour + 1500*time.Millisecond)}, Postings: 12},
 	})
-	for _, want := range []string{"publication", "Bank of England", `is-warning">pending`, "start of day", "clock", `>done<`, "<td class=\"has-text-right\">12</td>"} {
+	// Each root shows its instant in the bank's time and the wall time it
+	// was raised at, and a done root how long its cascade took: in a
+	// simulation the two clocks run apart, so this is how fast the bank
+	// works through its events.
+	for _, want := range []string{"publication", "Bank of England", `is-warning">pending`, "start of day", "clock", `>done<`, "<td class=\"has-text-right\">12</td>",
+		"<th>Bank time", "<th>Wall time", "2020-03-19 00:00:00Z", "2020-03-19 13:00:00Z", "1.5s"} {
 		if !strings.Contains(page, want) {
 			t.Errorf("page missing %q:\n%s", want, page)
 		}

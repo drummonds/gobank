@@ -2,6 +2,13 @@
 
 ## [Unreleased]
 
+### Added
+- The events page shows each root in bank time and in wall time (when
+  the bank raised it) and how long its cascade took: in a simulation the
+  two clocks run apart, so the gap is how fast the bank works through
+  its events. Behind it `RaisedAt`, already on the record, is read back
+  on the event and published on the core's `EventRecord`.
+
 ## [0.53.0] - 2026-10-15
 
 ### Added
