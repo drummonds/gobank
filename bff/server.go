@@ -25,6 +25,7 @@ import (
 	"time"
 
 	"git.bytestone.uk/hum3/gobank/api"
+	"git.bytestone.uk/hum3/gobank/internal/routestats"
 	"git.bytestone.uk/hum3/gobank/internal/servemux"
 	"git.bytestone.uk/hum3/gobank/screen"
 )
@@ -62,6 +63,10 @@ type Config struct {
 
 	Logger *slog.Logger
 	Now    func() time.Time
+
+	// Stats counts and times every /v1/ route served, for the staff web's
+	// API pages and about.json to show; nil keeps no figures.
+	Stats *routestats.Stats
 }
 
 // Server is the BFF HTTP handler.
@@ -112,6 +117,9 @@ func NewServer(cfg Config) *Server {
 		sessions: sessions,
 		limiter:  NewFailureLimiter(cfg.MaxLoginFailures, cfg.LoginWindow, cfg.Now),
 		log:      cfg.Logger,
+	}
+	if cfg.Stats != nil {
+		s.mux.Observe = cfg.Stats.Observe
 	}
 	s.mux.HandleFunc("GET /v1/health", s.health)
 	s.mux.HandleFunc("GET /v1/openapi.json", s.openapi)

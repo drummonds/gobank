@@ -43,6 +43,13 @@ type Options struct {
 	// SourceRef is the ref the source links point at in the module's
 	// forge, as "tag/v0.43.0" or "branch/main"; "" makes no links.
 	SourceRef string
+	// Perf is what the running process has measured of a route, false
+	// for one it has not served; nil shows no performance at all (a
+	// static rendering).
+	Perf func(Route) (Perf, bool)
+	// Measured is the last full scan gobank-deploy made (api/measured.json);
+	// nil shows none.
+	Measured *Measured
 }
 
 // Key names a route for a URL: its method, or "any", then its path, as
@@ -129,6 +136,8 @@ type pageView struct {
 
 type iview struct {
 	Packages []packageView
+	Perf     bool // the requests and p95 columns are shown
+	Measured int  // the top rung of the scan's ladder; 0 shows no measured column
 }
 
 type packageView struct {
@@ -160,6 +169,8 @@ type rview struct {
 	IndexURL  string
 	SourceURL string // the registration in the forge, "" when unlinked
 	Anchor    string
+	Perf      *perfView     // nil when the pages show no performance
+	Measured  *measuredView // nil when the pages show no scan
 }
 
 type respView struct {
@@ -173,7 +184,7 @@ type respView struct {
 var pathParamNames = regexp.MustCompile(`\{([^}]+)\}`)
 
 func indexView(s Surface, o Options) iview {
-	v := iview{}
+	v := iview{Perf: o.Perf != nil, Measured: o.Measured.Top()}
 	gates := map[string]Gate{}
 	for _, g := range s.Gates {
 		gates[g.Package] = g
@@ -251,6 +262,11 @@ func routeView(s Surface, r Route, o Options) rview {
 			v.SourceURL = fmt.Sprintf("https://%s/src/%s/%s#L%s", s.Module, o.SourceRef, file, line)
 		}
 	}
+	if o.Perf != nil {
+		p, _ := o.Perf(r)
+		v.Perf = viewPerf(p)
+	}
+	v.Measured = viewMeasured(o.Measured, r)
 	if rest := strings.TrimSpace(strings.TrimPrefix(strings.ReplaceAll(strings.ReplaceAll(r.Doc, "\n\n", "\x00"), "\n", " "), strings.ReplaceAll(v.Summary, "\n", " "))); rest != "" {
 		v.Rest = strings.ReplaceAll(strings.TrimLeft(rest, ". "), "\x00", "\n\n")
 	}
@@ -358,7 +374,7 @@ const intro = `
 `
 
 const indexBody = `
-{{range .Packages}}
+{{$perf := .Perf}}{{$measured := .Measured}}{{range .Packages}}
 <div class="box">
 <h3 class="title is-5"><code>{{.Package.Path}}</code></h3>
 {{if .Package.Doc}}<div class="content is-small">{{prose .Package.Doc}}</div>{{end}}
@@ -366,10 +382,10 @@ const indexBody = `
 {{range .Sections}}
 {{if .Title}}<h4 class="title is-6 mt-4 mb-1">{{.Title}}</h4>{{if .Doc}}<p class="is-size-7 has-text-grey mb-2">{{.Doc}}</p>{{end}}{{end}}
 <table class="table is-fullwidth is-narrow is-hoverable">
-<thead><tr><th style="width:7em">Method</th><th style="width:22em">Path</th><th>Route</th></tr></thead>
+<thead><tr><th style="width:7em">Method</th><th style="width:22em">Path</th><th>Route</th>{{if $perf}}<th style="width:6em">Requests</th><th style="width:5em">p95</th>{{end}}{{if $measured}}<th style="width:11em">Measured at {{$measured}}</th>{{end}}</tr></thead>
 <tbody>
 {{range .Routes}}
-<tr><td><code>{{join .Methods " "}}</code></td><td><a href="{{.URL}}"><code>{{.Path}}</code></a></td><td>{{.Summary}}{{if .Action}} <span class="tag is-light is-warning is-small">{{.Action}}</span>{{end}}{{if .Unknowns}} <span class="tag is-light is-danger is-small">unknown</span>{{end}}</td></tr>
+<tr><td><code>{{join .Methods " "}}</code></td><td><a href="{{.URL}}"><code>{{.Path}}</code></a></td><td>{{.Summary}}{{if .Action}} <span class="tag is-light is-warning is-small">{{.Action}}</span>{{end}}{{if .Unknowns}} <span class="tag is-light is-danger is-small">unknown</span>{{end}}</td>{{if .Perf}}{{if .Perf.Count}}<td>{{.Perf.Count}}</td><td>{{.Perf.P95}}</td>{{else}}<td class="has-text-grey">0</td><td></td>{{end}}{{end}}{{if .Measured}}{{if .Measured.Top}}<td>{{.Measured.Top}}</td>{{else}}<td class="has-text-grey">not scanned</td>{{end}}{{end}}</tr>
 {{end}}
 </tbody></table>
 {{end}}
@@ -397,6 +413,16 @@ const detailBody = `
 <tr><th>Source</th><td>{{if .SourceURL}}<a href="{{.SourceURL}}"><code>{{.Pos}}</code></a>{{else}}<code>{{.Pos}}</code>{{end}}{{if .Handler}} <code>{{.Handler}}</code>{{end}}{{range .Wrappers}} in <code>{{.}}</code>{{end}}{{if .Via}} via <code>{{.Via}}</code>{{end}}{{if .Registrar}}, registered in <code>{{.Registrar}}</code>{{end}}</td></tr>
 {{if .Unknowns}}<tr><th>Unknown</th><td>{{join .Unknowns "; "}}</td></tr>{{end}}
 </table>
+{{if .Perf}}<h3 class="title is-6 mt-4 mb-1">Performance</h3>
+{{if .Perf.Count}}<p>{{.Perf.Count}} requests since the process started: p50 {{.Perf.P50}}, p95 {{.Perf.P95}}, max {{.Perf.Max}}; {{.Perf.PeakInFlight}} in flight at the peak; {{.Perf.PerSecond}} a second over the last minute.</p>
+<p>At the peak in flight and the p95 this route completes about {{.Perf.Capacity}} requests a second: with a client acting once every {{.Perf.ThinkSeconds}} seconds, about {{.Perf.Clients}} clients. The peak is what it has been asked for, not a limit: load it harder to find one.</p>
+{{else}}<p class="has-text-grey">This route has not been served since the process started.</p>{{end}}{{end}}
+{{if .Measured}}<h3 class="title is-6 mt-4 mb-1">Measured</h3>
+{{if .Measured.Rungs}}<p>Scanned from outside on {{.Measured.Date}} against {{.Measured.Version}} on {{.Measured.Environment}} ({{.Measured.Server}}, {{.Measured.MemoryGB}} GB) with {{.Measured.Customers}} customers, {{.Measured.Samples}} calls a rung.</p>
+<table class="table is-narrow is-size-7"><thead><tr><th>In flight</th><th>n</th><th>p50</th><th>p95</th><th>per second</th></tr></thead><tbody>
+{{range .Measured.Rungs}}<tr><td>{{.Concurrency}}</td><td>{{.N}}</td><td>{{.P50}}</td><td>{{.P95}}</td><td>{{.PerSecond}}</td></tr>
+{{end}}</tbody></table>
+{{else}}<p class="has-text-grey">This route was not scanned on {{.Measured.Date}}{{if .Measured.Why}}: {{.Measured.Why}}{{end}}.</p>{{end}}{{end}}
 </div>
 </div>
 `

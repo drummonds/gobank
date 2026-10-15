@@ -8,6 +8,7 @@ import (
 
 	"git.bytestone.uk/hum3/gobank/bff"
 	"git.bytestone.uk/hum3/gobank/bff/staff"
+	"git.bytestone.uk/hum3/gobank/internal/routestats"
 )
 
 // newHandler is the demo as one http.Handler over its state: the BFF
@@ -21,7 +22,10 @@ import (
 // sessions component), so an upgrade keeps staff signed in.
 func newHandler(state *DemoState, version, scope string) http.Handler {
 	staffSessions := bff.NewSQLSessions(bff.StaffSessionsTable, state.DB, 8*time.Hour, 15*time.Minute, nil)
-	site := staff.New(siteConfig(state, version, scope, staffSessions))
+	// One set of route figures for the staff web and the customer BFF, so
+	// the API pages and about.json cover every route the process serves.
+	stats := routestats.New()
+	site := staff.New(siteConfig(state, version, scope, staffSessions, stats))
 	if adminPassword() == "" {
 		log.Printf("staff web mounted with GOBANK_ADMIN_PASSWORD unset: staff login is off")
 	}
@@ -35,7 +39,7 @@ func newHandler(state *DemoState, version, scope string) http.Handler {
 	// tab) and so is the session's keeping (a cookie on a server, the
 	// tab's jar in the tab).
 	password := appPassword()
-	server := newAppBFF(state.Bank, newAppLogin(state.Bank, password), state.DB, scope, loginNote(), site, slog.Default())
+	server := newAppBFF(state.Bank, newAppLogin(state.Bank, password), state.DB, scope, loginNote(), site, slog.Default(), stats)
 	go func() {
 		for range time.Tick(time.Minute) {
 			server.Sessions().Sweep()
@@ -53,11 +57,11 @@ func newHandler(state *DemoState, version, scope string) http.Handler {
 // console, and the component registry its documentation page renders.
 // sessions is where the signed-in staff are kept; nil keeps them in the
 // process.
-func siteConfig(state *DemoState, version, scope string, sessions bff.Sessions) staff.Config {
+func siteConfig(state *DemoState, version, scope string, sessions bff.Sessions, stats *routestats.Stats) staff.Config {
 	return staff.Config{
 		Bank: state.Bank, Commands: state.Bank, Users: state.Bank, Console: state,
 		Sessions: sessions, LoginNote: staffLoginNote(), APIToken: apiToken(),
-		Scope: scope, Version: version,
+		Scope: scope, Version: version, Stats: stats,
 		Components: components, Debt: contractDebt,
 	}
 }

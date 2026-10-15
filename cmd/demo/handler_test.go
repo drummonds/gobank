@@ -18,7 +18,7 @@ import (
 // the scope.
 
 // newSite is the staff web over a demo, for the pages tested on their own.
-func newSite(ds *DemoState) *staff.Site { return staff.New(siteConfig(ds, "test", "/", nil)) }
+func newSite(ds *DemoState) *staff.Site { return staff.New(siteConfig(ds, "test", "/", nil, nil)) }
 
 // testAdminPassword is the first admin's password the handler tests run
 // with; staffLogin signs in with it and returns the session cookie.
