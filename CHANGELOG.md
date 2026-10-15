@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+### Changed
+
+- Taskfile `run: once`: `task check` runs diagrams, docs:build and the tinygo build once each instead of three, two and two times (#161)
+
 ## [0.54.0] - 2026-10-15
 
  - Events page: wall time and cascade duration beside bank time (#159)

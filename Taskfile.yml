@@ -1,5 +1,9 @@
 version: '3'
 
+# Each task runs once per invocation: check lists docs:build and diagrams
+# both directly and as deps (#161).
+run: once
+
 tasks:
   default:
     desc: List available tasks
