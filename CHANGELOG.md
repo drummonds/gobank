@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+## [0.54.0] - 2026-10-15
+
+ - Events page: wall time and cascade duration beside bank time (#159)
+
 ### Added
 - The events page shows each root in bank time and in wall time (when
   the bank raised it) and how long its cascade took: in a simulation the
