@@ -2,6 +2,8 @@
 
 ## [Unreleased]
 
+## [0.53.0] - 2026-10-15
+
 ### Added
 - Customer search by name on the staff web (#154, roadmap #151): a
   search box on the Customers page for an admin with personal data
