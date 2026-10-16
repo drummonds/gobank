@@ -2,6 +2,8 @@
 
 ## [Unreleased]
 
+## [0.55.0] - 2026-10-16
+
 ### Changed
 
 - Taskfile `run: once`: `task check` runs diagrams, docs:build and the tinygo build once each instead of three, two and two times (#161)
