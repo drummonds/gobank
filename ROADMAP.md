@@ -423,6 +423,20 @@ views read the same ledger.
   Open: which KRIs the simulation can already support versus which need
   new metrics (e.g. liquidity coverage needs a treasury cash view)
 - #100 SCV regulatory report at scale (100K+ customers)
+- #162 Interest rate risk and hedge accounting (long term) — the
+  bank measures its interest-rate risk in the banking book and hedges
+  it with swaps and options, and accounts for the hedges so they do not
+  put unwanted volatility into earnings: hedge relationships identified
+  and documented at designation, prospective effectiveness tests and
+  simulations of the hedges' effect on future earnings, retrospective
+  tests each period stored as records, mark-to-market of the hedging
+  instruments, and the ledger entries (hedge reserve, ineffectiveness to
+  P&L) through go-luca, the periodic runs as gobank-workflow
+  definitions. Supplies #99's IRRBB KRIs; builds on #96 and #98. Open:
+  IFRS 9 hedge accounting or IAS 39, which survives for the portfolio
+  fair-value hedge of interest-rate risk that fits a retail book;
+  options in the first cut or swaps only; where the simulated dealer's
+  curve comes from
 
 ## Performance and observability
 
