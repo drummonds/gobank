@@ -2,6 +2,31 @@
 
 ## [Unreleased]
 
+### Roadmap
+- #66 UUID columns across the family (go-luca #10) — every
+  column that holds a GUID is typed `UUID`, not `TEXT` or `VARCHAR(36)`:
+  16 bytes instead of 36 in every row and index (the movements indexes
+  at 44M rows a year are the cost that matters), and the database
+  rejects a non-UUID. Walk the dependency tree bottom up
+  (`docs/research/gobank-family.d2`), one release per repo, pins bumped
+  up the tree, one gobank release drilled on preprod: go-postgres
+  (verify pglike translates `ALTER COLUMN … TYPE uuid USING …::uuid` and
+  that UUID text compares case-insensitively as Postgres does;
+  `UUID`→`TEXT` and `gen_random_uuid()` already exist); go-luca (`id`,
+  `batch_id`, `*_account_id`, `customer_id`, `commodity_id` on every
+  table, with FKs retyped together); gobank
+  (`customer_accounts.ledger_account_id`, and sessions once they carry a
+  ledger id). gobank-products stores nothing; gotreesitter, lofigui and
+  gogal have no database. Out of scope: columns that hold a human
+  reference (`customer_id` and payment `from_id`/`to_id` as
+  `cust-000123`, `PAY-000042`): they become UUID identity plus a
+  reference column in ADR-0004's identity story, which this is the first
+  half of. Open: the Postgres retype rewrites each table under a lock
+  (minutes at the Hetzner scale; ADR-0003's accepted downtime) versus
+  expand-and-contract with a new column, which pglike handles but
+  doubles the migration; and whether gobanks-customers' `cust_*` ids are
+  references or GUIDs today (checked in the go-postgres step)
+
 ## [0.55.0] - 2026-10-16
 
 ### Changed
