@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+## [0.56.0] - 2026-10-16
+
+ - about.json reports the database's tables and their size
+
 ### Roadmap
 - #66 UUID columns across the family (go-luca #10) — every
   column that holds a GUID is typed `UUID`, not `TEXT` or `VARCHAR(36)`:
