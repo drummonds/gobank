@@ -148,7 +148,9 @@ type Runtime struct {
 	Env            string // "HTTP Server" or "WebAssembly (WASM)"
 	DBBackend      string // human-readable data store description
 	DBStats        sql.DBStats
-	DBConfig       [][2]string // label/value rows describing the live database, PostgreSQL only
+	DBConfig       [][2]string  // label/value rows describing the live database, PostgreSQL only
+	Tables         []AboutTable // every table's size, biggest first, PostgreSQL only
+	DatabaseBytes  int64        // the database's size on disk, PostgreSQL only
 	Schema         []SchemaVersion
 	MemoryLimit    uint64 // the auto-stop threshold
 	MemoryExceeded bool

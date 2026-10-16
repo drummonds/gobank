@@ -27,6 +27,10 @@
   doubles the migration; and whether gobanks-customers' `cust_*` ids are
   references or GUIDs today (checked in the go-postgres step)
 
+### Added
+
+- about.json `tables` and `database_bytes` on PostgreSQL: every table biggest first with its size on disk (indexes and TOAST included) and estimated rows, and the database's whole size, for a performance run to budget the data; omitted on pglike (#164)
+
 ## [0.55.0] - 2026-10-16
 
 ### Changed

@@ -7,6 +7,8 @@ import (
 	"net/url"
 	"strings"
 
+	"git.bytestone.uk/hum3/gobank/bff/staff"
+
 	_ "git.bytestone.uk/hum3/go-postgres"
 	_ "github.com/jackc/pgx/v5/stdlib"
 )
@@ -68,6 +70,33 @@ func (ds *DemoState) dbConfigRows() [][2]string {
 		rows = append(rows, [2]string{"Server connections", fmt.Sprintf("%d", n)})
 	}
 	return rows
+}
+
+// tableSizes is every public table's size on disk with its indexes and
+// TOAST, biggest first, with its estimated rows, and the database's size.
+// PostgreSQL only — none on pglike. Call without ds.mu held.
+func (ds *DemoState) tableSizes() ([]staff.AboutTable, int64) {
+	if !ds.dbIsPostgres || ds.db == nil {
+		return nil, 0
+	}
+	rows, err := ds.db.Query(`SELECT c.relname, GREATEST(c.reltuples, 0)::bigint, pg_total_relation_size(c.oid)
+		FROM pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace
+		WHERE n.nspname = 'public' AND c.relkind IN ('r', 'p')
+		ORDER BY 3 DESC, 1`)
+	if err != nil {
+		return nil, 0
+	}
+	defer rows.Close()
+	var tables []staff.AboutTable
+	for rows.Next() {
+		var t staff.AboutTable
+		if rows.Scan(&t.Name, &t.Rows, &t.Bytes) == nil {
+			tables = append(tables, t)
+		}
+	}
+	var total int64
+	ds.db.QueryRow(`SELECT pg_database_size(current_database())`).Scan(&total)
+	return tables, total
 }
 
 // initDB opens a fresh in-memory pglike database.

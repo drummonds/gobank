@@ -96,5 +96,6 @@ func (ds *DemoState) Runtime() staff.Runtime {
 	if db != nil {
 		rt.DBStats = db.Stats()
 	}
+	rt.Tables, rt.DatabaseBytes = ds.tableSizes()
 	return rt
 }

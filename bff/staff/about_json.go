@@ -21,6 +21,19 @@ type AboutStatus struct {
 	Position AboutPosition   `json:"position"`
 	Restarts []AboutRestart  `json:"restarts"`
 	Routes   []AboutRoute    `json:"routes,omitempty"` // what the process has measured of each route it served
+	// The data's size on PostgreSQL: every table biggest first, and the
+	// whole database. None on pglike.
+	Tables        []AboutTable `json:"tables,omitempty"`
+	DatabaseBytes int64        `json:"database_bytes,omitempty"`
+}
+
+// AboutTable is one table's share of the database: its size on disk with
+// indexes and TOAST, and its rows as PostgreSQL estimates them (as of the
+// last ANALYZE; a count would scan the biggest tables).
+type AboutTable struct {
+	Name  string `json:"name"`
+	Rows  int64  `json:"rows"`
+	Bytes int64  `json:"bytes"`
 }
 
 // AboutRoute is one route's figures since the process started, as
@@ -127,6 +140,7 @@ func AboutStatusOf(q core.BookQueries, c Console, version string) AboutStatus {
 		Settings: AboutSettings{DayLength: settings.DayLength.String(), MaxCustomers: settings.MaxCustomers},
 		Sim:      aboutSim(sim, rt.Progress),
 		Position: AboutPosition{Day: pos.Day.Format("2006-01-02"), DayCount: pos.DayCount, Customers: pos.Customers, Savings: FormatMoney(pos.Savings), Lending: FormatMoney(pos.Lending)},
+		Tables:   rt.Tables, DatabaseBytes: rt.DatabaseBytes,
 	}
 	restarts := c.Restarts(10)
 	for i, r := range restarts {

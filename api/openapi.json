@@ -728,6 +728,9 @@
       "staff.AboutStatus": {
         "description": "AboutStatus is the demo's state as another program reads it, at\n/about.json: the version and schema this process runs, the console\nsettings, the run's position and the restart record. gobank-deploy's\nupgrade drill reads it before and after each redeploy to compare the\nposition and read the downtime off the newest restart row.",
         "properties": {
+          "database_bytes": {
+            "type": "integer"
+          },
           "position": {
             "$ref": "#/components/schemas/staff.AboutPosition"
           },
@@ -756,6 +759,13 @@
           "sim": {
             "$ref": "#/components/schemas/staff.AboutSim"
           },
+          "tables": {
+            "description": "The data's size on PostgreSQL: every table biggest first, and the\nwhole database. None on pglike.",
+            "items": {
+              "$ref": "#/components/schemas/staff.AboutTable"
+            },
+            "type": "array"
+          },
           "version": {
             "type": "string"
           }
@@ -767,6 +777,26 @@
           "sim",
           "position",
           "restarts"
+        ],
+        "type": "object"
+      },
+      "staff.AboutTable": {
+        "description": "AboutTable is one table's share of the database: its size on disk with\nindexes and TOAST, and its rows as PostgreSQL estimates them (as of the\nlast ANALYZE; a count would scan the biggest tables).",
+        "properties": {
+          "bytes": {
+            "type": "integer"
+          },
+          "name": {
+            "type": "string"
+          },
+          "rows": {
+            "type": "integer"
+          }
+        },
+        "required": [
+          "name",
+          "rows",
+          "bytes"
         ],
         "type": "object"
       },

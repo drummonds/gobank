@@ -3859,6 +3859,16 @@
       "Format": ""
     },
     {
+      "Name": "[]staff.AboutTable",
+      "Package": "",
+      "Kind": "array",
+      "Doc": "",
+      "Fields": null,
+      "Elem": "staff.AboutTable",
+      "Enum": null,
+      "Format": ""
+    },
+    {
       "Name": "[]staff.SchemaVersion",
       "Package": "",
       "Kind": "array",
@@ -4982,6 +4992,52 @@
           "Type": "[]staff.AboutRoute",
           "Doc": "what the process has measured of each route it served",
           "Optional": true,
+          "Nullable": false
+        },
+        {
+          "Name": "tables",
+          "Type": "[]staff.AboutTable",
+          "Doc": "The data's size on PostgreSQL: every table biggest first, and the\nwhole database. None on pglike.",
+          "Optional": true,
+          "Nullable": false
+        },
+        {
+          "Name": "database_bytes",
+          "Type": "integer",
+          "Doc": "",
+          "Optional": true,
+          "Nullable": false
+        }
+      ],
+      "Elem": "",
+      "Enum": null,
+      "Format": ""
+    },
+    {
+      "Name": "staff.AboutTable",
+      "Package": "git.bytestone.uk/hum3/gobank/bff/staff",
+      "Kind": "object",
+      "Doc": "AboutTable is one table's share of the database: its size on disk with\nindexes and TOAST, and its rows as PostgreSQL estimates them (as of the\nlast ANALYZE; a count would scan the biggest tables).",
+      "Fields": [
+        {
+          "Name": "name",
+          "Type": "string",
+          "Doc": "",
+          "Optional": false,
+          "Nullable": false
+        },
+        {
+          "Name": "rows",
+          "Type": "integer",
+          "Doc": "",
+          "Optional": false,
+          "Nullable": false
+        },
+        {
+          "Name": "bytes",
+          "Type": "integer",
+          "Doc": "",
+          "Optional": false,
           "Nullable": false
         }
       ],
