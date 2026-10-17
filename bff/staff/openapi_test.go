@@ -39,8 +39,8 @@ func TestAPIPages(t *testing.T) {
 	if rec.Code != 200 || !strings.Contains(body, `href="about/api/get/v1/health"`) || !strings.Contains(body, `href="about/api/any/settings"`) {
 		t.Errorf("GET /about/api: %d, index lacks the detail links", rec.Code)
 	}
-	if !strings.Contains(body, "The simulation console") {
-		t.Errorf("index lacks the console section")
+	if !strings.Contains(body, `<h4 class="title is-6 mt-4 mb-1">Simulation</h4>`) {
+		t.Errorf("index lacks the Simulation cluster")
 	}
 	if strings.Contains(body, "hx-trigger=\"every") && strings.Contains(body, `hx-get="about/api"`) {
 		t.Errorf("the index polls itself")

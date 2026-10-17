@@ -36,55 +36,47 @@ import (
 //go:embed all:wasm
 var wasmFiles embed.FS
 
-// movementRoutes serves the movement page, its goluca text and JSON, and
-// the WASM assets.
-func (s *Site) movementRoutes() {
-	bank := s.cfg.Bank
-	// One movement of the ledger (ADR-0008): its page; with the suffix
-	// .goluca its plain-text-accounting text, with .json the movement itself.
-	s.mux.HandleFunc("/movements/{id}", func(w http.ResponseWriter, r *http.Request) {
-		id := r.PathValue("id")
-		format := ""
-		for _, suffix := range []string{".goluca", ".json"} {
-			if before, ok := strings.CutSuffix(id, suffix); ok {
-				id, format = before, suffix
-			}
+// movement serves one movement of the ledger (ADR-0008): its page; with
+// the suffix .goluca its plain-text-accounting text, with .json the
+// movement itself.
+func (s *Site) movement(w http.ResponseWriter, r *http.Request) {
+	id := r.PathValue("id")
+	format := ""
+	for _, suffix := range []string{".goluca", ".json"} {
+		if before, ok := strings.CutSuffix(id, suffix); ok {
+			id, format = before, suffix
 		}
-		m, err := bank.Movement(r.Context(), id)
-		if errors.Is(err, core.ErrNotFound) {
-			http.NotFound(w, r)
+	}
+	m, err := s.cfg.Bank.Movement(r.Context(), id)
+	if errors.Is(err, core.ErrNotFound) {
+		http.NotFound(w, r)
+		return
+	}
+	if err != nil {
+		log.Printf("movement %s: %v", id, err)
+		http.Error(w, "Internal error", http.StatusInternalServerError)
+		return
+	}
+	switch format {
+	case ".goluca":
+		w.Header().Set("Content-Type", "text/plain; charset=utf-8")
+		_, _ = fmt.Fprint(w, MovementGoluca(m))
+	case ".json":
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(m)
+	default:
+		// Quiescent once loaded: a movement does not change, so the
+		// page never re-polls.
+		if r.Method != "GET" {
+			http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 			return
 		}
-		if err != nil {
-			log.Printf("movement %s: %v", id, err)
-			http.Error(w, "Internal error", http.StatusInternalServerError)
+		content := BuildMovementHTML(m, s.view(r), s.wasmServed())
+		if s.fragment(w, r, content) {
 			return
 		}
-		switch format {
-		case ".goluca":
-			w.Header().Set("Content-Type", "text/plain; charset=utf-8")
-			_, _ = fmt.Fprint(w, MovementGoluca(m))
-		case ".json":
-			w.Header().Set("Content-Type", "application/json")
-			_ = json.NewEncoder(w).Encode(m)
-		default:
-			// Quiescent once loaded: a movement does not change, so the
-			// page never re-polls.
-			if r.Method != "GET" {
-				http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
-				return
-			}
-			content := BuildMovementHTML(m, s.view(r), s.wasmServed())
-			if s.fragment(w, r, content) {
-				return
-			}
-			s.staticPage(w, r, content)
-		}
-	})
-	sub, _ := fs.Sub(wasmFiles, "wasm")
-	// pta2svg's browser renderer and its loader, embedded (ADR-0008), so the
-	// movement page draws in the tab.
-	s.mux.Handle("/wasm/", http.StripPrefix("/wasm/", http.FileServer(http.FS(sub))))
+		s.staticPage(w, r, content)
+	}
 }
 
 // wasmServed says whether pta2svg's browser build is embedded.

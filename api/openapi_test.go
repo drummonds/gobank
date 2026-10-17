@@ -44,7 +44,7 @@ func TestHTMLPage(t *testing.T) {
 		"cookie staff_session", "bearer token", "nothing: open",
 		"<code>sim_controls</code>", `id="route-any-settings"`, `href="#route-get-v1-health"`,
 		"https://git.bytestone.uk/hum3/gobank/src/branch/main/bff/server.go#L",
-		"The simulation console",
+		`<h4 class="title is-6 mt-4 mb-1">Simulation</h4>`,
 	} {
 		if !strings.Contains(page, want) {
 			t.Errorf("page lacks %q", want)

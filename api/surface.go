@@ -1,5 +1,7 @@
 package api
 
+import "strings"
+
 // The surface as the walker reads it off the code (package api/walk):
 // every route each package registers, with where and how it was
 // registered and what the handler is. The OpenAPI document is rendered
@@ -10,16 +12,49 @@ package api
 type Surface struct {
 	Module     string      // the module walked, as "git.bytestone.uk/hum3/gobank": where the source is
 	Packages   []Package   // the packages walked, with their doc comments
-	Registrars []Registrar // the functions routes are registered in: the sections of a package
+	Registrars []Registrar // the functions routes are registered in: the clusters of a package
 	Routes     []Route
 	Gates      []Gate
 	Types      []Schema // every type the routes' bodies are made of, by name
 }
 
 // Registrar is a function that registers routes, with its doc comment:
-// a package's routes fall into sections by it.
+// a package's routes fall into clusters by it.
 type Registrar struct {
 	Package, Name, Doc string
+}
+
+// Cluster is the subject the registrar's doc names, what it mounts up to
+// the colon or full stop ("Mounts Simulation: …" is Simulation), and the
+// rest as the cluster's note; the registrar's name when it has no doc.
+func (reg Registrar) Cluster() (title, note string) {
+	d := strings.Join(strings.Fields(reg.Doc), " ")
+	if d == "" {
+		return reg.Name, ""
+	}
+	for _, verb := range []string{"mounts ", "serves ", "builds ", "registers "} {
+		if len(d) > len(verb) && strings.EqualFold(d[:len(verb)], verb) {
+			d = d[len(verb):]
+			break
+		}
+	}
+	title = d
+	if i := strings.IndexAny(d, ":."); i > 0 {
+		title, note = d[:i], strings.TrimSpace(strings.TrimLeft(d[i+1:], ":. "))
+	}
+	return strings.ToUpper(title[:1]) + title[1:], note
+}
+
+// Cluster is the cluster r is registered in; "" for a route registered
+// outside any declared function.
+func (s Surface) Cluster(r Route) string {
+	for _, reg := range s.Registrars {
+		if reg.Package == r.Package && reg.Name == r.Registrar {
+			title, _ := reg.Cluster()
+			return title
+		}
+	}
+	return ""
 }
 
 // Package is one package walked: a server, described by its own doc.
@@ -42,7 +77,7 @@ type Route struct {
 	Wrappers []string
 
 	// Registrar is the function the registration is in, as
-	// "(*Site).consoleRoutes": the section the route belongs to.
+	// "(*Site).simulationRoutes": the cluster the route belongs to.
 	Registrar string
 
 	// Via is the helper the route was registered through when it was not

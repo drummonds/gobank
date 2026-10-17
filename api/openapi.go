@@ -30,11 +30,14 @@ func OpenAPI(s Surface) ([]byte, error) {
 	for _, g := range s.Gates {
 		gates[g.Package] = g
 	}
-	var tags []any
 	pkgName := map[string]string{}
 	for _, p := range s.Packages {
 		pkgName[p.Path] = p.Name
-		tags = append(tags, map[string]any{"name": p.Name, "description": p.Doc})
+	}
+	var tags []any
+	for _, reg := range s.Registrars {
+		title, note := reg.Cluster()
+		tags = append(tags, map[string]any{"name": title, "description": note, "x-package": pkgName[reg.Package]})
 	}
 	d["tags"] = tags
 
@@ -46,7 +49,7 @@ func OpenAPI(s Surface) ([]byte, error) {
 			item = map[string]any{}
 			paths[r.Path] = item
 		}
-		op := operation(r, pkgName[r.Package], gates[r.Package], schemes)
+		op := operation(r, s.Cluster(r), pkgName[r.Package], gates[r.Package], schemes)
 		for _, m := range methods(r) {
 			item[strings.ToLower(m)] = op
 		}
@@ -79,11 +82,15 @@ func methods(r Route) []string {
 
 var pathParam = regexp.MustCompile(`\{([^}]+)\}`)
 
-func operation(r Route, pkg string, gate Gate, schemes map[string]any) map[string]any {
+func operation(r Route, cluster, pkg string, gate Gate, schemes map[string]any) map[string]any {
+	if cluster == "" { // registered outside any declared function
+		cluster = pkg
+	}
 	op := map[string]any{
-		"tags":        []any{pkg},
+		"tags":        []any{cluster},
 		"summary":     summary(r),
 		"operationId": operationID(r),
+		"x-package":   pkg,
 		"x-source":    r.Pos,
 	}
 	if r.Doc != "" {

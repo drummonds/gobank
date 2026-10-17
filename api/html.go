@@ -77,7 +77,7 @@ func Find(s Surface, method, path string) (Route, bool) {
 }
 
 // Index renders the table of routes, a box per server and a section per
-// registrar, each route linking to its detail.
+// cluster, each route linking to its detail.
 func Index(s Surface, o Options) template.HTML {
 	return render(indexTmpl, indexView(s, o))
 }
@@ -147,7 +147,7 @@ type packageView struct {
 }
 
 type sectionView struct {
-	Title  string // "" when the package has one registrar: no heading
+	Title  string // the cluster; "" when the package has one registrar: no heading
 	Doc    string
 	Routes []rview
 }
@@ -156,6 +156,7 @@ type sectionView struct {
 type rview struct {
 	Route
 	Package   Package
+	Cluster   string
 	Methods   []string
 	Summary   string
 	Rest      string // the doc after its first sentence
@@ -200,7 +201,7 @@ func indexView(s Surface, o Options) iview {
 		for _, reg := range regs {
 			sec := sectionView{}
 			if len(regs) > 1 {
-				sec.Title, sec.Doc = sectionTitle(reg)
+				sec.Title, sec.Doc = reg.Cluster()
 			}
 			for _, r := range s.Routes {
 				if r.Package == p.Path && r.Registrar == reg.Name {
@@ -225,28 +226,8 @@ func indexView(s Surface, o Options) iview {
 	return v
 }
 
-// sectionTitle makes a heading of a registrar's doc: what it mounts, up
-// to the colon or full stop, and the rest as the section's note.
-func sectionTitle(reg Registrar) (title, doc string) {
-	d := strings.Join(strings.Fields(reg.Doc), " ")
-	if d == "" {
-		return reg.Name, ""
-	}
-	for _, verb := range []string{"mounts ", "serves ", "builds ", "registers "} {
-		if len(d) > len(verb) && strings.EqualFold(d[:len(verb)], verb) {
-			d = d[len(verb):]
-			break
-		}
-	}
-	title = d
-	if i := strings.IndexAny(d, ":."); i > 0 {
-		title, doc = d[:i], strings.TrimSpace(strings.TrimLeft(d[i+1:], ":. "))
-	}
-	return strings.ToUpper(title[:1]) + title[1:], doc
-}
-
 func routeView(s Surface, r Route, o Options) rview {
-	v := rview{Route: r, Methods: methods(r), Summary: summary(r), Anchor: anchorKey(r), IndexURL: o.IndexURL}
+	v := rview{Route: r, Cluster: s.Cluster(r), Methods: methods(r), Summary: summary(r), Anchor: anchorKey(r), IndexURL: o.IndexURL}
 	for _, p := range s.Packages {
 		if p.Path == r.Package {
 			v.Package = p
@@ -394,7 +375,7 @@ const indexBody = `
 `
 
 const detailBody = `
-<div class="content is-small mb-2"><a href="{{.IndexURL}}">API</a> › <code>{{.Package.Name}}</code></div>
+<div class="content is-small mb-2"><a href="{{.IndexURL}}">API</a> › <code>{{.Package.Name}}</code>{{if .Cluster}} › {{.Cluster}}{{end}}</div>
 <h2 class="title is-4"><code>{{join .Methods " "}}</code> <code>{{.Path}}</code></h2>
 <p class="subtitle is-6">{{.Summary}}</p>
 <div class="box">

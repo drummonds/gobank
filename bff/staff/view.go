@@ -22,17 +22,14 @@ func (s *Site) view(r *http.Request) view.View {
 	return view.Parse(c.Value)
 }
 
-// viewRoutes mounts the view switch: GET view/{name}?back=<path> sets
-// the cookie and returns to the page that offered it.
-func (s *Site) viewRoutes() {
-	// Switches this browser between the bank's view and the customer's:
-	// sets the staff_view cookie for a year and returns to ?back=.
-	s.mux.HandleFunc("/view/{name}", func(w http.ResponseWriter, r *http.Request) {
-		v := view.Parse(r.PathValue("name"))
-		http.SetCookie(w, &http.Cookie{
-			Name: viewCookie, Value: string(v), Path: s.cfg.Scope, HttpOnly: true,
-			Secure: s.cfg.SecureCookies, SameSite: http.SameSiteStrictMode, MaxAge: 365 * 24 * 3600,
-		})
-		s.redirect(w, r, r.URL.Query().Get("back"))
+// viewSwitch switches this browser between the bank's view and the
+// customer's: GET view/{name}?back=<path> sets the staff_view cookie for a
+// year and returns to the page that offered it.
+func (s *Site) viewSwitch(w http.ResponseWriter, r *http.Request) {
+	v := view.Parse(r.PathValue("name"))
+	http.SetCookie(w, &http.Cookie{
+		Name: viewCookie, Value: string(v), Path: s.cfg.Scope, HttpOnly: true,
+		Secure: s.cfg.SecureCookies, SameSite: http.SameSiteStrictMode, MaxAge: 365 * 24 * 3600,
 	})
+	s.redirect(w, r, r.URL.Query().Get("back"))
 }

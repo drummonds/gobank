@@ -1,21 +1,16 @@
 package staff
 
 import (
-	"bytes"
-	"encoding/json"
 	"fmt"
-	"io"
 	"net/http"
 	"strconv"
-	"strings"
 
 	"git.bytestone.uk/hum3/gobank/internal/daylength"
 )
 
-// consoleRoutes mounts the simulation console: the dashboard and its
-// controls, the payments generator, the settings, the runtime, export and
-// import, the explorer and the status another program reads.
-func (s *Site) consoleRoutes() {
+// simulationRoutes mounts Simulation: the dashboard and its controls, the
+// payments generator and the settings, what gobank-deploy drives.
+func (s *Site) simulationRoutes() {
 	bank, console := s.cfg.Bank, s.cfg.Console
 	mux := s.mux
 
@@ -88,63 +83,8 @@ func (s *Site) consoleRoutes() {
 		}
 	})
 
-	// --- Export/Import ---
+	// --- The payments generator ---
 
-	// The whole book as a .goluca file (GET): admin only.
-	mux.HandleFunc("/export.goluca", func(w http.ResponseWriter, r *http.Request) {
-		if !s.require(w, r, "export") {
-			return
-		}
-		if r.Method != "GET" {
-			http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
-			return
-		}
-		var buf bytes.Buffer
-		if err := console.Export(&buf); err != nil {
-			http.Error(w, err.Error(), http.StatusInternalServerError)
-			return
-		}
-		w.Header().Set("Content-Type", "application/octet-stream")
-		w.Header().Set("Content-Disposition", `attachment; filename="gobank.goluca"`)
-		w.Write(buf.Bytes())
-	})
-	// Replaces the book with an uploaded .goluca file (POST, multipart
-	// file=): admin only.
-	mux.HandleFunc("/import", func(w http.ResponseWriter, r *http.Request) {
-		if !s.require(w, r, "export") {
-			return
-		}
-		if r.Method != "POST" {
-			http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
-			return
-		}
-		file, _, err := r.FormFile("file")
-		if err != nil {
-			http.Error(w, "No file uploaded", http.StatusBadRequest)
-			return
-		}
-		defer file.Close()
-		data, err := io.ReadAll(file)
-		if err != nil {
-			http.Error(w, "Read error", http.StatusBadRequest)
-			return
-		}
-		if err := console.Import(bytes.NewReader(data)); err != nil {
-			http.Error(w, err.Error(), http.StatusInternalServerError)
-			return
-		}
-		s.redirect(w, r, "")
-	})
-
-	// --- Payments: the list with the generator's controls, and the generator ---
-
-	// Payments: the list, newest first, one page (?page=) at a time, with
-	// the generator's controls.
-	mux.HandleFunc("/payments", func(w http.ResponseWriter, r *http.Request) {
-		s.page(w, r, func() string {
-			return renderPaymentsPage(bank, console.SimStatus().PaymentsRunning, s.piiAuthorised(r), pageParam(r, "page"), s.role(r))
-		})
-	})
 	payments := func(pattern string, do func()) {
 		mux.HandleFunc(pattern, func(w http.ResponseWriter, r *http.Request) {
 			if r.Method != "POST" {
@@ -206,51 +146,5 @@ func (s *Site) consoleRoutes() {
 		}
 		w.Header().Set("Content-Type", "text/html; charset=utf-8")
 		fmt.Fprint(w, RenderSettingsStatus(bank, console.SimStatus().Busy()))
-	})
-
-	// --- Internal ---
-
-	explorer := func(w http.ResponseWriter, r *http.Request) {
-		if r.Method != "GET" {
-			http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
-			return
-		}
-		if strings.TrimPrefix(r.URL.Path, "/internal/explorer") == "/" {
-			s.redirect(w, r, "internal/explorer")
-			return
-		}
-		content := s.BuildExplorerPage(WithRole(r.Context(), s.role(r)), r.URL.RequestURI())
-		if s.fragment(w, r, content) {
-			return
-		}
-		s.page(w, r, func() string { return content })
-	}
-	// The DB explorer: every component's tables, read-only; a role sees only
-	// the components it may (customers needs view_pii).
-	mux.HandleFunc("/internal/explorer", explorer)
-	// The DB explorer's tables and rows, under its prefix.
-	mux.HandleFunc("/internal/explorer/", explorer)
-
-	// --- Runtime, and the demo's state for another program: gobank-deploy's
-	// upgrade drill reads the position and the restart record here ---
-
-	// Runtime: the process, its memory against the limit, the schema
-	// versions and the restart record.
-	mux.HandleFunc("/about/runtime", func(w http.ResponseWriter, r *http.Request) {
-		s.page(w, r, func() string { return BuildRuntimeHTML(bank, console.Runtime(), s.cfg.Version) })
-	})
-	// The demo's state for another program (GET, no session): version,
-	// schema, settings, the run and its rates, the position and the restart
-	// record. gobank-deploy's upgrade drill reads it before and after each
-	// redeploy; a performance run reads the rates.
-	mux.HandleFunc("/about.json", func(w http.ResponseWriter, r *http.Request) {
-		if r.Method != "GET" {
-			http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
-			return
-		}
-		w.Header().Set("Content-Type", "application/json")
-		st := AboutStatusOf(bank, console, s.cfg.Version)
-		st.Routes = AboutRoutes(s.cfg.Stats)
-		json.NewEncoder(w).Encode(st)
 	})
 }

@@ -117,17 +117,17 @@ func TestEveryRouteIsPlaced(t *testing.T) {
 // those functions with their doc comments: a package's sections.
 func TestRegistrars(t *testing.T) {
 	s := walkBoth(t)
-	if r := mustFind(t, s, staffPkg, "", "/start"); r.Registrar != "(*Site).consoleRoutes" {
+	if r := mustFind(t, s, staffPkg, "", "/start"); r.Registrar != "(*Site).simulationRoutes" {
 		t.Errorf("/start registered in %q", r.Registrar)
 	}
-	if r := mustFind(t, s, bffPkg, "GET", "/v1/health"); r.Registrar != "NewServer" {
+	if r := mustFind(t, s, bffPkg, "GET", "/v1/health"); r.Registrar != "(*Server).healthRoutes" {
 		t.Errorf("/v1/health registered in %q", r.Registrar)
 	}
 	found := false
 	for _, reg := range s.Registrars {
-		if reg.Name == "(*Site).consoleRoutes" {
+		if reg.Name == "(*Site).simulationRoutes" {
 			found = true
-			if !strings.Contains(reg.Doc, "simulation console") {
+			if !strings.HasPrefix(reg.Doc, "Mounts Simulation:") {
 				t.Errorf("doc %q", reg.Doc)
 			}
 		}

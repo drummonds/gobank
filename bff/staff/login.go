@@ -17,8 +17,9 @@ import (
 // against the users component; too many failures for one login name or
 // from one address lock it for a while, as the customer login does.
 
-// loginRoutes mounts the login page and the logout.
-func (s *Site) loginRoutes() {
+// sessionRoutes mounts Session: the login and the logout, the PII
+// authorisation and the view switch.
+func (s *Site) sessionRoutes() {
 	// The staff login: the form (GET) and its check (POST login, password)
 	// against the users component. Five failures for one login or from one
 	// address lock it for fifteen minutes; 503 on a deployment with no users.
@@ -51,6 +52,32 @@ func (s *Site) loginRoutes() {
 		s.clearSessionCookie(w)
 		s.redirect(w, r, "login")
 	})
+	// PII (POST): an admin authorises themselves to see personal data for a
+	// while, then returns to redirect=.
+	s.mux.HandleFunc("/auth/authorize", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != "POST" {
+			s.redirect(w, r, "")
+			return
+		}
+		if sess, ok := signedIn(r); ok {
+			s.pii.authorise(sess.key())
+		}
+		s.redirect(w, r, r.FormValue("redirect"))
+	})
+	// PII (POST): the admin gives the authorisation up and returns to
+	// redirect=.
+	s.mux.HandleFunc("/auth/revoke", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != "POST" {
+			s.redirect(w, r, "")
+			return
+		}
+		if sess, ok := signedIn(r); ok {
+			s.pii.revoke(sess.key())
+		}
+		s.redirect(w, r, r.FormValue("redirect"))
+	})
+	// Switches this browser between the bank's view and the customer's.
+	s.mux.HandleFunc("/view/{name}", s.viewSwitch)
 }
 
 func (s *Site) login(w http.ResponseWriter, r *http.Request) {

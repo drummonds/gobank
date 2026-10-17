@@ -14,8 +14,12 @@
 package staff
 
 import (
+	"bytes"
+	"encoding/json"
 	"fmt"
 	"html/template"
+	"io"
+	"io/fs"
 	"log"
 	"net/http"
 	"net/url"
@@ -111,13 +115,19 @@ func New(cfg Config) *Site {
 		limiter: session.NewLimiter(5, 15*time.Minute, time.Now),
 		pii:     newPIIStore(cfg.PIITTL), ctrl: ctrl, catalog: explorerCatalog(cfg.Components),
 	}
-	s.loginRoutes()
-	s.routes()
-	s.viewRoutes()
-	s.movementRoutes()
+	s.sessionRoutes()
+	s.accountingRoutes()
+	s.productsRoutes()
+	s.customersRoutes()
+	s.paymentsRoutes()
+	s.treasuryRoutes()
+	s.reportsRoutes()
+	s.aboutRoutes()
 	if cfg.Console != nil {
-		s.consoleRoutes()
+		s.simulationRoutes()
 	}
+	s.internalRoutes()
+	s.assetRoutes()
 	if cfg.Stats != nil {
 		s.mux.Observe = cfg.Stats.Observe
 	}
@@ -262,36 +272,11 @@ func (s *Site) masterPage(w http.ResponseWriter, r *http.Request, build func() s
 	s.staticPage(w, r, content)
 }
 
-// routes mounts the staff pages: accounting, products, customers,
-// payments, treasury, reports and about, and the PII authorisation.
-func (s *Site) routes() {
+// accountingRoutes mounts Accounting: the profit and loss, the balance
+// sheet and a movement of the ledger.
+func (s *Site) accountingRoutes() {
 	bank := s.cfg.Bank
 	mux := s.mux
-
-	// PII (POST): an admin authorises themselves to see personal data for a
-	// while, then returns to redirect=.
-	mux.HandleFunc("/auth/authorize", func(w http.ResponseWriter, r *http.Request) {
-		if r.Method != "POST" {
-			s.redirect(w, r, "")
-			return
-		}
-		if sess, ok := signedIn(r); ok {
-			s.pii.authorise(sess.key())
-		}
-		s.redirect(w, r, r.FormValue("redirect"))
-	})
-	// PII (POST): the admin gives the authorisation up and returns to
-	// redirect=.
-	mux.HandleFunc("/auth/revoke", func(w http.ResponseWriter, r *http.Request) {
-		if r.Method != "POST" {
-			s.redirect(w, r, "")
-			return
-		}
-		if sess, ok := signedIn(r); ok {
-			s.pii.revoke(sess.key())
-		}
-		s.redirect(w, r, r.FormValue("redirect"))
-	})
 
 	// The profit and loss statement since the bank opened, on an accrual
 	// basis.
@@ -302,10 +287,16 @@ func (s *Site) routes() {
 	mux.HandleFunc("/accounting/balance-sheet", func(w http.ResponseWriter, r *http.Request) {
 		s.page(w, r, func() string { return BuildBalanceSheetHTML(bank) })
 	})
+	// One movement of the ledger (ADR-0008).
+	mux.HandleFunc("/movements/{id}", s.movement)
+}
 
-	// Products: the masters (a family's products, the bank's own) and
-	// the detail, a parameter's own page, which is also where a staff
-	// setting is made (ADR-0010): decided by the signed-in user.
+// productsRoutes mounts Products: the masters (a family's products, the
+// bank's own) and the detail, a parameter's own page, which is also where
+// a staff setting is made (ADR-0010), decided by the signed-in user.
+func (s *Site) productsRoutes() {
+	bank := s.cfg.Bank
+	mux := s.mux
 
 	// The savings products: the family's catalogue, each product with its
 	// book.
@@ -378,6 +369,13 @@ func (s *Site) routes() {
 			http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 		}
 	})
+}
+
+// customersRoutes mounts Customers: the register, the search by name and
+// a customer's detail and accounts.
+func (s *Site) customersRoutes() {
+	bank := s.cfg.Bank
+	mux := s.mux
 
 	// The customers, one page (?page=) at a time; personal data only for an
 	// authorised admin.
@@ -432,6 +430,13 @@ func (s *Site) routes() {
 		}
 		s.page(w, r, func() string { return BuildCustomerDetailHTML(bank, parts[0], pii, txPage, s.view(r)) })
 	})
+}
+
+// paymentsRoutes mounts Payments: the list and a payment's detail; the
+// generator that makes them is Simulation's.
+func (s *Site) paymentsRoutes() {
+	bank := s.cfg.Bank
+	mux := s.mux
 
 	// One payment: its detail and the movements it made.
 	mux.HandleFunc("/payments/{id}", func(w http.ResponseWriter, r *http.Request) {
@@ -443,30 +448,22 @@ func (s *Site) routes() {
 		s.page(w, r, func() string { return BuildPaymentDetailHTML(bank, id, s.piiAuthorised(r)) })
 	})
 
-	// Events: the record of what happened and what it caused (ADR-0011)
-	mux.HandleFunc("/events", func(w http.ResponseWriter, r *http.Request) {
-		s.page(w, r, func() string { return BuildEventsHTML(bank) })
-	})
+	if console := s.cfg.Console; console != nil {
+		// Payments: the list, newest first, one page (?page=) at a time, with
+		// the generator's controls.
+		mux.HandleFunc("/payments", func(w http.ResponseWriter, r *http.Request) {
+			s.page(w, r, func() string {
+				return renderPaymentsPage(bank, console.SimStatus().PaymentsRunning, s.piiAuthorised(r), pageParam(r, "page"), s.role(r))
+			})
+		})
+	}
+}
 
-	// The charts: the book, the customer count and the rates over the run.
-	mux.HandleFunc("/reports/charts", func(w http.ResponseWriter, r *http.Request) {
-		s.page(w, r, func() string { return BuildChartsHTML(bank) })
-	})
-	// The BBSI return (Bank and Building Society Interest): each customer's
-	// interest for the year; personal data only for an authorised admin.
-	mux.HandleFunc("/reports/bbsi", func(w http.ResponseWriter, r *http.Request) {
-		s.page(w, r, func() string { return BuildBBSIHTML(bank, s.piiAuthorised(r)) })
-	})
-	// A customer as the app shows them (?id=); without an id, the customer
-	// list.
-	mux.HandleFunc("/reports/customer-view", func(w http.ResponseWriter, r *http.Request) {
-		id := r.URL.Query().Get("id")
-		if id == "" {
-			s.redirect(w, r, "customers")
-			return
-		}
-		s.page(w, r, func() string { return BuildCustomerViewHTML(bank, id, s.piiAuthorised(r)) })
-	})
+// treasuryRoutes mounts Treasury: the cash position, the capital and the
+// gilts.
+func (s *Site) treasuryRoutes() {
+	bank := s.cfg.Bank
+	mux := s.mux
 
 	// The cash position: deposits, loans, cash at the BoE against the
 	// required reserves, and the Bank Rate.
@@ -505,6 +502,41 @@ func (s *Site) routes() {
 		}
 		s.redirect(w, r, "treasury/gilts")
 	})
+}
+
+// reportsRoutes mounts Reports: the charts, the BBSI return and a
+// customer as the app shows them.
+func (s *Site) reportsRoutes() {
+	bank := s.cfg.Bank
+	mux := s.mux
+
+	// The charts: the book, the customer count and the rates over the run.
+	mux.HandleFunc("/reports/charts", func(w http.ResponseWriter, r *http.Request) {
+		s.page(w, r, func() string { return BuildChartsHTML(bank) })
+	})
+	// The BBSI return (Bank and Building Society Interest): each customer's
+	// interest for the year; personal data only for an authorised admin.
+	mux.HandleFunc("/reports/bbsi", func(w http.ResponseWriter, r *http.Request) {
+		s.page(w, r, func() string { return BuildBBSIHTML(bank, s.piiAuthorised(r)) })
+	})
+	// A customer as the app shows them (?id=); without an id, the customer
+	// list.
+	mux.HandleFunc("/reports/customer-view", func(w http.ResponseWriter, r *http.Request) {
+		id := r.URL.Query().Get("id")
+		if id == "" {
+			s.redirect(w, r, "customers")
+			return
+		}
+		s.page(w, r, func() string { return BuildCustomerViewHTML(bank, id, s.piiAuthorised(r)) })
+	})
+}
+
+// aboutRoutes mounts About: the project, the models, the documentation,
+// the API and the ADRs; with a console, the runtime and the state another
+// program reads.
+func (s *Site) aboutRoutes() {
+	bank := s.cfg.Bank
+	mux := s.mux
 
 	// The project: what the Model Bank is, its aims and its non-goals.
 	mux.HandleFunc("/about", func(w http.ResponseWriter, r *http.Request) {
@@ -524,8 +556,9 @@ func (s *Site) routes() {
 		s.page(w, r, func() string { return BuildDocsHTML(s.cfg.Components, s.cfg.Debt) })
 	})
 	// The API: every route the BFF and the staff web serve, read off the
-	// code at build time (package api), in sections by where each is
-	// registered, each linking to its own page; the types the bodies
+	// code at build time (package api), in clusters by subject (the
+	// function each is registered in), each linking to its own page; the
+	// types the bodies
 	// are made of follow. The OpenAPI document is at v1/openapi.json.
 	// A static page: the surface does not change while the run goes.
 	mux.HandleFunc("/about/api", func(w http.ResponseWriter, r *http.Request) {
@@ -571,6 +604,118 @@ func (s *Site) routes() {
 		s.page(w, r, func() string { return page })
 	})
 
+	if console := s.cfg.Console; console != nil {
+		// Runtime: the process, its memory against the limit, the schema
+		// versions and the restart record.
+		mux.HandleFunc("/about/runtime", func(w http.ResponseWriter, r *http.Request) {
+			s.page(w, r, func() string { return BuildRuntimeHTML(bank, console.Runtime(), s.cfg.Version) })
+		})
+		// The demo's state for another program (GET, no session): version,
+		// schema, settings, the run and its rates, the position and the restart
+		// record. gobank-deploy's upgrade drill reads it before and after each
+		// redeploy; a performance run reads the rates.
+		mux.HandleFunc("/about.json", func(w http.ResponseWriter, r *http.Request) {
+			if r.Method != "GET" {
+				http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+				return
+			}
+			w.Header().Set("Content-Type", "application/json")
+			st := AboutStatusOf(bank, console, s.cfg.Version)
+			st.Routes = AboutRoutes(s.cfg.Stats)
+			json.NewEncoder(w).Encode(st)
+		})
+	}
+}
+
+// internalRoutes mounts Internal: the events, and with a console the
+// explorer, export and import.
+func (s *Site) internalRoutes() {
+	bank := s.cfg.Bank
+	mux := s.mux
+
+	// Events: the record of what happened and what it caused (ADR-0011)
+	mux.HandleFunc("/events", func(w http.ResponseWriter, r *http.Request) {
+		s.page(w, r, func() string { return BuildEventsHTML(bank) })
+	})
+
+	console := s.cfg.Console
+	if console == nil {
+		return
+	}
+
+	explorer := func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != "GET" {
+			http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+			return
+		}
+		if strings.TrimPrefix(r.URL.Path, "/internal/explorer") == "/" {
+			s.redirect(w, r, "internal/explorer")
+			return
+		}
+		content := s.BuildExplorerPage(WithRole(r.Context(), s.role(r)), r.URL.RequestURI())
+		if s.fragment(w, r, content) {
+			return
+		}
+		s.page(w, r, func() string { return content })
+	}
+	// The DB explorer: every component's tables, read-only; a role sees only
+	// the components it may (customers needs view_pii).
+	mux.HandleFunc("/internal/explorer", explorer)
+	// The DB explorer's tables and rows, under its prefix.
+	mux.HandleFunc("/internal/explorer/", explorer)
+
+	// The whole book as a .goluca file (GET): admin only.
+	mux.HandleFunc("/export.goluca", func(w http.ResponseWriter, r *http.Request) {
+		if !s.require(w, r, "export") {
+			return
+		}
+		if r.Method != "GET" {
+			http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+			return
+		}
+		var buf bytes.Buffer
+		if err := console.Export(&buf); err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+		w.Header().Set("Content-Type", "application/octet-stream")
+		w.Header().Set("Content-Disposition", `attachment; filename="gobank.goluca"`)
+		w.Write(buf.Bytes())
+	})
+	// Replaces the book with an uploaded .goluca file (POST, multipart
+	// file=): admin only.
+	mux.HandleFunc("/import", func(w http.ResponseWriter, r *http.Request) {
+		if !s.require(w, r, "export") {
+			return
+		}
+		if r.Method != "POST" {
+			http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+			return
+		}
+		file, _, err := r.FormFile("file")
+		if err != nil {
+			http.Error(w, "No file uploaded", http.StatusBadRequest)
+			return
+		}
+		defer file.Close()
+		data, err := io.ReadAll(file)
+		if err != nil {
+			http.Error(w, "Read error", http.StatusBadRequest)
+			return
+		}
+		if err := console.Import(bytes.NewReader(data)); err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+		s.redirect(w, r, "")
+	})
+}
+
+// assetRoutes mounts Assets: the tab icons and pta2svg's browser
+// renderer.
+func (s *Site) assetRoutes() {
+	mux := s.mux
+
 	// The tab icon as .ico, from lofigui.
 	mux.HandleFunc("/favicon.ico", lofigui.ServeFavicon)
 	// The tab icon as SVG.
@@ -578,6 +723,10 @@ func (s *Site) routes() {
 		w.Header().Set("Content-Type", "image/svg+xml")
 		w.Write(faviconSVG)
 	})
+	sub, _ := fs.Sub(wasmFiles, "wasm")
+	// pta2svg's browser renderer and its loader, embedded (ADR-0008), so
+	// the movement page draws in the tab.
+	mux.Handle("/wasm/", http.StripPrefix("/wasm/", http.FileServer(http.FS(sub))))
 }
 
 // pageParam is a 1-based page number from the query, 1 when absent.

@@ -121,19 +121,36 @@ func NewServer(cfg Config) *Server {
 	if cfg.Stats != nil {
 		s.mux.Observe = cfg.Stats.Observe
 	}
+	s.healthRoutes()
+	s.sessionRoutes()
+	s.screenRoutes()
+	return s
+}
+
+// healthRoutes mounts Health: whether the server is up, the API document,
+// and not_found for every path no other route serves.
+func (s *Server) healthRoutes() {
 	s.mux.HandleFunc("GET /v1/health", s.health)
 	s.mux.HandleFunc("GET /v1/openapi.json", s.openapi)
-	s.mux.HandleFunc("GET "+PathScreenLogin, s.loginScreen)
-	s.mux.HandleFunc("POST "+PathLogin, s.login)
-	s.mux.HandleFunc("POST "+PathLogout, s.authed(s.logout))
-	s.mux.HandleFunc("GET "+PathScreenHome, s.authed(s.accounts))
-	s.mux.HandleFunc("GET "+PathScreenTx, s.authed(s.activity))
-	s.mux.HandleFunc("GET "+PathScreenProduct+"{index}", s.authed(s.product))
 	// Every other path under /v1/: not_found, as JSON.
 	s.mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
 		s.writeError(w, r, http.StatusNotFound, "not_found", "No such endpoint", nil)
 	})
-	return s
+}
+
+// sessionRoutes mounts Customer session: the login and the logout.
+func (s *Server) sessionRoutes() {
+	s.mux.HandleFunc("POST "+PathLogin, s.login)
+	s.mux.HandleFunc("POST "+PathLogout, s.authed(s.logout))
+}
+
+// screenRoutes mounts Screens: the trees the app renders, the login screen
+// open and the rest for a signed-in customer.
+func (s *Server) screenRoutes() {
+	s.mux.HandleFunc("GET "+PathScreenLogin, s.loginScreen)
+	s.mux.HandleFunc("GET "+PathScreenHome, s.authed(s.accounts))
+	s.mux.HandleFunc("GET "+PathScreenTx, s.authed(s.activity))
+	s.mux.HandleFunc("GET "+PathScreenProduct+"{index}", s.authed(s.product))
 }
 
 // Sessions exposes the session store, e.g. for a periodic Sweep.
