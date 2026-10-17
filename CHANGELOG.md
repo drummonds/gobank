@@ -2,6 +2,8 @@
 
 ## [Unreleased]
 
+## [0.57.0] - 2026-10-17
+
 ## [0.56.0] - 2026-10-16
 
  - about.json reports the database's tables and their size
