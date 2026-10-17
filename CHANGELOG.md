@@ -2,6 +2,15 @@
 
 ## [Unreleased]
 
+## [0.59.0] - 2026-10-17
+
+ - Dependencies: gobank-products v0.11.0, lofigui v0.18.0, golang.org/x (crypto v0.58.0, tools v0.52.0); cmd/demo pins tidied to match; API routes in clusters by subject: About → API has one section per cluster in the staff tabs' vocabulary (Simulation, Session, Accounting, Products, Customers, Payments, Treasury, Reports, About, Internal, Assets; the customer BFF's Health, Customer session, Screens), and the OpenAPI tags are the clusters, with the package as `x-package`. Each registrar mounts one cluster, named in its doc comment; Simulation holds the simulation controls and the payments generator and nothing else; a route's page names its cluster. No path moves
+
+### Changed
+
+- Dependencies: gobank-products v0.11.0, lofigui v0.18.0, golang.org/x (crypto v0.58.0, tools v0.52.0); cmd/demo pins tidied to match (#171)
+- API routes in clusters by subject: About → API has one section per cluster in the staff tabs' vocabulary (Simulation, Session, Accounting, Products, Customers, Payments, Treasury, Reports, About, Internal, Assets; the customer BFF's Health, Customer session, Screens), and the OpenAPI tags are the clusters, with the package as `x-package`. Each registrar mounts one cluster, named in its doc comment; Simulation holds the simulation controls and the payments generator and nothing else; a route's page names its cluster. No path moves (#156)
+
 ## [0.58.0] - 2026-10-17
 
 ## [0.57.0] - 2026-10-17
