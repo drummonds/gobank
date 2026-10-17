@@ -2,6 +2,7 @@
 .vscode
 .tp-release-comment
 .tp-release-inflight
+.tp-release.yml
 
 .task/
 bff/staff/diagrams/*.svg

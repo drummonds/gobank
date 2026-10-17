@@ -1,6 +1,7 @@
 maturity:
   code: 1
   deploy: 2
+fragments: true
 merge_wait: 10m
 remotes:
   - name: origin
